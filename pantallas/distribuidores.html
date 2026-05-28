@@ -1,0 +1,680 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Distribuidores | Portal del Viento</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .text-neon { color: #e4fc74; }
+        .bg-neon { background-color: #e4fc74; }
+        .border-neon { border-color: #e4fc74; }
+        .modal-oculto { display: none; }
+        .modal-visible { display: flex; }
+        .tab-activa { border-bottom: 2px solid #e4fc74; color: white; }
+    </style>
+</head>
+<body class="bg-gray-950 text-gray-200 font-sans h-screen flex">
+
+    <aside class="w-64 bg-black border-r border-gray-800 flex flex-col shrink-0">
+        <div class="p-6 border-b border-gray-800 text-center">
+            <h1 class="text-neon font-bold text-lg tracking-widest uppercase leading-tight">Portal del Viento</h1>
+            <p class="text-white text-xs mt-1 font-bold italic">ALFAJORES</p>
+        </div>
+        <nav class="flex-1 p-4 space-y-1 text-sm overflow-y-auto">
+            <a href="/admin"          class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">📊 Tablero</a>
+            <a href="/catalogo"       class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">📦 Catálogo</a>
+            <a href="/insumos"        class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">🧪 Insumos</a>
+            <a href="/produccion"     class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">🏭 Producción</a>
+            <a href="/proveedores"    class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">🏪 Proveedores</a>
+            <a href="/distribuidores" class="block bg-gray-900 text-white py-2 px-4 rounded-lg border-l-4 border-neon font-medium">🚚 Distribuidores</a>
+            <a href="/historial-b2b"  class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">📋 Pedidos B2B</a>
+            <a href="/empleados"      class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">👥 Empleados</a>
+            <a href="/reportes"       class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">📈 Reportes</a>
+            <a href="/configuracion"  class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">⚙️ Configuración</a>
+        </nav>
+        <div id="usuario-info" class="p-4 border-t border-gray-800 text-xs text-gray-500 text-center"></div>
+    </aside>
+
+    <main class="flex-1 flex flex-col overflow-hidden">
+        <header class="bg-gray-900 border-b border-gray-800 py-4 px-8 flex justify-between items-center shrink-0">
+            <h2 class="text-xl font-bold text-white">Gestión de Distribuidores</h2>
+            <button onclick="abrirModalNuevo()" class="bg-neon hover:bg-yellow-300 text-black font-bold py-2 px-6 rounded-lg transition">+ Nuevo Distribuidor</button>
+        </header>
+
+        <div class="bg-gray-900 border-b border-gray-800 px-8 flex gap-6 shrink-0">
+            <button onclick="cambiarTab('lista')"    id="tab-lista" class="py-3 text-sm font-bold tab-activa">🚚 Nómina</button>
+            <button onclick="cambiarTab('historial')" id="tab-hist"  class="py-3 text-sm font-bold text-gray-400 hover:text-white">📋 Historial de Pedidos</button>
+            <button onclick="cambiarTab('cuenta')"    id="tab-cuenta" class="py-3 text-sm font-bold text-gray-400 hover:text-white">💰 Estado de Cuenta</button>
+        </div>
+
+        <!-- Panel Lista -->
+        <div id="panel-lista" class="flex-1 overflow-y-auto p-8">
+            <div class="bg-black rounded-xl border border-gray-800 overflow-hidden">
+                <table class="w-full text-left">
+                    <thead class="bg-gray-950 text-xs text-gray-400 uppercase">
+                        <tr>
+                            <th class="p-4">Distribuidor</th>
+                            <th class="p-4">CUIT / DNI</th>
+                            <th class="p-4">Teléfono</th>
+                            <th class="p-4">Localidad</th>
+                            <th class="p-4">Crédito</th>
+                            <th class="p-4">Estado</th>
+                            <th class="p-4 text-right">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tabla-distribuidores" class="divide-y divide-gray-800 text-sm">
+                        <tr><td colspan="6" class="p-4 text-center text-gray-500">Cargando...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Panel Historial -->
+        <div id="panel-historial" class="hidden flex-1 overflow-y-auto p-8">
+            <div class="flex gap-4 mb-5">
+                <select id="hist-distribuidor" class="bg-gray-900 border border-gray-700 text-white rounded p-2 text-sm flex-1">
+                    <option value="">Todos los distribuidores</option>
+                </select>
+                <select id="hist-estado" class="bg-gray-900 border border-gray-700 text-white rounded p-2 text-sm">
+                    <option value="">Todos los estados</option>
+                    <option value="Pendiente">Pendiente</option>
+                    <option value="Preparado">Preparado</option>
+                    <option value="Despachado">Despachado</option>
+                    <option value="Cancelado">Cancelado</option>
+                </select>
+                <button onclick="cargarHistorialPedidos()" class="bg-neon text-black font-bold px-4 py-2 rounded text-sm hover:bg-yellow-300">Filtrar</button>
+            </div>
+            <div class="bg-black rounded-xl border border-gray-800 overflow-hidden">
+                <table class="w-full text-left">
+                    <thead class="bg-gray-950 text-xs text-gray-400 uppercase">
+                        <tr>
+                            <th class="p-4">Pedido</th>
+                            <th class="p-4">Distribuidor</th>
+                            <th class="p-4">Fecha</th>
+                            <th class="p-4">Total</th>
+                            <th class="p-4">Estado</th>
+                            <th class="p-4 text-right">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tabla-historial" class="divide-y divide-gray-800 text-sm">
+                        <tr><td colspan="6" class="p-4 text-center text-gray-500">Seleccioná filtros y presioná Filtrar.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Panel Estado de Cuenta -->
+        <div id="panel-cuenta" class="hidden flex-1 overflow-y-auto p-8">
+            <!-- Selector distribuidor -->
+            <div class="flex gap-4 mb-6 items-end">
+                <div class="flex-1">
+                    <label class="block text-xs text-gray-500 font-bold mb-1">Distribuidor</label>
+                    <select id="cuenta-distribuidor" onchange="cargarEstadoCuenta()"
+                        class="w-full bg-gray-900 border border-gray-700 text-white rounded p-2 text-sm">
+                        <option value="">— Seleccioná un distribuidor —</option>
+                    </select>
+                </div>
+                <button onclick="imprimirEstadoCuenta()" class="border border-gray-600 text-gray-300 hover:text-white px-4 py-2 rounded-lg text-sm transition">🖨️ Imprimir</button>
+            </div>
+
+            <div id="cuenta-contenido" class="hidden">
+                <!-- Resumen -->
+                <div class="grid grid-cols-3 gap-4 mb-6">
+                    <div class="bg-black border border-gray-800 rounded-xl p-5 text-center">
+                        <p class="text-xs text-gray-500 font-bold uppercase mb-2">Total Pedidos</p>
+                        <p id="cuenta-total-ped" class="text-2xl font-bold text-white">$ 0</p>
+                    </div>
+                    <div class="bg-black border border-gray-800 rounded-xl p-5 text-center">
+                        <p class="text-xs text-gray-500 font-bold uppercase mb-2">Total Cobrado</p>
+                        <p id="cuenta-total-cob" class="text-2xl font-bold text-green-400">$ 0</p>
+                    </div>
+                    <div class="bg-black border border-red-900/50 rounded-xl p-5 text-center">
+                        <p class="text-xs text-gray-500 font-bold uppercase mb-2">Saldo Pendiente</p>
+                        <p id="cuenta-saldo" class="text-2xl font-bold text-red-400">$ 0</p>
+                    </div>
+                </div>
+
+                <!-- Movimientos -->
+                <div class="bg-black rounded-xl border border-gray-800 overflow-hidden">
+                    <div class="px-5 py-3 bg-gray-900 border-b border-gray-800">
+                        <h3 class="font-bold text-white">Movimientos</h3>
+                    </div>
+                    <table class="w-full text-left">
+                        <thead class="bg-gray-950 text-xs text-gray-400 uppercase">
+                            <tr>
+                                <th class="p-4">Fecha</th>
+                                <th class="p-4">Tipo</th>
+                                <th class="p-4">Detalle</th>
+                                <th class="p-4 text-right">Monto</th>
+                                <th class="p-4 text-right">Saldo</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tabla-movimientos" class="divide-y divide-gray-800 text-sm">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div id="cuenta-vacia" class="text-center text-gray-500 py-16">
+                <p class="text-4xl mb-3">💰</p>
+                <p>Seleccioná un distribuidor para ver su estado de cuenta.</p>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Modal Nuevo Distribuidor -->
+    <div id="modal-nuevo" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
+        <div class="bg-gray-900 border border-gray-700 rounded-xl p-6 w-[560px] shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-lg font-bold text-white border-l-4 border-neon pl-2">Alta de Distribuidor</h3>
+                <button onclick="cerrarModales()" class="text-gray-500 hover:text-white text-2xl">×</button>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3 mb-3">
+                <div class="col-span-2">
+                    <label class="block text-xs text-gray-500 font-bold mb-1">Nombre / Razón Social</label>
+                    <input type="text" id="nd-nombre" placeholder="Ej: Juan Pérez o Distribuidora SA"
+                        class="w-full bg-black border border-gray-700 text-white rounded p-2">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 font-bold mb-1">DNI</label>
+                    <input type="text" id="nd-dni" placeholder="36.766.797"
+                        class="w-full bg-black border border-gray-700 text-white rounded p-2">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 font-bold mb-1">CUIT</label>
+                    <input type="text" id="nd-cuit" placeholder="XX-XXXXXXXX-X"
+                        class="w-full bg-black border border-gray-700 text-white rounded p-2">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 font-bold mb-1">Teléfono</label>
+                    <input type="text" id="nd-tel" placeholder="261 XXX XXXX"
+                        class="w-full bg-black border border-gray-700 text-white rounded p-2">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 font-bold mb-1">Email</label>
+                    <input type="email" id="nd-email" placeholder="correo@ejemplo.com"
+                        class="w-full bg-black border border-gray-700 text-white rounded p-2">
+                </div>
+                <div class="col-span-2">
+                    <label class="block text-xs text-gray-500 font-bold mb-1">Dirección (calle y altura)</label>
+                    <input type="text" id="nd-dir" placeholder="Ej: Av. San Martín 1234"
+                        class="w-full bg-black border border-gray-700 text-white rounded p-2">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 font-bold mb-1">Localidad</label>
+                    <input type="text" id="nd-localidad" placeholder="Ej: San Rafael"
+                        class="w-full bg-black border border-gray-700 text-white rounded p-2">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 font-bold mb-1">Provincia</label>
+                    <input type="text" id="nd-provincia" placeholder="Ej: Mendoza"
+                        class="w-full bg-black border border-gray-700 text-white rounded p-2">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 font-bold mb-1">Código Postal</label>
+                    <input type="text" id="nd-cp" placeholder="5600"
+                        class="w-full bg-black border border-gray-700 text-white rounded p-2">
+                </div>
+                <div>
+                    <label class="block text-xs text-neon font-bold mb-1">Límite de Crédito ($)</label>
+                    <input type="number" id="nd-credito" placeholder="0"
+                        class="w-full bg-black border border-neon text-white rounded p-2 font-bold">
+                </div>
+            </div>
+            <label class="block text-xs text-gray-500 font-bold mb-1">Notas internas</label>
+            <textarea id="nd-notas" rows="2" placeholder="Condiciones, zona de entrega, etc."
+                class="w-full bg-black border border-gray-700 text-white rounded p-2 mb-5 text-sm resize-none"></textarea>
+
+            <div class="flex justify-end gap-3">
+                <button onclick="cerrarModales()" class="px-4 py-2 text-gray-400 hover:text-white font-bold">Cancelar</button>
+                <button onclick="guardarNuevo()" id="btn-guardar-dist"
+                    class="bg-neon text-black px-6 py-2 rounded font-bold hover:bg-yellow-300 disabled:opacity-50">Registrar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Editar Distribuidor -->
+    <div id="modal-editar" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
+        <div class="bg-gray-900 border border-gray-700 rounded-xl p-6 w-[560px] shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div class="flex justify-between items-center mb-1">
+                <h3 class="text-lg font-bold text-white border-l-4 border-neon pl-2">Editar Distribuidor</h3>
+                <button onclick="cerrarModales()" class="text-gray-500 hover:text-white text-2xl">×</button>
+            </div>
+            <p id="editar-titulo" class="text-neon text-sm font-bold mb-4"></p>
+            <input type="hidden" id="editar-id">
+
+            <div class="grid grid-cols-2 gap-3 mb-3">
+                <div class="col-span-2">
+                    <label class="block text-xs text-gray-500 font-bold mb-1">Nombre / Razón Social</label>
+                    <input type="text" id="ed-nombre"
+                        class="w-full bg-black border border-gray-700 text-white rounded p-2">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 font-bold mb-1">DNI</label>
+                    <input type="text" id="ed-dni" class="w-full bg-black border border-gray-700 text-white rounded p-2">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 font-bold mb-1">CUIT</label>
+                    <input type="text" id="ed-cuit" class="w-full bg-black border border-gray-700 text-white rounded p-2">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 font-bold mb-1">Teléfono</label>
+                    <input type="text" id="ed-tel" class="w-full bg-black border border-gray-700 text-white rounded p-2">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 font-bold mb-1">Email</label>
+                    <input type="email" id="ed-email" class="w-full bg-black border border-gray-700 text-white rounded p-2">
+                </div>
+                <div class="col-span-2">
+                    <label class="block text-xs text-gray-500 font-bold mb-1">Dirección</label>
+                    <input type="text" id="ed-dir" class="w-full bg-black border border-gray-700 text-white rounded p-2">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 font-bold mb-1">Localidad</label>
+                    <input type="text" id="ed-localidad" class="w-full bg-black border border-gray-700 text-white rounded p-2">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 font-bold mb-1">Provincia</label>
+                    <input type="text" id="ed-provincia" class="w-full bg-black border border-gray-700 text-white rounded p-2">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 font-bold mb-1">Código Postal</label>
+                    <input type="text" id="ed-cp" class="w-full bg-black border border-gray-700 text-white rounded p-2">
+                </div>
+                <div>
+                    <label class="block text-xs text-neon font-bold mb-1">Límite de Crédito ($)</label>
+                    <input type="number" id="ed-credito" class="w-full bg-black border border-neon text-white rounded p-2 font-bold">
+                </div>
+            </div>
+            <label class="block text-xs text-gray-500 font-bold mb-1">Notas internas</label>
+            <textarea id="ed-notas" rows="2" class="w-full bg-black border border-gray-700 text-white rounded p-2 mb-5 text-sm resize-none"></textarea>
+
+            <div class="flex justify-end gap-3">
+                <button onclick="cerrarModales()" class="px-4 py-2 text-gray-400 hover:text-white font-bold">Cancelar</button>
+                <button onclick="guardarEdicion()" class="bg-neon text-black px-6 py-2 rounded font-bold hover:bg-yellow-300">Actualizar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Detalle Pedido -->
+    <div id="modal-detalle" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
+        <div class="bg-gray-900 border border-gray-700 rounded-xl p-6 w-[520px] shadow-2xl max-h-[80vh] overflow-y-auto">
+            <div class="flex justify-between items-center mb-4">
+                <h3 id="detalle-titulo" class="text-lg font-bold text-white"></h3>
+                <button onclick="cerrarModales()" class="text-gray-500 hover:text-white text-2xl">×</button>
+            </div>
+            <p id="detalle-dist"  class="text-neon text-sm font-bold mb-1"></p>
+            <p id="detalle-fecha" class="text-gray-500 text-xs mb-4"></p>
+            <table class="w-full text-sm mb-4">
+                <thead class="text-xs text-gray-400 uppercase border-b border-gray-700">
+                    <tr>
+                        <th class="py-2 text-left">Producto</th>
+                        <th class="py-2 text-center">Cant.</th>
+                        <th class="py-2 text-right">Precio</th>
+                        <th class="py-2 text-right">Subtotal</th>
+                    </tr>
+                </thead>
+                <tbody id="tabla-detalle-pedido" class="divide-y divide-gray-800"></tbody>
+            </table>
+            <div class="border-t border-gray-700 pt-3 flex justify-between items-center">
+                <span class="font-bold text-gray-400">TOTAL</span>
+                <span id="detalle-total" class="font-bold text-neon text-xl"></span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        var API_URL = "http://127.0.0.1:8000/api";
+        var usr = JSON.parse(sessionStorage.getItem('usuario') || '{}');
+        if (usr.nombre) document.getElementById('usuario-info').textContent = usr.nombre + ' ' + usr.apellido + ' · ' + usr.rol;
+
+        var estadoColores = { Pendiente:'bg-yellow-900/30 text-yellow-400', Preparado:'bg-blue-900/30 text-blue-400', Despachado:'bg-green-900/30 text-green-400', Cancelado:'bg-red-900/30 text-red-500' };
+
+        function cambiarTab(tab) {
+            document.getElementById('panel-lista').classList.toggle('hidden', tab !== 'lista');
+            document.getElementById('panel-historial').classList.toggle('hidden', tab !== 'historial');
+            document.getElementById('panel-cuenta').classList.toggle('hidden', tab !== 'cuenta');
+            document.getElementById('tab-lista').className   = tab === 'lista'    ? 'py-3 text-sm font-bold tab-activa' : 'py-3 text-sm font-bold text-gray-400 hover:text-white';
+            document.getElementById('tab-hist').className    = tab === 'historial' ? 'py-3 text-sm font-bold tab-activa' : 'py-3 text-sm font-bold text-gray-400 hover:text-white';
+            document.getElementById('tab-cuenta').className  = tab === 'cuenta'    ? 'py-3 text-sm font-bold tab-activa' : 'py-3 text-sm font-bold text-gray-400 hover:text-white';
+            if (tab === 'historial') cargarHistorialPedidos();
+            if (tab === 'cuenta')    poblarSelectCuenta();
+        }
+
+        async function cargarDistribuidores() {
+            var res   = await fetch(API_URL + '/distribuidores_lista');
+            var lista = await res.json();
+
+            var sel = document.getElementById('hist-distribuidor');
+            sel.innerHTML = '<option value="">Todos los distribuidores</option>';
+            lista.forEach(function(d) { sel.innerHTML += '<option value="' + d.id + '">' + d.razon_social + '</option>'; });
+
+            var tabla = document.getElementById('tabla-distribuidores');
+            tabla.innerHTML = '';
+            if (!lista.length) { tabla.innerHTML = '<tr><td colspan="6" class="p-4 text-center text-gray-500">Sin distribuidores.</td></tr>'; return; }
+
+            lista.forEach(function(d) {
+                var tr = document.createElement('tr');
+                tr.className = 'hover:bg-gray-900 transition';
+
+                var locProv = [d.localidad, d.provincia].filter(Boolean).join(', ') || '—';
+                tr.innerHTML =
+                    '<td class="p-4">' +
+                        '<p class="font-bold text-white">' + d.razon_social + '</p>' +
+                        (d.email ? '<p class="text-gray-500 text-xs">' + d.email + '</p>' : '') +
+                    '</td>' +
+                    '<td class="p-4 text-gray-400 text-sm">' + (d.cuit || '—') + (d.dni ? '<br><span class="text-xs text-gray-600">DNI: ' + d.dni + '</span>' : '') + '</td>' +
+                    '<td class="p-4 text-gray-300 text-sm">' + (d.telefono || '—') + '</td>' +
+                    '<td class="p-4 text-gray-400 text-sm">' + locProv + '</td>' +
+                    '<td class="p-4 text-neon font-bold">$ ' + parseFloat(d.limite_credito).toLocaleString('es-AR') + '</td>' +
+                    '<td class="p-4">' + (d.aprobado ? '<span class="text-xs text-green-400 font-bold">✓ Aprobado</span>' : '<span class="text-xs text-yellow-400 font-bold">⏳ Pendiente</span>') + '</td>' +
+                    '<td class="p-4 text-right">' +
+                        '<div class="flex justify-end gap-2">' +
+                            '<button class="text-xs border border-gray-700 bg-gray-800 hover:border-gray-500 px-3 py-1 rounded text-gray-400 hover:text-white transition">Editar</button>' +
+                            '<button class="text-xs bg-neon text-black font-bold px-3 py-1 rounded hover:bg-yellow-300 transition">Ver pedidos</button>' +
+                        (d.aprobado ? '' : '<button class="text-xs bg-blue-700 hover:bg-blue-600 text-white font-bold px-3 py-1 rounded transition">Aprobar</button>') +
+                        '</div>' +
+                    '</td>';
+
+                var btns = tr.querySelectorAll('button');
+                btns[0].onclick = function() { abrirModalEditar(d); };
+                btns[1].onclick = function() { verPedidosDistribuidor(d.id, d.razon_social); };
+                if (btns[2]) btns[2].onclick = function() { aprobarDistribuidor(d.id, d.razon_social); };
+                tabla.appendChild(tr);
+            });
+        }
+
+        async function cargarHistorialPedidos() {
+            var estado = document.getElementById('hist-estado').value;
+            var dist   = document.getElementById('hist-distribuidor').value;
+            var url    = API_URL + '/pedidos_b2b/historial';
+            var params = [];
+            if (estado) params.push('estado=' + estado);
+            if (dist)   params.push('id_distribuidor=' + dist);
+            if (params.length) url += '?' + params.join('&');
+
+            var lista = await fetch(url).then(function(r) { return r.json(); });
+            var tabla = document.getElementById('tabla-historial');
+            tabla.innerHTML = '';
+            if (!lista.length) { tabla.innerHTML = '<tr><td colspan="6" class="p-4 text-center text-gray-500">Sin pedidos.</td></tr>'; return; }
+            lista.forEach(function(p) {
+                var dt    = new Date(p.fecha).toLocaleString('es-AR', {dateStyle:'short', timeStyle:'short'});
+                var color = estadoColores[p.estado] || 'bg-gray-800 text-gray-400';
+                var tr = document.createElement('tr');
+                tr.className = 'hover:bg-gray-900 transition';
+                tr.innerHTML =
+                    '<td class="p-4 font-bold text-neon">#' + String(p.id).padStart(4,'0') + '</td>' +
+                    '<td class="p-4 font-bold text-white">' + p.distribuidor + '</td>' +
+                    '<td class="p-4 text-gray-400 text-xs">' + dt + '</td>' +
+                    '<td class="p-4 text-neon font-bold">$ ' + parseFloat(p.total).toLocaleString('es-AR') + '</td>' +
+                    '<td class="p-4"><span class="text-xs px-2 py-1 rounded font-bold ' + color + '">' + p.estado + '</span></td>' +
+                    '<td class="p-4 text-right"><button class="text-xs border border-gray-700 px-3 py-1 rounded hover:border-gray-500 text-gray-400 hover:text-white">Ver detalle</button></td>';
+                tr.querySelector('button').onclick = function() { verDetallePedido(p.id, p.distribuidor, p.total, p.fecha); };
+                tabla.appendChild(tr);
+            });
+        }
+
+        function verPedidosDistribuidor(id, nombre) {
+            document.getElementById('hist-distribuidor').value = id;
+            document.getElementById('hist-estado').value = '';
+            cambiarTab('historial');
+            cargarHistorialPedidos();
+        }
+
+        async function verDetallePedido(id, distribuidor, total, fecha) {
+            document.getElementById('detalle-titulo').textContent = 'Pedido #' + String(id).padStart(4,'0');
+            document.getElementById('detalle-dist').textContent   = '🚚 ' + distribuidor;
+            document.getElementById('detalle-fecha').textContent  = new Date(fecha).toLocaleString('es-AR', {dateStyle:'long', timeStyle:'short'});
+            document.getElementById('detalle-total').textContent  = '$ ' + parseFloat(total).toLocaleString('es-AR');
+            var items = await fetch(API_URL + '/pedidos_b2b/' + id + '/detalle').then(function(r) { return r.json(); });
+            var tbody = document.getElementById('tabla-detalle-pedido');
+            tbody.innerHTML = '';
+            items.forEach(function(i) {
+                var tr = document.createElement('tr');
+                tr.innerHTML =
+                    '<td class="py-3 text-white font-bold">' + i.producto + ' <span class="text-gray-500 text-xs">' + i.sku + '</span></td>' +
+                    '<td class="py-3 text-center text-gray-300">' + i.cantidad + '</td>' +
+                    '<td class="py-3 text-right text-gray-300">$ ' + parseFloat(i.precio_unitario).toLocaleString('es-AR') + '</td>' +
+                    '<td class="py-3 text-right text-neon font-bold">$ ' + parseFloat(i.subtotal).toLocaleString('es-AR') + '</td>';
+                tbody.appendChild(tr);
+            });
+            document.getElementById('modal-detalle').classList.replace('modal-oculto','modal-visible');
+        }
+
+        // ── NUEVO ─────────────────────────────────────────────────
+        function abrirModalNuevo() {
+            ['nd-nombre','nd-dni','nd-cuit','nd-tel','nd-email','nd-dir','nd-localidad','nd-provincia','nd-cp','nd-notas'].forEach(function(id) {
+                document.getElementById(id).value = '';
+            });
+            document.getElementById('nd-credito').value = '0';
+            document.getElementById('modal-nuevo').classList.replace('modal-oculto','modal-visible');
+        }
+
+        async function guardarNuevo() {
+            var data = {
+                razon_social:   document.getElementById('nd-nombre').value.trim(),
+                dni:            document.getElementById('nd-dni').value.trim() || null,
+                cuit:           document.getElementById('nd-cuit').value.trim(),
+                telefono:       document.getElementById('nd-tel').value.trim() || null,
+                email:          document.getElementById('nd-email').value.trim() || null,
+                direccion:      document.getElementById('nd-dir').value.trim() || null,
+                localidad:      document.getElementById('nd-localidad').value.trim() || null,
+                provincia:      document.getElementById('nd-provincia').value.trim() || null,
+                cp:             document.getElementById('nd-cp').value.trim() || null,
+                limite_credito: parseFloat(document.getElementById('nd-credito').value) || 0
+            };
+            if (!data.razon_social) { alert('Ingresá el nombre.'); return; }
+            var btn = document.getElementById('btn-guardar-dist');
+            btn.disabled = true; btn.textContent = 'Guardando...';
+            try {
+                var res = await fetch(API_URL + '/distribuidores_nuevo', {
+                    method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(data)
+                });
+                if (res.ok) { cerrarModales(); cargarDistribuidores(); }
+                else { var e = await res.json(); alert('Error: ' + e.detail); }
+            } finally { btn.disabled = false; btn.textContent = 'Registrar'; }
+        }
+
+        // ── EDITAR ────────────────────────────────────────────────
+        function abrirModalEditar(d) {
+            document.getElementById('editar-id').value       = d.id;
+            document.getElementById('editar-titulo').textContent = d.razon_social;
+            document.getElementById('ed-nombre').value    = d.razon_social || '';
+            document.getElementById('ed-dni').value       = d.dni || '';
+            document.getElementById('ed-cuit').value      = d.cuit || '';
+            document.getElementById('ed-tel').value       = d.telefono || '';
+            document.getElementById('ed-email').value     = d.email || '';
+            document.getElementById('ed-dir').value       = d.direccion || '';
+            document.getElementById('ed-localidad').value = d.localidad || '';
+            document.getElementById('ed-provincia').value = d.provincia || '';
+            document.getElementById('ed-cp').value        = d.cp || '';
+            document.getElementById('ed-credito').value   = d.limite_credito || 0;
+            document.getElementById('ed-notas').value     = d.notas || '';
+            document.getElementById('modal-editar').classList.replace('modal-oculto','modal-visible');
+        }
+
+        async function guardarEdicion() {
+            var id   = document.getElementById('editar-id').value;
+            var data = {
+                razon_social:   document.getElementById('ed-nombre').value.trim(),
+                dni:            document.getElementById('ed-dni').value.trim() || null,
+                cuit:           document.getElementById('ed-cuit').value.trim(),
+                telefono:       document.getElementById('ed-tel').value.trim() || null,
+                email:          document.getElementById('ed-email').value.trim() || null,
+                direccion:      document.getElementById('ed-dir').value.trim() || null,
+                localidad:      document.getElementById('ed-localidad').value.trim() || null,
+                provincia:      document.getElementById('ed-provincia').value.trim() || null,
+                cp:             document.getElementById('ed-cp').value.trim() || null,
+                limite_credito: parseFloat(document.getElementById('ed-credito').value) || 0,
+                notas:          document.getElementById('ed-notas').value || null
+            };
+            await fetch(API_URL + '/distribuidores/' + id, {
+                method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(data)
+            });
+            cerrarModales(); cargarDistribuidores();
+        }
+
+        async function aprobarDistribuidor(id, nombre) {
+            if (!confirm('¿Aprobar a ' + nombre + ' como distribuidor?')) return;
+            await fetch(API_URL + '/distribuidores/' + id + '/aprobar', { method:'PUT' });
+            cargarDistribuidores();
+        }
+
+        function cerrarModales() {
+            document.querySelectorAll('.modal-visible').forEach(function(m) { m.classList.replace('modal-visible','modal-oculto'); });
+        }
+
+        window.onload = cargarDistribuidores;
+    
+        function poblarSelectCuenta() {
+            var sel = document.getElementById('cuenta-distribuidor');
+            fetch(API_URL + '/distribuidores_lista').then(function(r) { return r.json(); }).then(function(lista) {
+                sel.innerHTML = '<option value="">— Seleccioná un distribuidor —</option>';
+                lista.forEach(function(d) {
+                    sel.innerHTML += '<option value="' + d.id + '">' + d.razon_social + '</option>';
+                });
+            });
+        }
+
+        var estadoCuentaData = null;
+        var distNombreActual = '';
+
+        async function cargarEstadoCuenta() {
+            var id = document.getElementById('cuenta-distribuidor').value;
+            if (!id) {
+                document.getElementById('cuenta-contenido').classList.add('hidden');
+                document.getElementById('cuenta-vacia').classList.remove('hidden');
+                return;
+            }
+
+            var sel = document.getElementById('cuenta-distribuidor');
+            distNombreActual = sel.options[sel.selectedIndex].textContent;
+
+            var data = await fetch(API_URL + '/distribuidores/' + id + '/estado_cuenta').then(function(r) { return r.json(); });
+            estadoCuentaData = data;
+
+            document.getElementById('cuenta-vacia').classList.add('hidden');
+            document.getElementById('cuenta-contenido').classList.remove('hidden');
+            document.getElementById('cuenta-total-ped').textContent = '$ ' + parseFloat(data.total_pedidos).toLocaleString('es-AR');
+            document.getElementById('cuenta-total-cob').textContent = '$ ' + parseFloat(data.total_cobrado).toLocaleString('es-AR');
+            document.getElementById('cuenta-saldo').textContent     = '$ ' + parseFloat(data.saldo_pendiente).toLocaleString('es-AR');
+
+            // Mezclar movimientos
+            var movimientos = [];
+            data.pedidos.forEach(function(p) {
+                movimientos.push({ fecha: p.fecha, tipo: 'pedido', detalle: 'Pedido #' + String(p.id).padStart(4,'0'), monto: parseFloat(p.total) });
+            });
+            data.cobros.forEach(function(c) {
+                movimientos.push({ fecha: c.fecha, tipo: 'cobro', detalle: 'Cobro · ' + c.metodo + (c.referencia ? ' · ' + c.referencia : ''), monto: parseFloat(c.monto) });
+            });
+            movimientos.sort(function(a, b) { return new Date(b.fecha) - new Date(a.fecha); });
+
+            var tbody = document.getElementById('tabla-movimientos');
+            tbody.innerHTML = '';
+            var saldoAcum = 0;
+            // Calcular saldo acumulado de viejo a nuevo
+            var ordenAsc = [...movimientos].reverse();
+            var saldos = [];
+            var s = 0;
+            ordenAsc.forEach(function(m) {
+                if (m.tipo === 'pedido') s += m.monto;
+                else s -= m.monto;
+                saldos.unshift(s);
+            });
+
+            movimientos.forEach(function(m, idx) {
+                var fecha = new Date(m.fecha).toLocaleDateString('es-AR', {day:'2-digit', month:'2-digit', year:'numeric'});
+                var esPedido = m.tipo === 'pedido';
+                var tr = document.createElement('tr');
+                tr.className = 'hover:bg-gray-900';
+                tr.innerHTML =
+                    '<td class="p-4 text-gray-400 text-xs">' + fecha + '</td>' +
+                    '<td class="p-4">' +
+                        '<span class="text-xs font-bold px-2 py-1 rounded ' + (esPedido ? 'bg-blue-900/30 text-blue-400' : 'bg-green-900/30 text-green-400') + '">' +
+                            (esPedido ? '📦 Pedido' : '💰 Cobro') +
+                        '</span>' +
+                    '</td>' +
+                    '<td class="p-4 text-gray-300 text-sm">' + m.detalle + '</td>' +
+                    '<td class="p-4 text-right font-bold ' + (esPedido ? 'text-white' : 'text-green-400') + '">' +
+                        (esPedido ? '' : '+ ') + '$ ' + m.monto.toLocaleString('es-AR') +
+                    '</td>' +
+                    '<td class="p-4 text-right font-bold ' + (saldos[idx] > 0 ? 'text-red-400' : 'text-green-400') + '">' +
+                        '$ ' + Math.abs(saldos[idx]).toLocaleString('es-AR') +
+                    '</td>';
+                tbody.appendChild(tr);
+            });
+
+            if (!movimientos.length) {
+                tbody.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-gray-500">Sin movimientos.</td></tr>';
+            }
+        }
+
+        async function imprimirEstadoCuenta() {
+            if (!estadoCuentaData) { alert('Seleccioná un distribuidor primero.'); return; }
+
+            var script1 = document.createElement('script');
+            script1.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+            script1.onload = function() {
+                var script2 = document.createElement('script');
+                script2.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js';
+                script2.onload = function() { generarPDFCuenta(); };
+                document.head.appendChild(script2);
+            };
+            document.head.appendChild(script1);
+        }
+
+        function generarPDFCuenta() {
+            var jsPDF = window.jspdf.jsPDF;
+            var doc = new jsPDF();
+            var data = estadoCuentaData;
+
+            doc.setFontSize(18); doc.setFont('helvetica','bold'); doc.setTextColor(40,40,40);
+            doc.text('Portal del Viento — Estado de Cuenta', 14, 18);
+            doc.setFontSize(12); doc.setFont('helvetica','normal'); doc.setTextColor(80,80,80);
+            doc.text(distNombreActual, 14, 26);
+            doc.setFontSize(9); doc.setTextColor(120,120,120);
+            doc.text('Generado: ' + new Date().toLocaleString('es-AR'), 14, 32);
+
+            // Resumen
+            doc.setFontSize(10); doc.setFont('helvetica','bold'); doc.setTextColor(40,40,40);
+            doc.text('Total pedidos despachados: $ ' + parseFloat(data.total_pedidos).toLocaleString('es-AR'), 14, 44);
+            doc.text('Total cobrado:             $ ' + parseFloat(data.total_cobrado).toLocaleString('es-AR'), 14, 51);
+            doc.setTextColor(200, 50, 50);
+            doc.text('Saldo pendiente:           $ ' + parseFloat(data.saldo_pendiente).toLocaleString('es-AR'), 14, 58);
+
+            // Movimientos
+            var movs = [];
+            data.pedidos.forEach(function(p) {
+                movs.push({ fecha: p.fecha, tipo: 'Pedido', detalle: '#' + String(p.id).padStart(4,'0'), monto: parseFloat(p.total) });
+            });
+            data.cobros.forEach(function(c) {
+                movs.push({ fecha: c.fecha, tipo: 'Cobro', detalle: c.metodo + (c.referencia ? ' · ' + c.referencia : ''), monto: parseFloat(c.monto) });
+            });
+            movs.sort(function(a, b) { return new Date(b.fecha) - new Date(a.fecha); });
+
+            var filas = movs.map(function(m) {
+                return [
+                    new Date(m.fecha).toLocaleDateString('es-AR'),
+                    m.tipo,
+                    m.detalle,
+                    '$ ' + m.monto.toLocaleString('es-AR')
+                ];
+            });
+
+            doc.autoTable({
+                startY: 66,
+                head: [['Fecha', 'Tipo', 'Detalle', 'Monto']],
+                body: filas,
+                headStyles: { fillColor:[30,30,30], textColor:[228,252,116], fontStyle:'bold' },
+                alternateRowStyles: { fillColor:[245,245,245] },
+                styles: { fontSize:9, cellPadding:3 }
+            });
+
+            doc.save('cuenta_' + distNombreActual.replace(/\s/g,'_') + '.pdf');
+        }
+
+    </script>
+</body>
+</html>

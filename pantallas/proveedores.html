@@ -1,0 +1,733 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Proveedores | Portal del Viento</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .text-neon { color: #e4fc74; }
+        .bg-neon { background-color: #e4fc74; }
+        .border-neon { border-color: #e4fc74; }
+        .modal-oculto { display: none; }
+        .modal-visible { display: flex; }
+        .tab-activa { border-bottom: 2px solid #e4fc74; color: white; }
+    </style>
+</head>
+<body class="bg-gray-950 text-gray-200 font-sans h-screen flex">
+
+    <!-- Sidebar -->
+    <aside class="w-64 bg-black border-r border-gray-800 flex flex-col shrink-0">
+        <div class="p-6 border-b border-gray-800 text-center">
+            <h1 class="text-neon font-bold text-lg tracking-widest uppercase leading-tight">Portal del Viento</h1>
+            <p class="text-white text-xs mt-1 font-bold italic">ALFAJORES</p>
+        </div>
+        <nav class="flex-1 p-4 space-y-1 text-sm overflow-y-auto">
+            <a href="/admin" class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">📊 Tablero</a>
+            <a href="/catalogo" class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">📦 Catálogo</a>
+            <a href="/insumos" class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">🧪 Insumos</a>
+            <a href="/produccion" class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">🏭 Producción</a>
+            <a href="/proveedores" class="block bg-gray-900 text-white py-2 px-4 rounded-lg border-l-4 border-neon font-medium">🏪 Proveedores</a>
+            <a href="/distribuidores" class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">🚚 Distribuidores</a>
+            <a href="/historial-b2b" class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">📋 Pedidos B2B</a>
+            <a href="/empleados" class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">👥 Empleados</a>
+            <a href="/reportes" class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">📈 Reportes</a>
+        </nav>
+        <div id="usuario-info" class="p-4 border-t border-gray-800 text-xs text-gray-500 text-center"></div>
+    </aside>
+
+    <!-- Main -->
+    <main class="flex-1 flex flex-col overflow-hidden">
+        <header class="bg-gray-900 border-b border-gray-800 py-4 px-8 flex justify-between items-center shrink-0">
+            <h2 class="text-xl font-bold text-white">Gestión de Proveedores</h2>
+            <div class="flex gap-3">
+                <button onclick="abrirModalOrden()" class="border border-gray-600 text-gray-300 hover:text-white hover:border-gray-400 font-bold py-2 px-5 rounded-lg transition text-sm">+ Nueva Orden de Compra</button>
+                <button onclick="abrirModalNuevo()" class="bg-neon hover:bg-yellow-300 text-black font-bold py-2 px-6 rounded-lg transition">+ Nuevo Proveedor</button>
+            </div>
+        </header>
+
+        <!-- Tabs -->
+        <div class="bg-gray-900 border-b border-gray-800 px-8 flex gap-6 shrink-0">
+            <button onclick="cambiarTab('proveedores')" id="tab-prov" class="py-3 text-sm font-bold tab-activa">🏪 Proveedores</button>
+            <button onclick="cambiarTab('ordenes')"     id="tab-ord"  class="py-3 text-sm font-bold text-gray-400 hover:text-white">📦 Órdenes de Compra</button>
+            <button onclick="cambiarTab('pagos')"       id="tab-pag"  class="py-3 text-sm font-bold text-gray-400 hover:text-white">💰 Pagos</button>
+        </div>
+
+        <!-- ── TAB PROVEEDORES ───────────────────────────────── -->
+        <div id="panel-proveedores" class="flex-1 overflow-y-auto p-8">
+            <div class="bg-black rounded-xl border border-gray-800 overflow-hidden">
+                <table class="w-full text-left">
+                    <thead class="bg-gray-950 text-xs text-gray-400 uppercase">
+                        <tr>
+                            <th class="p-4">Proveedor</th>
+                            <th class="p-4">CUIT</th>
+                            <th class="p-4">Contacto</th>
+                            <th class="p-4 text-center">Insumos</th>
+                            <th class="p-4 text-center">Órdenes</th>
+                            <th class="p-4 text-right">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tabla-proveedores" class="divide-y divide-gray-800 text-sm">
+                        <tr><td colspan="6" class="p-4 text-center text-gray-500">Cargando...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- ── TAB ÓRDENES ──────────────────────────────────── -->
+        <div id="panel-ordenes" class="hidden flex-1 overflow-y-auto p-8">
+            <div class="flex gap-4 mb-5">
+                <select id="ord-filtro-prov" class="bg-gray-900 border border-gray-700 text-white rounded p-2 text-sm flex-1">
+                    <option value="">Todos los proveedores</option>
+                </select>
+                <select id="ord-filtro-estado" class="bg-gray-900 border border-gray-700 text-white rounded p-2 text-sm">
+                    <option value="">Todos los estados</option>
+                    <option value="Pendiente">Pendiente</option>
+                    <option value="Recibida">Recibida</option>
+                    <option value="Cancelada">Cancelada</option>
+                </select>
+                <button onclick="cargarOrdenes()" class="bg-neon text-black font-bold px-4 py-2 rounded text-sm hover:bg-yellow-300">Filtrar</button>
+            </div>
+            <div class="bg-black rounded-xl border border-gray-800 overflow-hidden">
+                <table class="w-full text-left">
+                    <thead class="bg-gray-950 text-xs text-gray-400 uppercase">
+                        <tr>
+                            <th class="p-4">Orden</th>
+                            <th class="p-4">Proveedor</th>
+                            <th class="p-4">Fecha</th>
+                            <th class="p-4">Entrega Est.</th>
+                            <th class="p-4">Total</th>
+                            <th class="p-4">Estado</th>
+                            <th class="p-4 text-right">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tabla-ordenes" class="divide-y divide-gray-800 text-sm">
+                        <tr><td colspan="7" class="p-4 text-center text-gray-500">Cargando...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- ── TAB PAGOS ────────────────────────────────────── -->
+        <div id="panel-pagos" class="hidden flex-1 overflow-y-auto p-8">
+            <div class="flex gap-4 mb-5 items-center">
+                <select id="pag-filtro-prov" class="bg-gray-900 border border-gray-700 text-white rounded p-2 text-sm flex-1">
+                    <option value="">Seleccioná un proveedor</option>
+                </select>
+                <button onclick="cargarPagos()" class="bg-neon text-black font-bold px-4 py-2 rounded text-sm hover:bg-yellow-300">Ver pagos</button>
+                <button onclick="abrirModalPago()" class="border border-gray-600 text-gray-300 hover:text-white font-bold px-4 py-2 rounded text-sm transition">+ Registrar Pago</button>
+            </div>
+            <div id="resumen-pagos" class="hidden grid grid-cols-3 gap-4 mb-5">
+                <div class="bg-black border border-gray-800 rounded-xl p-4 text-center">
+                    <p class="text-xs text-gray-500 mb-1">Total Pagado</p>
+                    <p id="pag-total" class="text-2xl font-bold text-neon">$ 0</p>
+                </div>
+                <div class="bg-black border border-gray-800 rounded-xl p-4 text-center">
+                    <p class="text-xs text-gray-500 mb-1">Último pago</p>
+                    <p id="pag-ultimo" class="text-sm font-bold text-white">—</p>
+                </div>
+                <div class="bg-black border border-gray-800 rounded-xl p-4 text-center">
+                    <p class="text-xs text-gray-500 mb-1">Cantidad de pagos</p>
+                    <p id="pag-cant" class="text-2xl font-bold text-white">0</p>
+                </div>
+            </div>
+            <div class="bg-black rounded-xl border border-gray-800 overflow-hidden">
+                <table class="w-full text-left">
+                    <thead class="bg-gray-950 text-xs text-gray-400 uppercase">
+                        <tr>
+                            <th class="p-4">Fecha</th>
+                            <th class="p-4">Monto</th>
+                            <th class="p-4">Método</th>
+                            <th class="p-4">Orden vinculada</th>
+                            <th class="p-4">Referencia</th>
+                            <th class="p-4">Empleado</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tabla-pagos" class="divide-y divide-gray-800 text-sm">
+                        <tr><td colspan="6" class="p-4 text-center text-gray-500">Seleccioná un proveedor para ver sus pagos.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+
+    <!-- ── MODAL NUEVO PROVEEDOR ─────────────────────────── -->
+    <div id="modal-nuevo" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
+        <div class="bg-gray-900 border border-gray-700 rounded-xl p-6 w-[480px] shadow-2xl">
+            <h3 class="text-lg font-bold text-white mb-4 border-l-4 border-neon pl-2">Alta de Proveedor</h3>
+            <div class="grid grid-cols-2 gap-4 mb-4">
+                <div class="col-span-2">
+                    <label class="block text-xs text-gray-500 font-bold mb-1">Razón Social</label>
+                    <input type="text" id="np-nombre" class="w-full bg-black border border-gray-700 text-white rounded p-3">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 font-bold mb-1">CUIT</label>
+                    <input type="text" id="np-cuit" placeholder="XX-XXXXXXXX-X" class="w-full bg-black border border-gray-700 text-white rounded p-2">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 font-bold mb-1">Teléfono</label>
+                    <input type="text" id="np-tel" class="w-full bg-black border border-gray-700 text-white rounded p-2">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 font-bold mb-1">Email</label>
+                    <input type="email" id="np-email" class="w-full bg-black border border-gray-700 text-white rounded p-2">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 font-bold mb-1">Dirección</label>
+                    <input type="text" id="np-dir" class="w-full bg-black border border-gray-700 text-white rounded p-2">
+                </div>
+                <div class="col-span-2">
+                    <label class="block text-xs text-gray-500 font-bold mb-1">Notas internas</label>
+                    <textarea id="np-notas" rows="2" class="w-full bg-black border border-gray-700 text-white rounded p-2 text-sm resize-none"></textarea>
+                </div>
+            </div>
+            <div class="flex justify-end gap-3">
+                <button onclick="cerrarModales()" class="px-4 py-2 text-gray-400 hover:text-white font-bold">Cancelar</button>
+                <button onclick="guardarProveedor()" class="bg-neon text-black px-6 py-2 rounded font-bold hover:bg-yellow-300">Registrar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── MODAL EDITAR PROVEEDOR ────────────────────────── -->
+    <div id="modal-editar" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
+        <div class="bg-gray-900 border border-gray-700 rounded-xl p-6 w-[480px] shadow-2xl">
+            <h3 class="text-lg font-bold text-white mb-1 border-l-4 border-neon pl-2">Editar Proveedor</h3>
+            <p id="edit-titulo" class="text-neon text-sm font-bold mb-4"></p>
+            <input type="hidden" id="edit-id">
+            <div class="grid grid-cols-2 gap-4 mb-4">
+                <div>
+                    <label class="block text-xs text-gray-500 font-bold mb-1">Email</label>
+                    <input type="email" id="edit-email" class="w-full bg-black border border-gray-700 text-white rounded p-2">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 font-bold mb-1">Teléfono</label>
+                    <input type="text" id="edit-tel" class="w-full bg-black border border-gray-700 text-white rounded p-2">
+                </div>
+                <div class="col-span-2">
+                    <label class="block text-xs text-gray-500 font-bold mb-1">Dirección</label>
+                    <input type="text" id="edit-dir" class="w-full bg-black border border-gray-700 text-white rounded p-2">
+                </div>
+                <div class="col-span-2">
+                    <label class="block text-xs text-gray-500 font-bold mb-1">Notas internas</label>
+                    <textarea id="edit-notas" rows="3" class="w-full bg-black border border-gray-700 text-white rounded p-2 text-sm resize-none"></textarea>
+                </div>
+            </div>
+
+            <!-- Insumos asociados -->
+            <div class="border-t border-gray-700 pt-4 mt-2">
+                <div class="flex justify-between items-center mb-2">
+                    <h4 class="text-sm font-bold text-white">Insumos que provee</h4>
+                    <button onclick="mostrarAgregarInsumo()" class="text-xs text-neon hover:text-yellow-300 font-bold">+ Agregar</button>
+                </div>
+                <div id="lista-insumos-prov" class="space-y-2 max-h-36 overflow-y-auto mb-2"></div>
+                <div id="form-agregar-insumo" class="hidden flex gap-2 mt-2">
+                    <select id="sel-insumo-nuevo" class="flex-1 bg-black border border-gray-700 text-white rounded p-2 text-xs"></select>
+                    <input type="number" id="precio-insumo-nuevo" placeholder="Precio $" step="0.01"
+                        class="w-28 bg-black border border-neon text-white rounded p-2 text-xs">
+                    <button onclick="agregarInsumoProveedor()" class="bg-neon text-black px-3 py-1 rounded text-xs font-bold">OK</button>
+                </div>
+            </div>
+
+            <div class="flex justify-end gap-3 mt-5">
+                <button onclick="cerrarModales()" class="px-4 py-2 text-gray-400 hover:text-white font-bold">Cerrar</button>
+                <button onclick="guardarEdicion()" class="bg-neon text-black px-6 py-2 rounded font-bold hover:bg-yellow-300">Guardar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── MODAL NUEVA ORDEN DE COMPRA ───────────────────── -->
+    <div id="modal-orden" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
+        <div class="bg-gray-900 border border-gray-700 rounded-xl p-6 w-[560px] shadow-2xl max-h-[90vh] overflow-y-auto">
+            <h3 class="text-lg font-bold text-white mb-4 border-l-4 border-neon pl-2">Nueva Orden de Compra</h3>
+            <div class="grid grid-cols-2 gap-4 mb-4">
+                <div>
+                    <label class="block text-xs text-gray-500 font-bold mb-1">Proveedor</label>
+                    <select id="ord-proveedor" onchange="cargarInsumosParaOrden()" class="w-full bg-black border border-gray-700 text-white rounded p-2 text-sm"></select>
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 font-bold mb-1">Empleado</label>
+                    <select id="ord-empleado" class="w-full bg-black border border-gray-700 text-white rounded p-2 text-sm"></select>
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 font-bold mb-1">Entrega estimada</label>
+                    <input type="date" id="ord-entrega" class="w-full bg-black border border-gray-700 text-white rounded p-2 text-sm">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 font-bold mb-1">Notas</label>
+                    <input type="text" id="ord-notas" class="w-full bg-black border border-gray-700 text-white rounded p-2 text-sm">
+                </div>
+            </div>
+
+            <h4 class="text-sm font-bold text-white mb-2">Detalle de insumos</h4>
+            <div id="items-orden" class="space-y-2 mb-3"></div>
+            <button onclick="agregarItemOrden()" class="w-full border border-dashed border-gray-700 text-gray-500 hover:text-white hover:border-gray-500 py-2 rounded text-sm transition mb-4">
+                + Agregar insumo
+            </button>
+
+            <div class="flex justify-between items-center border-t border-gray-700 pt-3">
+                <p class="text-sm">Total: <span id="ord-total" class="text-neon font-bold text-lg">$ 0</span></p>
+                <div class="flex gap-3">
+                    <button onclick="cerrarModales()" class="px-4 py-2 text-gray-400 hover:text-white font-bold text-sm">Cancelar</button>
+                    <button onclick="guardarOrden()" class="bg-neon text-black px-6 py-2 rounded font-bold hover:bg-yellow-300 text-sm">Crear Orden</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── MODAL DETALLE ORDEN ───────────────────────────── -->
+    <div id="modal-detalle-orden" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
+        <div class="bg-gray-900 border border-gray-700 rounded-xl p-6 w-[500px] shadow-2xl max-h-[80vh] overflow-y-auto">
+            <div class="flex justify-between items-center mb-4">
+                <h3 id="det-titulo" class="text-lg font-bold text-white"></h3>
+                <button onclick="cerrarModales()" class="text-gray-500 hover:text-white text-2xl leading-none">×</button>
+            </div>
+            <p id="det-prov" class="text-neon text-sm font-bold mb-1"></p>
+            <p id="det-fecha" class="text-gray-500 text-xs mb-4"></p>
+            <table class="w-full text-sm mb-4">
+                <thead class="text-xs text-gray-400 uppercase border-b border-gray-700">
+                    <tr><th class="py-2 text-left">Insumo</th><th class="py-2 text-center">Cant.</th><th class="py-2 text-right">Precio</th><th class="py-2 text-right">Subtotal</th></tr>
+                </thead>
+                <tbody id="tabla-det-orden" class="divide-y divide-gray-800"></tbody>
+            </table>
+            <div class="border-t border-gray-700 pt-3 flex justify-between">
+                <span class="font-bold text-gray-400">TOTAL</span>
+                <span id="det-total" class="font-bold text-neon text-xl"></span>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── MODAL REGISTRAR PAGO ──────────────────────────── -->
+    <div id="modal-pago" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
+        <div class="bg-gray-900 border border-gray-700 rounded-xl p-6 w-[420px] shadow-2xl">
+            <h3 class="text-lg font-bold text-white mb-4 border-l-4 border-neon pl-2">Registrar Pago a Proveedor</h3>
+            <label class="block text-xs text-gray-500 font-bold mb-1">Proveedor</label>
+            <select id="pago-proveedor" class="w-full bg-black border border-gray-700 text-white rounded p-3 mb-3 text-sm"></select>
+            <label class="block text-xs text-gray-500 font-bold mb-1">Empleado que registra</label>
+            <select id="pago-empleado" class="w-full bg-black border border-gray-700 text-white rounded p-3 mb-3 text-sm"></select>
+            <div class="grid grid-cols-2 gap-3 mb-3">
+                <div>
+                    <label class="block text-xs text-neon font-bold mb-1">Monto ($)</label>
+                    <input type="number" id="pago-monto" class="w-full bg-black border border-neon text-white rounded p-2 font-bold text-lg">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 font-bold mb-1">Método</label>
+                    <select id="pago-metodo" class="w-full bg-black border border-gray-700 text-white rounded p-2 text-sm">
+                        <option value="Transferencia">Transferencia</option>
+                        <option value="Efectivo">Efectivo</option>
+                        <option value="Cheque">Cheque</option>
+                    </select>
+                </div>
+            </div>
+            <label class="block text-xs text-gray-500 font-bold mb-1">Referencia / Nro. comprobante</label>
+            <input type="text" id="pago-ref" class="w-full bg-black border border-gray-700 text-white rounded p-2 mb-3 text-sm">
+            <label class="block text-xs text-gray-500 font-bold mb-1">Notas</label>
+            <input type="text" id="pago-notas" class="w-full bg-black border border-gray-700 text-white rounded p-2 mb-5 text-sm">
+            <div class="flex justify-end gap-3">
+                <button onclick="cerrarModales()" class="px-4 py-2 text-gray-400 hover:text-white font-bold">Cancelar</button>
+                <button onclick="guardarPago()" class="bg-neon text-black px-6 py-2 rounded font-bold hover:bg-yellow-300">Registrar Pago</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = "http://127.0.0.1:8000/api";
+        const usr = JSON.parse(sessionStorage.getItem('usuario') || '{}');
+        if (usr.nombre) document.getElementById('usuario-info').textContent = `${usr.nombre} ${usr.apellido} · ${usr.rol}`;
+
+        let proveedores = [], insumos = [], empleados = [];
+        const estadoColores = {
+            Pendiente: 'bg-yellow-900/30 text-yellow-400',
+            Recibida:  'bg-green-900/30 text-green-400',
+            Cancelada: 'bg-red-900/30 text-red-500'
+        };
+
+        // ── TABS ─────────────────────────────────────────────
+
+        function cambiarTab(tab) {
+            ['proveedores','ordenes','pagos'].forEach(t => {
+                document.getElementById(`panel-${t}`).classList.toggle('hidden', t !== tab);
+            });
+            document.getElementById('tab-prov').className = tab==='proveedores' ? 'py-3 text-sm font-bold tab-activa' : 'py-3 text-sm font-bold text-gray-400 hover:text-white';
+            document.getElementById('tab-ord').className  = tab==='ordenes'     ? 'py-3 text-sm font-bold tab-activa' : 'py-3 text-sm font-bold text-gray-400 hover:text-white';
+            document.getElementById('tab-pag').className  = tab==='pagos'       ? 'py-3 text-sm font-bold tab-activa' : 'py-3 text-sm font-bold text-gray-400 hover:text-white';
+            if (tab === 'ordenes') cargarOrdenes();
+        }
+
+        // ── CARGA INICIAL ────────────────────────────────────
+
+        async function cargarDatos() {
+            const [rProv, rIns, rEmp] = await Promise.all([
+                fetch(`${API_URL}/proveedores`).then(r => r.json()),
+                fetch(`${API_URL}/insumos`).then(r => r.json()),
+                fetch(`${API_URL}/empleados`).then(r => r.json())
+            ]);
+            proveedores = rProv; insumos = rIns;
+            empleados = rEmp.filter(e => e.activo);
+
+            // Poblar selects globales
+            const optsProv = proveedores.map(p => `<option value="${p.id}">${p.razon_social}</option>`).join('');
+            const optsEmp  = empleados.map(e => `<option value="${e.id}">${e.apellido}, ${e.nombre}</option>`).join('');
+
+            ['ord-filtro-prov','pag-filtro-prov','pago-proveedor','ord-proveedor'].forEach(id => {
+                const el = document.getElementById(id);
+                if (!el) return;
+                const placeholder = el.options[0] ? el.options[0].outerHTML : '';
+                el.innerHTML = placeholder + optsProv;
+            });
+            ['ord-empleado','pago-empleado'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.innerHTML = optsEmp;
+            });
+
+            renderProveedores();
+        }
+
+        // ── PROVEEDORES ──────────────────────────────────────
+
+        function renderProveedores() {
+            const tabla = document.getElementById('tabla-proveedores');
+            tabla.innerHTML = '';
+            if (!proveedores.length) {
+                tabla.innerHTML = '<tr><td colspan="6" class="p-4 text-center text-gray-500">Sin proveedores registrados.</td></tr>';
+                return;
+            }
+            proveedores.forEach(p => {
+                tabla.innerHTML += `
+                    <tr class="hover:bg-gray-900 transition">
+                        <td class="p-4">
+                            <p class="font-bold text-white">${p.razon_social}</p>
+                            ${p.notas ? `<p class="text-gray-500 text-xs truncate max-w-xs">${p.notas}</p>` : ''}
+                        </td>
+                        <td class="p-4 text-gray-400 text-sm">${p.cuit}</td>
+                        <td class="p-4 text-gray-400 text-xs">
+                            ${p.email ? `<p>${p.email}</p>` : ''}
+                            ${p.telefono ? `<p>${p.telefono}</p>` : ''}
+                        </td>
+                        <td class="p-4 text-center">
+                            <span class="text-neon font-bold">${p.cant_insumos}</span>
+                        </td>
+                        <td class="p-4 text-center text-gray-300">${p.cant_ordenes}</td>
+                        <td class="p-4 text-right flex justify-end gap-2">
+                            <button onclick="abrirModalEditar(${p.id})"
+                                class="text-xs border border-gray-700 bg-gray-800 hover:border-gray-500 px-3 py-1 rounded text-gray-400 hover:text-white transition">
+                                Editar
+                            </button>
+                            <button onclick="verOrdenesProveedor(${p.id})"
+                                class="text-xs bg-neon text-black font-bold px-3 py-1 rounded hover:bg-yellow-300 transition">
+                                Órdenes
+                            </button>
+                        </td>
+                    </tr>`;
+            });
+        }
+
+        function abrirModalNuevo() {
+            document.getElementById('modal-nuevo').classList.replace('modal-oculto','modal-visible');
+        }
+
+        async function guardarProveedor() {
+            const data = {
+                razon_social: document.getElementById('np-nombre').value,
+                cuit:         document.getElementById('np-cuit').value,
+                email:        document.getElementById('np-email').value || null,
+                telefono:     document.getElementById('np-tel').value || null,
+                direccion:    document.getElementById('np-dir').value || null,
+                notas:        document.getElementById('np-notas').value || null
+            };
+            const res = await fetch(`${API_URL}/proveedores/nuevo`, {
+                method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(data)
+            });
+            if (res.ok) { cerrarModales(); await cargarDatos(); }
+            else { const e = await res.json(); alert('Error: ' + e.detail); }
+        }
+
+        async function abrirModalEditar(id) {
+            const p = proveedores.find(x => x.id === id);
+            document.getElementById('edit-id').value    = id;
+            document.getElementById('edit-titulo').textContent = p.razon_social;
+            document.getElementById('edit-email').value = p.email || '';
+            document.getElementById('edit-tel').value   = p.telefono || '';
+            document.getElementById('edit-dir').value   = p.direccion || '';
+            document.getElementById('edit-notas').value = p.notas || '';
+
+            // Cargar insumos del proveedor
+            await renderInsumosProveedor(id);
+
+            // Poblar select de insumos disponibles
+            document.getElementById('sel-insumo-nuevo').innerHTML =
+                insumos.map(i => `<option value="${i.id}">${i.nombre} (${i.unidad})</option>`).join('');
+
+            document.getElementById('modal-editar').classList.replace('modal-oculto','modal-visible');
+        }
+
+        async function renderInsumosProveedor(id_prov) {
+            const res = await fetch(`${API_URL}/proveedores/${id_prov}/insumos`);
+            const lista = await res.json();
+            const cont = document.getElementById('lista-insumos-prov');
+            cont.innerHTML = '';
+            if (!lista.length) { cont.innerHTML = '<p class="text-xs text-gray-600">Sin insumos asociados.</p>'; return; }
+            lista.forEach(i => {
+                cont.innerHTML += `
+                    <div class="flex justify-between items-center bg-black border border-gray-800 rounded p-2 text-xs">
+                        <span class="text-white font-bold">${i.nombre} <span class="text-gray-500 font-normal">(${i.unidad})</span></span>
+                        <div class="flex items-center gap-2">
+                            <span class="text-neon font-bold">$ ${parseFloat(i.precio_unitario).toLocaleString('es-AR')}</span>
+                            <button onclick="quitarInsumoProveedor(${i.id_insumo})"
+                                class="text-gray-600 hover:text-red-500 font-bold">×</button>
+                        </div>
+                    </div>`;
+            });
+        }
+
+        function mostrarAgregarInsumo() {
+            document.getElementById('form-agregar-insumo').classList.toggle('hidden');
+        }
+
+        async function agregarInsumoProveedor() {
+            const id_prov   = parseInt(document.getElementById('edit-id').value);
+            const id_insumo = parseInt(document.getElementById('sel-insumo-nuevo').value);
+            const precio    = parseFloat(document.getElementById('precio-insumo-nuevo').value) || 0;
+            await fetch(`${API_URL}/proveedores/${id_prov}/insumos`, {
+                method:'POST', headers:{'Content-Type':'application/json'},
+                body: JSON.stringify({id_insumo, precio_unitario: precio})
+            });
+            await renderInsumosProveedor(id_prov);
+            document.getElementById('form-agregar-insumo').classList.add('hidden');
+            document.getElementById('precio-insumo-nuevo').value = '';
+        }
+
+        async function quitarInsumoProveedor(id_insumo) {
+            const id_prov = parseInt(document.getElementById('edit-id').value);
+            await fetch(`${API_URL}/proveedores/${id_prov}/insumos/${id_insumo}`, { method:'DELETE' });
+            await renderInsumosProveedor(id_prov);
+        }
+
+        async function guardarEdicion() {
+            const id = document.getElementById('edit-id').value;
+            await fetch(`${API_URL}/proveedores/${id}`, {
+                method:'PUT', headers:{'Content-Type':'application/json'},
+                body: JSON.stringify({
+                    email:     document.getElementById('edit-email').value || null,
+                    telefono:  document.getElementById('edit-tel').value || null,
+                    direccion: document.getElementById('edit-dir').value || null,
+                    notas:     document.getElementById('edit-notas').value || null
+                })
+            });
+            cerrarModales();
+            await cargarDatos();
+        }
+
+        // ── ÓRDENES DE COMPRA ────────────────────────────────
+
+        async function cargarOrdenes() {
+            const id_prov = document.getElementById('ord-filtro-prov').value;
+            const estado  = document.getElementById('ord-filtro-estado').value;
+            let url = `${API_URL}/ordenes_compra`;
+            const params = [];
+            if (id_prov) params.push(`id_proveedor=${id_prov}`);
+            if (estado)  params.push(`estado=${estado}`);
+            if (params.length) url += '?' + params.join('&');
+
+            const res = await fetch(url);
+            const lista = await res.json();
+            const tabla = document.getElementById('tabla-ordenes');
+            tabla.innerHTML = '';
+            if (!lista.length) {
+                tabla.innerHTML = '<tr><td colspan="7" class="p-4 text-center text-gray-500">Sin órdenes para los filtros seleccionados.</td></tr>';
+                return;
+            }
+            lista.forEach(o => {
+                const fecha = new Date(o.fecha).toLocaleString('es-AR', {dateStyle:'short', timeStyle:'short'});
+                const color = estadoColores[o.estado] || 'bg-gray-800 text-gray-400';
+                tabla.innerHTML += `
+                    <tr class="hover:bg-gray-900 transition">
+                        <td class="p-4 font-bold text-gray-300">#${o.id}</td>
+                        <td class="p-4 text-white font-bold">${o.proveedor}</td>
+                        <td class="p-4 text-gray-400 text-xs">${fecha}</td>
+                        <td class="p-4 text-gray-400 text-xs">${o.fecha_entrega_estimada || '—'}</td>
+                        <td class="p-4 text-neon font-bold">$ ${parseFloat(o.total).toLocaleString('es-AR')}</td>
+                        <td class="p-4"><span class="text-xs px-2 py-1 rounded font-bold ${color}">${o.estado}</span></td>
+                        <td class="p-4 text-right flex justify-end gap-1">
+                            <button onclick="verDetalleOrden(${o.id}, '${o.proveedor}', ${o.total}, '${o.fecha}')"
+                                class="text-xs border border-gray-700 px-2 py-1 rounded text-gray-400 hover:text-white">Ver</button>
+                            ${o.estado === 'Pendiente' ? `
+                            <button onclick="cambiarEstadoOrden(${o.id},'Recibida')"
+                                class="text-xs bg-green-700 hover:bg-green-600 text-white px-2 py-1 rounded font-bold">Recibir</button>
+                            <button onclick="cambiarEstadoOrden(${o.id},'Cancelada')"
+                                class="text-xs bg-red-900 hover:bg-red-800 text-white px-2 py-1 rounded">Cancelar</button>` : ''}
+                        </td>
+                    </tr>`;
+            });
+        }
+
+        async function verDetalleOrden(id, proveedor, total, fecha) {
+            document.getElementById('det-titulo').textContent = `Orden de Compra #${id}`;
+            document.getElementById('det-prov').textContent   = `🏪 ${proveedor}`;
+            document.getElementById('det-fecha').textContent  = new Date(fecha).toLocaleString('es-AR', {dateStyle:'long', timeStyle:'short'});
+            document.getElementById('det-total').textContent  = `$ ${parseFloat(total).toLocaleString('es-AR')}`;
+            const res = await fetch(`${API_URL}/ordenes_compra/${id}/detalle`);
+            const items = await res.json();
+            const tabla = document.getElementById('tabla-det-orden');
+            tabla.innerHTML = '';
+            items.forEach(i => {
+                tabla.innerHTML += `
+                    <tr>
+                        <td class="py-3 text-white font-bold">${i.insumo} <span class="text-gray-500 font-normal text-xs">(${i.unidad})</span></td>
+                        <td class="py-3 text-center text-gray-300">${i.cantidad}</td>
+                        <td class="py-3 text-right text-gray-300">$ ${parseFloat(i.precio_unitario).toLocaleString('es-AR')}</td>
+                        <td class="py-3 text-right text-neon font-bold">$ ${parseFloat(i.subtotal).toLocaleString('es-AR')}</td>
+                    </tr>`;
+            });
+            document.getElementById('modal-detalle-orden').classList.replace('modal-oculto','modal-visible');
+        }
+
+        async function cambiarEstadoOrden(id, estado) {
+            if (estado === 'Recibida' && !confirm(`¿Confirmar recepción? Esto sumará el stock de los insumos automáticamente.`)) return;
+            await fetch(`${API_URL}/ordenes_compra/${id}/estado?estado=${estado}`, { method:'PUT' });
+            cargarOrdenes();
+        }
+
+        function verOrdenesProveedor(id) {
+            document.getElementById('ord-filtro-prov').value = id;
+            document.getElementById('ord-filtro-estado').value = '';
+            cambiarTab('ordenes');
+        }
+
+        // Formulario nueva orden
+        function abrirModalOrden() {
+            limpiarItemsOrden();
+            agregarItemOrden();
+            document.getElementById('modal-orden').classList.replace('modal-oculto','modal-visible');
+        }
+
+        function limpiarItemsOrden() {
+            document.getElementById('items-orden').innerHTML = '';
+            document.getElementById('ord-total').textContent = '$ 0';
+        }
+
+        function agregarItemOrden() {
+            const id_prov = document.getElementById('ord-proveedor').value;
+            // Intentar usar insumos del proveedor seleccionado, si no todos
+            const opts = insumos.map(i => `<option value="${i.id}" data-unidad="${i.unidad}">${i.nombre} (${i.unidad})</option>`).join('');
+            const idx = Date.now();
+            const cont = document.getElementById('items-orden');
+            cont.insertAdjacentHTML('beforeend', `
+                <div class="flex gap-2 items-center" id="item-ord-${idx}">
+                    <select class="flex-1 bg-gray-900 border border-gray-700 text-white rounded p-2 text-xs ord-insumo">${opts}</select>
+                    <input type="number" placeholder="Cantidad" step="0.001" min="0.001"
+                        class="w-24 bg-gray-900 border border-gray-700 text-white rounded p-2 text-xs ord-cantidad" oninput="recalcularTotal()">
+                    <input type="number" placeholder="Precio $" step="0.01" min="0"
+                        class="w-28 bg-gray-900 border border-neon text-white rounded p-2 text-xs ord-precio" oninput="recalcularTotal()">
+                    <button onclick="document.getElementById('item-ord-${idx}').remove(); recalcularTotal();"
+                        class="text-gray-600 hover:text-red-500 font-bold text-lg">×</button>
+                </div>`);
+        }
+
+        function recalcularTotal() {
+            let total = 0;
+            document.querySelectorAll('#items-orden > div').forEach(row => {
+                const cant  = parseFloat(row.querySelector('.ord-cantidad').value) || 0;
+                const precio = parseFloat(row.querySelector('.ord-precio').value) || 0;
+                total += cant * precio;
+            });
+            document.getElementById('ord-total').textContent = `$ ${total.toLocaleString('es-AR')}`;
+        }
+
+        async function cargarInsumosParaOrden() {
+            // Podría precargar precios del proveedor seleccionado — por ahora vacío
+        }
+
+        async function guardarOrden() {
+            const id_prov = parseInt(document.getElementById('ord-proveedor').value);
+            const id_emp  = parseInt(document.getElementById('ord-empleado').value);
+            const entrega = document.getElementById('ord-entrega').value || null;
+            const notas   = document.getElementById('ord-notas').value || null;
+            const detalle = [];
+            document.querySelectorAll('#items-orden > div').forEach(row => {
+                const id_insumo      = parseInt(row.querySelector('.ord-insumo').value);
+                const cantidad       = parseFloat(row.querySelector('.ord-cantidad').value);
+                const precio_unitario = parseFloat(row.querySelector('.ord-precio').value);
+                if (id_insumo && cantidad > 0 && precio_unitario >= 0)
+                    detalle.push({ id_insumo, cantidad, precio_unitario });
+            });
+            if (!detalle.length) { alert('Agregá al menos un insumo.'); return; }
+            const res = await fetch(`${API_URL}/ordenes_compra/nueva`, {
+                method:'POST', headers:{'Content-Type':'application/json'},
+                body: JSON.stringify({id_proveedor: id_prov, id_empleado: id_emp, fecha_entrega_estimada: entrega, notas, detalle})
+            });
+            if (res.ok) { cerrarModales(); cambiarTab('ordenes'); }
+            else { const e = await res.json(); alert('Error: ' + e.detail); }
+        }
+
+        // ── PAGOS ────────────────────────────────────────────
+
+        async function cargarPagos() {
+            const id_prov = document.getElementById('pag-filtro-prov').value;
+            if (!id_prov) { alert('Seleccioná un proveedor.'); return; }
+            const res = await fetch(`${API_URL}/proveedores/${id_prov}/pagos`);
+            const lista = await res.json();
+            const tabla = document.getElementById('tabla-pagos');
+            tabla.innerHTML = '';
+
+            // Resumen
+            const resumen = document.getElementById('resumen-pagos');
+            if (lista.length) {
+                resumen.classList.remove('hidden');
+                resumen.style.display = 'grid';
+                const totalPag = lista.reduce((a, p) => a + parseFloat(p.monto), 0);
+                document.getElementById('pag-total').textContent = `$ ${totalPag.toLocaleString('es-AR')}`;
+                document.getElementById('pag-cant').textContent  = lista.length;
+                const ultimo = new Date(lista[0].fecha).toLocaleString('es-AR', {dateStyle:'short', timeStyle:'short'});
+                document.getElementById('pag-ultimo').textContent = ultimo;
+            } else {
+                resumen.classList.add('hidden');
+            }
+
+            if (!lista.length) {
+                tabla.innerHTML = '<tr><td colspan="6" class="p-4 text-center text-gray-500">Sin pagos registrados para este proveedor.</td></tr>';
+                return;
+            }
+            const metodoIcono = { Transferencia: '🏦', Efectivo: '💵', Cheque: '📝' };
+            lista.forEach(p => {
+                const fecha = new Date(p.fecha).toLocaleString('es-AR', {dateStyle:'short', timeStyle:'short'});
+                tabla.innerHTML += `
+                    <tr class="hover:bg-gray-900 transition">
+                        <td class="p-4 text-gray-400 text-xs">${fecha}</td>
+                        <td class="p-4 text-neon font-bold text-lg">$ ${parseFloat(p.monto).toLocaleString('es-AR')}</td>
+                        <td class="p-4 text-gray-300 text-sm">${metodoIcono[p.metodo] || ''} ${p.metodo}</td>
+                        <td class="p-4 text-gray-400 text-xs">${p.id_orden ? `#${p.id_orden}` : '—'}</td>
+                        <td class="p-4 text-gray-400 text-xs">${p.referencia || '—'}</td>
+                        <td class="p-4 text-gray-400 text-xs">${p.empleado_apellido}, ${p.empleado_nombre}</td>
+                    </tr>`;
+            });
+        }
+
+        function abrirModalPago() {
+            document.getElementById('modal-pago').classList.replace('modal-oculto','modal-visible');
+        }
+
+        async function guardarPago() {
+            const data = {
+                id_proveedor: parseInt(document.getElementById('pago-proveedor').value),
+                id_empleado:  parseInt(document.getElementById('pago-empleado').value),
+                monto:        parseFloat(document.getElementById('pago-monto').value),
+                metodo:       document.getElementById('pago-metodo').value,
+                referencia:   document.getElementById('pago-ref').value || null,
+                notas:        document.getElementById('pago-notas').value || null
+            };
+            const res = await fetch(`${API_URL}/proveedores/pago`, {
+                method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(data)
+            });
+            if (res.ok) { cerrarModales(); cargarPagos(); }
+            else { const e = await res.json(); alert('Error: ' + e.detail); }
+        }
+
+        // ── HELPERS ──────────────────────────────────────────
+
+        function cerrarModales() {
+            document.querySelectorAll('.modal-visible').forEach(m => m.classList.replace('modal-visible','modal-oculto'));
+        }
+
+        window.onload = cargarDatos;
+    </script>
+</body>
+</html>

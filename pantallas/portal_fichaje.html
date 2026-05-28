@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+    <title>Fichaje | Portal del Viento</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .text-neon { color: #e4fc74; }
+        .bg-neon { background-color: #e4fc74; }
+        input { font-size: 16px !important; }
+    </style>
+</head>
+<body class="bg-gray-950 text-gray-200 font-sans min-h-screen flex flex-col items-center justify-center p-5">
+
+    <!-- LOGIN -->
+    <div id="pantalla-login" class="w-full max-w-sm">
+        <div class="text-center mb-8">
+            <h1 class="text-neon font-bold text-3xl tracking-widest uppercase">Portal del Viento</h1>
+            <p class="text-white text-sm mt-1 font-bold italic">ALFAJORES</p>
+            <p class="text-gray-500 text-xs mt-2">Sistema de Fichaje</p>
+        </div>
+        <div class="bg-black border border-gray-800 rounded-2xl p-6 shadow-2xl">
+            <div id="login-error" class="hidden bg-red-900/30 border border-red-700 text-red-400 text-sm px-4 py-3 rounded-lg mb-4"></div>
+            <label class="block text-xs text-gray-500 font-bold mb-2">Usuario</label>
+            <input type="text" id="login-user" autocomplete="username"
+                class="w-full bg-gray-900 border border-gray-700 text-white rounded-xl p-4 mb-4 outline-none focus:border-neon">
+            <label class="block text-xs text-gray-500 font-bold mb-2">Contraseña</label>
+            <input type="password" id="login-pass" autocomplete="current-password"
+                class="w-full bg-gray-900 border border-gray-700 text-white rounded-xl p-4 mb-6 outline-none focus:border-neon"
+                onkeydown="if(event.key==='Enter') hacerLogin()">
+            <button onclick="hacerLogin()" id="btn-login"
+                class="w-full bg-neon text-black font-bold py-4 rounded-xl text-lg hover:bg-yellow-300 transition active:scale-95">
+                Entrar →
+            </button>
+        </div>
+    </div>
+
+    <!-- PANEL FICHAJE -->
+    <div id="pantalla-fichaje" class="hidden w-full max-w-sm">
+        <div class="text-center mb-6">
+            <h1 class="text-neon font-bold text-2xl tracking-widest uppercase">Portal del Viento</h1>
+            <p id="nombre-emp" class="text-white font-bold mt-1"></p>
+            <p id="hora-actual" class="text-gray-400 text-sm mt-1"></p>
+        </div>
+
+        <!-- Estado GPS -->
+        <div id="estado-gps" class="bg-gray-900 border border-gray-700 rounded-xl p-4 mb-4 text-center">
+            <p class="text-gray-400 text-sm">📍 Verificando ubicación...</p>
+        </div>
+
+        <!-- Botones fichaje -->
+        <div class="space-y-3 mb-6">
+            <button onclick="fichar('entrada')" id="btn-entrada"
+                class="w-full bg-green-700 hover:bg-green-600 text-white font-bold py-5 rounded-2xl text-xl transition active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed">
+                🟢 Registrar ENTRADA
+            </button>
+            <button onclick="fichar('salida')" id="btn-salida"
+                class="w-full bg-red-700 hover:bg-red-600 text-white font-bold py-5 rounded-2xl text-xl transition active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed">
+                🔴 Registrar SALIDA
+            </button>
+        </div>
+
+        <!-- Registros del día -->
+        <div class="bg-black border border-gray-800 rounded-2xl overflow-hidden mb-4">
+            <div class="px-4 py-3 border-b border-gray-800 bg-gray-900 flex justify-between items-center">
+                <h3 class="font-bold text-white text-sm">Mis fichajes de hoy</h3>
+                <button onclick="cargarFichajes()" class="text-neon text-sm">↻</button>
+            </div>
+            <div id="lista-fichajes" class="divide-y divide-gray-800">
+                <p class="p-4 text-center text-gray-500 text-sm">Sin fichajes hoy.</p>
+            </div>
+        </div>
+
+        <button onclick="cerrarSesion()" class="w-full text-gray-500 hover:text-gray-300 text-sm py-2">Cerrar sesión</button>
+    </div>
+
+    <!-- Toast -->
+    <div id="toast" class="hidden fixed bottom-6 left-1/2 -translate-x-1/2 font-bold px-6 py-4 rounded-2xl shadow-2xl text-base z-50 whitespace-nowrap"></div>
+
+    <script>
+        var API_URL = window.location.protocol + '//' + window.location.hostname + ':8000/api';
+        var FAB_LAT  = -33.0088974;
+        var FAB_LNG  = -68.9404106;
+        var RADIO_M  = 200;
+        var usuario  = null;
+        var gpsOk    = false;
+        var watchId  = null;
+
+        // ── LOGIN ────────────────────────────────────────────────
+        async function hacerLogin() {
+            var user = document.getElementById('login-user').value.trim();
+            var pass = document.getElementById('login-pass').value;
+            var btn  = document.getElementById('btn-login');
+            var err  = document.getElementById('login-error');
+            if (!user || !pass) { mostrarError('Completá usuario y contraseña.'); return; }
+            btn.textContent = 'Verificando...'; btn.disabled = true;
+            err.classList.add('hidden');
+            try {
+                var res  = await fetch(API_URL + '/login', {
+                    method:'POST', headers:{'Content-Type':'application/json'},
+                    body: JSON.stringify({username: user, password: pass})
+                });
+                var data = await res.json();
+                if (!res.ok) { mostrarError(data.detail || 'Usuario o contraseña incorrectos.'); return; }
+                usuario = data;
+                sessionStorage.setItem('usuario_fichaje', JSON.stringify(data));
+                mostrarPanelFichaje();
+            } catch(e) { mostrarError('No se pudo conectar al servidor.'); }
+            finally { btn.textContent = 'Entrar →'; btn.disabled = false; }
+        }
+
+        function mostrarError(msg) {
+            var el = document.getElementById('login-error');
+            el.textContent = msg; el.classList.remove('hidden');
+        }
+
+        function cerrarSesion() {
+            sessionStorage.removeItem('usuario_fichaje');
+            if (watchId) navigator.geolocation.clearWatch(watchId);
+            document.getElementById('pantalla-fichaje').classList.add('hidden');
+            document.getElementById('pantalla-login').classList.remove('hidden');
+            document.getElementById('login-pass').value = '';
+            gpsOk = false;
+        }
+
+        // ── PANEL ────────────────────────────────────────────────
+        function mostrarPanelFichaje() {
+            document.getElementById('pantalla-login').classList.add('hidden');
+            document.getElementById('pantalla-fichaje').classList.remove('hidden');
+            document.getElementById('nombre-emp').textContent = usuario.nombre + ' ' + usuario.apellido;
+            actualizarHora();
+            setInterval(actualizarHora, 1000);
+            iniciarGPS();
+            cargarFichajes();
+        }
+
+        function actualizarHora() {
+            document.getElementById('hora-actual').textContent =
+                new Date().toLocaleTimeString('es-AR', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+        }
+
+        // ── GPS ──────────────────────────────────────────────────
+        function distanciaMetros(lat1, lng1, lat2, lng2) {
+            var R  = 6371000;
+            var p1 = lat1 * Math.PI / 180;
+            var p2 = lat2 * Math.PI / 180;
+            var dp = (lat2 - lat1) * Math.PI / 180;
+            var dl = (lng2 - lng1) * Math.PI / 180;
+            var a  = Math.sin(dp/2)*Math.sin(dp/2) + Math.cos(p1)*Math.cos(p2)*Math.sin(dl/2)*Math.sin(dl/2);
+            return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        }
+
+        function iniciarGPS() {
+            var estadoEl = document.getElementById('estado-gps');
+            if (!navigator.geolocation) {
+                estadoEl.innerHTML = '<p class="text-red-400 text-sm font-bold">❌ Tu dispositivo no soporta GPS.</p>';
+                bloquearBotones(true);
+                return;
+            }
+            estadoEl.innerHTML = '<p class="text-yellow-400 text-sm">📍 Obteniendo ubicación...</p>';
+            bloquearBotones(true);
+
+            watchId = navigator.geolocation.watchPosition(
+                function(pos) {
+                    var dist = Math.round(distanciaMetros(pos.coords.latitude, pos.coords.longitude, FAB_LAT, FAB_LNG));
+                    if (dist <= RADIO_M) {
+                        gpsOk = true;
+                        estadoEl.innerHTML =
+                            '<p class="text-green-400 text-sm font-bold">✅ Estás en la fábrica</p>' +
+                            '<p class="text-gray-500 text-xs">A ' + dist + ' m del punto de fichaje</p>';
+                        bloquearBotones(false);
+                    } else {
+                        gpsOk = false;
+                        estadoEl.innerHTML =
+                            '<p class="text-red-400 text-sm font-bold">❌ Estás fuera de la fábrica</p>' +
+                            '<p class="text-gray-500 text-xs">Distancia: ' + dist + ' m (máximo ' + RADIO_M + ' m)</p>';
+                        bloquearBotones(true);
+                    }
+                },
+                function(err) {
+                    estadoEl.innerHTML =
+                        '<p class="text-red-400 text-sm font-bold">❌ No se pudo obtener el GPS</p>' +
+                        '<p class="text-gray-500 text-xs">Permitir acceso a la ubicación en el navegador.</p>';
+                    bloquearBotones(true);
+                },
+                { enableHighAccuracy: true, maximumAge: 10000, timeout: 15000 }
+            );
+        }
+
+        function bloquearBotones(bloquear) {
+            document.getElementById('btn-entrada').disabled = bloquear;
+            document.getElementById('btn-salida').disabled  = bloquear;
+        }
+
+        // ── FICHAJE ──────────────────────────────────────────────
+        async function fichar(tipo) {
+            if (!gpsOk) { mostrarToast('❌ Debés estar en la fábrica para fichar.', 'bg-red-700'); return; }
+            var btn = document.getElementById(tipo === 'entrada' ? 'btn-entrada' : 'btn-salida');
+            btn.disabled = true;
+            try {
+                var res = await fetch(API_URL + '/fichaje', {
+                    method:'POST', headers:{'Content-Type':'application/json'},
+                    body: JSON.stringify({ id_empleado: usuario.id_empleado, tipo: tipo })
+                });
+                if (res.ok) {
+                    mostrarToast(tipo === 'entrada' ? '✅ Entrada registrada' : '✅ Salida registrada', 'bg-green-700');
+                    await cargarFichajes();
+                } else {
+                    mostrarToast('❌ Error al registrar', 'bg-red-700');
+                }
+            } finally { btn.disabled = !gpsOk; }
+        }
+
+        async function cargarFichajes() {
+            var hoy = new Date().toISOString().split('T')[0];
+            var res  = await fetch(API_URL + '/fichajes?fecha=' + hoy + '&id_empleado=' + usuario.id_empleado);
+            var lista = await res.json();
+            var cont  = document.getElementById('lista-fichajes');
+            if (!lista.length) { cont.innerHTML = '<p class="p-4 text-center text-gray-500 text-sm">Sin fichajes hoy.</p>'; return; }
+            cont.innerHTML = lista.map(function(f) {
+                var hora  = new Date(f.fecha_hora).toLocaleTimeString('es-AR', {hour:'2-digit', minute:'2-digit'});
+                var icono = f.tipo === 'entrada' ? '🟢' : '🔴';
+                var color = f.tipo === 'entrada' ? 'text-green-400' : 'text-red-400';
+                return '<div class="px-4 py-3 flex justify-between items-center">' +
+                    '<span class="font-bold ' + color + '">' + icono + ' ' + f.tipo.toUpperCase() + '</span>' +
+                    '<span class="text-white font-bold text-lg">' + hora + '</span>' +
+                    '</div>';
+            }).join('');
+        }
+
+        function mostrarToast(msg, colorCls) {
+            var t = document.getElementById('toast');
+            t.textContent = msg;
+            t.className   = 'fixed bottom-6 left-1/2 -translate-x-1/2 font-bold px-6 py-4 rounded-2xl shadow-2xl text-base z-50 whitespace-nowrap text-white ' + colorCls;
+            t.classList.remove('hidden');
+            setTimeout(function() { t.classList.add('hidden'); }, 3000);
+        }
+
+        // Verificar sesión al cargar
+        window.onload = function() {
+            var sesion = sessionStorage.getItem('usuario_fichaje');
+            if (sesion) { usuario = JSON.parse(sesion); mostrarPanelFichaje(); }
+        };
+    </script>
+</body>
+</html>

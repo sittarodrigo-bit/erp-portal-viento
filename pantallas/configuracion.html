@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Configuración | Portal del Viento</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .text-neon { color: #e4fc74; }
+        .bg-neon { background-color: #e4fc74; }
+        .border-neon { border-color: #e4fc74; }
+    </style>
+</head>
+<body class="bg-gray-950 text-gray-200 font-sans h-screen flex">
+    <aside class="w-64 bg-black border-r border-gray-800 flex flex-col shrink-0">
+        <div class="p-6 border-b border-gray-800 text-center">
+            <h1 class="text-neon font-bold text-lg tracking-widest uppercase">Portal del Viento</h1>
+            <p class="text-white text-xs mt-1 font-bold italic">ALFAJORES</p>
+        </div>
+        <nav class="flex-1 p-4 space-y-1 text-sm overflow-y-auto">
+            <a href="/admin"          class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">📊 Tablero</a>
+            <a href="/catalogo"       class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">📦 Catálogo</a>
+            <a href="/insumos"        class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">🧪 Insumos</a>
+            <a href="/produccion"     class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">🏭 Producción</a>
+            <a href="/proveedores"    class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">🏪 Proveedores</a>
+            <a href="/distribuidores" class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">🚚 Distribuidores</a>
+            <a href="/historial-b2b"  class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">📋 Pedidos B2B</a>
+            <a href="/empleados"      class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">👥 Empleados</a>
+            <a href="/reportes"       class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">📈 Reportes</a>
+            <a href="/configuracion"  class="block bg-gray-900 text-white py-2 px-4 rounded-lg border-l-4 border-neon font-medium">⚙️ Configuración</a>
+        </nav>
+        <div id="usuario-info" class="p-4 border-t border-gray-800 text-xs text-gray-500 text-center"></div>
+    </aside>
+
+    <main class="flex-1 overflow-y-auto p-8">
+        <header class="mb-8">
+            <h2 class="text-2xl font-bold text-white">Configuración</h2>
+            <p class="text-gray-500 text-sm mt-1">Datos de la empresa usados en documentos, PDFs y remitos.</p>
+        </header>
+
+        <div class="max-w-2xl">
+            <!-- Datos empresa -->
+            <div class="bg-black border border-gray-800 rounded-xl p-6 mb-6">
+                <h3 class="text-lg font-bold text-white mb-5 border-l-4 border-neon pl-3">🏢 Datos de la Empresa</h3>
+
+                <div id="guardado-ok" class="hidden bg-green-900/30 border border-green-700 text-green-400 text-sm px-4 py-3 rounded-lg mb-4">
+                    ✅ Datos guardados correctamente
+                </div>
+
+                <div class="grid grid-cols-2 gap-4 mb-4">
+                    <div class="col-span-2">
+                        <label class="block text-xs text-gray-500 font-bold mb-1">Nombre comercial</label>
+                        <input type="text" id="emp-nombre" placeholder="Ej: Portal del Viento"
+                            class="w-full bg-gray-900 border border-gray-700 text-white rounded-lg p-3 focus:border-neon outline-none">
+                    </div>
+                    <div class="col-span-2">
+                        <label class="block text-xs text-gray-500 font-bold mb-1">Razón Social</label>
+                        <input type="text" id="emp-razon" placeholder="Ej: Portal del Viento S.R.L."
+                            class="w-full bg-gray-900 border border-gray-700 text-white rounded-lg p-3 focus:border-neon outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-xs text-gray-500 font-bold mb-1">CUIT</label>
+                        <input type="text" id="emp-cuit" placeholder="XX-XXXXXXXX-X"
+                            class="w-full bg-gray-900 border border-gray-700 text-white rounded-lg p-3 focus:border-neon outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-xs text-gray-500 font-bold mb-1">Teléfono</label>
+                        <input type="text" id="emp-tel" placeholder="261 XXX XXXX"
+                            class="w-full bg-gray-900 border border-gray-700 text-white rounded-lg p-3 focus:border-neon outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-xs text-gray-500 font-bold mb-1">Email</label>
+                        <input type="email" id="emp-email" placeholder="info@empresa.com"
+                            class="w-full bg-gray-900 border border-gray-700 text-white rounded-lg p-3 focus:border-neon outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-xs text-gray-500 font-bold mb-1">Código Postal</label>
+                        <input type="text" id="emp-cp" placeholder="5500"
+                            class="w-full bg-gray-900 border border-gray-700 text-white rounded-lg p-3 focus:border-neon outline-none">
+                    </div>
+                    <div class="col-span-2">
+                        <label class="block text-xs text-gray-500 font-bold mb-1">Dirección</label>
+                        <input type="text" id="emp-dir" placeholder="Calle y número"
+                            class="w-full bg-gray-900 border border-gray-700 text-white rounded-lg p-3 focus:border-neon outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-xs text-gray-500 font-bold mb-1">Localidad</label>
+                        <input type="text" id="emp-localidad" placeholder="Ej: Mendoza"
+                            class="w-full bg-gray-900 border border-gray-700 text-white rounded-lg p-3 focus:border-neon outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-xs text-gray-500 font-bold mb-1">Provincia</label>
+                        <input type="text" id="emp-provincia" placeholder="Ej: Mendoza"
+                            class="w-full bg-gray-900 border border-gray-700 text-white rounded-lg p-3 focus:border-neon outline-none">
+                    </div>
+                    <div class="col-span-2">
+                        <label class="block text-xs text-neon font-bold mb-1">URL del Logo</label>
+                        <input type="text" id="emp-logo" placeholder="https://i.imgur.com/tu-logo.png"
+                            oninput="previsualizarLogo()"
+                            class="w-full bg-gray-900 border border-neon text-white rounded-lg p-3 focus:border-yellow-300 outline-none">
+                        <p class="text-gray-600 text-xs mt-1">Podés subir tu logo a <a href="https://imgur.com" target="_blank" class="text-neon underline">imgur.com</a> gratis y pegar la URL acá.</p>
+                    </div>
+                </div>
+
+                <button onclick="guardarEmpresa()" id="btn-guardar"
+                    class="bg-neon text-black font-bold py-3 px-8 rounded-xl hover:bg-yellow-300 transition active:scale-95 disabled:opacity-50">
+                    Guardar Datos
+                </button>
+            </div>
+
+            <!-- Vista previa membrete -->
+            <div class="bg-black border border-gray-800 rounded-xl p-6">
+                <h3 class="text-sm font-bold text-gray-400 uppercase mb-4">Vista previa del membrete</h3>
+                <div class="bg-gray-900 rounded-lg p-5 border border-gray-700">
+                    <div class="flex justify-between items-start">
+                        <div class="flex items-start gap-4">
+                            <img id="prev-logo" src="" alt="" class="hidden h-14 w-auto object-contain rounded">
+                            <div>
+                            <p id="prev-nombre" class="text-neon font-bold text-xl">Portal del Viento</p>
+                            <p id="prev-razon" class="text-gray-300 text-sm"></p>
+                            <p id="prev-cuit" class="text-gray-400 text-xs"></p>
+                            </div>
+                        </div>
+                        <div class="text-right text-xs text-gray-400">
+                            <p id="prev-tel"></p>
+                            <p id="prev-email"></p>
+                        </div>
+                    </div>
+                    <div class="border-t border-gray-700 mt-3 pt-2 text-xs text-gray-500">
+                        <p id="prev-dir"></p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        const API_URL = "http://127.0.0.1:8000/api";
+        const usr = JSON.parse(sessionStorage.getItem('usuario') || '{}');
+        if (usr.nombre) document.getElementById('usuario-info').textContent = usr.nombre + ' ' + usr.apellido + ' · ' + usr.rol;
+
+        function previsualizarLogo() {
+            const url = document.getElementById('emp-logo').value.trim();
+            const img = document.getElementById('prev-logo');
+            if (url) {
+                img.src = url;
+                img.classList.remove('hidden');
+                img.onerror = function() { img.classList.add('hidden'); };
+            } else {
+                img.classList.add('hidden');
+            }
+        }
+
+        // Actualizar vista previa en tiempo real
+        const campos = {
+            'emp-nombre':   'prev-nombre',
+            'emp-razon':    'prev-razon',
+            'emp-cuit':     'prev-cuit',
+            'emp-tel':      'prev-tel',
+            'emp-email':    'prev-email'
+        };
+        Object.keys(campos).forEach(function(id) {
+            document.getElementById(id).addEventListener('input', function() {
+                document.getElementById(campos[id]).textContent = this.value;
+            });
+        });
+        document.getElementById('emp-dir').addEventListener('input', function() {
+            const loc  = document.getElementById('emp-localidad').value;
+            const prov = document.getElementById('emp-provincia').value;
+            const cp   = document.getElementById('emp-cp').value;
+            document.getElementById('prev-dir').textContent = [this.value, loc, prov, cp ? 'CP ' + cp : ''].filter(Boolean).join(' · ');
+        });
+
+        async function cargarDatos() {
+            const res = await fetch(API_URL + '/empresa');
+            const d   = await res.json();
+            if (!d || !d.nombre) return;
+
+            document.getElementById('emp-nombre').value   = d.nombre || '';
+            document.getElementById('emp-logo').value     = d.logo_url || '';
+            if (d.logo_url) previsualizarLogo();
+            document.getElementById('emp-razon').value    = d.razon_social || '';
+            document.getElementById('emp-cuit').value     = d.cuit || '';
+            document.getElementById('emp-tel').value      = d.telefono || '';
+            document.getElementById('emp-email').value    = d.email || '';
+            document.getElementById('emp-cp').value       = d.cp || '';
+            document.getElementById('emp-dir').value      = d.direccion || '';
+            document.getElementById('emp-localidad').value = d.localidad || '';
+            document.getElementById('emp-provincia').value = d.provincia || '';
+
+            // Actualizar preview
+            document.getElementById('prev-nombre').textContent = d.nombre || '';
+            document.getElementById('prev-razon').textContent  = d.razon_social || '';
+            document.getElementById('prev-cuit').textContent   = d.cuit ? 'CUIT: ' + d.cuit : '';
+            document.getElementById('prev-tel').textContent    = d.telefono || '';
+            document.getElementById('prev-email').textContent  = d.email || '';
+            const dir = [d.direccion, d.localidad, d.provincia, d.cp ? 'CP ' + d.cp : ''].filter(Boolean).join(' · ');
+            document.getElementById('prev-dir').textContent = dir;
+        }
+
+        async function guardarEmpresa() {
+            const data = {
+                nombre:       document.getElementById('emp-nombre').value,
+                logo_url:     document.getElementById('emp-logo').value || null,
+                razon_social: document.getElementById('emp-razon').value || null,
+                cuit:         document.getElementById('emp-cuit').value || null,
+                telefono:     document.getElementById('emp-tel').value || null,
+                email:        document.getElementById('emp-email').value || null,
+                cp:           document.getElementById('emp-cp').value || null,
+                direccion:    document.getElementById('emp-dir').value || null,
+                localidad:    document.getElementById('emp-localidad').value || null,
+                provincia:    document.getElementById('emp-provincia').value || null
+            };
+
+            const btn = document.getElementById('btn-guardar');
+            btn.disabled = true; btn.textContent = 'Guardando...';
+
+            try {
+                const res = await fetch(API_URL + '/empresa', {
+                    method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(data)
+                });
+                if (res.ok) {
+                    const ok = document.getElementById('guardado-ok');
+                    ok.classList.remove('hidden');
+                    setTimeout(function() { ok.classList.add('hidden'); }, 3000);
+                } else {
+                    alert('Error al guardar.');
+                }
+            } finally {
+                btn.disabled = false; btn.textContent = 'Guardar Datos';
+            }
+        }
+
+        window.onload = cargarDatos;
+    </script>
+</body>
+</html>

@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Empleados | Portal del Viento</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .text-neon { color: #e4fc74; }
+        .bg-neon { background-color: #e4fc74; }
+        .border-neon { border-color: #e4fc74; }
+        .modal-oculto { display: none; }
+        .modal-visible { display: flex; }
+        .tab-activa { border-bottom: 2px solid #e4fc74; color: white; }
+    </style>
+</head>
+<body class="bg-gray-950 text-gray-200 font-sans h-screen flex">
+    <!-- Sidebar -->
+    <aside class="w-64 bg-black border-r border-gray-800 flex flex-col">
+        <div class="p-6 border-b border-gray-800 text-center">
+            <h1 class="text-neon font-bold text-lg tracking-widest uppercase">Portal del Viento</h1>
+            <p class="text-white text-xs mt-1 font-bold italic">ALFAJORES</p>
+        </div>
+        <nav class="flex-1 p-4 space-y-1 text-sm">
+            <a href="/admin" class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">📊 Tablero</a>
+            <a href="/catalogo" class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">📦 Catálogo</a>
+            <a href="/insumos" class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">🧪 Insumos</a>
+            <a href="/produccion" class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">🏭 Producción</a>
+            <a href="/proveedores" class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">🏪 Proveedores</a>
+            <a href="/distribuidores" class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">🚚 Distribuidores</a>
+            <a href="/historial-b2b" class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">📋 Pedidos B2B</a>
+            <a href="/empleados" class="block bg-gray-900 text-white py-2 px-4 rounded-lg border-l-4 border-neon font-medium">👥 Empleados</a>
+            <a href="/reportes" class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">📈 Reportes</a>
+        </nav>
+        <div id="usuario-info" class="p-4 border-t border-gray-800 text-xs text-gray-500 text-center"></div>
+    </aside>
+
+    <main class="flex-1 flex flex-col overflow-hidden">
+        <header class="bg-gray-900 border-b border-gray-800 py-4 px-8 flex justify-between items-center">
+            <h2 class="text-xl font-bold text-white">Empleados y Registros Horarios</h2>
+            <button onclick="abrirModalNuevo()" class="bg-neon text-black font-bold py-2 px-6 rounded-lg hover:bg-yellow-300 transition">+ Nuevo Empleado</button>
+        </header>
+
+        <!-- Tabs -->
+        <div class="bg-gray-900 border-b border-gray-800 px-8 flex gap-6">
+            <button onclick="cambiarTab('empleados')" id="tab-empleados" class="py-3 text-sm font-bold tab-activa">👥 Nómina</button>
+            <button onclick="cambiarTab('fichajes')" id="tab-fichajes" class="py-3 text-sm font-bold text-gray-400 hover:text-white">🕐 Registros Horarios</button>
+        </div>
+
+        <!-- Tab Empleados -->
+        <div id="panel-empleados" class="flex-1 overflow-y-auto p-8">
+            <div class="bg-black rounded-xl border border-gray-800 overflow-hidden">
+                <table class="w-full text-left">
+                    <thead class="bg-gray-950 text-xs text-gray-400 uppercase">
+                        <tr>
+                            <th class="p-4">Nombre</th>
+                            <th class="p-4">DNI</th>
+                            <th class="p-4">Rol</th>
+                            <th class="p-4">Usuario</th>
+                            <th class="p-4">Estado</th>
+                            <th class="p-4 text-right">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tabla-empleados" class="divide-y divide-gray-800 text-sm">
+                        <tr><td colspan="6" class="p-4 text-center text-gray-500">Cargando...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Tab Fichajes -->
+        <div id="panel-fichajes" class="hidden flex-1 overflow-y-auto p-8">
+            <div class="flex gap-4 mb-6">
+                <input type="date" id="filtro-fecha" class="bg-gray-900 border border-gray-700 text-white rounded p-2 text-sm">
+                <button onclick="cargarFichajes()" class="bg-neon text-black font-bold px-4 py-2 rounded text-sm">Filtrar</button>
+                <button onclick="registrarFichaje('entrada')" class="bg-green-700 hover:bg-green-600 text-white font-bold px-4 py-2 rounded text-sm">✅ Registrar Entrada</button>
+                <button onclick="registrarFichaje('salida')" class="bg-red-800 hover:bg-red-700 text-white font-bold px-4 py-2 rounded text-sm">🚪 Registrar Salida</button>
+            </div>
+            <div class="bg-black rounded-xl border border-gray-800 overflow-hidden">
+                <table class="w-full text-left">
+                    <thead class="bg-gray-950 text-xs text-gray-400 uppercase">
+                        <tr>
+                            <th class="p-4">Empleado</th>
+                            <th class="p-4">Rol</th>
+                            <th class="p-4">Tipo</th>
+                            <th class="p-4">Fecha y Hora</th>
+                            <th class="p-4">Observación</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tabla-fichajes" class="divide-y divide-gray-800 text-sm">
+                        <tr><td colspan="5" class="p-4 text-center text-gray-500">Seleccioná una fecha para ver registros.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Panel Horas -->
+        <div id="panel-horas" class="hidden flex-1 overflow-y-auto p-8">
+            <!-- Filtros -->
+            <div class="flex flex-wrap gap-3 mb-6 items-end">
+                <div>
+                    <label class="block text-xs text-gray-500 font-bold mb-1">Desde</label>
+                    <input type="date" id="horas-desde" class="bg-gray-900 border border-gray-700 text-white rounded p-2 text-sm">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 font-bold mb-1">Hasta</label>
+                    <input type="date" id="horas-hasta" class="bg-gray-900 border border-gray-700 text-white rounded p-2 text-sm">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 font-bold mb-1">Empleado</label>
+                    <select id="horas-empleado" class="bg-gray-900 border border-gray-700 text-white rounded p-2 text-sm">
+                        <option value="">Todos</option>
+                    </select>
+                </div>
+                <button onclick="cargarHoras()" class="bg-neon text-black font-bold px-5 py-2 rounded-lg text-sm hover:bg-yellow-300">Ver Horas</button>
+                <button onclick="exportarHorasPDF()" class="border border-gray-600 text-gray-300 hover:text-white px-4 py-2 rounded-lg text-sm transition">🖨️ PDF</button>
+            </div>
+
+            <!-- Resumen por empleado -->
+            <div id="resumen-horas" class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6"></div>
+
+            <!-- Detalle por día -->
+            <div class="bg-black rounded-xl border border-gray-800 overflow-hidden">
+                <table class="w-full text-left">
+                    <thead class="bg-gray-950 text-xs text-gray-400 uppercase">
+                        <tr>
+                            <th class="p-4">Empleado</th>
+                            <th class="p-4">Día</th>
+                            <th class="p-4">Entrada</th>
+                            <th class="p-4">Salida</th>
+                            <th class="p-4">Horas</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tabla-horas" class="divide-y divide-gray-800 text-sm">
+                        <tr><td colspan="5" class="p-4 text-center text-gray-500">Seleccioná un período y hacé click en Ver Horas.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Modal Nuevo Empleado -->
+    <div id="modal-nuevo" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
+        <div class="bg-gray-900 border border-gray-700 rounded-xl p-6 w-[500px] shadow-2xl max-h-screen overflow-y-auto">
+            <h3 class="text-lg font-bold text-white mb-4 border-l-4 border-neon pl-2">Alta de Empleado</h3>
+            <div class="grid grid-cols-2 gap-4 mb-4">
+                <div>
+                    <label class="block text-xs text-gray-500 font-bold mb-1">Nombre</label>
+                    <input type="text" id="emp-nombre" class="w-full bg-black border border-gray-700 text-white rounded p-2">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 font-bold mb-1">Apellido</label>
+                    <input type="text" id="emp-apellido" class="w-full bg-black border border-gray-700 text-white rounded p-2">
+                </div>
+            </div>
+            <div class="grid grid-cols-2 gap-4 mb-4">
+                <div>
+                    <label class="block text-xs text-gray-500 font-bold mb-1">DNI</label>
+                    <input type="text" id="emp-dni" class="w-full bg-black border border-gray-700 text-white rounded p-2">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 font-bold mb-1">Rol</label>
+                    <select id="emp-rol" class="w-full bg-black border border-gray-700 text-white rounded p-2">
+                        <option value="vendedor">Vendedor</option>
+                        <option value="produccion">Producción</option>
+                        <option value="deposito">Depósito</option>
+                        <option value="admin">Admin</option>
+                    </select>
+                </div>
+            </div>
+            <div class="grid grid-cols-2 gap-4 mb-4">
+                <div>
+                    <label class="block text-xs text-gray-500 font-bold mb-1">Email</label>
+                    <input type="email" id="emp-email" class="w-full bg-black border border-gray-700 text-white rounded p-2">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 font-bold mb-1">Teléfono</label>
+                    <input type="text" id="emp-tel" class="w-full bg-black border border-gray-700 text-white rounded p-2">
+                </div>
+            </div>
+
+            <div class="border-t border-gray-700 pt-4 mt-4">
+                <label class="flex items-center gap-2 text-sm text-gray-300 cursor-pointer mb-4">
+                    <input type="checkbox" id="crear-user" onchange="toggleUserFields()" class="w-4 h-4">
+                    Crear usuario de acceso al sistema
+                </label>
+                <div id="campos-usuario" class="hidden grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs text-neon font-bold mb-1">Username</label>
+                        <input type="text" id="emp-username" class="w-full bg-black border border-neon text-white rounded p-2">
+                    </div>
+                    <div>
+                        <label class="block text-xs text-neon font-bold mb-1">Contraseña</label>
+                        <input type="password" id="emp-password" class="w-full bg-black border border-neon text-white rounded p-2">
+                    </div>
+                </div>
+            </div>
+
+            <div class="flex justify-end gap-3 mt-6">
+                <button onclick="cerrarModal()" class="px-4 py-2 text-gray-400 hover:text-white font-bold">Cancelar</button>
+                <button onclick="guardarEmpleado()" class="bg-neon text-black px-6 py-2 rounded font-bold hover:bg-yellow-300">Registrar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Fichaje -->
+    <div id="modal-fichaje" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
+        <div class="bg-gray-900 border border-gray-700 rounded-xl p-6 w-96 shadow-2xl">
+            <h3 id="titulo-fichaje" class="text-lg font-bold text-white mb-4">Registrar Fichaje</h3>
+            <input type="hidden" id="tipo-fichaje">
+            <label class="block text-xs text-gray-500 font-bold mb-1">Empleado</label>
+            <select id="select-empleado" class="w-full bg-black border border-gray-700 text-white rounded p-3 mb-4"></select>
+            <label class="block text-xs text-gray-500 font-bold mb-1">Observación (opcional)</label>
+            <input type="text" id="obs-fichaje" class="w-full bg-black border border-gray-700 text-white rounded p-3 mb-6">
+            <div class="flex justify-end gap-3">
+                <button onclick="cerrarModal()" class="px-4 py-2 text-gray-400 hover:text-white font-bold">Cancelar</button>
+                <button onclick="confirmarFichaje()" class="bg-neon text-black px-6 py-2 rounded font-bold">Confirmar</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = "http://127.0.0.1:8000/api";
+        let empleados = [];
+
+        // Info usuario
+        const usr = JSON.parse(sessionStorage.getItem('usuario') || '{}');
+        if (usr.nombre) document.getElementById('usuario-info').textContent = `${usr.nombre} ${usr.apellido} · ${usr.rol}`;
+
+        function cambiarTab(tab) {
+            var hEl = document.getElementById('panel-horas');
+            var tH  = document.getElementById('tab-horas');
+            if (hEl) hEl.classList.toggle('hidden', tab !== 'horas');
+            if (tH)  tH.className = tab === 'horas' ? 'py-3 text-sm font-bold tab-activa' : 'py-3 text-sm font-bold text-gray-400 hover:text-white';
+            if (tab === 'horas') { iniciarFiltrosHoras(); return; }
+            document.getElementById('panel-empleados').classList.toggle('hidden', tab !== 'empleados');
+            document.getElementById('panel-fichajes').classList.toggle('hidden', tab !== 'fichajes');
+            document.getElementById('tab-empleados').className = tab === 'empleados' ? 'py-3 text-sm font-bold tab-activa' : 'py-3 text-sm font-bold text-gray-400 hover:text-white';
+            document.getElementById('tab-fichajes').className = tab === 'fichajes' ? 'py-3 text-sm font-bold tab-activa' : 'py-3 text-sm font-bold text-gray-400 hover:text-white';
+            if (tab === 'fichajes') cargarFichajes();
+        }
+
+        async function cargarEmpleados() {
+            const res = await fetch(`${API_URL}/empleados`);
+            empleados = await res.json();
+            const tabla = document.getElementById('tabla-empleados');
+            tabla.innerHTML = '';
+            const roles = { admin: '🔑 Admin', vendedor: '🏪 Vendedor', produccion: '🏭 Producción', deposito: '📦 Depósito' };
+            empleados.forEach(e => {
+                tabla.innerHTML += `
+                    <tr class="hover:bg-gray-900 transition">
+                        <td class="p-4 font-bold text-white">${e.apellido}, ${e.nombre}</td>
+                        <td class="p-4 text-gray-400">${e.dni}</td>
+                        <td class="p-4"><span class="text-xs bg-gray-800 px-2 py-1 rounded font-bold">${roles[e.rol] || e.rol}</span></td>
+                        <td class="p-4 text-gray-400 text-xs">${e.username || '—'}</td>
+                        <td class="p-4">${e.activo ? '<span class="text-green-400 font-bold text-xs">● Activo</span>' : '<span class="text-red-500 font-bold text-xs">● Inactivo</span>'}</td>
+                        <td class="p-4 text-right">
+                            <div class="flex justify-end gap-1">
+                                <button onclick="abrirEditarEmpleado(empleados.find(x=>x.id===${e.id}))" class="text-xs border border-gray-700 bg-gray-800 hover:border-gray-500 px-2 py-1 rounded text-gray-400 hover:text-white">
+                                    Editar
+                                </button>
+                                <button onclick="toggleEstado(${e.id}, ${e.activo})" class="text-xs border border-gray-700 bg-gray-800 hover:border-gray-500 px-2 py-1 rounded text-gray-400 hover:text-white">
+                                    ${e.activo ? 'Desactivar' : 'Activar'}
+                                </button>
+                                ${e.activo ? `<button onclick="darBajaEmpleado(${e.id}, '${e.nombre} ${e.apellido}')" class="text-xs bg-red-900/50 hover:bg-red-700 text-red-400 hover:text-white px-2 py-1 rounded">Baja</button>` : ''}
+                            </div>
+                        </td>
+                    </tr>`;
+            });
+            // Actualizar select de fichaje
+            const sel = document.getElementById('select-empleado');
+            sel.innerHTML = '';
+            empleados.filter(e => e.activo).forEach(e => {
+                sel.innerHTML += `<option value="${e.id}">${e.apellido}, ${e.nombre}</option>`;
+            });
+        }
+
+        async function cargarFichajes() {
+            const fecha = document.getElementById('filtro-fecha').value;
+            let url = `${API_URL}/fichajes`;
+            if (fecha) url += `?fecha=${fecha}`;
+            const res = await fetch(url);
+            const lista = await res.json();
+            const tabla = document.getElementById('tabla-fichajes');
+            tabla.innerHTML = '';
+            if (lista.length === 0) {
+                tabla.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-gray-500">Sin registros para esta fecha.</td></tr>';
+                return;
+            }
+            lista.forEach(f => {
+                const color = f.tipo === 'entrada' ? 'text-green-400' : 'text-red-400';
+                const icon = f.tipo === 'entrada' ? '▶' : '■';
+                const dt = new Date(f.fecha_hora);
+                const dtStr = dt.toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' });
+                tabla.innerHTML += `
+                    <tr class="hover:bg-gray-900 transition">
+                        <td class="p-4 font-bold text-white">${f.apellido}, ${f.nombre}</td>
+                        <td class="p-4 text-gray-400 text-xs">${f.rol}</td>
+                        <td class="p-4 ${color} font-bold text-sm">${icon} ${f.tipo.toUpperCase()}</td>
+                        <td class="p-4 text-gray-300">${dtStr}</td>
+                        <td class="p-4 text-gray-400 text-xs">${f.observacion || '—'}</td>
+                    </tr>`;
+            });
+        }
+
+        async function toggleEstado(id, activo) {
+            await fetch(`${API_URL}/empleados/${id}/estado?activo=${!activo}`, { method: 'PUT' });
+            cargarEmpleados();
+        }
+
+        function abrirModalNuevo() { document.getElementById('modal-nuevo').classList.replace('modal-oculto', 'modal-visible'); }
+
+        function registrarFichaje(tipo) {
+            document.getElementById('tipo-fichaje').value = tipo;
+            document.getElementById('titulo-fichaje').textContent = tipo === 'entrada' ? '✅ Registrar Entrada' : '🚪 Registrar Salida';
+            document.getElementById('obs-fichaje').value = '';
+            document.getElementById('modal-fichaje').classList.replace('modal-oculto', 'modal-visible');
+        }
+
+        function cerrarModal() {
+            document.querySelectorAll('.modal-visible').forEach(m => m.classList.replace('modal-visible', 'modal-oculto'));
+        }
+
+        function toggleUserFields() {
+            const checked = document.getElementById('crear-user').checked;
+            document.getElementById('campos-usuario').classList.toggle('hidden', !checked);
+        }
+
+        async function guardarEmpleado() {
+            const data = {
+                nombre: document.getElementById('emp-nombre').value,
+                apellido: document.getElementById('emp-apellido').value,
+                dni: document.getElementById('emp-dni').value,
+                rol: document.getElementById('emp-rol').value,
+                email: document.getElementById('emp-email').value || null,
+                telefono: document.getElementById('emp-tel').value || null,
+                crear_usuario: document.getElementById('crear-user').checked,
+                username: document.getElementById('emp-username').value || null,
+                password: document.getElementById('emp-password').value || null
+            };
+            const res = await fetch(`${API_URL}/empleados_nuevo`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data)
+            });
+            if (res.ok) { cerrarModal(); cargarEmpleados(); }
+            else { const err = await res.json(); alert("Error: " + err.detail); }
+        }
+
+        async function confirmarFichaje() {
+            const data = {
+                id_empleado: parseInt(document.getElementById('select-empleado').value),
+                tipo: document.getElementById('tipo-fichaje').value,
+                observacion: document.getElementById('obs-fichaje').value || null
+            };
+            await fetch(`${API_URL}/fichaje`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+            cerrarModal();
+            cargarFichajes();
+        }
+
+        // Fecha de hoy por defecto
+        document.getElementById('filtro-fecha').value = new Date().toISOString().split('T')[0];
+        window.onload = function() {
+            cargarEmpleados();
+            // Poblar select horas con empleados después de cargarlos
+            setTimeout(function() {
+                fetch(API_URL + '/empleados').then(function(r) { return r.json(); }).then(function(lista) {
+                    var sel = document.getElementById('horas-empleado');
+                    if (sel) {
+                        lista.filter(function(e) { return e.activo; }).forEach(function(e) {
+                            sel.innerHTML += '<option value="' + e.id + '">' + e.apellido + ', ' + e.nombre + '</option>';
+                        });
+                    }
+                });
+            }, 500);
+        };
+    
+        // ── HORAS ────────────────────────────────────────────────
+
+        function iniciarFiltrosHoras() {
+            var hoy   = new Date();
+            var lunes = new Date(hoy);
+            lunes.setDate(hoy.getDate() - hoy.getDay() + 1);
+            document.getElementById('horas-desde').value = lunes.toISOString().split('T')[0];
+            document.getElementById('horas-hasta').value = hoy.toISOString().split('T')[0];
+        }
+
+        async function cargarHoras() {
+            var desde = document.getElementById('horas-desde').value;
+            var hasta = document.getElementById('horas-hasta').value;
+            var emp   = document.getElementById('horas-empleado').value;
+            if (!desde || !hasta) { alert('Seleccioná el período.'); return; }
+
+            var url = API_URL + '/reportes/horas?fecha_desde=' + desde + '&fecha_hasta=' + hasta;
+            if (emp) url += '&id_empleado=' + emp;
+
+            var datos = await fetch(url).then(function(r) { return r.json(); });
+
+            // Resumen por empleado
+            var totales = {};
+            datos.forEach(function(d) {
+                var key = d.id_empleado;
+                if (!totales[key]) totales[key] = { nombre: d.nombre + ' ' + d.apellido, horas: 0, dias: 0 };
+                totales[key].horas += parseFloat(d.horas_dia || 0);
+                totales[key].dias++;
+            });
+
+            var resumenEl = document.getElementById('resumen-horas');
+            resumenEl.innerHTML = '';
+            Object.values(totales).forEach(function(t) {
+                var hs = t.horas.toFixed(1);
+                var color = t.horas >= 40 ? 'border-green-700 text-green-400' : t.horas >= 20 ? 'border-yellow-700 text-yellow-400' : 'border-gray-700 text-gray-300';
+                resumenEl.innerHTML +=
+                    '<div class="bg-black border ' + color + ' rounded-xl p-4 text-center">' +
+                        '<p class="text-xs text-gray-500 font-bold mb-1">' + t.nombre + '</p>' +
+                        '<p class="text-3xl font-bold ' + color.split(' ')[1] + '">' + hs + 'h</p>' +
+                        '<p class="text-gray-600 text-xs">' + t.dias + ' día' + (t.dias !== 1 ? 's' : '') + '</p>' +
+                    '</div>';
+            });
+
+            // Tabla detalle
+            var tabla = document.getElementById('tabla-horas');
+            tabla.innerHTML = '';
+            if (!datos.length) {
+                tabla.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-gray-500">Sin fichajes en ese período.</td></tr>';
+                return;
+            }
+            datos.forEach(function(d) {
+                var entrada  = d.entrada  ? new Date(d.entrada).toLocaleTimeString('es-AR',  {hour:'2-digit', minute:'2-digit'}) : '—';
+                var salida   = d.salida   ? new Date(d.salida).toLocaleTimeString('es-AR',   {hour:'2-digit', minute:'2-digit'}) : '—';
+                var dia      = new Date(d.dia + 'T00:00:00').toLocaleDateString('es-AR', {weekday:'short', day:'2-digit', month:'2-digit'});
+                var horas    = d.horas_dia ? parseFloat(d.horas_dia).toFixed(1) + 'h' : '—';
+                var colorH   = d.horas_dia && parseFloat(d.horas_dia) < 6 ? 'text-yellow-400' : 'text-neon';
+                var tr = document.createElement('tr');
+                tr.className = 'hover:bg-gray-900';
+                tr.innerHTML =
+                    '<td class="p-4 font-bold text-white">' + d.apellido + ', ' + d.nombre + '</td>' +
+                    '<td class="p-4 text-gray-400">' + dia + '</td>' +
+                    '<td class="p-4 text-green-400 font-bold">' + entrada + '</td>' +
+                    '<td class="p-4 text-red-400 font-bold">' + salida + '</td>' +
+                    '<td class="p-4 font-bold ' + colorH + '">' + horas + '</td>';
+                tabla.appendChild(tr);
+            });
+        }
+
+        async function exportarHorasPDF() {
+            var desde = document.getElementById('horas-desde').value;
+            var hasta = document.getElementById('horas-hasta').value;
+            if (!desde || !hasta) { alert('Seleccioná el período primero.'); return; }
+            var emp   = document.getElementById('horas-empleado').value;
+            var url   = API_URL + '/reportes/horas?fecha_desde=' + desde + '&fecha_hasta=' + hasta;
+            if (emp) url += '&id_empleado=' + emp;
+            var datos = await fetch(url).then(function(r) { return r.json(); });
+            if (!datos.length) { alert('Sin datos para exportar.'); return; }
+
+            var script1 = document.createElement('script');
+            script1.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+            script1.onload = function() {
+                var script2 = document.createElement('script');
+                script2.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js';
+                script2.onload = function() { generarPDFHoras(datos, desde, hasta); };
+                document.head.appendChild(script2);
+            };
+            document.head.appendChild(script1);
+        }
+
+        function generarPDFHoras(datos, desde, hasta) {
+            var jsPDF = window.jspdf.jsPDF;
+            var doc = new jsPDF();
+            doc.setFontSize(16); doc.setFont('helvetica','bold'); doc.setTextColor(40,40,40);
+            doc.text('Portal del Viento — Reporte de Horas', 14, 18);
+            doc.setFontSize(10); doc.setFont('helvetica','normal'); doc.setTextColor(100,100,100);
+            doc.text('Período: ' + new Date(desde+'T00:00:00').toLocaleDateString('es-AR') + ' al ' + new Date(hasta+'T00:00:00').toLocaleDateString('es-AR'), 14, 26);
+            doc.setFontSize(8);
+            doc.text('Generado: ' + new Date().toLocaleString('es-AR'), 14, 32);
+
+            var filas = datos.map(function(d) {
+                var entrada = d.entrada ? new Date(d.entrada).toLocaleTimeString('es-AR', {hour:'2-digit',minute:'2-digit'}) : '—';
+                var salida  = d.salida  ? new Date(d.salida).toLocaleTimeString('es-AR',  {hour:'2-digit',minute:'2-digit'}) : '—';
+                var dia     = new Date(d.dia+'T00:00:00').toLocaleDateString('es-AR');
+                var horas   = d.horas_dia ? parseFloat(d.horas_dia).toFixed(1) + 'h' : '—';
+                return [d.apellido + ', ' + d.nombre, dia, entrada, salida, horas];
+            });
+
+            doc.autoTable({
+                startY: 38,
+                head: [['Empleado','Día','Entrada','Salida','Horas']],
+                body: filas,
+                headStyles: { fillColor:[30,30,30], textColor:[228,252,116], fontStyle:'bold' },
+                alternateRowStyles: { fillColor:[245,245,245] },
+                styles: { fontSize:9, cellPadding:3 }
+            });
+
+            doc.save('horas_' + desde + '_' + hasta + '.pdf');
+        }
+
+    
+        function abrirEditarEmpleado(e) {
+            document.getElementById('edit-emp-id').value      = e.id;
+            document.getElementById('edit-emp-nombre').value  = e.nombre || '';
+            document.getElementById('edit-emp-apellido').value = e.apellido || '';
+            document.getElementById('edit-emp-dni').value     = e.dni || '';
+            document.getElementById('edit-emp-rol').value     = e.rol || 'produccion';
+            document.getElementById('edit-emp-tel').value     = e.telefono || '';
+            document.getElementById('edit-emp-email').value   = e.email || '';
+            document.getElementById('modal-editar-emp').classList.replace('modal-oculto','modal-visible');
+        }
+
+        async function guardarEdicionEmpleado() {
+            var id = document.getElementById('edit-emp-id').value;
+            var data = {
+                nombre:   document.getElementById('edit-emp-nombre').value,
+                apellido: document.getElementById('edit-emp-apellido').value,
+                dni:      document.getElementById('edit-emp-dni').value,
+                rol:      document.getElementById('edit-emp-rol').value,
+                telefono: document.getElementById('edit-emp-tel').value || null,
+                email:    document.getElementById('edit-emp-email').value || null
+            };
+            var res = await fetch(API_URL + '/empleados/' + id, {
+                method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(data)
+            });
+            if (res.ok) { cerrarModales(); cargarEmpleados(); }
+            else { var e = await res.json(); alert('Error: ' + e.detail); }
+        }
+
+        async function darBajaEmpleado(id, nombre) {
+            if (!confirm('¿Dar de baja a ' + nombre + '? Quedará inactivo pero se conserva su historial.')) return;
+            await fetch(API_URL + '/empleados/' + id, { method:'DELETE' });
+            cargarEmpleados();
+        }
+
+    
+        function cerrarModales() {
+            document.querySelectorAll('.modal-visible').forEach(function(m) {
+                m.classList.replace('modal-visible','modal-oculto');
+            });
+        }
+    
+    </script>
+
+    <!-- Modal Editar Empleado -->
+    <div id="modal-editar-emp" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
+        <div class="bg-gray-900 border border-gray-700 rounded-xl p-6 w-[480px] shadow-2xl">
+            <h3 class="text-lg font-bold text-white mb-4 border-l-4 border-neon pl-2">Editar Empleado</h3>
+            <input type="hidden" id="edit-emp-id">
+            <div class="grid grid-cols-2 gap-4 mb-4">
+                <div>
+                    <label class="block text-xs text-gray-500 font-bold mb-1">Nombre</label>
+                    <input type="text" id="edit-emp-nombre" class="w-full bg-black border border-gray-700 text-white rounded p-2">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 font-bold mb-1">Apellido</label>
+                    <input type="text" id="edit-emp-apellido" class="w-full bg-black border border-gray-700 text-white rounded p-2">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 font-bold mb-1">DNI</label>
+                    <input type="text" id="edit-emp-dni" class="w-full bg-black border border-gray-700 text-white rounded p-2">
+                </div>
+                <div>
+                    <label class="block text-xs text-neon font-bold mb-1">Rol</label>
+                    <select id="edit-emp-rol" class="w-full bg-black border border-neon text-white rounded p-2">
+                        <option value="admin">👑 Admin</option>
+                        <option value="produccion">🏭 Producción</option>
+                        <option value="deposito">📦 Depósito</option>
+                        <option value="vendedor">💼 Vendedor</option>
+                        <option value="administrativo">📋 Administrativo</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 font-bold mb-1">Teléfono</label>
+                    <input type="text" id="edit-emp-tel" class="w-full bg-black border border-gray-700 text-white rounded p-2">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 font-bold mb-1">Email</label>
+                    <input type="email" id="edit-emp-email" class="w-full bg-black border border-gray-700 text-white rounded p-2">
+                </div>
+            </div>
+            <div class="flex justify-end gap-3">
+                <button onclick="cerrarModales()" class="px-4 py-2 text-gray-400 hover:text-white font-bold">Cancelar</button>
+                <button onclick="guardarEdicionEmpleado()" class="bg-neon text-black px-6 py-2 rounded font-bold hover:bg-yellow-300">Guardar</button>
+            </div>
+        </div>
+    </div>
+
+</body>
+</html>

@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+    <title>Producción | Portal del Viento</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .text-neon { color: #e4fc74; }
+        .bg-neon { background-color: #e4fc74; }
+        .border-neon { border-color: #e4fc74; }
+        /* Evitar zoom al tocar inputs en iOS */
+        input, select, textarea { font-size: 16px !important; }
+        /* Botón grande para dedos */
+        .btn-grande { min-height: 56px; }
+    </style>
+</head>
+<body class="bg-gray-950 text-gray-200 font-sans">
+
+    <!-- ── LOGIN ─────────────────────────────────────────── -->
+    <div id="pantalla-login" class="min-h-screen flex items-center justify-center p-5">
+        <div class="w-full max-w-sm">
+            <div class="text-center mb-8">
+                <h1 class="text-neon font-bold text-3xl tracking-widest uppercase">Portal del Viento</h1>
+                <p class="text-white text-sm mt-1 font-bold italic">ALFAJORES</p>
+                <p class="text-gray-500 text-xs mt-2">Panel de Producción</p>
+            </div>
+            <div class="bg-black border border-gray-800 rounded-2xl p-6 shadow-2xl">
+                <div id="login-error" class="hidden bg-red-900/30 border border-red-700 text-red-400 text-sm px-4 py-3 rounded-lg mb-4"></div>
+                <label class="block text-xs text-gray-500 font-bold mb-2">Usuario</label>
+                <input type="text" id="login-user" placeholder="tu usuario" autocomplete="username"
+                    class="w-full bg-gray-900 border border-gray-700 text-white rounded-xl p-4 mb-4 focus:border-neon outline-none">
+                <label class="block text-xs text-gray-500 font-bold mb-2">Contraseña</label>
+                <input type="password" id="login-pass" placeholder="••••••••" autocomplete="current-password"
+                    class="w-full bg-gray-900 border border-gray-700 text-white rounded-xl p-4 mb-6 focus:border-neon outline-none"
+                    onkeydown="if(event.key==='Enter') hacerLogin()">
+                <button onclick="hacerLogin()" id="btn-login"
+                    class="w-full bg-neon text-black font-bold py-4 rounded-xl text-lg hover:bg-yellow-300 transition active:scale-95 btn-grande">
+                    Entrar →
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── PANEL ─────────────────────────────────────────── -->
+    <div id="pantalla-panel" class="hidden min-h-screen flex flex-col">
+
+        <!-- Header -->
+        <header class="bg-black border-b border-gray-800 px-5 py-4 flex justify-between items-center sticky top-0 z-10">
+            <div>
+                <h1 class="text-neon font-bold text-base tracking-widest uppercase leading-none">Portal del Viento</h1>
+                <p id="nombre-encargado" class="text-white text-xs font-bold mt-0.5"></p>
+            </div>
+            <div class="flex items-center gap-3">
+                <p id="fecha-hoy-panel" class="text-gray-500 text-xs text-right hidden sm:block"></p>
+                <button onclick="cerrarSesion()"
+                    class="text-xs text-gray-500 hover:text-white border border-gray-700 px-3 py-2 rounded-lg">
+                    Salir
+                </button>
+            </div>
+        </header>
+
+        <main class="flex-1 p-4 pb-8">
+
+            <!-- Card registrar -->
+            <div class="bg-black border border-gray-800 rounded-2xl p-5 mb-4">
+                <h2 class="text-lg font-bold text-white mb-4">¿Qué produciste?</h2>
+
+                <!-- Selector producto agrupado por categoría -->
+                <label class="block text-xs text-gray-500 font-bold mb-2">Producto</label>
+                <select id="prod-select" onchange="onProductoSeleccionado()"
+                    class="w-full bg-gray-900 border border-gray-700 text-white rounded-xl p-4 mb-3">
+                    <option value="">— Seleccioná —</option>
+                </select>
+
+                <!-- Badge categoría + estado receta -->
+                <div id="prod-info" class="hidden flex gap-2 mb-4 flex-wrap">
+                    <span id="prod-cat" class="text-xs bg-gray-800 border border-gray-700 px-3 py-1 rounded-full text-gray-300"></span>
+                    <span id="prod-receta-estado" class="text-xs px-3 py-1 rounded-full"></span>
+                </div>
+
+                <!-- Cantidad — botones grandes para mobile -->
+                <label class="block text-xs text-neon font-bold mb-2">Cantidad (unidades)</label>
+                <div class="flex items-center gap-3 mb-4">
+                    <button onclick="cambiarCantidad(-1)"
+                        class="w-14 h-14 rounded-xl bg-gray-800 hover:bg-gray-700 text-white text-2xl font-bold active:scale-95 transition shrink-0">
+                        −
+                    </button>
+                    <input type="number" id="prod-cantidad" min="1" value="1"
+                        oninput="actualizarVencimiento()"
+                        class="flex-1 bg-black border-2 border-neon text-white rounded-xl p-3 font-bold text-4xl text-center">
+                    <button onclick="cambiarCantidad(1)"
+                        class="w-14 h-14 rounded-xl bg-neon hover:bg-yellow-300 text-black text-2xl font-bold active:scale-95 transition shrink-0">
+                        +
+                    </button>
+                </div>
+
+                <!-- Fechas -->
+                <div class="grid grid-cols-2 gap-3 mb-4">
+                    <div>
+                        <label class="block text-xs text-gray-500 font-bold mb-1">Producción</label>
+                        <input type="date" id="prod-fecha" onchange="actualizarVencimiento()"
+                            class="w-full bg-gray-900 border border-gray-700 text-white rounded-xl p-3 text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-xs text-gray-500 font-bold mb-1">Vencimiento</label>
+                        <input type="date" id="prod-vencimiento"
+                            class="w-full bg-gray-900 border border-gray-700 text-white rounded-xl p-3 text-sm">
+                    </div>
+                </div>
+
+                <!-- Observaciones -->
+                <label class="block text-xs text-gray-500 font-bold mb-1">Observaciones</label>
+                <input type="text" id="prod-obs" placeholder="Opcional..."
+                    class="w-full bg-gray-900 border border-gray-700 text-white rounded-xl p-3 mb-5 text-sm">
+
+                <button onclick="registrarProduccion()" id="btn-registrar"
+                    class="w-full bg-neon text-black font-bold py-5 rounded-2xl text-xl hover:bg-yellow-300 transition active:scale-95 disabled:opacity-50 btn-grande">
+                    ✅ Registrar
+                </button>
+            </div>
+
+            <!-- Registros del día -->
+            <div class="bg-black border border-gray-800 rounded-2xl overflow-hidden">
+                <div class="px-5 py-3 border-b border-gray-800 bg-gray-900 flex justify-between items-center">
+                    <h3 class="font-bold text-white text-sm">📋 Mis registros de hoy</h3>
+                    <button onclick="cargarRegistrosHoy()" class="text-neon text-sm">↻</button>
+                </div>
+                <div id="lista-registros-hoy">
+                    <p class="p-5 text-center text-gray-500 text-sm">Sin registros hoy.</p>
+                </div>
+            </div>
+
+        </main>
+    </div>
+
+    <!-- Toast -->
+    <div id="toast" class="hidden fixed bottom-6 left-1/2 -translate-x-1/2 bg-green-700 text-white font-bold px-6 py-4 rounded-2xl shadow-2xl text-base z-50 whitespace-nowrap">
+        ✅ Producción registrada
+    </div>
+
+    <script>
+        const API_URL = `${window.location.protocol}//${window.location.hostname}:8000/api`;
+        let usuario = null, productos = [], categorias = [];
+
+        // ── LOGIN ────────────────────────────────────────────────
+
+        async function hacerLogin() {
+            const username = document.getElementById('login-user').value.trim();
+            const password = document.getElementById('login-pass').value;
+            const btn = document.getElementById('btn-login');
+            const errDiv = document.getElementById('login-error');
+            if (!username || !password) { mostrarError('Completá usuario y contraseña.'); return; }
+            btn.textContent = 'Verificando...'; btn.disabled = true;
+            errDiv.classList.add('hidden');
+            try {
+                const res = await fetch(`${API_URL}/login`, {
+                    method:'POST', headers:{'Content-Type':'application/json'},
+                    body: JSON.stringify({username, password})
+                });
+                const data = await res.json();
+                if (!res.ok) { mostrarError(data.detail || 'Error de acceso.'); return; }
+                usuario = data;
+                sessionStorage.setItem('usuario_prod', JSON.stringify(data));
+                mostrarPanel();
+            } catch(e) {
+                mostrarError('No se pudo conectar al servidor.');
+            } finally {
+                btn.textContent = 'Entrar →'; btn.disabled = false;
+            }
+        }
+
+        function mostrarError(msg) {
+            const el = document.getElementById('login-error');
+            el.textContent = msg; el.classList.remove('hidden');
+        }
+
+        function cerrarSesion() {
+            sessionStorage.removeItem('usuario_prod');
+            document.getElementById('pantalla-panel').classList.add('hidden');
+            document.getElementById('pantalla-login').classList.remove('hidden');
+            document.getElementById('login-pass').value = '';
+        }
+
+        // ── PANEL ────────────────────────────────────────────────
+
+        async function mostrarPanel() {
+            document.getElementById('pantalla-login').classList.add('hidden');
+            document.getElementById('pantalla-panel').classList.remove('hidden');
+            document.getElementById('nombre-encargado').textContent = `${usuario.nombre} ${usuario.apellido}`;
+            const hoy = new Date();
+            document.getElementById('fecha-hoy-panel').textContent =
+                hoy.toLocaleDateString('es-AR', {weekday:'long', day:'numeric', month:'long'});
+            document.getElementById('prod-fecha').value = hoy.toISOString().split('T')[0];
+            actualizarVencimiento();
+            await cargarDatos();
+            await cargarRegistrosHoy();
+        }
+
+        async function cargarDatos() {
+            const [rProd, rCat] = await Promise.all([
+                fetch(`${API_URL}/productos`).then(r => r.json()),
+                fetch(`${API_URL}/categorias`).then(r => r.json())
+            ]);
+            productos = rProd.filter(p => p.tipo === 'propio');
+            categorias = rCat;
+
+            const sel = document.getElementById('prod-select');
+            sel.innerHTML = '<option value="">— Seleccioná —</option>';
+            const porCat = {};
+            productos.forEach(p => {
+                const cat = categorias.find(c => c.id === p.id_categoria)?.nombre || 'Sin categoría';
+                if (!porCat[cat]) porCat[cat] = [];
+                porCat[cat].push(p);
+            });
+            Object.entries(porCat).forEach(([cat, prods]) => {
+                const grp = document.createElement('optgroup');
+                grp.label = `── ${cat} ──`;
+                prods.forEach(p => {
+                    const opt = document.createElement('option');
+                    opt.value = p.id; opt.textContent = p.nombre;
+                    grp.appendChild(opt);
+                });
+                sel.appendChild(grp);
+            });
+        }
+
+        async function onProductoSeleccionado() {
+            const id = parseInt(document.getElementById('prod-select').value);
+            const info = document.getElementById('prod-info');
+            if (!id) { info.classList.add('hidden'); return; }
+            const prod = productos.find(p => p.id === id);
+            const cat = categorias.find(c => c.id === prod?.id_categoria)?.nombre || 'Sin categoría';
+            document.getElementById('prod-cat').textContent = `🏷 ${cat}`;
+            const res = await fetch(`${API_URL}/recetas/${id}`);
+            const receta = await res.json();
+            const el = document.getElementById('prod-receta-estado');
+            if (receta.length) {
+                el.textContent = `✓ Receta OK`;
+                el.className = 'text-xs bg-green-900/30 text-green-400 border border-green-800 px-3 py-1 rounded-full';
+            } else {
+                el.textContent = `⚠ Sin receta`;
+                el.className = 'text-xs bg-yellow-900/30 text-yellow-400 border border-yellow-800 px-3 py-1 rounded-full';
+            }
+            info.classList.remove('hidden');
+        }
+
+        function cambiarCantidad(val) {
+            const inp = document.getElementById('prod-cantidad');
+            const nuevo = Math.max(1, (parseInt(inp.value) || 1) + val);
+            inp.value = nuevo;
+        }
+
+        function actualizarVencimiento() {
+            const fecha = document.getElementById('prod-fecha').value;
+            if (!fecha) return;
+            const venc = new Date(fecha + 'T00:00:00');
+            venc.setDate(venc.getDate() + 90);
+            document.getElementById('prod-vencimiento').value = venc.toISOString().split('T')[0];
+        }
+
+        async function registrarProduccion() {
+            const idProd = parseInt(document.getElementById('prod-select').value);
+            const cant   = parseInt(document.getElementById('prod-cantidad').value);
+            if (!idProd) { alert('Seleccioná un producto.'); return; }
+            if (!cant || cant < 1) { alert('Ingresá una cantidad válida.'); return; }
+
+            const btn = document.getElementById('btn-registrar');
+            btn.disabled = true; btn.textContent = 'Registrando...';
+
+            try {
+                const prod = productos.find(p => p.id === idProd);
+                const data = {
+                    id_producto:        idProd,
+                    id_empleado:        usuario.id_empleado,
+                    cantidad_producida: cant,
+                    observaciones:      document.getElementById('prod-obs').value || null,
+                    fecha_vencimiento:  document.getElementById('prod-vencimiento').value || null,
+                    costo_total:        0,
+                    id_categoria:       prod?.id_categoria || null
+                };
+                const res = await fetch(`${API_URL}/produccion/registrar`, {
+                    method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(data)
+                });
+                if (!res.ok) { const e = await res.json(); alert('Error: ' + e.detail); return; }
+
+                // Reset form
+                document.getElementById('prod-select').value = '';
+                document.getElementById('prod-cantidad').value = 1;
+                document.getElementById('prod-obs').value = '';
+                document.getElementById('prod-info').classList.add('hidden');
+                actualizarVencimiento();
+
+                // Toast
+                const toast = document.getElementById('toast');
+                toast.classList.remove('hidden');
+                setTimeout(() => toast.classList.add('hidden'), 3000);
+
+                await cargarRegistrosHoy();
+            } finally {
+                btn.disabled = false; btn.textContent = '✅ Registrar';
+            }
+        }
+
+        async function cargarRegistrosHoy() {
+            const res = await fetch(`${API_URL}/produccion/historial`);
+            const lista = await res.json();
+            const hoyStr = new Date().toLocaleDateString('es-AR');
+            const hoy = lista.filter(o => {
+                const fechaOrden = new Date(o.fecha).toLocaleDateString('es-AR');
+                return String(o.id_empleado) === String(usuario.id_empleado) && fechaOrden === hoyStr;
+            });
+            const cont = document.getElementById('lista-registros-hoy');
+            if (!hoy.length) {
+                cont.innerHTML = '<p class="p-5 text-center text-gray-500 text-sm">Sin registros hoy.</p>';
+                return;
+            }
+            cont.innerHTML = hoy.map(o => {
+                const hora = new Date(o.fecha).toLocaleTimeString('es-AR', {hour:'2-digit', minute:'2-digit'});
+                const venc = o.fecha_vencimiento
+                    ? new Date(o.fecha_vencimiento + 'T00:00:00').toLocaleDateString('es-AR')
+                    : '—';
+                return `
+                    <div class="px-5 py-4 flex justify-between items-center border-b border-gray-800 last:border-0">
+                        <div>
+                            <p class="font-bold text-white">${o.producto}</p>
+                            <p class="text-gray-500 text-xs mt-0.5">Vence ${venc} · ${hora}</p>
+                        </div>
+                        <div class="text-right">
+                            <p class="text-neon font-bold text-2xl">${o.cantidad_producida}</p>
+                            <p class="text-gray-500 text-xs">un.</p>
+                        </div>
+                    </div>`;
+            }).join('');
+        }
+
+        window.onload = () => {
+            const sesion = sessionStorage.getItem('usuario_prod');
+            if (sesion) { usuario = JSON.parse(sesion); mostrarPanel(); }
+        };
+    </script>
+</body>
+</html>

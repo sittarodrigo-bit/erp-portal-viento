@@ -1,0 +1,805 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Pedidos B2B | Portal del Viento</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+    <style>
+        .text-neon { color: #e4fc74; }
+        .bg-neon { background-color: #e4fc74; }
+        .border-neon { border-color: #e4fc74; }
+        .modal-oculto { display: none; }
+        .modal-visible { display: flex; }
+    </style>
+</head>
+<body class="bg-gray-950 text-gray-200 font-sans h-screen flex">
+    <aside class="w-64 bg-black border-r border-gray-800 flex flex-col shrink-0">
+        <div class="p-6 border-b border-gray-800 text-center">
+            <h1 class="text-neon font-bold text-lg tracking-widest uppercase">Portal del Viento</h1>
+            <p class="text-white text-xs mt-1 font-bold italic">ALFAJORES</p>
+        </div>
+        <nav class="flex-1 p-4 space-y-1 text-sm overflow-y-auto">
+            <a href="/admin"          class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">📊 Tablero</a>
+            <a href="/catalogo"       class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">📦 Catálogo</a>
+            <a href="/insumos"        class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">🧪 Insumos</a>
+            <a href="/produccion"     class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">🏭 Producción</a>
+            <a href="/proveedores"    class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">🏪 Proveedores</a>
+            <a href="/distribuidores" class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">🚚 Distribuidores</a>
+            <a href="/historial-b2b"  class="block bg-gray-900 text-white py-2 px-4 rounded-lg border-l-4 border-neon font-medium">📋 Pedidos B2B</a>
+            <a href="/empleados"      class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">👥 Empleados</a>
+            <a href="/reportes"       class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">📈 Reportes</a>
+            <a href="/configuracion"  class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">⚙️ Configuración</a>
+        </nav>
+        <div id="usuario-info" class="p-4 border-t border-gray-800 text-xs text-gray-500 text-center"></div>
+    </aside>
+
+    <main class="flex-1 flex flex-col overflow-hidden">
+        <header class="bg-gray-900 border-b border-gray-800 py-4 px-8 flex justify-between items-center shrink-0">
+            <h2 class="text-xl font-bold text-white">Pedidos B2B</h2>
+            <button onclick="abrirModalNuevo()" class="bg-neon hover:bg-yellow-300 text-black font-bold py-2 px-6 rounded-lg transition">+ Nuevo Pedido</button>
+        </header>
+
+        <div class="bg-gray-900 border-b border-gray-800 px-8 py-3 flex flex-wrap gap-3 items-center shrink-0">
+            <select id="filtro-estado" class="bg-gray-800 border border-gray-700 text-white rounded p-2 text-sm">
+                <option value="">Todos los estados</option>
+                <option value="Pendiente">Pendiente</option>
+                <option value="Preparado">Preparado</option>
+                <option value="Despachado">Despachado</option>
+                <option value="Cancelado">Cancelado</option>
+            </select>
+            <select id="filtro-dist" class="bg-gray-800 border border-gray-700 text-white rounded p-2 text-sm">
+                <option value="">Todos los distribuidores</option>
+            </select>
+            <select id="filtro-periodo" class="bg-gray-800 border border-gray-700 text-white rounded p-2 text-sm">
+                <option value="mes" selected>Este mes</option>
+                <option value="semana">Esta semana</option>
+                <option value="hoy">Hoy</option>
+                <option value="todo">Todo</option>
+            </select>
+            <button onclick="cargarPedidos()" class="bg-neon text-black font-bold px-4 py-2 rounded text-sm">Filtrar</button>
+            <button onclick="limpiarFiltros()" class="text-gray-400 hover:text-white text-sm">↻ Limpiar</button>
+        </div>
+
+        <div class="flex-1 overflow-y-auto p-6">
+            <div class="bg-black rounded-xl border border-gray-800 overflow-hidden">
+                <table class="w-full text-left">
+                    <thead class="bg-gray-950 text-xs text-gray-400 uppercase">
+                        <tr>
+                            <th class="p-4">N° Pedido</th>
+                            <th class="p-4">Fecha</th>
+                            <th class="p-4">Distribuidor</th>
+                            <th class="p-4">Importe</th>
+                            <th class="p-4">Estado</th>
+                            <th class="p-4 text-right">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tabla-b2b" class="divide-y divide-gray-800 text-sm">
+                        <tr><td colspan="6" class="p-4 text-center text-gray-500">Cargando...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+
+    <!-- Modal Detalle -->
+    <div id="modal-detalle" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
+        <div class="bg-gray-900 border border-gray-700 rounded-xl p-6 w-[600px] shadow-2xl max-h-[85vh] overflow-y-auto">
+            <div class="flex justify-between items-start mb-4">
+                <div>
+                    <h3 id="det-titulo" class="text-lg font-bold text-white"></h3>
+                    <p id="det-dist" class="text-neon text-sm font-bold"></p>
+                    <p id="det-fecha" class="text-gray-500 text-xs"></p>
+                </div>
+                <button onclick="cerrarModales()" class="text-gray-500 hover:text-white text-2xl">×</button>
+            </div>
+            <div id="tabla-det" class="mb-3"></div>
+
+            <!-- Agregar producto -->
+            <div class="border border-dashed border-gray-700 rounded-lg p-3 mb-4">
+                <p class="text-xs text-gray-500 font-bold mb-2">+ Agregar producto al pedido</p>
+                <div class="flex gap-2 flex-wrap">
+                    <select id="agregar-prod" class="flex-1 min-w-0 bg-black border border-gray-700 text-white rounded p-2 text-xs"></select>
+                    <input type="number" id="agregar-cant" min="1" value="1" class="w-16 bg-black border border-gray-700 text-white rounded p-2 text-xs text-center">
+                    <input type="number" id="agregar-precio" step="0.01" placeholder="Precio $" class="w-28 bg-black border border-neon text-white rounded p-2 text-xs">
+                    <button onclick="agregarProducto()" class="bg-neon text-black font-bold px-3 py-1 rounded text-xs hover:bg-yellow-300">Agregar</button>
+                </div>
+            </div>
+
+            <div class="border-t border-gray-700 pt-3 flex justify-between items-center mb-4">
+                <span class="font-bold text-gray-400">TOTAL</span>
+                <span id="det-total" class="font-bold text-neon text-xl"></span>
+            </div>
+
+            <div class="grid grid-cols-2 gap-2 mb-4">
+                <button onclick="imprimirOrden()" class="border border-gray-600 hover:border-gray-400 text-gray-300 hover:text-white py-2 px-3 rounded text-sm transition">🖨️ Orden de Compra</button>
+                <button onclick="imprimirRemito()" class="border border-gray-600 hover:border-gray-400 text-gray-300 hover:text-white py-2 px-3 rounded text-sm transition">📄 Remito</button>
+                <button onclick="imprimirRotulo()" class="border border-gray-600 hover:border-gray-400 text-gray-300 hover:text-white py-2 px-3 rounded text-sm transition">🏷️ Rótulo / Guía</button>
+                <button onclick="wsp('preparado')" class="bg-green-800 hover:bg-green-700 text-white py-2 px-3 rounded text-sm transition">📱 WSP Listo</button>
+                <button onclick="wsp('despachado')" class="bg-green-700 hover:bg-green-600 text-white py-2 px-3 rounded text-sm transition">📱 WSP Despachado</button>
+                <button onclick="guardarCambios()" class="bg-neon text-black font-bold py-2 px-3 rounded text-sm hover:bg-yellow-300">💾 Guardar Cambios</button>
+            </div>
+
+            <div class="flex justify-between items-center border-t border-gray-700 pt-4">
+                <div class="flex gap-2">
+                    <button onclick="cambiarEstado('Preparado')" class="text-xs bg-blue-700 hover:bg-blue-600 text-white px-3 py-1.5 rounded font-bold">Preparar</button>
+                    <button onclick="cambiarEstado('Despachado')" class="text-xs bg-green-700 hover:bg-green-600 text-white px-3 py-1.5 rounded font-bold">Despachar</button>
+                    <button onclick="cambiarEstado('Cancelado')" class="text-xs bg-red-800 hover:bg-red-700 text-white px-3 py-1.5 rounded font-bold">Cancelar</button>
+                </div>
+                <button onclick="eliminarPedido()" class="text-xs text-red-500 hover:text-red-400 font-bold">🗑 Eliminar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Nuevo Pedido -->
+    <div id="modal-nuevo" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
+        <div class="bg-gray-900 border border-gray-700 rounded-xl p-6 w-[580px] shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-lg font-bold text-white border-l-4 border-neon pl-2">Nuevo Pedido B2B</h3>
+                <button onclick="cerrarModales()" class="text-gray-500 hover:text-white text-2xl">×</button>
+            </div>
+            <div class="grid grid-cols-2 gap-4 mb-4">
+                <div>
+                    <label class="block text-xs text-gray-500 font-bold mb-1">Distribuidor</label>
+                    <select id="np-dist" class="w-full bg-black border border-gray-700 text-white rounded p-2 text-sm"></select>
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 font-bold mb-1">Fecha</label>
+                    <input type="date" id="np-fecha" class="w-full bg-black border border-gray-700 text-white rounded p-2 text-sm">
+                </div>
+            </div>
+            <h4 class="text-sm font-bold text-white mb-2">Productos</h4>
+            <div id="np-items" class="space-y-2 mb-3 max-h-64 overflow-y-auto"></div>
+            <div class="flex justify-between items-center border-t border-gray-700 pt-3 mb-4">
+                <span class="text-gray-400 font-bold text-sm">Total:</span>
+                <span id="np-total" class="text-neon font-bold text-xl">$ 0</span>
+            </div>
+            <div class="flex justify-end gap-3">
+                <button onclick="cerrarModales()" class="px-4 py-2 text-gray-400 hover:text-white font-bold">Cancelar</button>
+                <button id="btn-crear" onclick="crearPedido()" class="bg-neon text-black px-6 py-2 rounded font-bold hover:bg-yellow-300 disabled:opacity-50">Crear Pedido</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        var API_URL = "http://127.0.0.1:8000/api";
+        var usr = JSON.parse(sessionStorage.getItem('usuario') || '{}');
+        if (usr.nombre) document.getElementById('usuario-info').textContent = usr.nombre + ' ' + usr.apellido + ' · ' + usr.rol;
+
+        var distribuidores = [], empresa = {}, pedidoActual = null, itemsActuales = [], todosProductos = [];
+
+        var COLORES = {
+            Pendiente:  'bg-yellow-900/40 text-yellow-400',
+            Preparado:  'bg-blue-900/40 text-blue-400',
+            Despachado: 'bg-green-900/40 text-green-400',
+            Cancelado:  'bg-red-900/40 text-red-500'
+        };
+
+        function fechaDesde() {
+            var p = document.getElementById('filtro-periodo').value;
+            var hoy = new Date(); hoy.setHours(0,0,0,0);
+            if (p === 'hoy')    return hoy;
+            if (p === 'semana') { var d = new Date(hoy); d.setDate(d.getDate() - d.getDay()); return d; }
+            if (p === 'mes')    return new Date(hoy.getFullYear(), hoy.getMonth(), 1);
+            return null;
+        }
+
+        function limpiarFiltros() {
+            document.getElementById('filtro-estado').value = '';
+            document.getElementById('filtro-dist').value = '';
+            document.getElementById('filtro-periodo').value = 'mes';
+            cargarPedidos();
+        }
+
+        async function init() {
+            var r1 = await fetch(API_URL + '/distribuidores_lista').then(function(r) { return r.json(); });
+            var r2 = await fetch(API_URL + '/empresa').then(function(r) { return r.json(); }).catch(function() { return {}; });
+            distribuidores = r1;
+            empresa = r2 || {};
+
+            var sel = document.getElementById('filtro-dist');
+            distribuidores.forEach(function(d) {
+                sel.innerHTML += '<option value="' + d.id + '">' + d.razon_social + '</option>';
+            });
+            await cargarPedidos();
+        }
+
+        async function cargarPedidos() {
+            var estado = document.getElementById('filtro-estado').value;
+            var dist   = document.getElementById('filtro-dist').value;
+            var url    = API_URL + '/pedidos_b2b/historial';
+            var params = [];
+            if (estado) params.push('estado=' + estado);
+            if (dist)   params.push('id_distribuidor=' + dist);
+            if (params.length) url += '?' + params.join('&');
+
+            var lista = await fetch(url).then(function(r) { return r.json(); });
+            var desde = fechaDesde();
+            if (desde) lista = lista.filter(function(p) { return new Date(p.fecha) >= desde; });
+
+            var tbody = document.getElementById('tabla-b2b');
+            tbody.innerHTML = '';
+            if (!lista.length) {
+                tbody.innerHTML = '<tr><td colspan="6" class="p-4 text-center text-gray-500">Sin pedidos.</td></tr>';
+                return;
+            }
+            lista.forEach(function(p) { tbody.appendChild(crearFila(p)); });
+        }
+
+        function crearFila(p) {
+            var fecha = new Date(p.fecha).toLocaleDateString('es-AR');
+            var color = COLORES[p.estado] || 'bg-gray-800 text-gray-400';
+            var tr = document.createElement('tr');
+            tr.className = 'hover:bg-gray-900 transition';
+
+            // Celdas de datos
+            var celdas = [
+                { txt: '#' + String(p.id).padStart(4,'0'), cls: 'p-4 font-bold text-neon text-sm' },
+                { txt: fecha, cls: 'p-4 text-gray-400 text-sm' },
+                { txt: p.distribuidor, cls: 'p-4 font-bold text-white' },
+                { txt: '$ ' + parseFloat(p.total).toLocaleString('es-AR'), cls: 'p-4 text-white font-bold' }
+            ];
+            celdas.forEach(function(c) {
+                var td = document.createElement('td');
+                td.className = c.cls;
+                td.textContent = c.txt;
+                tr.appendChild(td);
+            });
+
+            // Estado
+            var tdEst = document.createElement('td'); tdEst.className = 'p-4';
+            var span = document.createElement('span');
+            span.className = 'text-xs px-3 py-1 rounded-full font-bold ' + color;
+            span.textContent = p.estado;
+            tdEst.appendChild(span);
+            tr.appendChild(tdEst);
+
+            // Acciones
+            var tdAcc = document.createElement('td'); tdAcc.className = 'p-4';
+            var div = document.createElement('div'); div.className = 'flex justify-end items-center gap-1';
+
+            function btn(txt, cls, fn) {
+                var b = document.createElement('button');
+                b.className = cls; b.textContent = txt; b.onclick = fn; return b;
+            }
+
+            div.appendChild(btn('📋 Orden', 'text-xs border border-gray-700 bg-gray-800 hover:bg-gray-700 text-gray-300 px-2 py-1.5 rounded transition', function() { abrirYAccion(p.id, 'orden'); }));
+            div.appendChild(btn('📄 Remito', 'text-xs border border-gray-700 bg-gray-800 hover:bg-gray-700 text-gray-300 px-2 py-1.5 rounded transition', function() { abrirYAccion(p.id, 'remito'); }));
+            div.appendChild(btn('🏷️ Rótulo', 'text-xs border border-yellow-800 bg-yellow-900/30 text-yellow-400 px-2 py-1.5 rounded transition', function() { abrirYAccion(p.id, 'rotulo'); }));
+
+            if (p.estado !== 'Despachado' && p.estado !== 'Cancelado') {
+                div.appendChild(btn('✓ Despachar', 'text-xs bg-green-700 hover:bg-green-600 text-white font-bold px-2 py-1.5 rounded transition', function() { despacharRapido(p.id); }));
+            }
+
+            // Menú ⋮
+            var rel = document.createElement('div'); rel.className = 'relative';
+            var btnMenu = btn('⋮', 'text-xs border border-gray-700 bg-gray-800 hover:bg-gray-700 text-gray-400 px-2 py-1.5 rounded', function(e) {
+                e.stopPropagation();
+                cerrarMenus();
+                menu.classList.toggle('hidden');
+            });
+            var menu = document.createElement('div');
+            menu.className = 'hidden absolute right-0 top-8 bg-gray-800 border border-gray-700 rounded-lg shadow-xl z-20 w-44';
+
+            function mBtn(txt, cls, fn) {
+                var b = document.createElement('button');
+                b.className = 'w-full text-left px-4 py-2 text-sm hover:bg-gray-700 ' + cls;
+                b.textContent = txt;
+                b.onclick = function() { menu.classList.add('hidden'); fn(); };
+                return b;
+            }
+
+            menu.appendChild(mBtn('👁 Ver detalle',    'text-gray-300', function() { abrirDetalle(p.id); }));
+            menu.appendChild(mBtn('📱 WSP Listo',      'text-gray-300', function() { wspRapido(p.id, 'preparado'); }));
+            menu.appendChild(mBtn('📱 WSP Despachado', 'text-gray-300', function() { wspRapido(p.id, 'despachado'); }));
+            menu.appendChild(mBtn('📦 Preparar',       'text-blue-400', function() { estadoRapido(p.id, 'Preparado'); }));
+            menu.appendChild(mBtn('✕ Cancelar',        'text-red-400',  function() { estadoRapido(p.id, 'Cancelado'); }));
+            var hr = document.createElement('hr'); hr.className = 'border-gray-700'; menu.appendChild(hr);
+            menu.appendChild(mBtn('🗑 Eliminar',       'text-red-500',  function() { eliminarRapido(p.id); }));
+
+            rel.appendChild(btnMenu); rel.appendChild(menu);
+            div.appendChild(rel); tdAcc.appendChild(div); tr.appendChild(tdAcc);
+            return tr;
+        }
+
+        function cerrarMenus() {
+            document.querySelectorAll('.relative div').forEach(function(m) { m.classList.add('hidden'); });
+        }
+        document.addEventListener('click', cerrarMenus);
+
+        // ── ACCIONES RÁPIDAS DESDE TABLA ────────────────────────
+
+        async function cargarPedidoYItems(id) {
+            var lista = await fetch(API_URL + '/pedidos_b2b/historial').then(function(r) { return r.json(); });
+            pedidoActual = lista.find(function(p) { return p.id === id; });
+            itemsActuales = await fetch(API_URL + '/pedidos_b2b/' + id + '/detalle').then(function(r) { return r.json(); });
+        }
+
+        async function abrirYAccion(id, accion) {
+            await cargarPedidoYItems(id);
+            if (accion === 'orden')  imprimirOrden();
+            if (accion === 'remito') imprimirRemito();
+            if (accion === 'rotulo') imprimirRotulo();
+        }
+
+        async function despacharRapido(id) {
+            if (!confirm('¿Marcar como Despachado?')) return;
+            await fetch(API_URL + '/pedidos/' + id + '/estado?estado=Despachado', { method:'PUT' });
+            await cargarPedidoYItems(id);
+            wsp('despachado');
+            cargarPedidos();
+        }
+
+        async function wspRapido(id, tipo) {
+            await cargarPedidoYItems(id);
+            wsp(tipo);
+        }
+
+        async function estadoRapido(id, estado) {
+            await fetch(API_URL + '/pedidos/' + id + '/estado?estado=' + estado, { method:'PUT' });
+            cargarPedidos();
+        }
+
+        async function eliminarRapido(id) {
+            if (!confirm('¿Eliminar el pedido #' + id + '?')) return;
+            await fetch(API_URL + '/pedidos_b2b/' + id, { method:'DELETE' });
+            cargarPedidos();
+        }
+
+        // ── MODAL DETALLE ────────────────────────────────────────
+
+        async function abrirDetalle(id) {
+            await cargarPedidoYItems(id);
+            if (!pedidoActual) return;
+
+            var dist = distribuidores.find(function(d) { return String(d.id) === String(pedidoActual.id_distribuidor); }) || {};
+            document.getElementById('det-titulo').textContent = 'Pedido #' + String(id).padStart(4,'0');
+            document.getElementById('det-dist').textContent   = dist.razon_social || pedidoActual.distribuidor;
+            document.getElementById('det-fecha').textContent  = new Date(pedidoActual.fecha).toLocaleString('es-AR', {dateStyle:'long', timeStyle:'short'});
+            document.getElementById('det-total').textContent  = '$ ' + parseFloat(pedidoActual.total).toLocaleString('es-AR');
+
+            renderDetalle();
+            await cargarProductosAgregar();
+            document.getElementById('modal-detalle').classList.replace('modal-oculto','modal-visible');
+        }
+
+        function renderDetalle() {
+            var cont = document.getElementById('tabla-det');
+            cont.innerHTML = '';
+            var tabla = document.createElement('table');
+            tabla.className = 'w-full text-sm mb-2';
+            tabla.innerHTML = '<thead class="text-xs text-gray-400 border-b border-gray-700"><tr><th class="py-2 text-left">Producto</th><th class="py-2 text-center w-20">Cant.</th><th class="py-2 text-right">Precio</th><th class="py-2 text-right">Subtotal</th></tr></thead>';
+            var tbody = document.createElement('tbody');
+            tbody.className = 'divide-y divide-gray-800';
+            itemsActuales.forEach(function(i, idx) {
+                var tr = document.createElement('tr');
+                var inp = document.createElement('input');
+                inp.type = 'number'; inp.min = '0'; inp.value = i.cantidad;
+                inp.className = 'w-16 bg-gray-800 border border-gray-700 text-white rounded p-1 text-center text-sm';
+                inp.dataset.idx = idx;
+                inp.oninput = function() { actualizarSubtotal(idx, this); };
+
+                var tdProd = document.createElement('td'); tdProd.className = 'py-3 text-white font-bold'; tdProd.textContent = i.producto;
+                var tdCant = document.createElement('td'); tdCant.className = 'py-3 text-center'; tdCant.appendChild(inp);
+                var tdPric = document.createElement('td'); tdPric.className = 'py-3 text-right text-gray-300'; tdPric.textContent = '$ ' + parseFloat(i.precio_unitario).toLocaleString('es-AR');
+                var tdSub  = document.createElement('td'); tdSub.className = 'py-3 text-right text-neon font-bold'; tdSub.id = 'sub-' + idx; tdSub.textContent = '$ ' + parseFloat(i.subtotal).toLocaleString('es-AR');
+                tr.appendChild(tdProd); tr.appendChild(tdCant); tr.appendChild(tdPric); tr.appendChild(tdSub);
+                tbody.appendChild(tr);
+            });
+            tabla.appendChild(tbody);
+            cont.appendChild(tabla);
+        }
+
+        function actualizarSubtotal(idx, inp) {
+            var cant   = parseInt(inp.value) || 0;
+            var precio = parseFloat(itemsActuales[idx].precio_unitario);
+            var sub    = cant * precio;
+            itemsActuales[idx].cantidad = cant;
+            itemsActuales[idx].subtotal = sub;
+            document.getElementById('sub-' + idx).textContent = '$ ' + sub.toLocaleString('es-AR');
+            var total = itemsActuales.reduce(function(a, b) { return a + b.cantidad * parseFloat(b.precio_unitario); }, 0);
+            document.getElementById('det-total').textContent = '$ ' + total.toLocaleString('es-AR');
+        }
+
+        async function cargarProductosAgregar() {
+            if (!todosProductos.length) {
+                todosProductos = await fetch(API_URL + '/productos/con_presentaciones').then(function(r) { return r.json(); });
+            }
+            var sel = document.getElementById('agregar-prod');
+            sel.innerHTML = '<option value="">— Producto —</option>';
+            todosProductos.forEach(function(p) {
+                var opt = document.createElement('option');
+                opt.value = p.id;
+                var pres = p.presentaciones && p.presentaciones.length ? p.presentaciones[0] : null;
+                opt.dataset.precio = pres ? parseFloat(pres.precio_mayorista) : 0;
+                opt.textContent = p.nombre;
+                sel.appendChild(opt);
+            });
+            sel.onchange = function() {
+                var opt = sel.options[sel.selectedIndex];
+                if (opt && opt.dataset.precio) document.getElementById('agregar-precio').value = opt.dataset.precio;
+            };
+        }
+
+        function agregarProducto() {
+            var sel    = document.getElementById('agregar-prod');
+            var idProd = parseInt(sel.value);
+            var cant   = parseInt(document.getElementById('agregar-cant').value) || 1;
+            var precio = parseFloat(document.getElementById('agregar-precio').value) || 0;
+            var nombre = sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].textContent : '';
+            if (!idProd) { alert('Seleccioná un producto.'); return; }
+            if (!precio) { alert('Ingresá el precio.'); return; }
+
+            var ex = itemsActuales.find(function(i) { return i.id_producto === idProd; });
+            if (ex) {
+                ex.cantidad += cant;
+                ex.subtotal  = ex.cantidad * parseFloat(ex.precio_unitario);
+            } else {
+                itemsActuales.push({ id_producto: idProd, producto: nombre, sku: '', cantidad: cant, precio_unitario: precio, subtotal: cant * precio });
+            }
+            sel.value = ''; document.getElementById('agregar-cant').value = 1; document.getElementById('agregar-precio').value = '';
+            renderDetalle();
+            var total = itemsActuales.reduce(function(a, b) { return a + b.cantidad * parseFloat(b.precio_unitario); }, 0);
+            document.getElementById('det-total').textContent = '$ ' + total.toLocaleString('es-AR');
+        }
+
+        async function guardarCambios() {
+            var detalle = itemsActuales.map(function(i) { return { id_producto: i.id_producto, cantidad: i.cantidad, precio_unitario: parseFloat(i.precio_unitario) }; });
+            var total   = detalle.reduce(function(a, b) { return a + b.cantidad * b.precio_unitario; }, 0);
+            await fetch(API_URL + '/pedidos_b2b/' + pedidoActual.id + '/actualizar', {
+                method:'PUT', headers:{'Content-Type':'application/json'},
+                body: JSON.stringify({ detalle: detalle, total: total })
+            });
+            alert('✅ Pedido actualizado');
+            cerrarModales(); cargarPedidos();
+        }
+
+        async function cambiarEstado(estado) {
+            await fetch(API_URL + '/pedidos/' + pedidoActual.id + '/estado?estado=' + estado, { method:'PUT' });
+            cerrarModales(); cargarPedidos();
+        }
+
+        async function eliminarPedido() {
+            if (!confirm('¿Eliminar este pedido?')) return;
+            await fetch(API_URL + '/pedidos_b2b/' + pedidoActual.id, { method:'DELETE' });
+            cerrarModales(); cargarPedidos();
+        }
+
+        // ── WHATSAPP ─────────────────────────────────────────────
+        function wsp(tipo) {
+            var dist = distribuidores.find(function(d) { return String(d.id) === String(pedidoActual.id_distribuidor); }) || {};
+            var num  = String(pedidoActual.id).padStart(4,'0');
+            var total = '$ ' + parseFloat(pedidoActual.total).toLocaleString('es-AR');
+            var msg = tipo === 'preparado'
+                ? '✅ *Portal del Viento*\n\nHola ' + (dist.razon_social || '') + ', su pedido *#' + num + '* está listo para despachar.\n\nTotal: ' + total + '\n\n¡Gracias! 🙏'
+                : '🚚 *Portal del Viento*\n\nHola ' + (dist.razon_social || '') + ', su pedido *#' + num + '* fue despachado y está en camino.\n\nTotal: ' + total + '\n\n¡Que lo disfruten! 🍫';
+            var tel = dist.telefono ? dist.telefono.replace(/\D/g,'') : '';
+            window.open(tel ? 'https://wa.me/54' + tel + '?text=' + encodeURIComponent(msg) : 'https://wa.me/?text=' + encodeURIComponent(msg), '_blank');
+        }
+
+        // ── PDF HELPERS ──────────────────────────────────────────
+        function membrete(doc) {
+            doc.setFillColor(20,20,20);
+            doc.rect(0, 0, 210, 38, 'F');
+            var x = 14;
+            if (empresa.logo_url) { try { doc.addImage(empresa.logo_url, 'PNG', 14, 4, 28, 28); x = 48; } catch(e) {} }
+            doc.setTextColor(228,252,116); doc.setFontSize(18); doc.setFont('helvetica','bold');
+            doc.text(empresa.nombre || 'Portal del Viento', x, 14);
+            doc.setTextColor(200,200,200); doc.setFontSize(8); doc.setFont('helvetica','normal');
+            if (empresa.razon_social) doc.text(empresa.razon_social, x, 20);
+            if (empresa.cuit)         doc.text('CUIT: ' + empresa.cuit, x, 25);
+            if (empresa.direccion)    doc.text(empresa.direccion + (empresa.localidad ? ', ' + empresa.localidad : ''), x, 30);
+            if (empresa.telefono)     doc.text('Tel: ' + empresa.telefono, 140, 20);
+            if (empresa.email)        doc.text(empresa.email, 140, 25);
+        }
+
+        function imprimirOrden() {
+            var jsPDF = window.jspdf.jsPDF;
+            var doc  = new jsPDF();
+            var num  = String(pedidoActual.id).padStart(4,'0');
+            var dist = distribuidores.find(function(d) { return String(d.id) === String(pedidoActual.id_distribuidor); }) || {};
+            membrete(doc);
+            doc.setTextColor(40,40,40); doc.setFontSize(16); doc.setFont('helvetica','bold');
+            doc.text('ORDEN DE COMPRA  N° ' + num, 105, 52, {align:'center'});
+            doc.setFontSize(9); doc.setFont('helvetica','normal');
+            doc.text('CLIENTE: ' + (dist.razon_social || pedidoActual.distribuidor), 14, 65);
+            if (dist.cuit)      doc.text('CUIT: ' + dist.cuit, 14, 71);
+            if (dist.direccion) doc.text(dist.direccion, 14, 77);
+            doc.text('Fecha: ' + new Date(pedidoActual.fecha).toLocaleDateString('es-AR'), 140, 65);
+            doc.autoTable({
+                startY: 85,
+                head: [['Producto','Cant.','Precio Unit.','Subtotal']],
+                body: itemsActuales.map(function(i) {
+                    return [i.producto, i.cantidad, '$ ' + parseFloat(i.precio_unitario).toLocaleString('es-AR'), '$ ' + parseFloat(i.subtotal).toLocaleString('es-AR')];
+                }),
+                foot: [['','','TOTAL','$ ' + parseFloat(pedidoActual.total).toLocaleString('es-AR')]],
+                headStyles: {fillColor:[30,30,30], textColor:[228,252,116], fontStyle:'bold'},
+                footStyles: {fillColor:[240,240,240], fontStyle:'bold', fontSize:10},
+                styles: {fontSize:9, cellPadding:4}
+            });
+            var y = doc.lastAutoTable.finalY + 25;
+            doc.line(14, y, 80, y); doc.line(130, y, 196, y);
+            doc.setFontSize(8);
+            doc.text('Firma cliente', 14, y+5);
+            doc.text('Firma empresa', 130, y+5);
+            mostrarPreview(doc, 'Orden de Compra #' + num, 'orden_' + num + '.pdf');
+        }
+
+        function imprimirRemito() {
+            var jsPDF = window.jspdf.jsPDF;
+            var doc  = new jsPDF();
+            var num  = String(pedidoActual.id).padStart(4,'0');
+            var dist = distribuidores.find(function(d) { return String(d.id) === String(pedidoActual.id_distribuidor); }) || {};
+            membrete(doc);
+            doc.setTextColor(40,40,40); doc.setFontSize(16); doc.setFont('helvetica','bold');
+            doc.text('REMITO  N° ' + num, 105, 52, {align:'center'});
+            doc.setFontSize(9); doc.setFont('helvetica','normal');
+            doc.text('DESTINATARIO: ' + (dist.razon_social || pedidoActual.distribuidor), 14, 65);
+            if (dist.cuit)      doc.text('CUIT: ' + dist.cuit, 14, 71);
+            if (dist.direccion) doc.text(dist.direccion + (dist.localidad ? ' - ' + dist.localidad : ''), 14, 77);
+            doc.text('Fecha: ' + new Date(pedidoActual.fecha).toLocaleDateString('es-AR'), 140, 65);
+            doc.text('Estado: ' + pedidoActual.estado, 140, 71);
+            doc.autoTable({
+                startY: 85,
+                head: [['Producto','Cantidad','Recibido conforme']],
+                body: itemsActuales.map(function(i) { return [i.producto, i.cantidad, '□']; }),
+                headStyles: {fillColor:[30,30,30], textColor:[228,252,116], fontStyle:'bold'},
+                styles: {fontSize:9, cellPadding:4}
+            });
+            var y = doc.lastAutoTable.finalY + 25;
+            doc.line(14, y, 80, y); doc.line(130, y, 196, y);
+            doc.setFontSize(8);
+            doc.text('Firma recepción', 14, y+5);
+            doc.text('Firma empresa', 130, y+5);
+            mostrarPreview(doc, 'Remito #' + num, 'remito_' + num + '.pdf');
+        }
+
+        function imprimirRotulo() {
+            // Pedir empresa de transporte primero
+            document.getElementById('input-transporte').value = '';
+            document.getElementById('modal-transporte').classList.replace('modal-oculto','modal-visible');
+        }
+
+        function confirmarTransporte() {
+            var transporte = document.getElementById('input-transporte').value.trim() || '—';
+            document.getElementById('modal-transporte').classList.replace('modal-visible','modal-oculto');
+            generarRotulo(transporte);
+        }
+
+        function generarRotulo(transporte) {
+            var jsPDF = window.jspdf.jsPDF;
+            var doc  = new jsPDF({orientation:'portrait', unit:'mm', format:'a4'});
+            var num  = String(pedidoActual.id).padStart(4,'0');
+            var dist = distribuidores.find(function(d) { return String(d.id) === String(pedidoActual.id_distribuidor); }) || {};
+
+            // Generar 2 rótulos por hoja (arriba y abajo)
+            [0, 140].forEach(function(offsetY) {
+                dibujarRotulo(doc, dist, num, transporte, offsetY);
+                if (offsetY === 0) {
+                    // Línea de corte entre los dos rótulos
+                    doc.setLineDashPattern([3,3], 0);
+                    doc.setDrawColor(150,150,150);
+                    doc.line(10, 138, 200, 138);
+                    doc.setLineDashPattern([], 0);
+                    doc.setDrawColor(0,0,0);
+                    doc.setFontSize(6); doc.setTextColor(150,150,150);
+                    doc.text('✂ Cortar aquí', 85, 140);
+                }
+            });
+
+            mostrarPreview(doc, 'Rótulo #' + num, 'rotulo_' + num + '.pdf');
+        }
+
+        function dibujarRotulo(doc, dist, num, transporte, offsetY) {
+            var H = 132; // altura de cada rótulo en mm
+            var y = offsetY;
+
+            // Borde exterior
+            doc.setLineWidth(0.8); doc.setDrawColor(0,0,0);
+            doc.rect(10, y+4, 190, H);
+
+            // ── REMITENTE ────────────────────────────────────────
+            doc.setFillColor(240,240,240);
+            doc.rect(10, y+4, 190, 22, 'F');
+            doc.setFontSize(7); doc.setTextColor(80,80,80); doc.setFont('helvetica','bold');
+            doc.text('REMITENTE:', 14, y+11);
+            doc.setFontSize(10); doc.setTextColor(20,20,20);
+            doc.text((empresa.nombre || 'Portal del Viento').toUpperCase(), 42, y+11);
+            doc.setFont('helvetica','normal'); doc.setFontSize(8);
+            var remInfo = [];
+            if (empresa.cuit)     remInfo.push('CUIT: ' + empresa.cuit);
+            if (empresa.telefono) remInfo.push('Tel: ' + empresa.telefono);
+            if (remInfo.length)   doc.text(remInfo.join(' | '), 14, y+17);
+            if (empresa.direccion) {
+                var dirRem = empresa.direccion + (empresa.localidad ? ', ' + empresa.localidad : '') + (empresa.provincia ? ', ' + empresa.provincia : '');
+                doc.text(dirRem, 14, y+23);
+            }
+
+            // Línea separadora
+            doc.setLineWidth(0.5); doc.line(10, y+26, 200, y+26);
+
+            // ── DESTINATARIO ─────────────────────────────────────
+            doc.setFontSize(7); doc.setTextColor(80,80,80); doc.setFont('helvetica','bold');
+            doc.text('DESTINATARIO OFICIAL:', 14, y+33);
+            doc.setFontSize(16); doc.setTextColor(0,0,0); doc.setFont('helvetica','bold');
+            doc.text((dist.razon_social || pedidoActual.distribuidor).toUpperCase(), 14, y+43);
+
+            doc.setLineWidth(0.3); doc.line(14, y+46, 196, y+46);
+
+            doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(20,20,20);
+            var dyD = y+54;
+            if (dist.dni || dist.cuit) {
+                var dc = [];
+                if (dist.dni)  dc.push('DNI: ' + dist.dni);
+                if (dist.cuit) dc.push('CUIT: ' + dist.cuit);
+                doc.setFont('helvetica','bold'); doc.text('DNI / CUIT:', 14, dyD);
+                doc.setFont('helvetica','normal'); doc.text(dc.join('  |  '), 50, dyD); dyD += 8;
+            }
+            if (dist.telefono) {
+                doc.setFont('helvetica','bold'); doc.text('Teléfono:', 14, dyD);
+                doc.setFont('helvetica','normal'); doc.text(dist.telefono, 50, dyD); dyD += 8;
+            }
+            if (dist.direccion) {
+                doc.setFont('helvetica','bold'); doc.text('Dirección:', 14, dyD);
+                doc.setFont('helvetica','normal'); doc.text(dist.direccion, 50, dyD); dyD += 8;
+            }
+            if (dist.localidad) {
+                doc.setFont('helvetica','bold'); doc.text('Localidad:', 14, dyD);
+                doc.setFont('helvetica','normal');
+                var locProv = dist.localidad + (dist.provincia ? ' (' + dist.provincia + ')' : '');
+                doc.text(locProv, 50, dyD); dyD += 8;
+            }
+            if (dist.cp) {
+                doc.setFont('helvetica','bold'); doc.text('Código Postal:', 14, dyD);
+                doc.setFont('helvetica','normal'); doc.text(dist.cp, 50, dyD); dyD += 8;
+            }
+
+            // ── TRANSPORTE ───────────────────────────────────────
+            var tY = y + 100;
+            doc.setLineWidth(0.5);
+            doc.setLineDashPattern([2,2], 0);
+            doc.rect(30, tY, 150, 20);
+            doc.setLineDashPattern([], 0);
+            doc.setFontSize(7); doc.setTextColor(80,80,80); doc.setFont('helvetica','bold');
+            doc.text('VÍA DE TRANSPORTE:', 105, tY+6, {align:'center'});
+            doc.setFontSize(14); doc.setTextColor(0,0,0);
+            doc.text(transporte.toUpperCase(), 105, tY+15, {align:'center'});
+
+            // ── N° PEDIDO ────────────────────────────────────────
+            doc.setLineWidth(0.3); doc.line(14, y+122, 196, y+122);
+            doc.setFontSize(10); doc.setTextColor(150,150,150); doc.setFont('helvetica','normal');
+            doc.text('|||| #' + (pedidoActual.id_pedido_externo || 'PV-' + num) + ' ||||', 105, y+129, {align:'center'});
+        }
+
+        // ── NUEVO PEDIDO ─────────────────────────────────────────
+        async function abrirModalNuevo() {
+            var sel = document.getElementById('np-dist');
+            sel.innerHTML = distribuidores.map(function(d) { return '<option value="' + d.id + '">' + d.razon_social + '</option>'; }).join('');
+            document.getElementById('np-fecha').value = new Date().toISOString().split('T')[0];
+            document.getElementById('np-total').textContent = '$ 0';
+
+            if (!todosProductos.length) {
+                todosProductos = await fetch(API_URL + '/productos/con_presentaciones').then(function(r) { return r.json(); });
+            }
+            var cont = document.getElementById('np-items');
+            cont.innerHTML = '';
+            todosProductos.forEach(function(p) {
+                if (!p.presentaciones || !p.presentaciones.length) return;
+                var presOpts = p.presentaciones.map(function(pr) {
+                    return '<option value="' + pr.id + '" data-precio="' + pr.precio_mayorista + '">' + pr.nombre + ' - $ ' + parseFloat(pr.precio_mayorista).toLocaleString('es-AR') + '</option>';
+                }).join('');
+                var div = document.createElement('div');
+                div.className = 'flex items-center gap-3 bg-black border border-gray-800 rounded-lg px-3 py-2';
+                div.innerHTML =
+                    '<p class="flex-1 text-white text-sm font-bold truncate">' + p.nombre + '</p>' +
+                    '<select class="bg-gray-900 border border-gray-700 text-white rounded p-1 text-xs np-pres" data-prod="' + p.id + '" onchange="recalcNuevo()">' + presOpts + '</select>' +
+                    '<input type="number" min="0" value="0" class="w-16 bg-gray-900 border border-gray-700 text-white rounded p-1 text-sm text-center np-cant" oninput="recalcNuevo()">';
+                cont.appendChild(div);
+            });
+            document.getElementById('modal-nuevo').classList.replace('modal-oculto','modal-visible');
+        }
+
+        function recalcNuevo() {
+            var total = 0;
+            document.querySelectorAll('#np-items > div').forEach(function(row) {
+                var cant  = parseInt(row.querySelector('.np-cant').value) || 0;
+                var sel   = row.querySelector('.np-pres');
+                var precio = parseFloat(sel.options[sel.selectedIndex].dataset.precio) || 0;
+                total += cant * precio;
+            });
+            document.getElementById('np-total').textContent = '$ ' + total.toLocaleString('es-AR');
+        }
+
+        async function crearPedido() {
+            var id_dist = parseInt(document.getElementById('np-dist').value);
+            if (!id_dist) { alert('Seleccioná un distribuidor.'); return; }
+            var detalle = [], total = 0;
+            document.querySelectorAll('#np-items > div').forEach(function(row) {
+                var cant  = parseInt(row.querySelector('.np-cant').value) || 0;
+                if (!cant) return;
+                var sel    = row.querySelector('.np-pres');
+                var precio = parseFloat(sel.options[sel.selectedIndex].dataset.precio) || 0;
+                var prodId = parseInt(sel.dataset.prod);
+                total     += cant * precio;
+                detalle.push({ id_producto: prodId, cantidad: cant, precio_unitario: precio });
+            });
+            if (!detalle.length) { alert('Agregá al menos un producto con cantidad.'); return; }
+            var btn = document.getElementById('btn-crear');
+            btn.disabled = true; btn.textContent = 'Creando...';
+            try {
+                var res = await fetch(API_URL + '/pedidos_b2b', {
+                    method:'POST', headers:{'Content-Type':'application/json'},
+                    body: JSON.stringify({ id_distribuidor: id_dist, total: total, detalle: detalle })
+                });
+                if (res.ok) { cerrarModales(); cargarPedidos(); }
+                else { var e = await res.json(); alert('Error: ' + (e.detail || 'Error al crear')); }
+            } finally { btn.disabled = false; btn.textContent = 'Crear Pedido'; }
+        }
+
+        function cerrarModales() {
+            document.querySelectorAll('.modal-visible').forEach(function(m) { m.classList.replace('modal-visible','modal-oculto'); });
+            pedidoActual = null; itemsActuales = [];
+        }
+
+        window.onload = init;
+    
+        var _pdfDoc = null, _pdfNombre = '';
+
+        function mostrarPreview(doc, titulo, nombre) {
+            _pdfDoc = doc;
+            _pdfNombre = nombre;
+            document.getElementById('preview-titulo').textContent = titulo;
+            var blob = doc.output('blob');
+            var url  = URL.createObjectURL(blob);
+            document.getElementById('preview-iframe').src = url;
+            document.getElementById('modal-preview').classList.replace('modal-oculto','modal-visible');
+        }
+
+        function descargarPDF() {
+            if (_pdfDoc) _pdfDoc.save(_pdfNombre);
+        }
+
+        function imprimirPDF() {
+            var iframe = document.getElementById('preview-iframe');
+            iframe.contentWindow.focus();
+            iframe.contentWindow.print();
+        }
+
+    </script>
+
+    <!-- Modal Vista Previa PDF -->
+    <div id="modal-preview" class="modal-oculto fixed inset-0 bg-black/90 items-center justify-center z-[60]">
+        <div class="bg-gray-900 border border-gray-700 rounded-xl shadow-2xl w-[90vw] h-[90vh] flex flex-col">
+            <div class="flex justify-between items-center px-5 py-3 border-b border-gray-700 shrink-0">
+                <h3 id="preview-titulo" class="font-bold text-white text-lg"></h3>
+                <div class="flex gap-3">
+                    <button onclick="descargarPDF()" class="bg-neon text-black font-bold px-5 py-2 rounded-lg hover:bg-yellow-300 text-sm">⬇️ Descargar PDF</button>
+                    <button onclick="imprimirPDF()" class="bg-blue-700 hover:bg-blue-600 text-white font-bold px-5 py-2 rounded-lg text-sm">🖨️ Imprimir</button>
+                    <button onclick="document.getElementById('modal-preview').classList.replace('modal-visible','modal-oculto')" class="text-gray-400 hover:text-white text-2xl leading-none px-2">×</button>
+                </div>
+            </div>
+            <iframe id="preview-iframe" class="flex-1 w-full rounded-b-xl" style="border:none; background:white;"></iframe>
+        </div>
+    </div>
+
+
+    <!-- Modal selector transporte -->
+    <div id="modal-transporte" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-[70]">
+        <div class="bg-gray-900 border border-gray-700 rounded-xl p-6 w-80 shadow-2xl">
+            <h3 class="text-lg font-bold text-white mb-4 border-l-4 border-neon pl-2">Empresa de Transporte</h3>
+            <label class="block text-xs text-gray-500 font-bold mb-2">Nombre del transporte</label>
+            <input type="text" id="input-transporte" placeholder="Ej: CATA CARGO"
+                class="w-full bg-black border border-neon text-white rounded-lg p-3 mb-5 font-bold text-lg text-center focus:outline-none"
+                onkeydown="if(event.key==='Enter') confirmarTransporte()">
+            <div class="flex justify-end gap-3">
+                <button onclick="document.getElementById('modal-transporte').classList.replace('modal-visible','modal-oculto')" 
+                    class="px-4 py-2 text-gray-400 hover:text-white font-bold">Cancelar</button>
+                <button onclick="confirmarTransporte()" 
+                    class="bg-neon text-black px-6 py-2 rounded font-bold hover:bg-yellow-300">Generar Rótulo</button>
+            </div>
+        </div>
+    </div>
+
+</body>
+</html>

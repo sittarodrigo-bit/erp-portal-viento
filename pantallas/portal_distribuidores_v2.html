@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+    <title>Portal Mayorista | Portal del Viento</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background: #0a0a0a; }
+        .text-neon { color: #e4fc74; }
+        .bg-neon { background-color: #e4fc74; }
+        .border-neon { border-color: #e4fc74; }
+        input, select { font-size: 16px !important; }
+        .pantalla { display: none; }
+        .pantalla.activa { display: block; }
+        .tab-btn { transition: all 0.2s; }
+        .tab-btn.activo { background: #e4fc74; color: #000; font-weight: 700; }
+        .prod-card { transition: transform 0.15s; }
+        .prod-card:hover { transform: translateY(-2px); }
+        .cant-btn { width: 32px; height: 32px; border-radius: 50%; font-size: 18px; font-weight: bold; display: flex; align-items: center; justify-content: center; }
+    </style>
+</head>
+<body class="text-gray-200 font-sans min-h-screen">
+
+    <!-- ── LOGIN ──────────────────────────────────────────────── -->
+    <div id="p-login" class="pantalla activa min-h-screen flex flex-col items-center justify-center p-5">
+        <div class="w-full max-w-sm">
+            <div class="text-center mb-8">
+                <p class="text-neon font-bold text-4xl tracking-widest uppercase mb-1">PORTAL DEL VIENTO</p>
+                <div class="h-0.5 w-24 bg-neon mx-auto mb-3"></div>
+                <p class="text-gray-500 text-sm">Portal exclusivo para distribuidores</p>
+            </div>
+            <div class="bg-gray-950 border border-gray-800 rounded-2xl p-6 shadow-2xl">
+                <div id="login-err" class="hidden bg-red-900/30 border border-red-700 text-red-400 text-sm px-4 py-3 rounded-lg mb-4"></div>
+                <input type="text" id="l-user" placeholder="Usuario" autocomplete="username"
+                    class="w-full bg-black border border-gray-700 text-white rounded-xl p-4 mb-3 outline-none focus:border-neon placeholder-gray-600">
+                <input type="password" id="l-pass" placeholder="Contraseña" autocomplete="current-password"
+                    class="w-full bg-black border border-gray-700 text-white rounded-xl p-4 mb-5 outline-none focus:border-neon placeholder-gray-600"
+                    onkeydown="if(event.key==='Enter') loginDist()">
+                <button onclick="loginDist()" id="btn-login"
+                    class="w-full bg-neon text-black font-bold py-4 rounded-xl text-lg hover:bg-yellow-300 transition mb-3">
+                    Ingresar
+                </button>
+                <button onclick="mostrarPantalla('p-registro')"
+                    class="w-full border border-gray-700 text-gray-400 hover:text-white py-3 rounded-xl text-sm transition">
+                    ¿Sos nuevo? Registrate acá
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── REGISTRO ────────────────────────────────────────────── -->
+    <div id="p-registro" class="pantalla min-h-screen p-5 pt-8">
+        <div class="max-w-md mx-auto">
+            <div class="text-center mb-6">
+                <p class="text-neon font-bold text-2xl tracking-widest uppercase">PORTAL DEL VIENTO</p>
+                <p class="text-gray-500 text-sm mt-1">Registro de nuevo distribuidor</p>
+            </div>
+            <div class="bg-gray-950 border border-gray-800 rounded-2xl p-6">
+                <div id="reg-err" class="hidden bg-red-900/30 border border-red-700 text-red-400 text-sm px-4 py-3 rounded-lg mb-4"></div>
+                <p class="text-xs text-gray-500 font-bold uppercase mb-3">Datos personales / empresa</p>
+                <div class="grid grid-cols-2 gap-3 mb-4">
+                    <div class="col-span-2">
+                        <input type="text" id="r-nombre" placeholder="Nombre / Razón Social *"
+                            class="w-full bg-black border border-gray-700 text-white rounded-lg p-3 outline-none focus:border-neon placeholder-gray-600">
+                    </div>
+                    <input type="text" id="r-dni" placeholder="DNI"
+                        class="bg-black border border-gray-700 text-white rounded-lg p-3 outline-none focus:border-neon placeholder-gray-600">
+                    <input type="text" id="r-cuit" placeholder="CUIT *"
+                        class="bg-black border border-gray-700 text-white rounded-lg p-3 outline-none focus:border-neon placeholder-gray-600">
+                    <input type="tel" id="r-tel" placeholder="Teléfono *"
+                        class="bg-black border border-gray-700 text-white rounded-lg p-3 outline-none focus:border-neon placeholder-gray-600">
+                    <input type="email" id="r-email" placeholder="Email"
+                        class="bg-black border border-gray-700 text-white rounded-lg p-3 outline-none focus:border-neon placeholder-gray-600">
+                    <div class="col-span-2">
+                        <input type="text" id="r-dir" placeholder="Dirección (calle y número)"
+                            class="w-full bg-black border border-gray-700 text-white rounded-lg p-3 outline-none focus:border-neon placeholder-gray-600">
+                    </div>
+                    <input type="text" id="r-localidad" placeholder="Localidad"
+                        class="bg-black border border-gray-700 text-white rounded-lg p-3 outline-none focus:border-neon placeholder-gray-600">
+                    <input type="text" id="r-provincia" placeholder="Provincia"
+                        class="bg-black border border-gray-700 text-white rounded-lg p-3 outline-none focus:border-neon placeholder-gray-600">
+                    <input type="text" id="r-cp" placeholder="Código Postal"
+                        class="bg-black border border-gray-700 text-white rounded-lg p-3 outline-none focus:border-neon placeholder-gray-600">
+                </div>
+                <p class="text-xs text-neon font-bold uppercase mb-3">Credenciales de acceso</p>
+                <div class="grid grid-cols-2 gap-3 mb-5">
+                    <input type="text" id="r-user" placeholder="Usuario *" autocomplete="off"
+                        class="bg-black border border-neon text-white rounded-lg p-3 outline-none placeholder-gray-600">
+                    <input type="password" id="r-pass" placeholder="Contraseña *"
+                        class="bg-black border border-neon text-white rounded-lg p-3 outline-none placeholder-gray-600">
+                </div>
+                <button onclick="registrarDist()" id="btn-reg"
+                    class="w-full bg-neon text-black font-bold py-4 rounded-xl text-lg hover:bg-yellow-300 transition mb-3">
+                    Crear cuenta
+                </button>
+                <button onclick="mostrarPantalla('p-login')" class="w-full text-gray-500 text-sm py-2 hover:text-gray-300">
+                    ← Ya tengo cuenta
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── PANEL PRINCIPAL ─────────────────────────────────────── -->
+    <div id="p-panel" class="pantalla min-h-screen flex flex-col">
+
+        <!-- Header -->
+        <div class="bg-black border-b border-gray-900 px-5 py-3 text-center sticky top-0 z-20">
+            <p class="text-neon font-bold text-xl tracking-widest uppercase">PORTAL DEL VIENTO</p>
+        </div>
+
+        <!-- Bienvenida + stats -->
+        <div class="bg-black px-5 pt-4 pb-2">
+            <div class="flex justify-between items-center mb-4">
+                <p class="text-white font-bold text-lg">Hola, <span id="panel-nombre" class="text-neon"></span> 👋</p>
+                <button onclick="cerrarSesionDist()" class="text-xs text-gray-500 hover:text-white border border-gray-700 px-3 py-1.5 rounded-lg">Salir</button>
+            </div>
+
+            <!-- Alerta no aprobado -->
+            <div id="alerta-no-aprobado" class="hidden bg-yellow-900/20 border border-yellow-800 text-yellow-400 text-xs px-4 py-2 rounded-lg mb-3">
+                ⏳ Tu cuenta está pendiente de aprobación. Podés hacer tu primer pedido y lo procesaremos cuando sea aprobada.
+            </div>
+
+            <!-- Stats -->
+            <div class="grid grid-cols-3 gap-2 mb-4">
+                <div class="bg-gray-900 border border-gray-800 rounded-xl p-3 text-center">
+                    <p class="text-xs text-gray-500 uppercase font-bold mb-1">Total Pagado</p>
+                    <p id="stat-pagado" class="text-neon font-bold text-sm">$ 0</p>
+                </div>
+                <div class="bg-gray-900 border border-gray-800 rounded-xl p-3 text-center">
+                    <p class="text-xs text-gray-500 uppercase font-bold mb-1">Saldo Pendiente</p>
+                    <p id="stat-deuda" class="text-red-400 font-bold text-sm">$ 0</p>
+                </div>
+                <div class="bg-gray-900 border border-gray-800 rounded-xl p-3 text-center">
+                    <p class="text-xs text-gray-500 uppercase font-bold mb-1">En Preparación</p>
+                    <p id="stat-prep" class="text-yellow-400 font-bold text-sm">$ 0</p>
+                </div>
+            </div>
+
+            <!-- Tabs -->
+            <div class="grid grid-cols-3 gap-2 mb-2">
+                <button onclick="cambiarTabDist('pedido')"    id="dt-pedido"    class="tab-btn activo rounded-xl py-2.5 text-sm border border-gray-700">🛒 Pedido</button>
+                <button onclick="cambiarTabDist('historial')" id="dt-historial" class="tab-btn bg-gray-900 rounded-xl py-2.5 text-sm text-gray-400 border border-gray-700">📦 Pedidos</button>
+                <button onclick="cambiarTabDist('cuenta')"    id="dt-cuenta"    class="tab-btn bg-gray-900 rounded-xl py-2.5 text-sm text-gray-400 border border-gray-700">💳 Cuenta</button>
+            </div>
+        </div>
+
+        <!-- Panel Pedido -->
+        <div id="dp-pedido" class="flex-1 overflow-y-auto px-4 py-3">
+            <div id="catalogo-por-cat"></div>
+
+            <!-- Carrito flotante -->
+            <div id="carrito-flotante" class="hidden fixed bottom-0 left-0 right-0 bg-black border-t border-gray-800 p-4 z-30">
+                <div class="flex justify-between items-center mb-3">
+                    <span class="text-gray-400 font-bold text-sm">TOTAL DEL PEDIDO</span>
+                    <span id="dist-total" class="text-neon font-bold text-2xl">$ 0</span>
+                </div>
+                <button onclick="enviarPedidoDist()" id="btn-pedido"
+                    class="w-full bg-neon text-black font-bold py-4 rounded-xl text-lg hover:bg-yellow-300 transition active:scale-95">
+                    ✅ Confirmar Pedido
+                </button>
+            </div>
+            <div class="h-32"></div>
+        </div>
+
+        <!-- Panel Historial -->
+        <div id="dp-historial" class="hidden flex-1 overflow-y-auto px-4 py-3">
+            <div id="lista-pedidos-dist" class="space-y-3"></div>
+        </div>
+
+        <!-- Panel Cuenta -->
+        <div id="dp-cuenta" class="hidden flex-1 overflow-y-auto px-4 py-3">
+            <div class="bg-gray-900 border border-gray-800 rounded-2xl p-5 mb-4">
+                <h3 class="font-bold text-white mb-3 border-l-4 border-neon pl-2">Mis datos</h3>
+                <div id="mis-datos" class="text-sm space-y-2"></div>
+            </div>
+            <div class="bg-gray-900 border border-gray-800 rounded-2xl p-5">
+                <h3 class="font-bold text-white mb-3 border-l-4 border-neon pl-2">Últimos pagos</h3>
+                <div id="cobros-dist" class="space-y-2 text-sm"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        var API_URL = window.location.protocol + '//' + window.location.hostname + ':8000/api';
+        var distActual = null, productosCache = [];
+
+        function mostrarPantalla(id) {
+            document.querySelectorAll('.pantalla').forEach(function(p) { p.classList.remove('activa'); });
+            document.getElementById(id).classList.add('activa');
+        }
+
+        // ── LOGIN ────────────────────────────────────────────────
+        async function loginDist() {
+            var user = document.getElementById('l-user').value.trim();
+            var pass = document.getElementById('l-pass').value;
+            var btn  = document.getElementById('btn-login');
+            var err  = document.getElementById('login-err');
+            if (!user || !pass) { err.textContent = 'Completá usuario y contraseña.'; err.classList.remove('hidden'); return; }
+            btn.textContent = 'Verificando...'; btn.disabled = true; err.classList.add('hidden');
+            try {
+                var res  = await fetch(API_URL + '/distribuidores/login', {
+                    method:'POST', headers:{'Content-Type':'application/json'},
+                    body: JSON.stringify({username: user, password: pass})
+                });
+                var data = await res.json();
+                if (!res.ok) { err.textContent = data.detail || 'Usuario o contraseña incorrectos.'; err.classList.remove('hidden'); return; }
+                distActual = data;
+                sessionStorage.setItem('dist_sesion', JSON.stringify(data));
+                abrirPanel();
+            } catch(e) { err.textContent = 'No se pudo conectar.'; err.classList.remove('hidden'); }
+            finally { btn.textContent = 'Ingresar'; btn.disabled = false; }
+        }
+
+        // ── REGISTRO ─────────────────────────────────────────────
+        async function registrarDist() {
+            var data = {
+                razon_social: document.getElementById('r-nombre').value.trim(),
+                dni:          document.getElementById('r-dni').value.trim() || null,
+                cuit:         document.getElementById('r-cuit').value.trim(),
+                telefono:     document.getElementById('r-tel').value.trim() || null,
+                email:        document.getElementById('r-email').value.trim() || null,
+                direccion:    document.getElementById('r-dir').value.trim() || null,
+                localidad:    document.getElementById('r-localidad').value.trim() || null,
+                provincia:    document.getElementById('r-provincia').value.trim() || null,
+                cp:           document.getElementById('r-cp').value.trim() || null,
+                username:     document.getElementById('r-user').value.trim(),
+                password:     document.getElementById('r-pass').value,
+                limite_credito: 0
+            };
+            var err = document.getElementById('reg-err');
+            if (!data.razon_social || !data.cuit || !data.username || !data.password) {
+                err.textContent = 'Completá los campos obligatorios (*).'; err.classList.remove('hidden'); return;
+            }
+            var btn = document.getElementById('btn-reg');
+            btn.disabled = true; btn.textContent = 'Registrando...'; err.classList.add('hidden');
+            try {
+                var res  = await fetch(API_URL + '/distribuidores/registro', {
+                    method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(data)
+                });
+                var rData = await res.json();
+                if (!res.ok) { err.textContent = rData.detail || 'Error al registrarse.'; err.classList.remove('hidden'); return; }
+                distActual = rData;
+                sessionStorage.setItem('dist_sesion', JSON.stringify(rData));
+                abrirPanel();
+            } catch(e) { err.textContent = 'Error de conexión.'; err.classList.remove('hidden'); }
+            finally { btn.disabled = false; btn.textContent = 'Crear cuenta'; }
+        }
+
+        // ── PANEL ────────────────────────────────────────────────
+        async function abrirPanel() {
+            mostrarPantalla('p-panel');
+            document.getElementById('panel-nombre').textContent = distActual.razon_social;
+            if (!distActual.aprobado) document.getElementById('alerta-no-aprobado').classList.remove('hidden');
+            await cargarCatalogoDist();
+            cargarStats();
+            cambiarTabDist('pedido');
+        }
+
+        function cerrarSesionDist() {
+            sessionStorage.removeItem('dist_sesion');
+            distActual = null; productosCache = [];
+            mostrarPantalla('p-login');
+        }
+
+        function cambiarTabDist(tab) {
+            ['pedido','historial','cuenta'].forEach(function(t) {
+                document.getElementById('dp-' + t).classList.toggle('hidden', t !== tab);
+                var btn = document.getElementById('dt-' + t);
+                btn.classList.toggle('activo', t === tab);
+                btn.classList.toggle('bg-gray-900', t !== tab);
+                btn.classList.toggle('text-gray-400', t !== tab);
+            });
+            if (tab === 'historial') cargarHistorialDist();
+            if (tab === 'cuenta')    cargarCuentaDist();
+        }
+
+        // ── STATS ────────────────────────────────────────────────
+        async function cargarStats() {
+            try {
+                var pedidos = await fetch(API_URL + '/pedidos_b2b/historial?id_distribuidor=' + distActual.id).then(function(r) { return r.json(); });
+                var cobros  = await fetch(API_URL + '/distribuidores/' + distActual.id + '/cobros').then(function(r) { return r.json(); });
+                var totalPagado = cobros.reduce(function(a, c) { return a + parseFloat(c.monto); }, 0);
+                var totalDeuda  = pedidos.filter(function(p) { return p.estado === 'Despachado'; }).reduce(function(a, p) { return a + parseFloat(p.total); }, 0) - totalPagado;
+                var enPrep      = pedidos.filter(function(p) { return p.estado === 'Preparado' || p.estado === 'Pendiente'; }).reduce(function(a, p) { return a + parseFloat(p.total); }, 0);
+                document.getElementById('stat-pagado').textContent = '$ ' + Math.max(0, totalPagado).toLocaleString('es-AR');
+                document.getElementById('stat-deuda').textContent  = '$ ' + Math.max(0, totalDeuda).toLocaleString('es-AR');
+                document.getElementById('stat-prep').textContent   = '$ ' + enPrep.toLocaleString('es-AR');
+            } catch(e) {}
+        }
+
+        // ── CATÁLOGO ─────────────────────────────────────────────
+        async function cargarCatalogoDist() {
+            productosCache = await fetch(API_URL + '/productos/con_presentaciones').then(function(r) { return r.json(); });
+
+            // Obtener categorías
+            var cats = await fetch(API_URL + '/categorias').then(function(r) { return r.json(); });
+            var sinCat = productosCache.filter(function(p) { return !p.id_categoria; });
+            var cont = document.getElementById('catalogo-por-cat');
+            cont.innerHTML = '';
+
+            function renderGrupo(nombre, prods) {
+                if (!prods.length) return;
+                var sec = document.createElement('div');
+                sec.className = 'mb-6';
+                sec.innerHTML = '<div class="flex items-center gap-2 mb-3"><div class="w-1 h-5 bg-neon rounded-full"></div><h3 class="font-bold text-white text-base">' + nombre + '</h3></div>';
+                var grid = document.createElement('div');
+                grid.className = 'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3';
+                prods.forEach(function(p) {
+                    if (!p.presentaciones || !p.presentaciones.length) return;
+                    var pres   = p.presentaciones[0];
+                    var precio = parseFloat(pres.precio_mayorista) || 0;
+                    var card   = document.createElement('div');
+                    card.className = 'prod-card bg-gray-900 border border-gray-800 rounded-xl overflow-hidden';
+                    card.innerHTML =
+                        '<div class="relative">' +
+                            (p.imagen_url
+                                ? '<img src="' + p.imagen_url + '" class="w-full h-36 object-cover" onerror="this.style.display=\'none\'">'
+                                : '<div class="w-full h-36 bg-gray-800 flex items-center justify-center"><span class="text-4xl">🍫</span></div>') +
+                        '</div>' +
+                        '<div class="p-3">' +
+                            '<p class="font-bold text-white text-sm mb-1 leading-tight">' + p.nombre + '</p>' +
+                            (p.presentaciones.length > 1
+                                ? '<select class="dist-pres w-full bg-gray-800 border border-gray-700 text-white rounded p-1 text-xs mb-2" data-prod="' + p.id + '" onchange="recalcDist()">' +
+                                    p.presentaciones.map(function(pr) { return '<option value="' + pr.id + '" data-precio="' + pr.precio_mayorista + '">' + pr.nombre + '</option>'; }).join('') +
+                                  '</select>'
+                                : '<input type="hidden" class="dist-pres" data-prod="' + p.id + '" value="' + pres.id + '" data-precio-fixed="' + precio + '">') +
+                            '<p class="text-neon font-bold text-sm mb-2">$ ' + precio.toLocaleString('es-AR') + '</p>' +
+                            '<div class="flex items-center justify-between">' +
+                                '<button onclick="cambiarCantCard(this,-1)" class="cant-btn bg-gray-700 hover:bg-gray-600 text-white">−</button>' +
+                                '<input type="number" min="0" value="0" class="dist-cant w-10 bg-transparent text-white text-center font-bold text-lg outline-none" oninput="recalcDist()">' +
+                                '<button onclick="cambiarCantCard(this,1)" class="cant-btn bg-neon text-black hover:bg-yellow-300">+</button>' +
+                            '</div>' +
+                        '</div>';
+                    grid.appendChild(card);
+                });
+                sec.appendChild(grid);
+                cont.appendChild(sec);
+            }
+
+            cats.forEach(function(c) {
+                var prods = productosCache.filter(function(p) { return p.id_categoria === c.id; });
+                renderGrupo(c.nombre, prods);
+            });
+            if (sinCat.length) renderGrupo('Otros', sinCat);
+        }
+
+        function cambiarCantCard(btn, val) {
+            var inp = btn.parentElement.querySelector('.dist-cant');
+            inp.value = Math.max(0, (parseInt(inp.value) || 0) + val);
+            recalcDist();
+        }
+
+        function recalcDist() {
+            var total = 0, hayItems = false;
+            document.querySelectorAll('.prod-card').forEach(function(card) {
+                var cant  = parseInt(card.querySelector('.dist-cant').value) || 0;
+                var hidEl = card.querySelector('input.dist-pres');
+                var precio = parseFloat(hidEl ? hidEl.dataset.precioFixed : 0) || 0;
+                if (cant > 0) hayItems = true;
+                total += cant * precio;
+            });
+            document.getElementById('dist-total').textContent = '$ ' + total.toLocaleString('es-AR');
+            document.getElementById('carrito-flotante').classList.toggle('hidden', !hayItems);
+        }
+
+        async function enviarPedidoDist() {
+            var detalle = [], total = 0;
+            document.querySelectorAll('.prod-card').forEach(function(card) {
+                var cant  = parseInt(card.querySelector('.dist-cant').value) || 0;
+                if (!cant) return;
+                var hidEl = card.querySelector('input.dist-pres');
+                var prodId = parseInt(hidEl.dataset.prod);
+                var precio = parseFloat(hidEl.dataset.precioFixed) || 0;
+                total += cant * precio;
+                detalle.push({ id_producto: prodId, cantidad: cant, precio_unitario: precio });
+            });
+            if (!detalle.length) return;
+            var btn = document.getElementById('btn-pedido');
+            btn.disabled = true; btn.textContent = 'Enviando...';
+            try {
+                var res = await fetch(API_URL + '/pedidos_b2b', {
+                    method:'POST', headers:{'Content-Type':'application/json'},
+                    body: JSON.stringify({ id_distribuidor: distActual.id, total: total, detalle: detalle })
+                });
+                if (res.ok) {
+                    // Resetear cantidades
+                    document.querySelectorAll('.dist-cant').forEach(function(i) { i.value = 0; });
+                    document.getElementById('carrito-flotante').classList.add('hidden');
+                    document.getElementById('dist-total').textContent = '$ 0';
+                    cargarStats();
+                    cambiarTabDist('historial');
+                }
+            } finally { btn.disabled = false; btn.textContent = '✅ Confirmar Pedido'; }
+        }
+
+        // ── HISTORIAL ────────────────────────────────────────────
+        async function cargarHistorialDist() {
+            var lista = await fetch(API_URL + '/pedidos_b2b/historial?id_distribuidor=' + distActual.id).then(function(r) { return r.json(); });
+            var cont  = document.getElementById('lista-pedidos-dist');
+            var COLS  = { Pendiente:'text-yellow-400 bg-yellow-900/20', Preparado:'text-blue-400 bg-blue-900/20', Despachado:'text-green-400 bg-green-900/20', Cancelado:'text-red-400 bg-red-900/20' };
+            if (!lista.length) { cont.innerHTML = '<p class="text-center text-gray-500 py-12">Sin pedidos aún.</p>'; return; }
+            cont.innerHTML = lista.map(function(p) {
+                var fecha = new Date(p.fecha).toLocaleDateString('es-AR', {day:'2-digit', month:'2-digit', year:'numeric'});
+                var col   = COLS[p.estado] || 'text-gray-400 bg-gray-800';
+                return '<div class="bg-gray-900 border border-gray-800 rounded-2xl p-4 flex justify-between items-center">' +
+                    '<div>' +
+                        '<p class="font-bold text-white text-lg">#' + String(p.id).padStart(4,'0') + '</p>' +
+                        '<p class="text-gray-500 text-xs mt-0.5">' + fecha + '</p>' +
+                    '</div>' +
+                    '<div class="text-right">' +
+                        '<p class="font-bold text-neon text-lg">$ ' + parseFloat(p.total).toLocaleString('es-AR') + '</p>' +
+                        '<span class="text-xs font-bold px-2 py-0.5 rounded-full ' + col + '">' + p.estado + '</span>' +
+                    '</div>' +
+                '</div>';
+            }).join('');
+        }
+
+        // ── CUENTA ───────────────────────────────────────────────
+        async function cargarCuentaDist() {
+            var cobros = await fetch(API_URL + '/distribuidores/' + distActual.id + '/cobros').then(function(r) { return r.json(); });
+            var datos  = document.getElementById('mis-datos');
+            datos.innerHTML = [
+                ['Razón Social', distActual.razon_social],
+                ['CUIT', distActual.cuit || '—'],
+                ['DNI', distActual.dni || '—'],
+                ['Teléfono', distActual.telefono || '—'],
+                ['Email', distActual.email || '—'],
+                ['Dirección', distActual.direccion || '—'],
+                ['Localidad', [distActual.localidad, distActual.provincia].filter(Boolean).join(', ') || '—'],
+                ['CP', distActual.cp || '—']
+            ].map(function(r) {
+                return '<div class="flex justify-between py-2 border-b border-gray-800">' +
+                    '<span class="text-gray-500">' + r[0] + '</span>' +
+                    '<span class="text-white font-bold text-right">' + r[1] + '</span>' +
+                '</div>';
+            }).join('');
+
+            var cobrosEl = document.getElementById('cobros-dist');
+            if (!cobros.length) { cobrosEl.innerHTML = '<p class="text-gray-600 text-xs">Sin pagos registrados.</p>'; return; }
+            cobrosEl.innerHTML = cobros.slice(0,5).map(function(c) {
+                return '<div class="flex justify-between py-2 border-b border-gray-800">' +
+                    '<span class="text-gray-400">' + new Date(c.fecha).toLocaleDateString('es-AR') + ' · ' + c.metodo + '</span>' +
+                    '<span class="text-green-400 font-bold">+ $ ' + parseFloat(c.monto).toLocaleString('es-AR') + '</span>' +
+                '</div>';
+            }).join('');
+        }
+
+        window.onload = function() {
+            var s = sessionStorage.getItem('dist_sesion');
+            if (s) { distActual = JSON.parse(s); abrirPanel(); }
+        };
+    </script>
+</body>
+</html>

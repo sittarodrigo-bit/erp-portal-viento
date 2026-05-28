@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Reportes | Portal del Viento</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        .text-neon { color: #e4fc74; }
+        .bg-neon { background-color: #e4fc74; }
+        .border-neon { border-color: #e4fc74; }
+        .tab-activa { border-bottom: 2px solid #e4fc74; color: white; }
+    </style>
+</head>
+<body class="bg-gray-950 text-gray-200 font-sans h-screen flex">
+    <aside class="w-64 bg-black border-r border-gray-800 flex flex-col">
+        <div class="p-6 border-b border-gray-800 text-center">
+            <h1 class="text-neon font-bold text-lg tracking-widest uppercase">Portal del Viento</h1>
+            <p class="text-white text-xs mt-1 font-bold italic">ALFAJORES</p>
+        </div>
+        <nav class="flex-1 p-4 space-y-1 text-sm">
+            <a href="/admin" class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">📊 Tablero</a>
+            <a href="/catalogo" class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">📦 Catálogo</a>
+            <a href="/insumos" class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">🧪 Insumos</a>
+            <a href="/produccion" class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">🏭 Producción</a>
+            <a href="/proveedores" class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">🏪 Proveedores</a>
+            <a href="/distribuidores" class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">🚚 Distribuidores</a>
+            <a href="/historial-b2b" class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">📋 Pedidos B2B</a>
+            <a href="/empleados" class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">👥 Empleados</a>
+            <a href="/reportes" class="block bg-gray-900 text-white py-2 px-4 rounded-lg border-l-4 border-neon font-medium">📈 Reportes</a>
+        </nav>
+        <div id="usuario-info" class="p-4 border-t border-gray-800 text-xs text-gray-500 text-center"></div>
+    </aside>
+
+    <main class="flex-1 flex flex-col overflow-hidden">
+        <header class="bg-gray-900 border-b border-gray-800 py-4 px-8 flex justify-between items-center">
+            <h2 class="text-xl font-bold text-white">Reportes y Analítica</h2>
+            <div class="flex items-center gap-3">
+                <label class="text-xs text-gray-400 font-bold">Período:</label>
+                <select id="periodo" onchange="cargarTodo()" class="bg-gray-800 border border-gray-700 text-white rounded p-2 text-sm">
+                    <option value="7">Últimos 7 días</option>
+                    <option value="30" selected>Últimos 30 días</option>
+                    <option value="90">Últimos 3 meses</option>
+                </select>
+            </div>
+        </header>
+
+        <div class="bg-gray-900 border-b border-gray-800 px-8 flex gap-6">
+            <button onclick="cambiarTab('ventas')" id="tab-ventas" class="py-3 text-sm font-bold tab-activa">💰 Ventas por día</button>
+            <button onclick="cambiarTab('productos')" id="tab-prods" class="py-3 text-sm font-bold text-gray-400 hover:text-white">🏆 Productos más vendidos</button>
+            <button onclick="cambiarTab('cajas')" id="tab-cajas" class="py-3 text-sm font-bold text-gray-400 hover:text-white">🗃️ Historial de cajas</button>
+        </div>
+
+        <!-- Panel Ventas -->
+        <div id="panel-ventas" class="flex-1 overflow-y-auto p-8">
+            <div class="grid grid-cols-3 gap-6 mb-8">
+                <div class="bg-black border border-gray-800 rounded-xl p-5">
+                    <p class="text-xs text-gray-500 font-bold uppercase mb-1">Total Recaudado</p>
+                    <p id="stat-total" class="text-3xl font-bold text-white">$ 0</p>
+                </div>
+                <div class="bg-black border border-gray-800 rounded-xl p-5">
+                    <p class="text-xs text-gray-500 font-bold uppercase mb-1">Tickets Emitidos</p>
+                    <p id="stat-tickets" class="text-3xl font-bold text-neon">0</p>
+                </div>
+                <div class="bg-black border border-gray-800 rounded-xl p-5">
+                    <p class="text-xs text-gray-500 font-bold uppercase mb-1">Ticket Promedio</p>
+                    <p id="stat-promedio" class="text-3xl font-bold text-white">$ 0</p>
+                </div>
+            </div>
+
+            <div class="bg-black border border-gray-800 rounded-xl p-6 mb-6">
+                <h3 class="text-sm font-bold text-gray-400 uppercase mb-4">Recaudación diaria</h3>
+                <canvas id="grafico-ventas" height="100"></canvas>
+            </div>
+
+            <div class="bg-black border border-gray-800 rounded-xl p-6">
+                <h3 class="text-sm font-bold text-gray-400 uppercase mb-4">Efectivo vs Tarjeta</h3>
+                <canvas id="grafico-metodos" height="80"></canvas>
+            </div>
+        </div>
+
+        <!-- Panel Productos -->
+        <div id="panel-productos" class="hidden flex-1 overflow-y-auto p-8">
+            <div class="grid grid-cols-2 gap-6">
+                <div class="bg-black border border-gray-800 rounded-xl p-6">
+                    <h3 class="text-sm font-bold text-gray-400 uppercase mb-4">Top 10 por Unidades</h3>
+                    <canvas id="grafico-productos"></canvas>
+                </div>
+                <div class="bg-black border border-gray-800 rounded-xl overflow-hidden">
+                    <table class="w-full text-sm">
+                        <thead class="bg-gray-900 text-xs text-gray-400 uppercase">
+                            <tr><th class="p-3 text-left">Producto</th><th class="p-3 text-right">Unidades</th><th class="p-3 text-right">Total</th></tr>
+                        </thead>
+                        <tbody id="tabla-productos-rep" class="divide-y divide-gray-800"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Panel Cajas -->
+        <div id="panel-cajas" class="hidden flex-1 overflow-y-auto p-8">
+            <div class="bg-black rounded-xl border border-gray-800 overflow-hidden">
+                <table class="w-full text-sm text-left">
+                    <thead class="bg-gray-950 text-xs text-gray-400 uppercase">
+                        <tr>
+                            <th class="p-4">Apertura</th>
+                            <th class="p-4">Cierre</th>
+                            <th class="p-4">Empleado</th>
+                            <th class="p-4">Efectivo</th>
+                            <th class="p-4">Tarjeta</th>
+                            <th class="p-4">Estado</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tabla-cajas" class="divide-y divide-gray-800"></tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        const API_URL = "http://127.0.0.1:8000/api";
+        const usr = JSON.parse(sessionStorage.getItem('usuario') || '{}');
+        if (usr.nombre) document.getElementById('usuario-info').textContent = `${usr.nombre} ${usr.apellido} · ${usr.rol}`;
+
+        let graficoVentas = null, graficoMetodos = null, graficoProductos = null;
+
+        function cambiarTab(tab) {
+            ['ventas','productos','cajas'].forEach(t => {
+                document.getElementById(`panel-${t}`).classList.toggle('hidden', t !== tab);
+            });
+            document.getElementById('tab-ventas').className = tab === 'ventas' ? 'py-3 text-sm font-bold tab-activa' : 'py-3 text-sm font-bold text-gray-400 hover:text-white';
+            document.getElementById('tab-prods').className = tab === 'productos' ? 'py-3 text-sm font-bold tab-activa' : 'py-3 text-sm font-bold text-gray-400 hover:text-white';
+            document.getElementById('tab-cajas').className = tab === 'cajas' ? 'py-3 text-sm font-bold tab-activa' : 'py-3 text-sm font-bold text-gray-400 hover:text-white';
+        }
+
+        async function cargarVentas() {
+            const dias = document.getElementById('periodo').value;
+            const res = await fetch(`${API_URL}/reportes/ventas_por_dia?dias=${dias}`);
+            const datos = await res.json();
+            datos.reverse(); // orden cronológico
+
+            const labels = datos.map(d => d.dia);
+            const totales = datos.map(d => parseFloat(d.total || 0));
+            const efectivo = datos.map(d => parseFloat(d.efectivo || 0));
+            const tarjeta = datos.map(d => parseFloat(d.tarjeta || 0));
+
+            const totalGeneral = totales.reduce((a, b) => a + b, 0);
+            const totalTickets = datos.reduce((a, d) => a + parseInt(d.tickets || 0), 0);
+            document.getElementById('stat-total').textContent = `$ ${totalGeneral.toLocaleString('es-AR')}`;
+            document.getElementById('stat-tickets').textContent = totalTickets;
+            document.getElementById('stat-promedio').textContent = totalTickets > 0 ? `$ ${Math.round(totalGeneral / totalTickets).toLocaleString('es-AR')}` : '$ 0';
+
+            if (graficoVentas) graficoVentas.destroy();
+            graficoVentas = new Chart(document.getElementById('grafico-ventas'), {
+                type: 'bar',
+                data: {
+                    labels,
+                    datasets: [{ label: 'Total $', data: totales, backgroundColor: '#e4fc74', borderRadius: 4 }]
+                },
+                options: { plugins: { legend: { display: false } }, scales: { x: { ticks: { color: '#9ca3af' }, grid: { color: '#1f2937' } }, y: { ticks: { color: '#9ca3af' }, grid: { color: '#1f2937' } } } }
+            });
+
+            if (graficoMetodos) graficoMetodos.destroy();
+            graficoMetodos = new Chart(document.getElementById('grafico-metodos'), {
+                type: 'bar',
+                data: {
+                    labels,
+                    datasets: [
+                        { label: 'Efectivo', data: efectivo, backgroundColor: '#22c55e', borderRadius: 2 },
+                        { label: 'Tarjeta', data: tarjeta, backgroundColor: '#3b82f6', borderRadius: 2 }
+                    ]
+                },
+                options: { plugins: { legend: { labels: { color: '#9ca3af' } } }, scales: { x: { stacked: true, ticks: { color: '#9ca3af' }, grid: { color: '#1f2937' } }, y: { stacked: true, ticks: { color: '#9ca3af' }, grid: { color: '#1f2937' } } } }
+            });
+        }
+
+        async function cargarProductos() {
+            const dias = document.getElementById('periodo').value;
+            const res = await fetch(`${API_URL}/reportes/productos_mas_vendidos?dias=${dias}`);
+            const datos = await res.json();
+
+            if (graficoProductos) graficoProductos.destroy();
+            graficoProductos = new Chart(document.getElementById('grafico-productos'), {
+                type: 'bar',
+                indexAxis: 'y',
+                data: {
+                    labels: datos.map(d => d.nombre),
+                    datasets: [{ label: 'Unidades', data: datos.map(d => d.unidades), backgroundColor: '#e4fc74', borderRadius: 4 }]
+                },
+                options: { plugins: { legend: { display: false } }, scales: { x: { ticks: { color: '#9ca3af' }, grid: { color: '#1f2937' } }, y: { ticks: { color: '#fff' }, grid: { color: '#1f2937' } } } }
+            });
+
+            const tabla = document.getElementById('tabla-productos-rep');
+            tabla.innerHTML = '';
+            datos.forEach((d, idx) => {
+                tabla.innerHTML += `
+                    <tr class="hover:bg-gray-900">
+                        <td class="p-3 text-white font-bold">${idx + 1}. ${d.nombre}</td>
+                        <td class="p-3 text-right text-neon font-bold">${d.unidades}</td>
+                        <td class="p-3 text-right text-gray-300">$ ${parseFloat(d.total || 0).toLocaleString('es-AR')}</td>
+                    </tr>`;
+            });
+        }
+
+        async function cargarCajas() {
+            const res = await fetch(`${API_URL}/caja/historial`);
+            const lista = await res.json();
+            const tabla = document.getElementById('tabla-cajas');
+            tabla.innerHTML = '';
+            lista.forEach(c => {
+                const apertura = new Date(c.fecha_apertura).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' });
+                const cierre = c.fecha_cierre ? new Date(c.fecha_cierre).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' }) : '—';
+                tabla.innerHTML += `
+                    <tr class="hover:bg-gray-900">
+                        <td class="p-4 text-xs text-gray-400">${apertura}<br><span class="text-white text-xs">${c.apertura_nombre} ${c.apertura_apellido}</span></td>
+                        <td class="p-4 text-xs text-gray-400">${cierre}</td>
+                        <td class="p-4 text-gray-300 text-xs">${c.cierre_nombre ? c.cierre_nombre + ' ' + c.cierre_apellido : '—'}</td>
+                        <td class="p-4 text-green-400 font-bold">$ ${parseFloat(c.total_efectivo || 0).toLocaleString('es-AR')}</td>
+                        <td class="p-4 text-blue-400 font-bold">$ ${parseFloat(c.total_tarjeta || 0).toLocaleString('es-AR')}</td>
+                        <td class="p-4"><span class="text-xs px-2 py-1 rounded font-bold ${c.estado === 'abierta' ? 'bg-green-900/30 text-green-400' : 'bg-gray-800 text-gray-400'}">${c.estado}</span></td>
+                    </tr>`;
+            });
+        }
+
+        async function cargarTodo() {
+            await Promise.all([cargarVentas(), cargarProductos(), cargarCajas()]);
+        }
+
+        window.onload = cargarTodo;
+    </script>
+</body>
+</html>

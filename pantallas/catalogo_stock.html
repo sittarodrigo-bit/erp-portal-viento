@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Catálogo | Portal del Viento</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .text-neon { color: #e4fc74; }
+        .bg-neon { background-color: #e4fc74; }
+        .border-neon { border-color: #e4fc74; }
+        .modal-oculto { display: none; }
+        .modal-visible { display: flex; }
+    </style>
+</head>
+<body class="bg-gray-950 text-gray-200 font-sans h-screen flex">
+    <aside class="w-64 bg-black border-r border-gray-800 flex flex-col shrink-0">
+        <div class="p-6 border-b border-gray-800 text-center">
+            <h1 class="text-neon font-bold text-lg tracking-widest uppercase">Portal del Viento</h1>
+            <p class="text-white text-xs mt-1 font-bold italic">ALFAJORES</p>
+        </div>
+        <nav class="flex-1 p-4 space-y-1 text-sm overflow-y-auto">
+            <a href="/admin"          class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">📊 Tablero</a>
+            <a href="/catalogo"       class="block bg-gray-900 text-white py-2 px-4 rounded-lg border-l-4 border-neon font-medium">📦 Catálogo</a>
+            <a href="/insumos"        class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">🧪 Insumos</a>
+            <a href="/produccion"     class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">🏭 Producción</a>
+            <a href="/proveedores"    class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">🏪 Proveedores</a>
+            <a href="/distribuidores" class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">🚚 Distribuidores</a>
+            <a href="/historial-b2b"  class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">📋 Pedidos B2B</a>
+            <a href="/empleados"      class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">👥 Empleados</a>
+            <a href="/reportes"       class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">📈 Reportes</a>
+            <a href="/configuracion"  class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">⚙️ Configuración</a>
+        </nav>
+        <div id="usuario-info" class="p-4 border-t border-gray-800 text-xs text-gray-500 text-center"></div>
+    </aside>
+
+    <main class="flex-1 flex flex-col overflow-hidden">
+        <header class="bg-gray-900 border-b border-gray-800 py-4 px-8 flex justify-between items-center shrink-0">
+            <h2 class="text-xl font-bold text-white">Catálogo de Productos</h2>
+            <div class="flex gap-3">
+                <select id="filtro-cat" onchange="cargarCatalogo()" class="bg-gray-800 border border-gray-700 text-white rounded p-2 text-sm">
+                    <option value="">Todas las categorías</option>
+                </select>
+                <button onclick="abrirModalImprimir()" class="border border-gray-600 text-gray-300 hover:text-white hover:border-gray-400 font-bold py-2 px-4 rounded-lg text-sm transition">🖨️ Imprimir</button>
+                <button onclick="abrirModalCategorias()" class="border border-gray-600 text-gray-300 hover:text-white hover:border-gray-400 font-bold py-2 px-4 rounded-lg text-sm transition">🏷️ Categorías</button>
+                <button onclick="abrirModalNuevo()" class="bg-neon hover:bg-yellow-300 text-black font-bold py-2 px-6 rounded-lg transition">+ Nuevo Producto</button>
+            </div>
+        </header>
+
+        <div class="flex-1 overflow-y-auto p-8">
+            <div class="bg-black rounded-xl border border-gray-800 overflow-hidden">
+                <table class="w-full text-left">
+                    <thead class="bg-gray-950 text-xs text-gray-400 uppercase">
+                        <tr>
+                            <th class="p-4">SKU</th>
+                            <th class="p-4">Producto</th>
+                            <th class="p-4">Categoría</th>
+                            <th class="p-4">Stock</th>
+                            <th class="p-4">Alerta Stock</th>
+                            <th class="p-4 text-right">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tabla-productos" class="divide-y divide-gray-800 text-sm">
+                        <tr><td colspan="6" class="p-4 text-center text-gray-500">Cargando...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+
+    <!-- Modal Nuevo / Editar Producto -->
+    <div id="modal-producto" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
+        <div class="bg-gray-900 border border-gray-700 rounded-xl p-6 w-[480px] shadow-2xl">
+            <h3 id="modal-prod-titulo" class="text-lg font-bold text-white mb-4 border-l-4 border-neon pl-2">Nuevo Producto</h3>
+            <input type="hidden" id="prod-id">
+            <div class="grid grid-cols-2 gap-4 mb-4">
+                <div>
+                    <label class="block text-xs text-gray-500 font-bold mb-1">SKU</label>
+                    <input type="text" id="prod-sku" class="w-full bg-black border border-gray-700 text-white rounded p-2">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 font-bold mb-1">Stock Inicial</label>
+                    <input type="number" id="prod-stock" value="0" class="w-full bg-black border border-gray-700 text-white rounded p-2">
+                </div>
+            </div>
+            <label class="block text-xs text-gray-500 font-bold mb-1">Nombre del Producto</label>
+            <input type="text" id="prod-nombre" class="w-full bg-black border border-gray-700 text-white rounded p-3 mb-4">
+            <div class="grid grid-cols-2 gap-4 mb-4">
+                <div>
+                    <label class="block text-xs text-gray-500 font-bold mb-1">Categoría</label>
+                    <select id="prod-categoria" class="w-full bg-black border border-gray-700 text-white rounded p-2">
+                        <option value="">Sin categoría</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 font-bold mb-1">Alerta stock (unidades)</label>
+                    <input type="number" id="prod-alerta" value="20" class="w-full bg-black border border-gray-700 text-white rounded p-2">
+                </div>
+            </div>
+            <label class="block text-xs text-neon font-bold mb-1">URL de la foto del producto</label>
+            <div class="flex gap-2 mb-2">
+                <input type="text" id="prod-imagen" placeholder="https://i.imgur.com/tu-foto.jpg"
+                    oninput="previsualizarImagen()"
+                    class="flex-1 bg-black border border-neon text-white rounded p-2 text-sm focus:outline-none">
+            </div>
+            <div id="preview-imagen-prod" class="hidden mb-4">
+                <img id="img-preview-prod" src="" class="h-24 rounded-lg object-cover border border-gray-700">
+            </div>
+            <div class="flex justify-end gap-3">
+                <button onclick="cerrarModales()" class="px-4 py-2 text-gray-400 hover:text-white font-bold">Cancelar</button>
+                <button id="btn-guardar-prod" onclick="guardarProducto()" class="bg-neon text-black px-6 py-2 rounded font-bold hover:bg-yellow-300 disabled:opacity-50 disabled:cursor-not-allowed">Guardar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Stock -->
+    <div id="modal-stock" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
+        <div class="bg-gray-900 border border-gray-700 rounded-xl p-6 w-96 shadow-2xl">
+            <h3 class="text-lg font-bold text-white mb-1">Ajustar Stock</h3>
+            <p id="stock-nombre" class="text-neon text-sm font-bold mb-4"></p>
+            <input type="hidden" id="stock-id">
+            <label class="block text-xs text-gray-500 font-bold mb-1">Stock en unidades</label>
+            <input type="number" id="stock-valor" class="w-full bg-black border border-gray-700 text-white rounded p-3 mb-6 font-bold text-xl text-center">
+            <div class="flex justify-end gap-3">
+                <button onclick="cerrarModales()" class="px-4 py-2 text-gray-400 hover:text-white font-bold">Cancelar</button>
+                <button onclick="guardarStock()" class="bg-neon text-black px-6 py-2 rounded font-bold">Guardar</button>
+            </div>
+        </div>
+    </div>
+
+        <!-- Modal Categorías -->
+    <div id="modal-cats" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
+        <div class="bg-gray-900 border border-gray-700 rounded-xl p-6 w-[440px] shadow-2xl max-h-[80vh] overflow-y-auto">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-lg font-bold text-white border-l-4 border-neon pl-2">Categorías</h3>
+                <button onclick="cerrarModales()" class="text-gray-500 hover:text-white text-2xl leading-none">×</button>
+            </div>
+            <div id="lista-cats" class="space-y-2 mb-4"></div>
+            <div class="border border-dashed border-gray-700 rounded-lg p-4">
+                <p class="text-xs text-gray-400 font-bold mb-2">+ Nueva categoría</p>
+                <input type="text" id="cat-nueva-nombre" placeholder="Ej: Alfajores Clásicos"
+                    class="w-full bg-black border border-gray-700 text-white rounded p-2 text-sm mb-2">
+                <button onclick="guardarCategoria()" class="w-full bg-neon text-black font-bold py-2 rounded hover:bg-yellow-300 text-sm">Agregar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal confirmar eliminación -->
+    <div id="modal-eliminar" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
+        <div class="bg-gray-900 border border-red-700 rounded-xl p-6 w-96 shadow-2xl text-center">
+            <p class="text-4xl mb-3">🗑️</p>
+            <h3 class="text-lg font-bold text-white mb-1">¿Eliminar producto?</h3>
+            <p id="eliminar-nombre" class="text-gray-400 text-sm mb-6"></p>
+            <p class="text-red-400 text-xs mb-6">Esta acción no se puede deshacer.</p>
+            <div class="flex justify-center gap-3">
+                <button onclick="cerrarModales()" class="px-6 py-2 border border-gray-700 text-gray-400 hover:text-white rounded font-bold">Cancelar</button>
+                <button onclick="confirmarEliminar()" class="bg-red-700 hover:bg-red-600 text-white px-6 py-2 rounded font-bold">Eliminar</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = "http://127.0.0.1:8000/api";
+        const usr = JSON.parse(sessionStorage.getItem('usuario') || '{}');
+        if (usr.nombre) document.getElementById('usuario-info').textContent = `${usr.nombre} ${usr.apellido} · ${usr.rol}`;
+
+        let categorias = [], productoPresActual = null, productoEliminarActual = null;
+
+        async function cargarCategorias() {
+            const res = await fetch(`${API_URL}/categorias`);
+            categorias = await res.json();
+            const sel1 = document.getElementById('filtro-cat');
+            const sel2 = document.getElementById('prod-categoria');
+            const opts = categorias.map(c => `<option value="${c.id}">${c.nombre}</option>`).join('');
+            sel1.innerHTML = '<option value="">Todas las categorías</option>' + opts;
+            sel2.innerHTML = '<option value="">Sin categoría</option>' + opts;
+        }
+
+        async function cargarCatalogo() {
+            const cat = document.getElementById('filtro-cat').value;
+            const res = await fetch(`${API_URL}/productos/con_presentaciones`);
+            let productos = await res.json();
+            // Asegurar que id_categoria venga correctamente
+            if (cat) productos = productos.filter(p => String(p.id_categoria) === String(cat));
+
+            const tabla = document.getElementById('tabla-productos');
+            tabla.innerHTML = '';
+            if (!productos.length) {
+                tabla.innerHTML = '<tr><td colspan="6" class="p-4 text-center text-gray-500">Sin productos.</td></tr>';
+                return;
+            }
+            for (const p of productos) {
+                const catNombre = categorias.find(c => c.id === p.id_categoria)?.nombre || '—';
+                const colorStock = p.stock <= (p.stock_alerta || 20) ? 'text-red-400 font-bold' : 'text-white';
+
+                tabla.innerHTML += `
+                    <tr class="hover:bg-gray-900 transition">
+                        <td class="p-4 text-gray-400 text-xs font-mono">${p.sku}</td>
+                        <td class="p-4 font-bold text-white">${p.nombre}</td>
+                        <td class="p-4"><span class="text-xs bg-gray-800 px-2 py-1 rounded text-gray-300">${catNombre}</span></td>
+                        <td class="p-4 ${colorStock}">${p.stock} un.</td>
+                        <td class="p-4 text-gray-500 text-xs">${p.stock_alerta || 20} un.</td>
+                        <td class="p-4 text-right">
+                            <div class="flex justify-end gap-1">
+                                <button onclick="abrirModalStock(${p.id}, '${p.nombre.replace(/'/g,"\\'")}', ${p.stock})"
+                                    class="text-xs border border-gray-700 bg-gray-800 hover:border-gray-500 px-2 py-1 rounded text-gray-400 hover:text-white">
+                                    Stock
+                                </button>
+                                <button onclick="abrirModalEditar(${p.id}, '${p.nombre.replace(/'/g,"\\'")}', '${p.sku}', ${p.id_categoria||'null'}, ${p.stock_alerta||20})"
+                                    class="text-xs border border-gray-700 bg-gray-800 hover:border-gray-500 px-2 py-1 rounded text-gray-400 hover:text-white">
+                                    Editar
+                                </button>
+                                <button onclick="abrirModalEliminar(${p.id}, '${p.nombre.replace(/'/g,"\\'")}' )"
+                                    class="text-xs bg-red-900/50 hover:bg-red-700 text-red-400 hover:text-white px-2 py-1 rounded">
+                                    ✕
+                                </button>
+                            </div>
+                        </td>
+                    </tr>`;
+            }
+        }
+
+        // ── NUEVO / EDITAR PRODUCTO ──────────────────────────────
+
+        function abrirModalNuevo() {
+            document.getElementById('modal-prod-titulo').textContent = 'Nuevo Producto';
+            document.getElementById('prod-id').value = '';
+            document.getElementById('prod-sku').value = '';
+            document.getElementById('prod-nombre').value = '';
+            document.getElementById('prod-stock').value = '0';
+            document.getElementById('prod-categoria').value = '';
+            document.getElementById('prod-alerta').value = '20';
+            document.getElementById('prod-stock').disabled = false;
+            document.getElementById('modal-producto').classList.replace('modal-oculto','modal-visible');
+        }
+
+        function abrirModalEditar(id, nombre, sku, id_cat, alerta, imagen) {
+            document.getElementById('modal-prod-titulo').textContent = 'Editar Producto';
+            document.getElementById('prod-id').value = id;
+            document.getElementById('prod-sku').value = sku;
+            document.getElementById('prod-nombre').value = nombre;
+            document.getElementById('prod-stock').value = '';
+            document.getElementById('prod-stock').disabled = true;
+            document.getElementById('prod-categoria').value = id_cat || '';
+            document.getElementById('prod-alerta').value = alerta;
+            document.getElementById('prod-imagen').value = imagen || '';
+            previsualizarImagen();
+            document.getElementById('modal-producto').classList.replace('modal-oculto','modal-visible');
+        }
+
+        function previsualizarImagen() {
+            var url = document.getElementById('prod-imagen').value.trim();
+            var prev = document.getElementById('preview-imagen-prod');
+            var img  = document.getElementById('img-preview-prod');
+            if (url) { img.src = url; prev.classList.remove('hidden'); img.onerror = function() { prev.classList.add('hidden'); }; }
+            else { prev.classList.add('hidden'); }
+        }
+
+        async function guardarProducto() {
+            const id = document.getElementById('prod-id').value;
+            const data = {
+                sku:           document.getElementById('prod-sku').value.trim(),
+                nombre:        document.getElementById('prod-nombre').value.trim(),
+                tipo:          'propio',
+                stock_inicial: parseInt(document.getElementById('prod-stock').value) || 0,
+                id_categoria:  parseInt(document.getElementById('prod-categoria').value) || null,
+                stock_alerta:  parseInt(document.getElementById('prod-alerta').value) || 20,
+                imagen_url:    document.getElementById('prod-imagen').value.trim() || null
+            };
+            if (!data.sku || !data.nombre) { alert('Completá SKU y nombre.'); return; }
+
+            const btn = document.getElementById('btn-guardar-prod');
+            btn.disabled = true;
+            btn.textContent = 'Guardando...';
+
+            try {
+                const res = await fetch(id ? `${API_URL}/productos/${id}` : `${API_URL}/productos_nuevo`, {
+                    method: id ? 'PUT' : 'POST',
+                    headers: {'Content-Type':'application/json'},
+                    body: JSON.stringify(data)
+                });
+                if (!res.ok) {
+                    const e = await res.json();
+                    alert('Error: ' + (e.detail || 'Error al guardar'));
+                    btn.disabled = false;
+                    btn.textContent = 'Guardar';
+                    return;
+                }
+                cerrarModales();
+                cargarCatalogo();
+            } catch(e) {
+                alert('Error de conexión.');
+                btn.disabled = false;
+                btn.textContent = 'Guardar';
+            }
+        }
+
+        // ── ELIMINAR ─────────────────────────────────────────────
+
+        function abrirModalEliminar(id, nombre) {
+            productoEliminarActual = id;
+            document.getElementById('eliminar-nombre').textContent = nombre;
+            document.getElementById('modal-eliminar').classList.replace('modal-oculto','modal-visible');
+        }
+
+        async function confirmarEliminar() {
+            await fetch(`${API_URL}/productos/${productoEliminarActual}`, { method:'DELETE' });
+            cerrarModales(); cargarCatalogo();
+        }
+
+        // ── STOCK ────────────────────────────────────────────────
+
+        function abrirModalStock(id, nombre, stock) {
+            document.getElementById('stock-id').value = id;
+            document.getElementById('stock-nombre').textContent = nombre;
+            document.getElementById('stock-valor').value = stock;
+            document.getElementById('modal-stock').classList.replace('modal-oculto','modal-visible');
+        }
+
+        async function guardarStock() {
+            const id = document.getElementById('stock-id').value;
+            await fetch(`${API_URL}/productos/${id}/stock`, {
+                method:'PUT', headers:{'Content-Type':'application/json'},
+                body: JSON.stringify({nuevo_stock: parseInt(document.getElementById('stock-valor').value)})
+            });
+            cerrarModales(); cargarCatalogo();
+        }
+
+        // ── PRESENTACIONES ───────────────────────────────────────
+
+        // ── CATEGORÍAS ───────────────────────────────────────────
+
+        async function abrirModalCategorias() {
+            await renderCategorias();
+            document.getElementById('modal-cats').classList.replace('modal-oculto','modal-visible');
+        }
+
+        async function renderCategorias() {
+            const res = await fetch(`${API_URL}/categorias`);
+            const lista = await res.json();
+            const cont = document.getElementById('lista-cats');
+            cont.innerHTML = '';
+            if (!lista.length) { cont.innerHTML = '<p class="text-xs text-gray-600 text-center py-2">Sin categorías.</p>'; return; }
+            lista.forEach(c => {
+                cont.innerHTML += `
+                    <div class="flex justify-between items-center bg-black border border-gray-800 rounded-lg px-4 py-3">
+                        <span class="font-bold text-white text-sm">${c.nombre}</span>
+                        <button onclick="eliminarCategoria(${c.id})" class="text-gray-600 hover:text-red-500 text-xs">Eliminar</button>
+                    </div>`;
+            });
+        }
+
+        async function guardarCategoria() {
+            const nombre = document.getElementById('cat-nueva-nombre').value.trim();
+            if (!nombre) return;
+            await fetch(`${API_URL}/categorias/nueva`, {
+                method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({nombre})
+            });
+            document.getElementById('cat-nueva-nombre').value = '';
+            await renderCategorias();
+            await cargarCategorias();
+        }
+
+        async function eliminarCategoria(id) {
+            if (!confirm('¿Eliminar esta categoría?')) return;
+            await fetch(`${API_URL}/categorias/${id}`, { method:'DELETE' });
+            await renderCategorias();
+            await cargarCategorias();
+        }
+
+        function cerrarModales() {
+            document.querySelectorAll('.modal-visible').forEach(m => m.classList.replace('modal-visible','modal-oculto'));
+            productoPresActual = null;
+            productoEliminarActual = null;
+            const btn = document.getElementById('btn-guardar-prod');
+            if (btn) { btn.disabled = false; btn.textContent = 'Guardar'; }
+        }
+
+        window.onload = async () => { await cargarCategorias(); await cargarCatalogo(); };
+    </script>
+
+    <!-- Modal Imprimir -->
+    <div id="modal-imprimir" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
+        <div class="bg-gray-900 border border-gray-700 rounded-xl p-6 w-96 shadow-2xl">
+            <h3 class="text-lg font-bold text-white mb-4 border-l-4 border-neon pl-2">Exportar Stock a PDF</h3>
+            <label class="block text-xs text-gray-500 font-bold mb-2">¿Qué exportar?</label>
+            <div class="space-y-2 mb-6">
+                <label class="flex items-center gap-3 cursor-pointer bg-black border border-gray-700 hover:border-gray-500 rounded-lg px-4 py-3 transition">
+                    <input type="radio" name="filtro-pdf" value="todo" checked class="accent-yellow-400">
+                    <span class="text-white text-sm font-bold">Todo el catálogo</span>
+                </label>
+                <label class="flex items-center gap-3 cursor-pointer bg-black border border-gray-700 hover:border-gray-500 rounded-lg px-4 py-3 transition">
+                    <input type="radio" name="filtro-pdf" value="bajo" class="accent-yellow-400">
+                    <span class="text-white text-sm font-bold">Solo stock bajo (alertas)</span>
+                </label>
+                <label class="flex items-center gap-3 cursor-pointer bg-black border border-gray-700 hover:border-gray-500 rounded-lg px-4 py-3 transition">
+                    <input type="radio" name="filtro-pdf" value="categoria" class="accent-yellow-400">
+                    <span class="text-sm font-bold text-white">Por categoría:</span>
+                </label>
+                <select id="pdf-categoria" class="w-full bg-black border border-gray-700 text-white rounded p-2 text-sm ml-6">
+                    <option value="">Seleccioná una categoría</option>
+                </select>
+            </div>
+            <div class="flex justify-end gap-3">
+                <button onclick="cerrarModales()" class="px-4 py-2 text-gray-400 hover:text-white font-bold">Cancelar</button>
+                <button onclick="generarPDF()" class="bg-neon text-black px-6 py-2 rounded font-bold hover:bg-yellow-300">Exportar PDF</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Contenedor oculto para el PDF -->
+    <div id="contenido-pdf" style="display:none"></div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+    <script>
+        function abrirModalImprimir() {
+            // Poblar select de categorías
+            const sel = document.getElementById('pdf-categoria');
+            sel.innerHTML = '<option value="">Seleccioná una categoría</option>';
+            categorias.forEach(c => { sel.innerHTML += `<option value="${c.id}">${c.nombre}</option>`; });
+            document.getElementById('modal-imprimir').classList.replace('modal-oculto','modal-visible');
+        }
+
+        async function generarPDF() {
+            const filtro = document.querySelector('input[name="filtro-pdf"]:checked').value;
+            const idCat  = document.getElementById('pdf-categoria').value;
+
+            // Traer productos
+            const res = await fetch(`${API_URL}/productos`);
+            let productos = await res.json();
+
+            let titulo = 'Catálogo Completo — Stock';
+            if (filtro === 'bajo') {
+                productos = productos.filter(p => p.stock <= (p.stock_alerta || 20));
+                titulo = 'Productos con Stock Bajo';
+            } else if (filtro === 'categoria' && idCat) {
+                productos = productos.filter(p => String(p.id_categoria) === idCat);
+                const cat = categorias.find(c => String(c.id) === idCat);
+                titulo = `Categoría: ${cat ? cat.nombre : idCat}`;
+            }
+
+            if (!productos.length) { alert('No hay productos para exportar con ese filtro.'); return; }
+
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+
+            // Encabezado
+            doc.setFontSize(18);
+            doc.setTextColor(40, 40, 40);
+            doc.text('Portal del Viento — Alfajores', 14, 18);
+            doc.setFontSize(12);
+            doc.setTextColor(100, 100, 100);
+            doc.text(titulo, 14, 26);
+            doc.setFontSize(9);
+            doc.text(`Generado: ${new Date().toLocaleString('es-AR')}`, 14, 32);
+
+            // Tabla
+            const filas = productos.map(p => {
+                const cat = categorias.find(c => c.id === p.id_categoria)?.nombre || '—';
+                const alerta = p.stock <= (p.stock_alerta || 20) ? '⚠ BAJO' : 'OK';
+                return [p.sku, p.nombre, cat, p.stock + ' un.', p.stock_alerta || 20, alerta];
+            });
+
+            doc.autoTable({
+                startY: 38,
+                head: [['SKU', 'Producto', 'Categoría', 'Stock', 'Alerta', 'Estado']],
+                body: filas,
+                headStyles: { fillColor: [30, 30, 30], textColor: [228, 252, 116], fontStyle: 'bold' },
+                alternateRowStyles: { fillColor: [245, 245, 245] },
+                didDrawCell: (data) => {
+                    if (data.section === 'body' && data.column.index === 5) {
+                        if (data.cell.raw === '⚠ BAJO') {
+                            doc.setTextColor(220, 50, 50);
+                        } else {
+                            doc.setTextColor(40, 160, 40);
+                        }
+                    }
+                },
+                styles: { fontSize: 9, cellPadding: 3 },
+                columnStyles: {
+                    0: { cellWidth: 20 },
+                    1: { cellWidth: 70 },
+                    2: { cellWidth: 35 },
+                    3: { cellWidth: 20, halign: 'center' },
+                    4: { cellWidth: 20, halign: 'center' },
+                    5: { cellWidth: 20, halign: 'center' }
+                }
+            });
+
+            // Pie
+            const totalPags = doc.internal.getNumberOfPages();
+            for (let i = 1; i <= totalPags; i++) {
+                doc.setPage(i);
+                doc.setFontSize(8);
+                doc.setTextColor(150);
+                doc.text(`Página ${i} de ${totalPags}`, doc.internal.pageSize.width - 30, doc.internal.pageSize.height - 8);
+            }
+
+            const fecha = new Date().toISOString().split('T')[0];
+            doc.save(`stock_${fecha}.pdf`);
+            cerrarModales();
+        }
+    </script>
+</body>
+</html>
