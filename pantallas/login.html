@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Iniciar Sesión | Portal del Viento</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .text-neon { color: #e4fc74; }
+        .bg-neon { background-color: #e4fc74; }
+        .border-neon { border-color: #e4fc74; }
+    </style>
+</head>
+<body class="bg-gray-950 min-h-screen flex items-center justify-center">
+    <div class="w-full max-w-sm">
+        <div class="text-center mb-8">
+            <h1 class="text-neon font-bold text-3xl tracking-widest uppercase">Portal del Viento</h1>
+            <p class="text-white text-sm mt-1 font-bold italic">ALFAJORES</p>
+            <p class="text-gray-500 text-xs mt-3">Sistema de gestión interno</p>
+        </div>
+
+        <div class="bg-black border border-gray-800 rounded-2xl p-8 shadow-2xl">
+            <h2 class="text-white font-bold text-lg mb-6">Iniciar Sesión</h2>
+
+            <div id="error-msg" class="hidden bg-red-900/30 border border-red-700 text-red-400 text-sm px-4 py-3 rounded mb-4"></div>
+
+            <label class="block text-xs text-gray-500 font-bold mb-1">Usuario</label>
+            <input type="text" id="username" placeholder="tu usuario"
+                class="w-full bg-gray-900 border border-gray-700 text-white rounded-lg p-3 mb-4 focus:border-neon outline-none">
+
+            <label class="block text-xs text-gray-500 font-bold mb-1">Contraseña</label>
+            <input type="password" id="password" placeholder="••••••••"
+                class="w-full bg-gray-900 border border-gray-700 text-white rounded-lg p-3 mb-6 focus:border-neon outline-none"
+                onkeydown="if(event.key==='Enter') iniciarSesion()">
+
+            <button onclick="iniciarSesion()" id="btn-login"
+                class="w-full bg-neon text-black font-bold py-3 rounded-xl text-lg hover:bg-yellow-300 transition active:scale-95">
+                Entrar →
+            </button>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = window.location.origin + "/api";
+
+        // Si ya hay sesión, redirigir
+        if (sessionStorage.getItem('usuario')) {
+            window.location.href = '/admin';
+        }
+
+        async function iniciarSesion() {
+            const username = document.getElementById('username').value.trim();
+            const password = document.getElementById('password').value;
+            const btn = document.getElementById('btn-login');
+            const errDiv = document.getElementById('error-msg');
+
+            if (!username || !password) {
+                mostrarError("Completá usuario y contraseña.");
+                return;
+            }
+
+            btn.textContent = "Verificando...";
+            btn.disabled = true;
+            errDiv.classList.add('hidden');
+
+            try {
+                const res = await fetch(`${API_URL}/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+                const data = await res.json();
+                if (!res.ok) {
+                    mostrarError(data.detail || "Error de acceso.");
+                } else {
+                    sessionStorage.setItem('usuario', JSON.stringify(data));
+                    window.location.href = '/admin';
+                }
+            } catch (e) {
+                mostrarError("No se pudo conectar al servidor.");
+            } finally {
+                btn.textContent = "Entrar →";
+                btn.disabled = false;
+            }
+        }
+
+        function mostrarError(msg) {
+            const el = document.getElementById('error-msg');
+            el.textContent = msg;
+            el.classList.remove('hidden');
+        }
+    </script>
+</body>
+</html>
