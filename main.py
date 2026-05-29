@@ -683,6 +683,19 @@ def actualizar_credito(id_dist: int, body: ActualizarCredito):
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         liberar_conexion(conn)
+        @app.delete("/api/distribuidores/{id_dist}")
+def eliminar_distribuidor(id_dist: int):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        cur.execute("UPDATE distribuidores SET activo=false WHERE id=%s", (id_dist,))
+        conn.commit()
+        return {"status": "ok"}
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
 
 # ═══════════════════════════════════════════════════════════════
 #  VENTAS
