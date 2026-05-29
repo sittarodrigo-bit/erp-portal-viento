@@ -30,6 +30,12 @@ def get_pool():
 def obtener_conexion():
     conn = get_pool().getconn()
     conn.autocommit = False
+    
+    # Forzamos la zona horaria correcta para todos los registros
+    cur = conn.cursor()
+    cur.execute("SET TIME ZONE 'America/Argentina/Mendoza';")
+    cur.close()
+    
     return conn
 
 def liberar_conexion(conn):
