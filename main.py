@@ -1658,6 +1658,6 @@ def abrir_configuracion():
 @app.get("/proveedores")
 def abrir_proveedores_html():
     return serve_html("proveedores.html")
-@app.get("/fichajes")
+@app.get("/fichaje")
 def abrir_portal_fichaje():
     return serve_html("portal_fichaje.html")
