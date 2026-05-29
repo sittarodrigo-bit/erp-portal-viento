@@ -56,23 +56,23 @@
                             <th class="p-4">Categoría</th>
                             <th class="p-4">Stock</th>
                             <th class="p-4">Alerta Stock</th>
+                            <th class="p-4">Precio Mayorista</th>
                             <th class="p-4 text-right">Acciones</th>
                         </tr>
                     </thead>
                     <tbody id="tabla-productos" class="divide-y divide-gray-800 text-sm">
-                        <tr><td colspan="6" class="p-4 text-center text-gray-500">Cargando...</td></tr>
+                        <tr><td colspan="7" class="p-4 text-center text-gray-500">Cargando...</td></tr>
                     </tbody>
                 </table>
             </div>
         </div>
     </main>
 
-    <!-- Modal Nuevo / Editar Producto -->
     <div id="modal-producto" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
-        <div class="bg-gray-900 border border-gray-700 rounded-xl p-6 w-[480px] shadow-2xl">
+        <div class="bg-gray-900 border border-gray-700 rounded-xl p-6 w-[500px] shadow-2xl">
             <h3 id="modal-prod-titulo" class="text-lg font-bold text-white mb-4 border-l-4 border-neon pl-2">Nuevo Producto</h3>
             <input type="hidden" id="prod-id">
-            <div class="grid grid-cols-2 gap-4 mb-4">
+            <input type="hidden" id="prod-id-pres"> <div class="grid grid-cols-2 gap-4 mb-4">
                 <div>
                     <label class="block text-xs text-gray-500 font-bold mb-1">SKU</label>
                     <input type="text" id="prod-sku" class="w-full bg-black border border-gray-700 text-white rounded p-2">
@@ -82,8 +82,10 @@
                     <input type="number" id="prod-stock" value="0" class="w-full bg-black border border-gray-700 text-white rounded p-2">
                 </div>
             </div>
+            
             <label class="block text-xs text-gray-500 font-bold mb-1">Nombre del Producto</label>
             <input type="text" id="prod-nombre" class="w-full bg-black border border-gray-700 text-white rounded p-3 mb-4">
+            
             <div class="grid grid-cols-2 gap-4 mb-4">
                 <div>
                     <label class="block text-xs text-gray-500 font-bold mb-1">Categoría</label>
@@ -92,10 +94,16 @@
                     </select>
                 </div>
                 <div>
-                    <label class="block text-xs text-gray-500 font-bold mb-1">Alerta stock (unidades)</label>
-                    <input type="number" id="prod-alerta" value="20" class="w-full bg-black border border-gray-700 text-white rounded p-2">
+                    <label class="block text-xs text-neon font-bold mb-1">Precio Mayorista ($)</label>
+                    <input type="number" id="prod-precio" step="0.01" value="0" class="w-full bg-black border border-neon text-white rounded p-2 font-bold">
                 </div>
             </div>
+            
+            <div class="mb-4">
+                <label class="block text-xs text-gray-500 font-bold mb-1">Alerta stock (unidades)</label>
+                <input type="number" id="prod-alerta" value="20" class="w-full bg-black border border-gray-700 text-white rounded p-2 w-1/2">
+            </div>
+
             <label class="block text-xs text-neon font-bold mb-1">URL de la foto del producto</label>
             <div class="flex gap-2 mb-2">
                 <input type="text" id="prod-imagen" placeholder="https://i.imgur.com/tu-foto.jpg"
@@ -105,6 +113,7 @@
             <div id="preview-imagen-prod" class="hidden mb-4">
                 <img id="img-preview-prod" src="" class="h-24 rounded-lg object-cover border border-gray-700">
             </div>
+            
             <div class="flex justify-end gap-3">
                 <button onclick="cerrarModales()" class="px-4 py-2 text-gray-400 hover:text-white font-bold">Cancelar</button>
                 <button id="btn-guardar-prod" onclick="guardarProducto()" class="bg-neon text-black px-6 py-2 rounded font-bold hover:bg-yellow-300 disabled:opacity-50 disabled:cursor-not-allowed">Guardar</button>
@@ -112,14 +121,13 @@
         </div>
     </div>
 
-    <!-- Modal Stock -->
     <div id="modal-stock" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
         <div class="bg-gray-900 border border-gray-700 rounded-xl p-6 w-96 shadow-2xl">
-            <h3 class="text-lg font-bold text-white mb-1">Ajustar Stock</h3>
+            <h3 class="text-lg font-bold text-white mb-1">Ajustar Stock Físico</h3>
             <p id="stock-nombre" class="text-neon text-sm font-bold mb-4"></p>
             <input type="hidden" id="stock-id">
-            <label class="block text-xs text-gray-500 font-bold mb-1">Stock en unidades</label>
-            <input type="number" id="stock-valor" class="w-full bg-black border border-gray-700 text-white rounded p-3 mb-6 font-bold text-xl text-center">
+            <label class="block text-xs text-gray-500 font-bold mb-1">Cantidad total en fábrica (Unidades)</label>
+            <input type="number" id="stock-valor" class="w-full bg-black border border-neon text-white rounded p-3 mb-6 font-bold text-xl text-center">
             <div class="flex justify-end gap-3">
                 <button onclick="cerrarModales()" class="px-4 py-2 text-gray-400 hover:text-white font-bold">Cancelar</button>
                 <button onclick="guardarStock()" class="bg-neon text-black px-6 py-2 rounded font-bold">Guardar</button>
@@ -127,7 +135,22 @@
         </div>
     </div>
 
-        <!-- Modal Categorías -->
+    <div id="modal-precio" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
+        <div class="bg-gray-900 border border-gray-700 rounded-xl p-6 w-[400px] shadow-2xl">
+            <h3 class="text-lg font-bold text-white mb-1">Fijar Precio</h3>
+            <p id="precio-nombre" class="text-neon text-sm font-bold mb-4"></p>
+            <input type="hidden" id="precio-id-pres">
+            
+            <label class="block text-xs text-gray-500 font-bold mb-1">Precio Mayorista ($)</label>
+            <input type="number" id="precio-valor" step="0.01" class="w-full bg-black border border-neon text-white rounded p-3 font-bold text-xl text-center mb-6">
+            
+            <div class="flex justify-end gap-3">
+                <button onclick="cerrarModales()" class="px-4 py-2 text-gray-400 hover:text-white font-bold">Cancelar</button>
+                <button onclick="guardarPrecio()" class="bg-neon text-black px-6 py-2 rounded font-bold hover:bg-yellow-300">Guardar Precio</button>
+            </div>
+        </div>
+    </div>
+
     <div id="modal-cats" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
         <div class="bg-gray-900 border border-gray-700 rounded-xl p-6 w-[440px] shadow-2xl max-h-[80vh] overflow-y-auto">
             <div class="flex justify-between items-center mb-4">
@@ -144,7 +167,6 @@
         </div>
     </div>
 
-    <!-- Modal confirmar eliminación -->
     <div id="modal-eliminar" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
         <div class="bg-gray-900 border border-red-700 rounded-xl p-6 w-96 shadow-2xl text-center">
             <p class="text-4xl mb-3">🗑️</p>
@@ -163,7 +185,7 @@
         const usr = JSON.parse(sessionStorage.getItem('usuario') || '{}');
         if (usr.nombre) document.getElementById('usuario-info').textContent = `${usr.nombre} ${usr.apellido} · ${usr.rol}`;
 
-        let categorias = [], productoPresActual = null, productoEliminarActual = null;
+        let categorias = [], productoEliminarActual = null;
 
         async function cargarCategorias() {
             const res = await fetch(`${API_URL}/categorias`);
@@ -179,38 +201,55 @@
             const cat = document.getElementById('filtro-cat').value;
             const res = await fetch(`${API_URL}/productos/con_presentaciones`);
             let productos = await res.json();
-            // Asegurar que id_categoria venga correctamente
             if (cat) productos = productos.filter(p => String(p.id_categoria) === String(cat));
 
             const tabla = document.getElementById('tabla-productos');
             tabla.innerHTML = '';
             if (!productos.length) {
-                tabla.innerHTML = '<tr><td colspan="6" class="p-4 text-center text-gray-500">Sin productos.</td></tr>';
+                tabla.innerHTML = '<tr><td colspan="7" class="p-4 text-center text-gray-500">Sin productos.</td></tr>';
                 return;
             }
             for (const p of productos) {
                 const catNombre = categorias.find(c => c.id === p.id_categoria)?.nombre || '—';
                 const colorStock = p.stock <= (p.stock_alerta || 20) ? 'text-red-400 font-bold' : 'text-white';
+                
+                // Extraemos precio desde la API
+                const presBase = p.presentaciones && p.presentaciones.length > 0 ? p.presentaciones[0] : null;
+                const precio = presBase ? parseFloat(presBase.precio_mayorista) : 0;
+                const idPres = presBase ? presBase.id : null;
+                
+                // Usamos la URL de imagen si está configurada, sino mostramos el SKU
+                const nombreHTML = p.imagen_url 
+                    ? `<div class="flex items-center gap-3">
+                           <img src="${p.imagen_url}" class="w-10 h-10 object-cover rounded border border-gray-700" onerror="this.style.display='none'">
+                           <span>${p.nombre}</span>
+                       </div>`
+                    : p.nombre;
 
                 tabla.innerHTML += `
-                    <tr class="hover:bg-gray-900 transition">
+                    <tr class="hover:bg-gray-900 transition border-b border-gray-800">
                         <td class="p-4 text-gray-400 text-xs font-mono">${p.sku}</td>
-                        <td class="p-4 font-bold text-white">${p.nombre}</td>
+                        <td class="p-4 font-bold text-white">${nombreHTML}</td>
                         <td class="p-4"><span class="text-xs bg-gray-800 px-2 py-1 rounded text-gray-300">${catNombre}</span></td>
                         <td class="p-4 ${colorStock}">${p.stock} un.</td>
                         <td class="p-4 text-gray-500 text-xs">${p.stock_alerta || 20} un.</td>
+                        <td class="p-4 text-neon font-bold text-lg">$ ${precio.toLocaleString('es-AR')}</td>
                         <td class="p-4 text-right">
                             <div class="flex justify-end gap-1">
                                 <button onclick="abrirModalStock(${p.id}, '${p.nombre.replace(/'/g,"\\'")}', ${p.stock})"
-                                    class="text-xs border border-gray-700 bg-gray-800 hover:border-gray-500 px-2 py-1 rounded text-gray-400 hover:text-white">
-                                    Stock
+                                    class="text-xs border border-gray-700 bg-gray-800 hover:border-gray-500 px-2 py-1 rounded text-gray-400 hover:text-white" title="Ajustar Stock Físico">
+                                    📦 Stock
                                 </button>
-                                <button onclick="abrirModalEditar(${p.id}, '${p.nombre.replace(/'/g,"\\'")}', '${p.sku}', ${p.id_categoria||'null'}, ${p.stock_alerta||20})"
-                                    class="text-xs border border-gray-700 bg-gray-800 hover:border-gray-500 px-2 py-1 rounded text-gray-400 hover:text-white">
-                                    Editar
+                                <button onclick="abrirModalPrecio(${idPres}, '${p.nombre.replace(/'/g,"\\'")}', ${precio})" 
+                                    class="text-xs bg-green-900/40 text-green-400 border border-green-800 hover:bg-green-900 px-2 py-1 rounded transition" title="Modificar Precio">
+                                    💲 Precio
+                                </button>
+                                <button onclick="abrirModalEditar(${p.id}, '${p.nombre.replace(/'/g,"\\'")}', '${p.sku}', ${p.id_categoria||'null'}, ${p.stock_alerta||20}, '${p.imagen_url||''}', ${precio}, ${idPres || 'null'})"
+                                    class="text-xs border border-gray-700 bg-gray-800 hover:border-gray-500 px-2 py-1 rounded text-gray-400 hover:text-white" title="Editar Producto">
+                                    ✎
                                 </button>
                                 <button onclick="abrirModalEliminar(${p.id}, '${p.nombre.replace(/'/g,"\\'")}' )"
-                                    class="text-xs bg-red-900/50 hover:bg-red-700 text-red-400 hover:text-white px-2 py-1 rounded">
+                                    class="text-xs bg-red-900/50 hover:bg-red-700 text-red-400 hover:text-white px-2 py-1 rounded" title="Eliminar">
                                     ✕
                                 </button>
                             </div>
@@ -224,24 +263,30 @@
         function abrirModalNuevo() {
             document.getElementById('modal-prod-titulo').textContent = 'Nuevo Producto';
             document.getElementById('prod-id').value = '';
+            document.getElementById('prod-id-pres').value = '';
             document.getElementById('prod-sku').value = '';
             document.getElementById('prod-nombre').value = '';
             document.getElementById('prod-stock').value = '0';
             document.getElementById('prod-categoria').value = '';
             document.getElementById('prod-alerta').value = '20';
+            document.getElementById('prod-precio').value = '';
+            document.getElementById('prod-imagen').value = '';
+            previsualizarImagen();
             document.getElementById('prod-stock').disabled = false;
             document.getElementById('modal-producto').classList.replace('modal-oculto','modal-visible');
         }
 
-        function abrirModalEditar(id, nombre, sku, id_cat, alerta, imagen) {
+        function abrirModalEditar(id, nombre, sku, id_cat, alerta, imagen, precio, idPres) {
             document.getElementById('modal-prod-titulo').textContent = 'Editar Producto';
             document.getElementById('prod-id').value = id;
+            document.getElementById('prod-id-pres').value = idPres || '';
             document.getElementById('prod-sku').value = sku;
             document.getElementById('prod-nombre').value = nombre;
             document.getElementById('prod-stock').value = '';
             document.getElementById('prod-stock').disabled = true;
             document.getElementById('prod-categoria').value = id_cat || '';
             document.getElementById('prod-alerta').value = alerta;
+            document.getElementById('prod-precio').value = precio || 0;
             document.getElementById('prod-imagen').value = imagen || '';
             previsualizarImagen();
             document.getElementById('modal-producto').classList.replace('modal-oculto','modal-visible');
@@ -257,6 +302,9 @@
 
         async function guardarProducto() {
             const id = document.getElementById('prod-id').value;
+            const idPres = document.getElementById('prod-id-pres').value;
+            const precioMay = parseFloat(document.getElementById('prod-precio').value) || 0;
+
             const data = {
                 sku:           document.getElementById('prod-sku').value.trim(),
                 nombre:        document.getElementById('prod-nombre').value.trim(),
@@ -273,6 +321,7 @@
             btn.textContent = 'Guardando...';
 
             try {
+                // 1. Guardar el Producto Central con su imagen y alerta
                 const res = await fetch(id ? `${API_URL}/productos/${id}` : `${API_URL}/productos_nuevo`, {
                     method: id ? 'PUT' : 'POST',
                     headers: {'Content-Type':'application/json'},
@@ -280,15 +329,52 @@
                 });
                 if (!res.ok) {
                     const e = await res.json();
-                    alert('Error: ' + (e.detail || 'Error al guardar'));
+                    alert('Error: ' + (e.detail || 'Error al guardar producto'));
                     btn.disabled = false;
                     btn.textContent = 'Guardar';
                     return;
                 }
+
+                // Intentar recuperar el ID si el producto es nuevo
+                let prodId = id;
+                if (!prodId) {
+                    try {
+                        const respData = await res.json();
+                        if (respData && respData.id) prodId = respData.id;
+                    } catch (err) {
+                        const resProds = await fetch(`${API_URL}/productos`);
+                        const allProds = await resProds.json();
+                        const created = allProds.find(p => p.sku === data.sku);
+                        if (created) prodId = created.id;
+                    }
+                }
+
+                // 2. Guardar o Crear Precio Mayorista (Enlazado como Presentación)
+                if (prodId) {
+                    const payloadPrecio = {
+                        nombre: 'Unidad', 
+                        cantidad_unidades: 1,
+                        precio_minorista: 0,
+                        precio_mayorista: precioMay
+                    };
+
+                    if (idPres && idPres !== 'null' && idPres !== '') {
+                        await fetch(`${API_URL}/presentaciones/${idPres}`, {
+                            method:'PUT', headers:{'Content-Type':'application/json'},
+                            body: JSON.stringify(payloadPrecio)
+                        });
+                    } else {
+                        await fetch(`${API_URL}/productos/${prodId}/presentaciones`, {
+                            method:'POST', headers:{'Content-Type':'application/json'},
+                            body: JSON.stringify(payloadPrecio)
+                        });
+                    }
+                }
+
                 cerrarModales();
                 cargarCatalogo();
             } catch(e) {
-                alert('Error de conexión.');
+                alert('Error de conexión con el servidor.');
                 btn.disabled = false;
                 btn.textContent = 'Guardar';
             }
@@ -307,7 +393,7 @@
             cerrarModales(); cargarCatalogo();
         }
 
-        // ── STOCK ────────────────────────────────────────────────
+        // ── STOCK DIRECTO ────────────────────────────────────────
 
         function abrirModalStock(id, nombre, stock) {
             document.getElementById('stock-id').value = id;
@@ -325,7 +411,34 @@
             cerrarModales(); cargarCatalogo();
         }
 
-        // ── PRESENTACIONES ───────────────────────────────────────
+        // ── PRECIO DIRECTO ───────────────────────────────────────
+
+        function abrirModalPrecio(idPres, nombre, precioActual) {
+            if (!idPres) { 
+                alert("Este producto es nuevo y aún no se guardó su estructura de precio. Usá el botón '✎' para asignarle el precio por primera vez."); 
+                return; 
+            }
+            document.getElementById('precio-id-pres').value = idPres;
+            document.getElementById('precio-nombre').textContent = nombre;
+            document.getElementById('precio-valor').value = precioActual;
+            document.getElementById('modal-precio').classList.replace('modal-oculto','modal-visible');
+        }
+
+        async function guardarPrecio() {
+            const idPres = document.getElementById('precio-id-pres').value;
+            const precio = parseFloat(document.getElementById('precio-valor').value) || 0;
+            
+            await fetch(`${API_URL}/presentaciones/${idPres}`, {
+                method:'PUT', headers:{'Content-Type':'application/json'},
+                body: JSON.stringify({
+                    nombre: 'Unidad', 
+                    cantidad_unidades: 1,
+                    precio_minorista: 0,
+                    precio_mayorista: precio
+                })
+            });
+            cerrarModales(); cargarCatalogo();
+        }
 
         // ── CATEGORÍAS ───────────────────────────────────────────
 
@@ -369,7 +482,6 @@
 
         function cerrarModales() {
             document.querySelectorAll('.modal-visible').forEach(m => m.classList.replace('modal-visible','modal-oculto'));
-            productoPresActual = null;
             productoEliminarActual = null;
             const btn = document.getElementById('btn-guardar-prod');
             if (btn) { btn.disabled = false; btn.textContent = 'Guardar'; }
@@ -378,7 +490,6 @@
         window.onload = async () => { await cargarCategorias(); await cargarCatalogo(); };
     </script>
 
-    <!-- Modal Imprimir -->
     <div id="modal-imprimir" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
         <div class="bg-gray-900 border border-gray-700 rounded-xl p-6 w-96 shadow-2xl">
             <h3 class="text-lg font-bold text-white mb-4 border-l-4 border-neon pl-2">Exportar Stock a PDF</h3>
@@ -407,7 +518,6 @@
         </div>
     </div>
 
-    <!-- Contenedor oculto para el PDF -->
     <div id="contenido-pdf" style="display:none"></div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
