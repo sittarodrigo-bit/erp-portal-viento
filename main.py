@@ -1773,3 +1773,6 @@ def abrir_proveedores_html():
 @app.get("/fichajes")
 def abrir_portal_fichaje():
     return serve_html("portal_fichaje.html")
+@app.get("/qr")
+def abrir_qr_fichaje():
+    return serve_html("qr_fichaje.html")
