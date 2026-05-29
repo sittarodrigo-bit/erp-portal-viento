@@ -554,7 +554,7 @@ def productos_con_presentaciones():
     conn = obtener_conexion()
     try:
         cur = conn.cursor()
-        cur.execute("SELECT id, sku, nombre, tipo, stock_actual as stock FROM productos WHERE activo=true ORDER BY nombre")
+        cur.execute("SELECT id, sku, nombre, tipo, stock_actual as stock, id_categoria, stock_alerta, imagen_url FROM productos WHERE activo=true ORDER BY nombre")
         productos = fetchall_dict(cur)
         for p in productos:
             cur.execute("""
@@ -613,7 +613,7 @@ def registrar_produccion(orden: OrdenProduccion):
         """, (orden.id_producto, orden.id_empleado, orden.cantidad_producida,
               orden.observaciones, orden.fecha_vencimiento, orden.costo_total,
               orden.id_categoria))
-        # Solo descuenta insumos — stock de catálogo se maneja manual
+        
         cur.execute("SELECT id_insumo, cantidad_necesaria FROM recetas WHERE id_producto=%s", (orden.id_producto,))
         for item in cur.fetchall():
             consumo = float(item[1]) * orden.cantidad_producida
@@ -683,7 +683,8 @@ def actualizar_credito(id_dist: int, body: ActualizarCredito):
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         liberar_conexion(conn)
-        @app.delete("/api/distribuidores/{id_dist}")
+
+@app.delete("/api/distribuidores/{id_dist}")
 def eliminar_distribuidor(id_dist: int):
     conn = obtener_conexion()
     try:
@@ -712,7 +713,6 @@ def registrar_venta(venta: NuevaVenta):
         for item in venta.detalle:
             cur.execute("INSERT INTO detalle_ventas (id_venta, id_producto, cantidad, precio_unitario) VALUES (%s,%s,%s,%s)",
                         (id_venta, item.id_producto, item.cantidad, item.precio_unitario))
-            # Descontar stock en unidades reales
             unidades_reales = item.cantidad * item.unidades_por_presentacion
             cur.execute("UPDATE productos SET stock_actual = stock_actual - %s WHERE id=%s",
                         (unidades_reales, item.id_producto))
@@ -1267,8 +1267,6 @@ def cobros_pendientes():
     finally:
         liberar_conexion(conn)
 
-
-
 # ═══════════════════════════════════════════════════════════════
 #  CATEGORIAS
 # ═══════════════════════════════════════════════════════════════
@@ -1351,7 +1349,6 @@ def eliminar_producto(id_producto: int):
         return {"status": "ok"}
     finally:
         liberar_conexion(conn)
-
 
 # ── INSUMOS ACTUALIZADOS ─────────────────────────────────────
 
@@ -1453,7 +1450,6 @@ def eliminar_insumo(id_insumo: int):
     finally:
         liberar_conexion(conn)
 
-
 # ── EDITAR Y ELIMINAR PRODUCCIÓN ────────────────────────────
 
 class EditarOrdenProduccion(BaseModel):
@@ -1489,7 +1485,6 @@ def eliminar_orden_produccion(id_orden: int):
         return {"status": "ok"}
     finally:
         liberar_conexion(conn)
-
 
 # ═══════════════════════════════════════════════════════════════
 #  EMPRESA
@@ -1588,7 +1583,6 @@ def eliminar_pedido_b2b(id_pedido: int):
     finally:
         liberar_conexion(conn)
 
-# Distribuidores con campos completos
 @app.get("/api/distribuidores_lista")
 def listar_distribuidores():
     conn = obtener_conexion()
@@ -1677,6 +1671,7 @@ def abrir_configuracion():
 @app.get("/proveedores")
 def abrir_proveedores_html():
     return serve_html("proveedores.html")
-@app.get("/fichaje")
+
+@app.get("/fichajes")
 def abrir_portal_fichaje():
     return serve_html("portal_fichaje.html")
