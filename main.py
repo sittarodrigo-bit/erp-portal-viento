@@ -277,7 +277,31 @@ def actualizar_sucursal(id_suc: int, s: NuevaSucursal):
 # ═══════════════════════════════════════════════════════════════
 #  EMPLEADOS
 # ═══════════════════════════════════════════════════════════════
+class ActualizarEmpleado(BaseModel):
+    nombre: str
+    apellido: str
+    dni: str
+    rol: str
+    telefono: Optional[str] = None
+    email: Optional[str] = None
 
+@app.put("/api/empleados/{id_emp}")
+def actualizar_empleado(id_emp: int, emp: ActualizarEmpleado):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            UPDATE empleados 
+            SET nombre=%s, apellido=%s, dni=%s, rol=%s, telefono=%s, email=%s 
+            WHERE id=%s
+        """, (emp.nombre, emp.apellido, emp.dni, emp.rol, emp.telefono, emp.email, id_emp))
+        conn.commit()
+        return {"status": "ok"}
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
 @app.get("/api/empleados")
 def listar_empleados():
     conn = obtener_conexion()
