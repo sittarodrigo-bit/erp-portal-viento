@@ -1212,7 +1212,8 @@ def stock_bajo_insumos():
             SELECT id, nombre, unidad_medida as unidad,
                    stock_actual as stock, stock_minimo as minimo, stock_alerta
             FROM insumos
-            WHERE stock_actual <= stock_minimo OR stock_actual <= stock_alerta
+            WHERE activo = true 
+              AND (stock_actual <= stock_minimo OR stock_actual <= stock_alerta)
             ORDER BY stock_actual ASC
         """)
         return fetchall_dict(cur)
