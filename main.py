@@ -360,6 +360,103 @@ def listar_fichajes(fecha: Optional[str] = None, id_empleado: Optional[int] = No
         return fetchall_dict(cur)
     finally:
         liberar_conexion(conn)
+        # ═══════════════════════════════════════════════════════════════
+#  REPORTE DE HORAS TRABAJADAS
+# ═══════════════════════════════════════════════════════════════
+
+@app.get("/api/reportes/horas_trabajadas")
+def reporte_horas_trabajadas(fecha_desde: str = Query(...), fecha_hasta: str = Query(...)):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            WITH pares AS (
+                SELECT 
+                    e.id as id_empleado,
+                    e.nombre,
+                    e.apellido,
+                    r.fecha_hora as entrada,
+                    LEAD(r.fecha_hora) OVER (PARTITION BY r.id_empleado ORDER BY r.fecha_hora) as salida,
+                    r.tipo
+                FROM registros_horarios r
+                JOIN empleados e ON r.id_empleado = e.id
+                WHERE DATE(r.fecha_hora) >= %s AND DATE(r.fecha_hora) <= %s
+            )
+            SELECT 
+                id_empleado,
+                nombre,
+                apellido,
+                ROUND(CAST(SUM(EXTRACT(EPOCH FROM (salida - entrada))/3600.0) AS numeric), 2) as horas_totales
+            FROM pares
+            WHERE tipo = 'Entrada' AND salida IS NOT NULL
+            GROUP BY id_empleado, nombre, apellido
+            ORDER BY horas_totales DESC
+        """, (fecha_desde, fecha_hasta))
+        return fetchall_dict(cur)
+    finally:
+        liberar_conexion(conn)
+
+# ═══════════════════════════════════════════════════════════════
+#  ANTICIPOS DE SUELDO
+# ═══════════════════════════════════════════════════════════════
+
+class NuevoAnticipo(BaseModel):
+    id_empleado: int
+    monto: float
+    observaciones: Optional[str] = None
+
+@app.post("/api/anticipos/nuevo")
+def registrar_anticipo(data: NuevoAnticipo):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        # Se asegura de crear la tabla si no existe
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS anticipos_empleados (
+                id SERIAL PRIMARY KEY,
+                id_empleado INTEGER REFERENCES empleados(id),
+                fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                monto DECIMAL(10,2) NOT NULL,
+                observaciones TEXT
+            )
+        """)
+        cur.execute("INSERT INTO anticipos_empleados (id_empleado, monto, observaciones) VALUES (%s,%s,%s)",
+                    (data.id_empleado, data.monto, data.observaciones))
+        conn.commit()
+        return {"status": "ok"}
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
+@app.get("/api/anticipos")
+def listar_anticipos(fecha_desde: str = Query(...), fecha_hasta: str = Query(...)):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        # Se asegura de crear la tabla si entran a mirar antes de registrar uno
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS anticipos_empleados (
+                id SERIAL PRIMARY KEY,
+                id_empleado INTEGER REFERENCES empleados(id),
+                fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                monto DECIMAL(10,2) NOT NULL,
+                observaciones TEXT
+            )
+        """)
+        conn.commit()
+        
+        cur.execute("""
+            SELECT a.id, a.fecha::text, a.monto, a.observaciones, e.nombre, e.apellido 
+            FROM anticipos_empleados a
+            JOIN empleados e ON a.id_empleado = e.id
+            WHERE DATE(a.fecha) >= %s AND DATE(a.fecha) <= %s
+            ORDER BY a.fecha DESC
+        """, (fecha_desde, fecha_hasta))
+        return fetchall_dict(cur)
+    finally:
+        liberar_conexion(conn)
 
 # ═══════════════════════════════════════════════════════════════
 #  CAJAS
