@@ -14,13 +14,12 @@
     </style>
 </head>
 <body class="bg-gray-950 text-gray-200 font-sans h-screen flex">
-    <!-- Sidebar -->
-    <aside class="w-64 bg-black border-r border-gray-800 flex flex-col">
+    <aside class="w-64 bg-black border-r border-gray-800 flex flex-col shrink-0">
         <div class="p-6 border-b border-gray-800 text-center">
             <h1 class="text-neon font-bold text-lg tracking-widest uppercase">Portal del Viento</h1>
             <p class="text-white text-xs mt-1 font-bold italic">ALFAJORES</p>
         </div>
-        <nav class="flex-1 p-4 space-y-1 text-sm">
+        <nav class="flex-1 p-4 space-y-1 text-sm overflow-y-auto">
             <a href="/admin" class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">📊 Tablero</a>
             <a href="/catalogo" class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">📦 Catálogo</a>
             <a href="/insumos" class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">🧪 Insumos</a>
@@ -30,23 +29,26 @@
             <a href="/historial-b2b" class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">📋 Pedidos B2B</a>
             <a href="/empleados" class="block bg-gray-900 text-white py-2 px-4 rounded-lg border-l-4 border-neon font-medium">👥 Empleados</a>
             <a href="/reportes" class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">📈 Reportes</a>
+            <a href="/configuracion" class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">⚙️ Configuración</a>
         </nav>
         <div id="usuario-info" class="p-4 border-t border-gray-800 text-xs text-gray-500 text-center"></div>
     </aside>
 
     <main class="flex-1 flex flex-col overflow-hidden">
-        <header class="bg-gray-900 border-b border-gray-800 py-4 px-8 flex justify-between items-center">
-            <h2 class="text-xl font-bold text-white">Empleados y Registros Horarios</h2>
-            <button onclick="abrirModalNuevo()" class="bg-neon text-black font-bold py-2 px-6 rounded-lg hover:bg-yellow-300 transition">+ Nuevo Empleado</button>
+        <header class="bg-gray-900 border-b border-gray-800 py-4 px-8 flex justify-between items-center shrink-0">
+            <h2 class="text-xl font-bold text-white">Gestión de Personal</h2>
+            <div class="flex gap-3">
+                <button onclick="abrirModalNuevo()" class="bg-neon text-black font-bold py-2 px-6 rounded-lg hover:bg-yellow-300 transition">+ Nuevo Empleado</button>
+            </div>
         </header>
 
-        <!-- Tabs -->
-        <div class="bg-gray-900 border-b border-gray-800 px-8 flex gap-6">
+        <div class="bg-gray-900 border-b border-gray-800 px-8 flex gap-6 shrink-0">
             <button onclick="cambiarTab('empleados')" id="tab-empleados" class="py-3 text-sm font-bold tab-activa">👥 Nómina</button>
-            <button onclick="cambiarTab('fichajes')" id="tab-fichajes" class="py-3 text-sm font-bold text-gray-400 hover:text-white">🕐 Registros Horarios</button>
+            <button onclick="cambiarTab('fichajes')" id="tab-fichajes" class="py-3 text-sm font-bold text-gray-400 hover:text-white transition">🕐 Fichajes Diarios</button>
+            <button onclick="cambiarTab('horas')" id="tab-horas" class="py-3 text-sm font-bold text-gray-400 hover:text-white transition">⏳ Horas Trabajadas</button>
+            <button onclick="cambiarTab('anticipos')" id="tab-anticipos" class="py-3 text-sm font-bold text-gray-400 hover:text-white transition">💸 Anticipos</button>
         </div>
 
-        <!-- Tab Empleados -->
         <div id="panel-empleados" class="flex-1 overflow-y-auto p-8">
             <div class="bg-black rounded-xl border border-gray-800 overflow-hidden">
                 <table class="w-full text-left">
@@ -67,13 +69,13 @@
             </div>
         </div>
 
-        <!-- Tab Fichajes -->
         <div id="panel-fichajes" class="hidden flex-1 overflow-y-auto p-8">
             <div class="flex gap-4 mb-6">
-                <input type="date" id="filtro-fecha" class="bg-gray-900 border border-gray-700 text-white rounded p-2 text-sm">
-                <button onclick="cargarFichajes()" class="bg-neon text-black font-bold px-4 py-2 rounded text-sm">Filtrar</button>
-                <button onclick="registrarFichaje('entrada')" class="bg-green-700 hover:bg-green-600 text-white font-bold px-4 py-2 rounded text-sm">✅ Registrar Entrada</button>
-                <button onclick="registrarFichaje('salida')" class="bg-red-800 hover:bg-red-700 text-white font-bold px-4 py-2 rounded text-sm">🚪 Registrar Salida</button>
+                <input type="date" id="filtro-fecha" class="bg-gray-900 border border-gray-700 text-white rounded p-2 text-sm focus:outline-none focus:border-neon">
+                <button onclick="cargarFichajes()" class="bg-neon text-black font-bold px-4 py-2 rounded text-sm hover:bg-yellow-300">Filtrar</button>
+                <div class="flex-1"></div>
+                <button onclick="registrarFichaje('entrada')" class="bg-green-800/40 border border-green-700 hover:bg-green-800 text-green-400 font-bold px-4 py-2 rounded text-sm transition">✅ Registrar Entrada</button>
+                <button onclick="registrarFichaje('salida')" class="bg-red-900/40 border border-red-800 hover:bg-red-900 text-red-400 font-bold px-4 py-2 rounded text-sm transition">🚪 Registrar Salida</button>
             </div>
             <div class="bg-black rounded-xl border border-gray-800 overflow-hidden">
                 <table class="w-full text-left">
@@ -93,45 +95,63 @@
             </div>
         </div>
 
-        <!-- Panel Horas -->
         <div id="panel-horas" class="hidden flex-1 overflow-y-auto p-8">
-            <!-- Filtros -->
-            <div class="flex flex-wrap gap-3 mb-6 items-end">
+            <div class="flex flex-wrap gap-3 mb-6 items-end bg-black p-4 rounded-xl border border-gray-800">
+                <div>
+                    <label class="block text-xs text-gray-500 font-bold mb-1">Desde (Inicio semana/mes)</label>
+                    <input type="date" id="horas-desde" class="bg-gray-900 border border-gray-700 text-white rounded p-2 text-sm focus:outline-none focus:border-neon">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 font-bold mb-1">Hasta (Fin semana/mes)</label>
+                    <input type="date" id="horas-hasta" class="bg-gray-900 border border-gray-700 text-white rounded p-2 text-sm focus:outline-none focus:border-neon">
+                </div>
+                <div class="flex-1"></div>
+                <button onclick="cargarHoras()" class="bg-neon text-black font-bold px-6 py-2 rounded-lg text-sm hover:bg-yellow-300">Calcular Horas</button>
+            </div>
+
+            <div class="bg-black rounded-xl border border-gray-800 overflow-hidden">
+                <table class="w-full text-left">
+                    <thead class="bg-gray-950 text-xs text-gray-400 uppercase border-b border-gray-800">
+                        <tr>
+                            <th class="p-4">Empleado</th>
+                            <th class="p-4 text-right">Horas Totales Trabajadas</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tabla-horas" class="divide-y divide-gray-800 text-sm">
+                        <tr><td colspan="2" class="p-4 text-center text-gray-500 py-12">Seleccioná un período y hacé click en Calcular Horas.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <p class="text-xs text-gray-500 mt-3">* El cálculo se realiza sumando el tiempo transcurrido entre cada Entrada y su Salida correspondiente.</p>
+        </div>
+
+        <div id="panel-anticipos" class="hidden flex-1 overflow-y-auto p-8">
+            <div class="flex gap-4 mb-6 bg-black p-4 rounded-xl border border-gray-800 items-end">
                 <div>
                     <label class="block text-xs text-gray-500 font-bold mb-1">Desde</label>
-                    <input type="date" id="horas-desde" class="bg-gray-900 border border-gray-700 text-white rounded p-2 text-sm">
+                    <input type="date" id="ant-desde" class="bg-gray-900 border border-gray-700 text-white rounded p-2 text-sm">
                 </div>
                 <div>
                     <label class="block text-xs text-gray-500 font-bold mb-1">Hasta</label>
-                    <input type="date" id="horas-hasta" class="bg-gray-900 border border-gray-700 text-white rounded p-2 text-sm">
+                    <input type="date" id="ant-hasta" class="bg-gray-900 border border-gray-700 text-white rounded p-2 text-sm">
                 </div>
-                <div>
-                    <label class="block text-xs text-gray-500 font-bold mb-1">Empleado</label>
-                    <select id="horas-empleado" class="bg-gray-900 border border-gray-700 text-white rounded p-2 text-sm">
-                        <option value="">Todos</option>
-                    </select>
-                </div>
-                <button onclick="cargarHoras()" class="bg-neon text-black font-bold px-5 py-2 rounded-lg text-sm hover:bg-yellow-300">Ver Horas</button>
-                <button onclick="exportarHorasPDF()" class="border border-gray-600 text-gray-300 hover:text-white px-4 py-2 rounded-lg text-sm transition">🖨️ PDF</button>
+                <button onclick="cargarAnticipos()" class="bg-gray-800 border border-gray-700 text-white font-bold px-4 py-2 rounded text-sm hover:border-gray-500">Filtrar</button>
+                <div class="flex-1"></div>
+                <button onclick="abrirModalAnticipo()" class="bg-neon text-black font-bold px-6 py-2 rounded-lg text-sm hover:bg-yellow-300 transition">💸 Registrar Anticipo</button>
             </div>
 
-            <!-- Resumen por empleado -->
-            <div id="resumen-horas" class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6"></div>
-
-            <!-- Detalle por día -->
             <div class="bg-black rounded-xl border border-gray-800 overflow-hidden">
                 <table class="w-full text-left">
                     <thead class="bg-gray-950 text-xs text-gray-400 uppercase">
                         <tr>
+                            <th class="p-4">Fecha</th>
                             <th class="p-4">Empleado</th>
-                            <th class="p-4">Día</th>
-                            <th class="p-4">Entrada</th>
-                            <th class="p-4">Salida</th>
-                            <th class="p-4">Horas</th>
+                            <th class="p-4">Observación / Detalle</th>
+                            <th class="p-4 text-right">Monto Adelantado</th>
                         </tr>
                     </thead>
-                    <tbody id="tabla-horas" class="divide-y divide-gray-800 text-sm">
-                        <tr><td colspan="5" class="p-4 text-center text-gray-500">Seleccioná un período y hacé click en Ver Horas.</td></tr>
+                    <tbody id="tabla-anticipos" class="divide-y divide-gray-800 text-sm">
+                        <tr><td colspan="4" class="p-4 text-center text-gray-500">Cargando anticipos...</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -139,7 +159,6 @@
 
     </main>
 
-    <!-- Modal Nuevo Empleado -->
     <div id="modal-nuevo" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
         <div class="bg-gray-900 border border-gray-700 rounded-xl p-6 w-[500px] shadow-2xl max-h-screen overflow-y-auto">
             <h3 class="text-lg font-bold text-white mb-4 border-l-4 border-neon pl-2">Alta de Empleado</h3>
@@ -181,7 +200,7 @@
 
             <div class="border-t border-gray-700 pt-4 mt-4">
                 <label class="flex items-center gap-2 text-sm text-gray-300 cursor-pointer mb-4">
-                    <input type="checkbox" id="crear-user" onchange="toggleUserFields()" class="w-4 h-4">
+                    <input type="checkbox" id="crear-user" onchange="toggleUserFields()" class="w-4 h-4 accent-neon">
                     Crear usuario de acceso al sistema
                 </label>
                 <div id="campos-usuario" class="hidden grid grid-cols-2 gap-4">
@@ -197,346 +216,12 @@
             </div>
 
             <div class="flex justify-end gap-3 mt-6">
-                <button onclick="cerrarModal()" class="px-4 py-2 text-gray-400 hover:text-white font-bold">Cancelar</button>
+                <button onclick="cerrarModales()" class="px-4 py-2 text-gray-400 hover:text-white font-bold">Cancelar</button>
                 <button onclick="guardarEmpleado()" class="bg-neon text-black px-6 py-2 rounded font-bold hover:bg-yellow-300">Registrar</button>
             </div>
         </div>
     </div>
 
-    <!-- Modal Fichaje -->
-    <div id="modal-fichaje" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
-        <div class="bg-gray-900 border border-gray-700 rounded-xl p-6 w-96 shadow-2xl">
-            <h3 id="titulo-fichaje" class="text-lg font-bold text-white mb-4">Registrar Fichaje</h3>
-            <input type="hidden" id="tipo-fichaje">
-            <label class="block text-xs text-gray-500 font-bold mb-1">Empleado</label>
-            <select id="select-empleado" class="w-full bg-black border border-gray-700 text-white rounded p-3 mb-4"></select>
-            <label class="block text-xs text-gray-500 font-bold mb-1">Observación (opcional)</label>
-            <input type="text" id="obs-fichaje" class="w-full bg-black border border-gray-700 text-white rounded p-3 mb-6">
-            <div class="flex justify-end gap-3">
-                <button onclick="cerrarModal()" class="px-4 py-2 text-gray-400 hover:text-white font-bold">Cancelar</button>
-                <button onclick="confirmarFichaje()" class="bg-neon text-black px-6 py-2 rounded font-bold">Confirmar</button>
-            </div>
-        </div>
-    </div>
-
-    <script>
-        const API_URL = window.location.origin + "/api";
-        let empleados = [];
-
-        // Info usuario
-        const usr = JSON.parse(sessionStorage.getItem('usuario') || '{}');
-        if (usr.nombre) document.getElementById('usuario-info').textContent = `${usr.nombre} ${usr.apellido} · ${usr.rol}`;
-
-        function cambiarTab(tab) {
-            var hEl = document.getElementById('panel-horas');
-            var tH  = document.getElementById('tab-horas');
-            if (hEl) hEl.classList.toggle('hidden', tab !== 'horas');
-            if (tH)  tH.className = tab === 'horas' ? 'py-3 text-sm font-bold tab-activa' : 'py-3 text-sm font-bold text-gray-400 hover:text-white';
-            if (tab === 'horas') { iniciarFiltrosHoras(); return; }
-            document.getElementById('panel-empleados').classList.toggle('hidden', tab !== 'empleados');
-            document.getElementById('panel-fichajes').classList.toggle('hidden', tab !== 'fichajes');
-            document.getElementById('tab-empleados').className = tab === 'empleados' ? 'py-3 text-sm font-bold tab-activa' : 'py-3 text-sm font-bold text-gray-400 hover:text-white';
-            document.getElementById('tab-fichajes').className = tab === 'fichajes' ? 'py-3 text-sm font-bold tab-activa' : 'py-3 text-sm font-bold text-gray-400 hover:text-white';
-            if (tab === 'fichajes') cargarFichajes();
-        }
-
-        async function cargarEmpleados() {
-            const res = await fetch(`${API_URL}/empleados`);
-            empleados = await res.json();
-            const tabla = document.getElementById('tabla-empleados');
-            tabla.innerHTML = '';
-            const roles = { admin: '🔑 Admin', vendedor: '🏪 Vendedor', produccion: '🏭 Producción', deposito: '📦 Depósito' };
-            empleados.forEach(e => {
-                tabla.innerHTML += `
-                    <tr class="hover:bg-gray-900 transition">
-                        <td class="p-4 font-bold text-white">${e.apellido}, ${e.nombre}</td>
-                        <td class="p-4 text-gray-400">${e.dni}</td>
-                        <td class="p-4"><span class="text-xs bg-gray-800 px-2 py-1 rounded font-bold">${roles[e.rol] || e.rol}</span></td>
-                        <td class="p-4 text-gray-400 text-xs">${e.username || '—'}</td>
-                        <td class="p-4">${e.activo ? '<span class="text-green-400 font-bold text-xs">● Activo</span>' : '<span class="text-red-500 font-bold text-xs">● Inactivo</span>'}</td>
-                        <td class="p-4 text-right">
-                            <div class="flex justify-end gap-1">
-                                <button onclick="abrirEditarEmpleado(empleados.find(x=>x.id===${e.id}))" class="text-xs border border-gray-700 bg-gray-800 hover:border-gray-500 px-2 py-1 rounded text-gray-400 hover:text-white">
-                                    Editar
-                                </button>
-                                <button onclick="toggleEstado(${e.id}, ${e.activo})" class="text-xs border border-gray-700 bg-gray-800 hover:border-gray-500 px-2 py-1 rounded text-gray-400 hover:text-white">
-                                    ${e.activo ? 'Desactivar' : 'Activar'}
-                                </button>
-                                ${e.activo ? `<button onclick="darBajaEmpleado(${e.id}, '${e.nombre} ${e.apellido}')" class="text-xs bg-red-900/50 hover:bg-red-700 text-red-400 hover:text-white px-2 py-1 rounded">Baja</button>` : ''}
-                            </div>
-                        </td>
-                    </tr>`;
-            });
-            // Actualizar select de fichaje
-            const sel = document.getElementById('select-empleado');
-            sel.innerHTML = '';
-            empleados.filter(e => e.activo).forEach(e => {
-                sel.innerHTML += `<option value="${e.id}">${e.apellido}, ${e.nombre}</option>`;
-            });
-        }
-
-        async function cargarFichajes() {
-            const fecha = document.getElementById('filtro-fecha').value;
-            let url = `${API_URL}/fichajes`;
-            if (fecha) url += `?fecha=${fecha}`;
-            const res = await fetch(url);
-            const lista = await res.json();
-            const tabla = document.getElementById('tabla-fichajes');
-            tabla.innerHTML = '';
-            if (lista.length === 0) {
-                tabla.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-gray-500">Sin registros para esta fecha.</td></tr>';
-                return;
-            }
-            lista.forEach(f => {
-                const color = f.tipo === 'entrada' ? 'text-green-400' : 'text-red-400';
-                const icon = f.tipo === 'entrada' ? '▶' : '■';
-                const dt = new Date(f.fecha_hora);
-                const dtStr = dt.toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' });
-                tabla.innerHTML += `
-                    <tr class="hover:bg-gray-900 transition">
-                        <td class="p-4 font-bold text-white">${f.apellido}, ${f.nombre}</td>
-                        <td class="p-4 text-gray-400 text-xs">${f.rol}</td>
-                        <td class="p-4 ${color} font-bold text-sm">${icon} ${f.tipo.toUpperCase()}</td>
-                        <td class="p-4 text-gray-300">${dtStr}</td>
-                        <td class="p-4 text-gray-400 text-xs">${f.observacion || '—'}</td>
-                    </tr>`;
-            });
-        }
-
-        async function toggleEstado(id, activo) {
-            await fetch(`${API_URL}/empleados/${id}/estado?activo=${!activo}`, { method: 'PUT' });
-            cargarEmpleados();
-        }
-
-        function abrirModalNuevo() { document.getElementById('modal-nuevo').classList.replace('modal-oculto', 'modal-visible'); }
-
-        function registrarFichaje(tipo) {
-            document.getElementById('tipo-fichaje').value = tipo;
-            document.getElementById('titulo-fichaje').textContent = tipo === 'entrada' ? '✅ Registrar Entrada' : '🚪 Registrar Salida';
-            document.getElementById('obs-fichaje').value = '';
-            document.getElementById('modal-fichaje').classList.replace('modal-oculto', 'modal-visible');
-        }
-
-        function cerrarModal() {
-            document.querySelectorAll('.modal-visible').forEach(m => m.classList.replace('modal-visible', 'modal-oculto'));
-        }
-
-        function toggleUserFields() {
-            const checked = document.getElementById('crear-user').checked;
-            document.getElementById('campos-usuario').classList.toggle('hidden', !checked);
-        }
-
-        async function guardarEmpleado() {
-            const data = {
-                nombre: document.getElementById('emp-nombre').value,
-                apellido: document.getElementById('emp-apellido').value,
-                dni: document.getElementById('emp-dni').value,
-                rol: document.getElementById('emp-rol').value,
-                email: document.getElementById('emp-email').value || null,
-                telefono: document.getElementById('emp-tel').value || null,
-                crear_usuario: document.getElementById('crear-user').checked,
-                username: document.getElementById('emp-username').value || null,
-                password: document.getElementById('emp-password').value || null
-            };
-            const res = await fetch(`${API_URL}/empleados_nuevo`, {
-                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data)
-            });
-            if (res.ok) { cerrarModal(); cargarEmpleados(); }
-            else { const err = await res.json(); alert("Error: " + err.detail); }
-        }
-
-        async function confirmarFichaje() {
-            const data = {
-                id_empleado: parseInt(document.getElementById('select-empleado').value),
-                tipo: document.getElementById('tipo-fichaje').value,
-                observacion: document.getElementById('obs-fichaje').value || null
-            };
-            await fetch(`${API_URL}/fichaje`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
-            cerrarModal();
-            cargarFichajes();
-        }
-
-        // Fecha de hoy por defecto
-        document.getElementById('filtro-fecha').value = new Date().toISOString().split('T')[0];
-        window.onload = function() {
-            cargarEmpleados();
-            // Poblar select horas con empleados después de cargarlos
-            setTimeout(function() {
-                fetch(API_URL + '/empleados').then(function(r) { return r.json(); }).then(function(lista) {
-                    var sel = document.getElementById('horas-empleado');
-                    if (sel) {
-                        lista.filter(function(e) { return e.activo; }).forEach(function(e) {
-                            sel.innerHTML += '<option value="' + e.id + '">' + e.apellido + ', ' + e.nombre + '</option>';
-                        });
-                    }
-                });
-            }, 500);
-        };
-    
-        // ── HORAS ────────────────────────────────────────────────
-
-        function iniciarFiltrosHoras() {
-            var hoy   = new Date();
-            var lunes = new Date(hoy);
-            lunes.setDate(hoy.getDate() - hoy.getDay() + 1);
-            document.getElementById('horas-desde').value = lunes.toISOString().split('T')[0];
-            document.getElementById('horas-hasta').value = hoy.toISOString().split('T')[0];
-        }
-
-        async function cargarHoras() {
-            var desde = document.getElementById('horas-desde').value;
-            var hasta = document.getElementById('horas-hasta').value;
-            var emp   = document.getElementById('horas-empleado').value;
-            if (!desde || !hasta) { alert('Seleccioná el período.'); return; }
-
-            var url = API_URL + '/reportes/horas?fecha_desde=' + desde + '&fecha_hasta=' + hasta;
-            if (emp) url += '&id_empleado=' + emp;
-
-            var datos = await fetch(url).then(function(r) { return r.json(); });
-
-            // Resumen por empleado
-            var totales = {};
-            datos.forEach(function(d) {
-                var key = d.id_empleado;
-                if (!totales[key]) totales[key] = { nombre: d.nombre + ' ' + d.apellido, horas: 0, dias: 0 };
-                totales[key].horas += parseFloat(d.horas_dia || 0);
-                totales[key].dias++;
-            });
-
-            var resumenEl = document.getElementById('resumen-horas');
-            resumenEl.innerHTML = '';
-            Object.values(totales).forEach(function(t) {
-                var hs = t.horas.toFixed(1);
-                var color = t.horas >= 40 ? 'border-green-700 text-green-400' : t.horas >= 20 ? 'border-yellow-700 text-yellow-400' : 'border-gray-700 text-gray-300';
-                resumenEl.innerHTML +=
-                    '<div class="bg-black border ' + color + ' rounded-xl p-4 text-center">' +
-                        '<p class="text-xs text-gray-500 font-bold mb-1">' + t.nombre + '</p>' +
-                        '<p class="text-3xl font-bold ' + color.split(' ')[1] + '">' + hs + 'h</p>' +
-                        '<p class="text-gray-600 text-xs">' + t.dias + ' día' + (t.dias !== 1 ? 's' : '') + '</p>' +
-                    '</div>';
-            });
-
-            // Tabla detalle
-            var tabla = document.getElementById('tabla-horas');
-            tabla.innerHTML = '';
-            if (!datos.length) {
-                tabla.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-gray-500">Sin fichajes en ese período.</td></tr>';
-                return;
-            }
-            datos.forEach(function(d) {
-                var entrada  = d.entrada  ? new Date(d.entrada).toLocaleTimeString('es-AR',  {hour:'2-digit', minute:'2-digit'}) : '—';
-                var salida   = d.salida   ? new Date(d.salida).toLocaleTimeString('es-AR',   {hour:'2-digit', minute:'2-digit'}) : '—';
-                var dia      = new Date(d.dia + 'T00:00:00').toLocaleDateString('es-AR', {weekday:'short', day:'2-digit', month:'2-digit'});
-                var horas    = d.horas_dia ? parseFloat(d.horas_dia).toFixed(1) + 'h' : '—';
-                var colorH   = d.horas_dia && parseFloat(d.horas_dia) < 6 ? 'text-yellow-400' : 'text-neon';
-                var tr = document.createElement('tr');
-                tr.className = 'hover:bg-gray-900';
-                tr.innerHTML =
-                    '<td class="p-4 font-bold text-white">' + d.apellido + ', ' + d.nombre + '</td>' +
-                    '<td class="p-4 text-gray-400">' + dia + '</td>' +
-                    '<td class="p-4 text-green-400 font-bold">' + entrada + '</td>' +
-                    '<td class="p-4 text-red-400 font-bold">' + salida + '</td>' +
-                    '<td class="p-4 font-bold ' + colorH + '">' + horas + '</td>';
-                tabla.appendChild(tr);
-            });
-        }
-
-        async function exportarHorasPDF() {
-            var desde = document.getElementById('horas-desde').value;
-            var hasta = document.getElementById('horas-hasta').value;
-            if (!desde || !hasta) { alert('Seleccioná el período primero.'); return; }
-            var emp   = document.getElementById('horas-empleado').value;
-            var url   = API_URL + '/reportes/horas?fecha_desde=' + desde + '&fecha_hasta=' + hasta;
-            if (emp) url += '&id_empleado=' + emp;
-            var datos = await fetch(url).then(function(r) { return r.json(); });
-            if (!datos.length) { alert('Sin datos para exportar.'); return; }
-
-            var script1 = document.createElement('script');
-            script1.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
-            script1.onload = function() {
-                var script2 = document.createElement('script');
-                script2.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js';
-                script2.onload = function() { generarPDFHoras(datos, desde, hasta); };
-                document.head.appendChild(script2);
-            };
-            document.head.appendChild(script1);
-        }
-
-        function generarPDFHoras(datos, desde, hasta) {
-            var jsPDF = window.jspdf.jsPDF;
-            var doc = new jsPDF();
-            doc.setFontSize(16); doc.setFont('helvetica','bold'); doc.setTextColor(40,40,40);
-            doc.text('Portal del Viento — Reporte de Horas', 14, 18);
-            doc.setFontSize(10); doc.setFont('helvetica','normal'); doc.setTextColor(100,100,100);
-            doc.text('Período: ' + new Date(desde+'T00:00:00').toLocaleDateString('es-AR') + ' al ' + new Date(hasta+'T00:00:00').toLocaleDateString('es-AR'), 14, 26);
-            doc.setFontSize(8);
-            doc.text('Generado: ' + new Date().toLocaleString('es-AR'), 14, 32);
-
-            var filas = datos.map(function(d) {
-                var entrada = d.entrada ? new Date(d.entrada).toLocaleTimeString('es-AR', {hour:'2-digit',minute:'2-digit'}) : '—';
-                var salida  = d.salida  ? new Date(d.salida).toLocaleTimeString('es-AR',  {hour:'2-digit',minute:'2-digit'}) : '—';
-                var dia     = new Date(d.dia+'T00:00:00').toLocaleDateString('es-AR');
-                var horas   = d.horas_dia ? parseFloat(d.horas_dia).toFixed(1) + 'h' : '—';
-                return [d.apellido + ', ' + d.nombre, dia, entrada, salida, horas];
-            });
-
-            doc.autoTable({
-                startY: 38,
-                head: [['Empleado','Día','Entrada','Salida','Horas']],
-                body: filas,
-                headStyles: { fillColor:[30,30,30], textColor:[228,252,116], fontStyle:'bold' },
-                alternateRowStyles: { fillColor:[245,245,245] },
-                styles: { fontSize:9, cellPadding:3 }
-            });
-
-            doc.save('horas_' + desde + '_' + hasta + '.pdf');
-        }
-
-    
-        function abrirEditarEmpleado(e) {
-            document.getElementById('edit-emp-id').value      = e.id;
-            document.getElementById('edit-emp-nombre').value  = e.nombre || '';
-            document.getElementById('edit-emp-apellido').value = e.apellido || '';
-            document.getElementById('edit-emp-dni').value     = e.dni || '';
-            document.getElementById('edit-emp-rol').value     = e.rol || 'produccion';
-            document.getElementById('edit-emp-tel').value     = e.telefono || '';
-            document.getElementById('edit-emp-email').value   = e.email || '';
-            document.getElementById('modal-editar-emp').classList.replace('modal-oculto','modal-visible');
-        }
-
-        async function guardarEdicionEmpleado() {
-            var id = document.getElementById('edit-emp-id').value;
-            var data = {
-                nombre:   document.getElementById('edit-emp-nombre').value,
-                apellido: document.getElementById('edit-emp-apellido').value,
-                dni:      document.getElementById('edit-emp-dni').value,
-                rol:      document.getElementById('edit-emp-rol').value,
-                telefono: document.getElementById('edit-emp-tel').value || null,
-                email:    document.getElementById('edit-emp-email').value || null
-            };
-            var res = await fetch(API_URL + '/empleados/' + id, {
-                method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(data)
-            });
-            if (res.ok) { cerrarModales(); cargarEmpleados(); }
-            else { var e = await res.json(); alert('Error: ' + e.detail); }
-        }
-
-        async function darBajaEmpleado(id, nombre) {
-            if (!confirm('¿Dar de baja a ' + nombre + '? Quedará inactivo pero se conserva su historial.')) return;
-            await fetch(API_URL + '/empleados/' + id, { method:'DELETE' });
-            cargarEmpleados();
-        }
-
-    
-        function cerrarModales() {
-            document.querySelectorAll('.modal-visible').forEach(function(m) {
-                m.classList.replace('modal-visible','modal-oculto');
-            });
-        }
-    
-    </script>
-
-    <!-- Modal Editar Empleado -->
     <div id="modal-editar-emp" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
         <div class="bg-gray-900 border border-gray-700 rounded-xl p-6 w-[480px] shadow-2xl">
             <h3 class="text-lg font-bold text-white mb-4 border-l-4 border-neon pl-2">Editar Empleado</h3>
@@ -580,5 +265,365 @@
         </div>
     </div>
 
+    <div id="modal-fichaje" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
+        <div class="bg-gray-900 border border-gray-700 rounded-xl p-6 w-96 shadow-2xl">
+            <h3 id="titulo-fichaje" class="text-lg font-bold text-white mb-4 border-l-4 border-neon pl-2">Registrar Fichaje</h3>
+            <input type="hidden" id="tipo-fichaje">
+            <label class="block text-xs text-gray-500 font-bold mb-1">Empleado</label>
+            <select id="select-empleado" class="w-full bg-black border border-gray-700 text-white rounded p-3 mb-4 focus:border-neon focus:outline-none"></select>
+            <label class="block text-xs text-gray-500 font-bold mb-1">Observación (opcional)</label>
+            <input type="text" id="obs-fichaje" placeholder="Ej: Llegada tarde por el micro" class="w-full bg-black border border-gray-700 text-white rounded p-3 mb-6 focus:border-neon focus:outline-none">
+            <div class="flex justify-end gap-3">
+                <button onclick="cerrarModales()" class="px-4 py-2 text-gray-400 hover:text-white font-bold">Cancelar</button>
+                <button onclick="confirmarFichaje()" class="bg-neon text-black px-6 py-2 rounded font-bold hover:bg-yellow-300">Confirmar</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="modal-anticipo" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
+        <div class="bg-gray-900 border border-gray-700 rounded-xl p-6 w-96 shadow-2xl">
+            <h3 class="text-lg font-bold text-white mb-4 border-l-4 border-neon pl-2">Registrar Anticipo / Vale</h3>
+            
+            <label class="block text-xs text-gray-500 font-bold mb-1">Empleado</label>
+            <select id="ant-empleado" class="w-full bg-black border border-gray-700 text-white rounded p-3 mb-4 focus:border-neon focus:outline-none"></select>
+            
+            <label class="block text-xs text-neon font-bold mb-1">Monto a adelantar ($)</label>
+            <input type="number" id="ant-monto" min="1" step="100" class="w-full bg-black border border-neon text-white rounded p-3 mb-4 text-xl font-bold text-center focus:outline-none">
+            
+            <label class="block text-xs text-gray-500 font-bold mb-1">Observación / Motivo</label>
+            <input type="text" id="ant-obs" placeholder="Ej: Vale para supermercado" class="w-full bg-black border border-gray-700 text-white rounded p-3 mb-6 focus:border-neon focus:outline-none">
+            
+            <div class="flex justify-end gap-3">
+                <button onclick="cerrarModales()" class="px-4 py-2 text-gray-400 hover:text-white font-bold">Cancelar</button>
+                <button onclick="guardarAnticipo()" id="btn-guardar-ant" class="bg-neon text-black px-6 py-2 rounded font-bold hover:bg-yellow-300 disabled:opacity-50">Registrar</button>
+            </div>
+        </div>
+    </div>
+
+
+    <script>
+        const API_URL = window.location.origin + "/api";
+        let empleados = [];
+
+        // Info usuario
+        const usr = JSON.parse(sessionStorage.getItem('usuario') || '{}');
+        if (usr.nombre) document.getElementById('usuario-info').textContent = `${usr.nombre} ${usr.apellido} · ${usr.rol}`;
+
+        // Fechas por defecto
+        document.getElementById('filtro-fecha').value = new Date().toISOString().split('T')[0];
+        
+        const hoy = new Date();
+        const inicioMes = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
+        const hoyStr = hoy.toISOString().split('T')[0];
+        const inicioStr = inicioMes.toISOString().split('T')[0];
+        
+        document.getElementById('horas-desde').value = inicioStr;
+        document.getElementById('horas-hasta').value = hoyStr;
+        document.getElementById('ant-desde').value = inicioStr;
+        document.getElementById('ant-hasta').value = hoyStr;
+
+
+        function cambiarTab(tab) {
+            document.getElementById('panel-empleados').classList.toggle('hidden', tab !== 'empleados');
+            document.getElementById('panel-fichajes').classList.toggle('hidden', tab !== 'fichajes');
+            document.getElementById('panel-horas').classList.toggle('hidden', tab !== 'horas');
+            document.getElementById('panel-anticipos').classList.toggle('hidden', tab !== 'anticipos');
+            
+            document.getElementById('tab-empleados').className = tab === 'empleados' ? 'py-3 text-sm font-bold tab-activa' : 'py-3 text-sm font-bold text-gray-400 hover:text-white';
+            document.getElementById('tab-fichajes').className = tab === 'fichajes' ? 'py-3 text-sm font-bold tab-activa' : 'py-3 text-sm font-bold text-gray-400 hover:text-white';
+            document.getElementById('tab-horas').className = tab === 'horas' ? 'py-3 text-sm font-bold tab-activa' : 'py-3 text-sm font-bold text-gray-400 hover:text-white';
+            document.getElementById('tab-anticipos').className = tab === 'anticipos' ? 'py-3 text-sm font-bold tab-activa' : 'py-3 text-sm font-bold text-gray-400 hover:text-white';
+
+            if (tab === 'fichajes') cargarFichajes();
+            if (tab === 'horas') cargarHoras();
+            if (tab === 'anticipos') cargarAnticipos();
+        }
+
+        async function cargarEmpleados() {
+            const res = await fetch(`${API_URL}/empleados`);
+            empleados = await res.json();
+            const tabla = document.getElementById('tabla-empleados');
+            tabla.innerHTML = '';
+            const roles = { admin: '🔑 Admin', vendedor: '🏪 Vendedor', produccion: '🏭 Producción', deposito: '📦 Depósito', administrativo: '📋 Administrativo' };
+            
+            let opcionesSelect = '<option value="">Seleccione un empleado...</option>';
+
+            empleados.forEach(e => {
+                tabla.innerHTML += `
+                    <tr class="hover:bg-gray-900 transition border-b border-gray-800">
+                        <td class="p-4 font-bold text-white">${e.apellido}, ${e.nombre}</td>
+                        <td class="p-4 text-gray-400 text-xs">${e.dni || '—'}</td>
+                        <td class="p-4"><span class="text-xs bg-gray-800 px-2 py-1 rounded font-bold">${roles[e.rol] || e.rol}</span></td>
+                        <td class="p-4 text-gray-400 text-xs">${e.username || '—'}</td>
+                        <td class="p-4">${e.activo ? '<span class="text-green-400 font-bold text-xs">● Activo</span>' : '<span class="text-red-500 font-bold text-xs">● Inactivo</span>'}</td>
+                        <td class="p-4 text-right">
+                            <div class="flex justify-end gap-1">
+                                <button onclick="abrirEditarEmpleado(empleados.find(x=>x.id===${e.id}))" class="text-xs border border-gray-700 bg-gray-800 hover:border-gray-500 px-2 py-1 rounded text-gray-400 hover:text-white">Editar</button>
+                                <button onclick="toggleEstado(${e.id}, ${e.activo})" class="text-xs border border-gray-700 bg-gray-800 hover:border-gray-500 px-2 py-1 rounded text-gray-400 hover:text-white">${e.activo ? 'Desactivar' : 'Activar'}</button>
+                            </div>
+                        </td>
+                    </tr>`;
+                
+                if(e.activo){
+                    opcionesSelect += `<option value="${e.id}">${e.apellido}, ${e.nombre}</option>`;
+                }
+            });
+
+            // Llenar todos los selects de empleados en los distintos modales
+            document.getElementById('select-empleado').innerHTML = opcionesSelect;
+            document.getElementById('ant-empleado').innerHTML = opcionesSelect;
+        }
+
+        // ── FICHAJES DIARIOS ─────────────────────────────────────
+        async function cargarFichajes() {
+            const fecha = document.getElementById('filtro-fecha').value;
+            let url = `${API_URL}/fichajes`;
+            if (fecha) url += `?fecha=${fecha}`;
+            const res = await fetch(url);
+            const lista = await res.json();
+            const tabla = document.getElementById('tabla-fichajes');
+            tabla.innerHTML = '';
+            
+            if (lista.length === 0) {
+                tabla.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-gray-500 py-12">No hay fichajes registrados en esta fecha.</td></tr>';
+                return;
+            }
+            
+            lista.forEach(f => {
+                const esEntrada = f.tipo.toLowerCase() === 'entrada';
+                const color = esEntrada ? 'text-green-400' : 'text-red-400';
+                const icon = esEntrada ? '✅' : '🚪';
+                const dt = new Date(f.fecha_hora);
+                const horaStr = dt.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+                
+                tabla.innerHTML += `
+                    <tr class="hover:bg-gray-900 transition border-b border-gray-800">
+                        <td class="p-4 font-bold text-white">${f.apellido}, ${f.nombre}</td>
+                        <td class="p-4 text-gray-400 text-xs">${f.rol}</td>
+                        <td class="p-4 ${color} font-bold text-sm">${icon} ${f.tipo.toUpperCase()}</td>
+                        <td class="p-4 text-white font-bold">${horaStr} hs</td>
+                        <td class="p-4 text-gray-400 text-xs">${f.observacion || '—'}</td>
+                    </tr>`;
+            });
+        }
+
+        function registrarFichaje(tipo) {
+            document.getElementById('tipo-fichaje').value = tipo;
+            document.getElementById('titulo-fichaje').textContent = tipo === 'entrada' ? '✅ Registrar Entrada' : '🚪 Registrar Salida';
+            document.getElementById('obs-fichaje').value = '';
+            document.getElementById('select-empleado').value = '';
+            document.getElementById('modal-fichaje').classList.replace('modal-oculto', 'modal-visible');
+        }
+
+        async function confirmarFichaje() {
+            const idEmp = parseInt(document.getElementById('select-empleado').value);
+            if (!idEmp) { alert("Debes seleccionar un empleado."); return; }
+            
+            const data = {
+                id_empleado: idEmp,
+                tipo: document.getElementById('tipo-fichaje').value,
+                observacion: document.getElementById('obs-fichaje').value || null
+            };
+            
+            try {
+                const res = await fetch(`${API_URL}/fichaje`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+                if(!res.ok) throw new Error("Error al registrar");
+                cerrarModales();
+                cargarFichajes();
+            } catch (e) {
+                alert("Ocurrió un error al registrar el fichaje.");
+            }
+        }
+
+        // ── HORAS TRABAJADAS ─────────────────────────────────────
+        async function cargarHoras() {
+            const desde = document.getElementById('horas-desde').value;
+            const hasta = document.getElementById('horas-hasta').value;
+            
+            if (!desde || !hasta) { alert('Seleccioná el período.'); return; }
+
+            const url = `${API_URL}/reportes/horas_trabajadas?fecha_desde=${desde}&fecha_hasta=${hasta}`;
+            try {
+                const res = await fetch(url);
+                const datos = await res.json();
+                
+                const tabla = document.getElementById('tabla-horas');
+                tabla.innerHTML = '';
+                
+                if (datos.length === 0) {
+                    tabla.innerHTML = '<tr><td colspan="2" class="p-4 text-center text-gray-500 py-12">No hay horas calculadas en este período. Asegurate de que los empleados tengan su Entrada y Salida marcadas.</td></tr>';
+                    return;
+                }
+                
+                datos.forEach(d => {
+                    const hs = parseFloat(d.horas_totales).toFixed(2);
+                    const color = hs >= 40 ? 'text-green-400' : hs >= 20 ? 'text-yellow-400' : 'text-gray-300';
+                    tabla.innerHTML += `
+                        <tr class="hover:bg-gray-900 transition border-b border-gray-800">
+                            <td class="p-4 font-bold text-white text-lg">${d.apellido}, ${d.nombre}</td>
+                            <td class="p-4 text-right font-bold text-2xl ${color}">${hs} hs</td>
+                        </tr>
+                    `;
+                });
+            } catch (error) {
+                console.error(error);
+                document.getElementById('tabla-horas').innerHTML = '<tr><td colspan="2" class="p-4 text-center text-red-500">Error al calcular las horas. Revisá la conexión.</td></tr>';
+            }
+        }
+
+        // ── ANTICIPOS / VALES ────────────────────────────────────
+        function abrirModalAnticipo() {
+            document.getElementById('ant-empleado').value = '';
+            document.getElementById('ant-monto').value = '';
+            document.getElementById('ant-obs').value = '';
+            document.getElementById('modal-anticipo').classList.replace('modal-oculto', 'modal-visible');
+        }
+
+        async function guardarAnticipo() {
+            const idEmp = parseInt(document.getElementById('ant-empleado').value);
+            const monto = parseFloat(document.getElementById('ant-monto').value);
+            
+            if (!idEmp || !monto || monto <= 0) {
+                alert("Asegurate de seleccionar un empleado y poner un monto válido.");
+                return;
+            }
+
+            const data = {
+                id_empleado: idEmp,
+                monto: monto,
+                observaciones: document.getElementById('ant-obs').value || null
+            };
+
+            const btn = document.getElementById('btn-guardar-ant');
+            btn.disabled = true; btn.textContent = 'Guardando...';
+
+            try {
+                const res = await fetch(`${API_URL}/anticipos/nuevo`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data)
+                });
+                if (!res.ok) throw new Error("Error en servidor");
+                cerrarModales();
+                cargarAnticipos();
+            } catch (e) {
+                alert("Error al guardar el anticipo.");
+            } finally {
+                btn.disabled = false; btn.textContent = 'Registrar';
+            }
+        }
+
+        async function cargarAnticipos() {
+            const desde = document.getElementById('ant-desde').value;
+            const hasta = document.getElementById('ant-hasta').value;
+            
+            if (!desde || !hasta) return;
+
+            const url = `${API_URL}/anticipos?fecha_desde=${desde}&fecha_hasta=${hasta}`;
+            try {
+                const res = await fetch(url);
+                const lista = await res.json();
+                
+                const tabla = document.getElementById('tabla-anticipos');
+                tabla.innerHTML = '';
+                
+                if (lista.length === 0) {
+                    tabla.innerHTML = '<tr><td colspan="4" class="p-4 text-center text-gray-500 py-12">No hay anticipos registrados en este período.</td></tr>';
+                    return;
+                }
+                
+                lista.forEach(a => {
+                    const dt = new Date(a.fecha).toLocaleDateString('es-AR', {day: '2-digit', month:'short', year:'numeric'});
+                    tabla.innerHTML += `
+                        <tr class="hover:bg-gray-900 transition border-b border-gray-800">
+                            <td class="p-4 text-gray-400 text-xs">${dt}</td>
+                            <td class="p-4 font-bold text-white">${a.apellido}, ${a.nombre}</td>
+                            <td class="p-4 text-gray-400 text-xs italic">${a.observaciones || 'Sin detalle'}</td>
+                            <td class="p-4 text-right font-bold text-red-400 text-lg">-$ ${parseFloat(a.monto).toLocaleString('es-AR')}</td>
+                        </tr>
+                    `;
+                });
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+
+        // ── ABM EMPLEADOS ────────────────────────────────────────
+
+        function abrirModalNuevo() { 
+            document.getElementById('emp-nombre').value = '';
+            document.getElementById('emp-apellido').value = '';
+            document.getElementById('emp-dni').value = '';
+            document.getElementById('emp-rol').value = 'produccion';
+            document.getElementById('emp-email').value = '';
+            document.getElementById('emp-tel').value = '';
+            document.getElementById('crear-user').checked = false;
+            toggleUserFields();
+            document.getElementById('modal-nuevo').classList.replace('modal-oculto', 'modal-visible'); 
+        }
+
+        function toggleUserFields() {
+            const checked = document.getElementById('crear-user').checked;
+            document.getElementById('campos-usuario').classList.toggle('hidden', !checked);
+        }
+
+        async function guardarEmpleado() {
+            const data = {
+                nombre: document.getElementById('emp-nombre').value,
+                apellido: document.getElementById('emp-apellido').value,
+                dni: document.getElementById('emp-dni').value,
+                rol: document.getElementById('emp-rol').value,
+                email: document.getElementById('emp-email').value || null,
+                telefono: document.getElementById('emp-tel').value || null,
+                crear_usuario: document.getElementById('crear-user').checked,
+                username: document.getElementById('emp-username').value || null,
+                password: document.getElementById('emp-password').value || null
+            };
+            const res = await fetch(`${API_URL}/empleados_nuevo`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data)
+            });
+            if (res.ok) { cerrarModales(); cargarEmpleados(); }
+            else { const err = await res.json(); alert("Error: " + err.detail); }
+        }
+
+        function abrirEditarEmpleado(e) {
+            document.getElementById('edit-emp-id').value      = e.id;
+            document.getElementById('edit-emp-nombre').value  = e.nombre || '';
+            document.getElementById('edit-emp-apellido').value = e.apellido || '';
+            document.getElementById('edit-emp-dni').value     = e.dni || '';
+            document.getElementById('edit-emp-rol').value     = e.rol || 'produccion';
+            document.getElementById('edit-emp-tel').value     = e.telefono || '';
+            document.getElementById('edit-emp-email').value   = e.email || '';
+            document.getElementById('modal-editar-emp').classList.replace('modal-oculto','modal-visible');
+        }
+
+        async function guardarEdicionEmpleado() {
+            const id = document.getElementById('edit-emp-id').value;
+            const data = {
+                nombre:   document.getElementById('edit-emp-nombre').value,
+                apellido: document.getElementById('edit-emp-apellido').value,
+                dni:      document.getElementById('edit-emp-dni').value,
+                rol:      document.getElementById('edit-emp-rol').value,
+                telefono: document.getElementById('edit-emp-tel').value || null,
+                email:    document.getElementById('edit-emp-email').value || null
+            };
+            const res = await fetch(API_URL + '/empleados/' + id, {
+                method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(data)
+            });
+            if (res.ok) { cerrarModales(); cargarEmpleados(); }
+            else { const e = await res.json(); alert('Error: ' + e.detail); }
+        }
+
+        async function toggleEstado(id, activo) {
+            await fetch(`${API_URL}/empleados/${id}/estado?activo=${!activo}`, { method: 'PUT' });
+            cargarEmpleados();
+        }
+
+        function cerrarModales() {
+            document.querySelectorAll('.modal-visible').forEach(m => m.classList.replace('modal-visible', 'modal-oculto'));
+        }
+
+        window.onload = cargarEmpleados;
+
+    </script>
 </body>
 </html>
