@@ -358,7 +358,22 @@ def eliminar_distribuidor(id: int):
         return {"status": "ok"}
     finally:
         liberar_conexion(conn)
-
+@app.post("/api/distribuidores/{id_dist}/cobros")
+def registrar_cobro(id_dist: int, cobro: CobroCreate):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO cobros_distribuidores (id_distribuidor, fecha, monto, metodo, referencia)
+            VALUES (%s, %s, %s, %s, %s)
+        """, (id_dist, cobro.fecha, cobro.monto, cobro.metodo, cobro.referencia))
+        conn.commit()
+        return {"status": "ok"}
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
 @app.get("/api/distribuidores/{id_dist}/estado_cuenta")
 def estado_cuenta_distribuidor(id_dist: int):
     conn = obtener_conexion()
