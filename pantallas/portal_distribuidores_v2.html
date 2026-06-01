@@ -187,8 +187,13 @@
 
         function mostrarPantalla(id) {
             document.querySelectorAll('.pantalla').forEach(function(p) { p.classList.remove('activa'); });
-            document.getElementById(id).classList.add('activa');
-            window.scrollTo(0, 0);
+            var el = document.getElementById(id);
+            el.classList.add('activa');
+            // Scroll al inicio de la pantalla mostrada (con pequeño delay para que se renderice)
+            setTimeout(function() {
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+                el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }, 50);
         }
 
         // ── LOGIN ────────────────────────────────────────────────
