@@ -11,8 +11,8 @@
         .bg-neon { background-color: #e4fc74; }
         .border-neon { border-color: #e4fc74; }
         input, select { font-size: 16px !important; }
-        .pantalla { display: none; }
-        .pantalla.activa { display: block; }
+        .pantalla { display: none !important; }
+        .pantalla.activa { display: block !important; }
         .tab-btn { transition: all 0.2s; }
         .tab-btn.activo { background: #e4fc74; color: #000; font-weight: 700; }
         .prod-card { transition: transform 0.15s; }
@@ -188,6 +188,7 @@
         function mostrarPantalla(id) {
             document.querySelectorAll('.pantalla').forEach(function(p) { p.classList.remove('activa'); });
             document.getElementById(id).classList.add('activa');
+            window.scrollTo(0, 0);
         }
 
         // ── LOGIN ────────────────────────────────────────────────
@@ -293,7 +294,6 @@
         async function cargarCatalogoDist() {
             productosCache = await fetch(API_URL + '/productos/con_presentaciones').then(function(r) { return r.json(); });
 
-            // Obtener categorías
             var cats = await fetch(API_URL + '/categorias').then(function(r) { return r.json(); });
             var sinCat = productosCache.filter(function(p) { return !p.id_categoria; });
             var cont = document.getElementById('catalogo-por-cat');
@@ -355,8 +355,14 @@
             var total = 0, hayItems = false;
             document.querySelectorAll('.prod-card').forEach(function(card) {
                 var cant  = parseInt(card.querySelector('.dist-cant').value) || 0;
-                var hidEl = card.querySelector('input.dist-pres') || card.querySelector('select.dist-pres').options[card.querySelector('select.dist-pres').selectedIndex];
-                var precio = parseFloat(hidEl ? (hidEl.dataset.precioFixed || hidEl.dataset.precio) : 0) || 0;
+                var selEl = card.querySelector('select.dist-pres');
+                var precio;
+                if (selEl) {
+                    precio = parseFloat(selEl.options[selEl.selectedIndex].dataset.precio) || 0;
+                } else {
+                    var hidEl = card.querySelector('input.dist-pres');
+                    precio = parseFloat(hidEl ? hidEl.dataset.precioFixed : 0) || 0;
+                }
                 if (cant > 0) hayItems = true;
                 total += cant * precio;
             });
@@ -369,9 +375,16 @@
             document.querySelectorAll('.prod-card').forEach(function(card) {
                 var cant  = parseInt(card.querySelector('.dist-cant').value) || 0;
                 if (!cant) return;
-                var hidEl = card.querySelector('input.dist-pres') || card.querySelector('select.dist-pres').options[card.querySelector('select.dist-pres').selectedIndex];
-                var prodId = parseInt(hidEl.dataset.prod || card.querySelector('select.dist-pres').dataset.prod);
-                var precio = parseFloat(hidEl.dataset.precioFixed || hidEl.dataset.precio) || 0;
+                var selEl = card.querySelector('select.dist-pres');
+                var prodId, precio;
+                if (selEl) {
+                    prodId = parseInt(selEl.dataset.prod);
+                    precio = parseFloat(selEl.options[selEl.selectedIndex].dataset.precio) || 0;
+                } else {
+                    var hidEl = card.querySelector('input.dist-pres');
+                    prodId = parseInt(hidEl.dataset.prod);
+                    precio = parseFloat(hidEl.dataset.precioFixed) || 0;
+                }
                 total += cant * precio;
                 detalle.push({ id_producto: prodId, cantidad: cant, precio_unitario: precio });
             });
@@ -384,7 +397,6 @@
                     body: JSON.stringify({ id_distribuidor: distActual.id, total: total, detalle: detalle })
                 });
                 if (res.ok) {
-                    // Resetear cantidades
                     document.querySelectorAll('.dist-cant').forEach(function(i) { i.value = 0; });
                     document.getElementById('carrito-flotante').classList.add('hidden');
                     document.getElementById('dist-total').textContent = '$ 0';
