@@ -302,6 +302,7 @@ def actualizar_empleado(id_emp: int, emp: ActualizarEmpleado):
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         liberar_conexion(conn)
+
 @app.get("/api/empleados")
 def listar_empleados():
     conn = obtener_conexion()
@@ -435,7 +436,6 @@ def registrar_anticipo(data: NuevoAnticipo):
     conn = obtener_conexion()
     try:
         cur = conn.cursor()
-        # Se asegura de crear la tabla si no existe
         cur.execute("""
             CREATE TABLE IF NOT EXISTS anticipos_empleados (
                 id SERIAL PRIMARY KEY,
@@ -460,7 +460,6 @@ def listar_anticipos(fecha_desde: str = Query(...), fecha_hasta: str = Query(...
     conn = obtener_conexion()
     try:
         cur = conn.cursor()
-        # Se asegura de crear la tabla si entran a mirar antes de registrar uno
         cur.execute("""
             CREATE TABLE IF NOT EXISTS anticipos_empleados (
                 id SERIAL PRIMARY KEY,
@@ -601,7 +600,6 @@ def crear_producto(prod: NuevoProducto):
         cur.execute("INSERT INTO productos (sku, nombre, tipo, stock_actual) VALUES (%s,%s,%s,%s) RETURNING id",
                     (prod.sku, prod.nombre, prod.tipo, prod.stock_inicial))
         id_prod = cur.fetchone()[0]
-        # Crear presentación Unidad por defecto
         cur.execute("INSERT INTO presentaciones (id_producto, nombre, cantidad_unidades, precio_minorista, precio_mayorista) VALUES (%s,'Unidad',1,0,0)",
                     (id_prod,))
         conn.commit()
@@ -764,7 +762,7 @@ def historial_produccion():
             JOIN productos p ON o.id_producto = p.id
             JOIN empleados e ON o.id_empleado = e.id
             LEFT JOIN LATERAL (
-                SELECT precio_minorista FROM presentations
+                SELECT precio_minorista FROM presentaciones
                 WHERE id_producto = p.id AND nombre = 'Unidad'
                 LIMIT 1
             ) pr ON true
@@ -1724,6 +1722,89 @@ def listar_distribuidores():
         liberar_conexion(conn)
 
 # ═══════════════════════════════════════════════════════════════
+#  LOGIN Y REGISTRO DE MAYORISTAS
+# ═══════════════════════════════════════════════════════════════
+
+class RegistroDist(BaseModel):
+    razon_social: str
+    cuit: str
+    username: str
+    password: str
+    dni: Optional[str] = None
+    telefono: Optional[str] = None
+    email: Optional[str] = None
+    direccion: Optional[str] = None
+    localidad: Optional[str] = None
+    provincia: Optional[str] = None
+    cp: Optional[str] = None
+    limite_credito: float = 0.0
+
+@app.post("/api/distribuidores/registro")
+def registro_distribuidor(data: RegistroDist):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        cur.execute("ALTER TABLE distribuidores ADD COLUMN IF NOT EXISTS username VARCHAR(50) UNIQUE;")
+        cur.execute("ALTER TABLE distribuidores ADD COLUMN IF NOT EXISTS password_hash TEXT;")
+        cur.execute("ALTER TABLE distribuidores ADD COLUMN IF NOT EXISTS aprobado BOOLEAN DEFAULT false;")
+        cur.execute("ALTER TABLE distribuidores ADD COLUMN IF NOT EXISTS dni VARCHAR(50);")
+        cur.execute("ALTER TABLE distribuidores ADD COLUMN IF NOT EXISTS telefono VARCHAR(50);")
+        cur.execute("ALTER TABLE distribuidores ADD COLUMN IF NOT EXISTS email VARCHAR(100);")
+        cur.execute("ALTER TABLE distribuidores ADD COLUMN IF NOT EXISTS direccion VARCHAR(200);")
+        cur.execute("ALTER TABLE distribuidores ADD COLUMN IF NOT EXISTS localidad VARCHAR(100);")
+        cur.execute("ALTER TABLE distribuidores ADD COLUMN IF NOT EXISTS provincia VARCHAR(100);")
+        cur.execute("ALTER TABLE distribuidores ADD COLUMN IF NOT EXISTS cp VARCHAR(20);")
+        
+        hash_pw = bcrypt.hashpw(data.password.encode(), bcrypt.gensalt()).decode()
+        
+        cur.execute("""
+            INSERT INTO distribuidores 
+            (razon_social, dni, cuit, telefono, email, direccion, localidad, provincia, cp, username, password_hash, limite_credito)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id
+        """, (data.razon_social, data.dni, data.cuit, data.telefono, data.email, data.direccion, data.localidad, data.provincia, data.cp, data.username, hash_pw, data.limite_credito))
+        id_dist = cur.fetchone()[0]
+        conn.commit()
+        
+        return {
+            "id": id_dist, 
+            "razon_social": data.razon_social, 
+            "cuit": data.cuit,
+            "aprobado": False
+        }
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
+class LoginDist(BaseModel):
+    username: str
+    password: str
+
+@app.post("/api/distribuidores/login")
+def login_distribuidor(data: LoginDist):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT id, razon_social, cuit, dni, telefono, email, direccion, localidad, provincia, cp, password_hash, aprobado, activo
+            FROM distribuidores
+            WHERE username = %s
+        """, (data.username,))
+        user = fetchone_dict(cur)
+        
+        if not user or not user['activo']:
+            raise HTTPException(status_code=401, detail="Usuario o contraseña incorrectos")
+        
+        if not user.get('password_hash') or not bcrypt.checkpw(data.password.encode(), user['password_hash'].encode()):
+            raise HTTPException(status_code=401, detail="Usuario o contraseña incorrectos")
+        
+        del user['password_hash']
+        return user
+    finally:
+        liberar_conexion(conn)
+
+# ═══════════════════════════════════════════════════════════════
 #  RUTAS WEB
 # ═══════════════════════════════════════════════════════════════
 
@@ -1768,7 +1849,11 @@ def abrir_insumos():
 
 @app.get("/b2b")
 def abrir_b2b():
-    return serve_html("portal_distribuidores_v2.html")
+    return serve_html("portal_distribuidores.html")
+
+@app.get("/mayoristas")
+def abrir_mayoristas():
+    return serve_html("portal_distribuidores.html")
 
 @app.get("/empleados")
 def abrir_empleados():
