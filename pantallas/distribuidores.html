@@ -331,6 +331,11 @@
 
     <script>
         var API_URL = window.location.origin + "/api";
+        // Ajuste en caso de no correr desde el puerto 8000 directamente
+        if(window.location.hostname === '127.0.0.1' && window.location.port !== '8000') {
+            API_URL = "http://127.0.0.1:8000/api";
+        }
+        
         var usr = JSON.parse(sessionStorage.getItem('usuario') || '{}');
         if (usr.nombre) document.getElementById('usuario-info').textContent = usr.nombre + ' ' + usr.apellido + ' · ' + usr.rol;
 
@@ -377,7 +382,7 @@
                     '<td class="p-4 text-gray-400 text-sm">' + (d.cuit || '—') + (d.dni ? '<br><span class="text-xs text-gray-600">DNI: ' + d.dni + '</span>' : '') + '</td>' +
                     '<td class="p-4 text-gray-300 text-sm">' + (d.telefono || '—') + '</td>' +
                     '<td class="p-4 text-gray-400 text-sm">' + locProv + '</td>' +
-                    '<td class="p-4 text-neon font-bold">$ ' + parseFloat(d.limite_credito).toLocaleString('es-AR') + '</td>' +
+                    '<td class="p-4 text-neon font-bold">$ ' + parseFloat(d.limite_credito || 0).toLocaleString('es-AR') + '</td>' +
                     '<td class="p-4">' + (d.aprobado ? '<span class="text-xs text-green-400 font-bold">✓ Aprobado</span>' : '<span class="text-xs text-yellow-400 font-bold">⏳ Pendiente</span>') + '</td>' +
                     '<td class="p-4 text-right">' +
                         '<div class="flex justify-end gap-1">' +
@@ -420,7 +425,7 @@
                     '<td class="p-4 font-bold text-neon">#' + String(p.id).padStart(4,'0') + '</td>' +
                     '<td class="p-4 font-bold text-white">' + p.distribuidor + '</td>' +
                     '<td class="p-4 text-gray-400 text-xs">' + dt + '</td>' +
-                    '<td class="p-4 text-neon font-bold">$ ' + parseFloat(p.total).toLocaleString('es-AR') + '</td>' +
+                    '<td class="p-4 text-neon font-bold">$ ' + parseFloat(p.total || 0).toLocaleString('es-AR') + '</td>' +
                     '<td class="p-4"><span class="text-xs px-2 py-1 rounded font-bold ' + color + '">' + p.estado + '</span></td>' +
                     '<td class="p-4 text-right"><button class="text-xs border border-gray-700 px-3 py-1 rounded hover:border-gray-500 text-gray-400 hover:text-white">Ver detalle</button></td>';
                 tr.querySelector('button').onclick = function() { verDetallePedido(p.id, p.distribuidor, p.total, p.fecha); };
@@ -439,7 +444,7 @@
             document.getElementById('detalle-titulo').textContent = 'Pedido #' + String(id).padStart(4,'0');
             document.getElementById('detalle-dist').textContent   = '🚚 ' + distribuidor;
             document.getElementById('detalle-fecha').textContent  = new Date(fecha).toLocaleString('es-AR', {dateStyle:'long', timeStyle:'short'});
-            document.getElementById('detalle-total').textContent  = '$ ' + parseFloat(total).toLocaleString('es-AR');
+            document.getElementById('detalle-total').textContent  = '$ ' + parseFloat(total || 0).toLocaleString('es-AR');
             var items = await fetch(API_URL + '/pedidos_b2b/' + id + '/detalle').then(function(r) { return r.json(); });
             var tbody = document.getElementById('tabla-detalle-pedido');
             tbody.innerHTML = '';
@@ -448,8 +453,8 @@
                 tr.innerHTML =
                     '<td class="py-3 text-white font-bold">' + i.producto + ' <span class="text-gray-500 text-xs">' + i.sku + '</span></td>' +
                     '<td class="py-3 text-center text-gray-300">' + i.cantidad + '</td>' +
-                    '<td class="py-3 text-right text-gray-300">$ ' + parseFloat(i.precio_unitario).toLocaleString('es-AR') + '</td>' +
-                    '<td class="py-3 text-right text-neon font-bold">$ ' + parseFloat(i.subtotal).toLocaleString('es-AR') + '</td>';
+                    '<td class="py-3 text-right text-gray-300">$ ' + parseFloat(i.precio_unitario || 0).toLocaleString('es-AR') + '</td>' +
+                    '<td class="py-3 text-right text-neon font-bold">$ ' + parseFloat(i.subtotal || 0).toLocaleString('es-AR') + '</td>';
                 tbody.appendChild(tr);
             });
             document.getElementById('modal-detalle').classList.replace('modal-oculto','modal-visible');
@@ -584,23 +589,30 @@
 
             document.getElementById('cuenta-vacia').classList.add('hidden');
             document.getElementById('cuenta-contenido').classList.remove('hidden');
-            document.getElementById('cuenta-total-ped').textContent = '$ ' + parseFloat(data.total_pedidos).toLocaleString('es-AR');
-            document.getElementById('cuenta-total-cob').textContent = '$ ' + parseFloat(data.total_cobrado).toLocaleString('es-AR');
-            document.getElementById('cuenta-saldo').textContent     = '$ ' + parseFloat(data.saldo_pendiente).toLocaleString('es-AR');
+            
+            // Validación anti-NaN para los totales principales
+            var tPedidos = parseFloat(data.total_pedidos || 0) || 0;
+            var tCobrado = parseFloat(data.total_cobrado || 0) || 0;
+            var tSaldo   = parseFloat(data.saldo_pendiente || 0) || 0;
+
+            document.getElementById('cuenta-total-ped').textContent = '$ ' + tPedidos.toLocaleString('es-AR');
+            document.getElementById('cuenta-total-cob').textContent = '$ ' + tCobrado.toLocaleString('es-AR');
+            document.getElementById('cuenta-saldo').textContent     = '$ ' + tSaldo.toLocaleString('es-AR');
 
             // Mezclar movimientos
             var movimientos = [];
-            data.pedidos.forEach(function(p) {
-                movimientos.push({ fecha: p.fecha, tipo: 'pedido', detalle: 'Pedido #' + String(p.id).padStart(4,'0'), monto: parseFloat(p.total) });
+            (data.pedidos || []).forEach(function(p) {
+                movimientos.push({ fecha: p.fecha, tipo: 'pedido', detalle: 'Pedido #' + String(p.id).padStart(4,'0'), monto: parseFloat(p.total || 0) || 0 });
             });
-            data.cobros.forEach(function(c) {
-                movimientos.push({ fecha: c.fecha, tipo: 'cobro', detalle: 'Cobro · ' + c.metodo + (c.referencia ? ' · ' + c.referencia : ''), monto: parseFloat(c.monto) });
+            (data.cobros || []).forEach(function(c) {
+                movimientos.push({ fecha: c.fecha, tipo: 'cobro', detalle: 'Cobro · ' + c.metodo + (c.referencia ? ' · ' + c.referencia : ''), monto: parseFloat(c.monto || 0) || 0 });
             });
             movimientos.sort(function(a, b) { return new Date(b.fecha) - new Date(a.fecha); });
 
             var tbody = document.getElementById('tabla-movimientos');
             tbody.innerHTML = '';
             var saldoAcum = 0;
+            
             // Calcular saldo acumulado de viejo a nuevo
             var ordenAsc = [...movimientos].reverse();
             var saldos = [];
@@ -657,6 +669,11 @@
             var doc = new jsPDF();
             var data = estadoCuentaData;
 
+            // Validación anti-NaN para el PDF
+            var tPedidos = parseFloat(data.total_pedidos || 0) || 0;
+            var tCobrado = parseFloat(data.total_cobrado || 0) || 0;
+            var tSaldo   = parseFloat(data.saldo_pendiente || 0) || 0;
+
             doc.setFontSize(18); doc.setFont('helvetica','bold'); doc.setTextColor(40,40,40);
             doc.text('Portal del Viento — Estado de Cuenta', 14, 18);
             doc.setFontSize(12); doc.setFont('helvetica','normal'); doc.setTextColor(80,80,80);
@@ -666,18 +683,18 @@
 
             // Resumen
             doc.setFontSize(10); doc.setFont('helvetica','bold'); doc.setTextColor(40,40,40);
-            doc.text('Total pedidos despachados: $ ' + parseFloat(data.total_pedidos).toLocaleString('es-AR'), 14, 44);
-            doc.text('Total cobrado:             $ ' + parseFloat(data.total_cobrado).toLocaleString('es-AR'), 14, 51);
+            doc.text('Total pedidos despachados: $ ' + tPedidos.toLocaleString('es-AR'), 14, 44);
+            doc.text('Total cobrado:             $ ' + tCobrado.toLocaleString('es-AR'), 14, 51);
             doc.setTextColor(200, 50, 50);
-            doc.text('Saldo pendiente:           $ ' + parseFloat(data.saldo_pendiente).toLocaleString('es-AR'), 14, 58);
+            doc.text('Saldo pendiente:           $ ' + tSaldo.toLocaleString('es-AR'), 14, 58);
 
             // Movimientos
             var movs = [];
-            data.pedidos.forEach(function(p) {
-                movs.push({ fecha: p.fecha, tipo: 'Pedido', detalle: '#' + String(p.id).padStart(4,'0'), monto: parseFloat(p.total) });
+            (data.pedidos || []).forEach(function(p) {
+                movs.push({ fecha: p.fecha, tipo: 'Pedido', detalle: '#' + String(p.id).padStart(4,'0'), monto: parseFloat(p.total || 0) || 0 });
             });
-            data.cobros.forEach(function(c) {
-                movs.push({ fecha: c.fecha, tipo: 'Cobro', detalle: c.metodo + (c.referencia ? ' · ' + c.referencia : ''), monto: parseFloat(c.monto) });
+            (data.cobros || []).forEach(function(c) {
+                movs.push({ fecha: c.fecha, tipo: 'Cobro', detalle: c.metodo + (c.referencia ? ' · ' + c.referencia : ''), monto: parseFloat(c.monto || 0) || 0 });
             });
             movs.sort(function(a, b) { return new Date(b.fecha) - new Date(a.fecha); });
 
