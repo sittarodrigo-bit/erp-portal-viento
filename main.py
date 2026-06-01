@@ -693,7 +693,7 @@ def index():
 
 @app.get("/admin")
 def route_admin():
-    return serve_html("dashboard.html")
+    return serve_html("panel_admin.html")
 
 @app.get("/catalogo")
 def route_catalogo():
