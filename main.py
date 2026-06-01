@@ -21,7 +21,7 @@ app.add_middleware(
 # ==============================================================================
 # CONFIGURACIÓN DE BASE DE DATOS
 # ==============================================================================
-DB_URL = os.environ.get("DATABASE_URL", "postgresql://usuario:contraseña@localhost:5432/portal_del_viento")
+DB_URL = os.environ.get("DATABASE_URL", "postgresql://neondb_owner:npg_jqkxN4SRzP5o@ep-still-firefly-apwc5fuw-pooler.c-7.us-east-1.aws.neon.tech/neondb?sslmode=require")
 
 def obtener_conexion():
     try:
