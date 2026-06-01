@@ -1803,7 +1803,19 @@ def login_distribuidor(data: LoginDist):
         return user
     finally:
         liberar_conexion(conn)
-
+@app.put("/api/distribuidores/{id_dist}/aprobar")
+def aprobar_distribuidor(id_dist: int):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        cur.execute("UPDATE distribuidores SET aprobado=true WHERE id=%s", (id_dist,))
+        conn.commit()
+        return {"status": "ok"}
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
 # ═══════════════════════════════════════════════════════════════
 #  RUTAS WEB
 # ═══════════════════════════════════════════════════════════════
