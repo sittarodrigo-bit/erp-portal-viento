@@ -108,7 +108,11 @@ class ProduccionUpdate(BaseModel):
 class PedidoUpdate(BaseModel):
     detalle: List[DetallePedido]
     total: float
-
+class CobroCreate(BaseModel):
+    fecha: str
+    monto: float
+    metodo: str
+    referencia: Optional[str] = None
 # ==============================================================================
 # ENDPOINTS BÁSICOS / EMPRESA
 # ==============================================================================
