@@ -1768,7 +1768,7 @@ def abrir_insumos():
 
 @app.get("/b2b")
 def abrir_b2b():
-    return serve_html("portal_distribuidores.html")
+    return serve_html("portal_distribuidores_v2.html")
 
 @app.get("/empleados")
 def abrir_empleados():
