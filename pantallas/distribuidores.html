@@ -110,6 +110,7 @@
                         <option value="">— Seleccioná un distribuidor —</option>
                     </select>
                 </div>
+                <button id="btn-abrir-cobro" onclick="abrirModalCobro()" class="hidden bg-green-700 hover:bg-green-600 text-white font-bold px-4 py-2 rounded-lg text-sm transition shadow-lg shadow-green-900/50">+ Registrar Pago</button>
                 <button onclick="imprimirEstadoCuenta()" class="border border-gray-600 text-gray-300 hover:text-white px-4 py-2 rounded-lg text-sm transition">🖨️ Imprimir</button>
             </div>
 
@@ -119,11 +120,11 @@
                         <p class="text-xs text-gray-500 font-bold uppercase mb-2">Total Pedidos</p>
                         <p id="cuenta-total-ped" class="text-2xl font-bold text-white">$ 0</p>
                     </div>
-                    <div class="bg-black border border-gray-800 rounded-xl p-5 text-center">
-                        <p class="text-xs text-gray-500 font-bold uppercase mb-2">Total Cobrado</p>
+                    <div class="bg-black border border-green-900/30 rounded-xl p-5 text-center">
+                        <p class="text-xs text-gray-500 font-bold uppercase mb-2">Total Pagado</p>
                         <p id="cuenta-total-cob" class="text-2xl font-bold text-green-400">$ 0</p>
                     </div>
-                    <div class="bg-black border border-red-900/50 rounded-xl p-5 text-center">
+                    <div class="bg-black border border-red-900/50 rounded-xl p-5 text-center shadow-lg">
                         <p class="text-xs text-gray-500 font-bold uppercase mb-2">Saldo Pendiente</p>
                         <p id="cuenta-saldo" class="text-2xl font-bold text-red-400">$ 0</p>
                     </div>
@@ -140,7 +141,7 @@
                                 <th class="p-4">Tipo</th>
                                 <th class="p-4">Detalle</th>
                                 <th class="p-4 text-right">Monto</th>
-                                <th class="p-4 text-right">Saldo</th>
+                                <th class="p-4 text-right">Saldo Acumulado</th>
                             </tr>
                         </thead>
                         <tbody id="tabla-movimientos" class="divide-y divide-gray-800 text-sm">
@@ -157,6 +158,47 @@
 
     </main>
 
+    <div id="modal-cobro" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
+        <div class="bg-gray-900 border border-gray-700 rounded-xl p-6 w-[420px] shadow-2xl">
+            <div class="flex justify-between items-center mb-2">
+                <h3 class="text-lg font-bold text-white border-l-4 border-green-500 pl-2">Registrar Pago</h3>
+                <button onclick="cerrarModales()" class="text-gray-500 hover:text-white text-2xl leading-none">×</button>
+            </div>
+            <p id="cobro-dist-nombre" class="text-neon text-sm font-bold mb-6"></p>
+
+            <div class="mb-4">
+                <label class="block text-xs text-green-400 font-bold mb-1">Monto recibido ($)</label>
+                <input type="number" id="cobro-monto" step="0.01" class="w-full bg-black border-2 border-green-700 text-white rounded p-3 font-bold text-2xl text-center outline-none focus:border-green-500">
+            </div>
+            
+            <div class="grid grid-cols-2 gap-4 mb-4">
+                <div>
+                    <label class="block text-xs text-gray-500 font-bold mb-1">Fecha de pago</label>
+                    <input type="date" id="cobro-fecha" class="w-full bg-black border border-gray-700 text-white rounded p-2 text-sm">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 font-bold mb-1">Método</label>
+                    <select id="cobro-metodo" class="w-full bg-black border border-gray-700 text-white rounded p-2 text-sm">
+                        <option value="Transferencia">Transferencia</option>
+                        <option value="Efectivo">Efectivo</option>
+                        <option value="Cheque">Cheque</option>
+                        <option value="MercadoPago">MercadoPago</option>
+                    </select>
+                </div>
+            </div>
+            
+            <div class="mb-6">
+                <label class="block text-xs text-gray-500 font-bold mb-1">Referencia / Comprobante (Opcional)</label>
+                <input type="text" id="cobro-referencia" placeholder="Ej: Transferencia Nro 998822" class="w-full bg-black border border-gray-700 text-white rounded p-2 text-sm">
+            </div>
+            
+            <div class="flex justify-end gap-3">
+                <button onclick="cerrarModales()" class="px-4 py-2 text-gray-400 hover:text-white font-bold">Cancelar</button>
+                <button onclick="guardarCobro()" id="btn-guardar-cobro" class="bg-green-700 hover:bg-green-600 text-white px-6 py-2 rounded font-bold transition">Registrar Pago</button>
+            </div>
+        </div>
+    </div>
+
     <div id="modal-nuevo" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
         <div class="bg-gray-900 border border-gray-700 rounded-xl p-6 w-[560px] shadow-2xl max-h-[90vh] overflow-y-auto">
             <div class="flex justify-between items-center mb-4">
@@ -167,63 +209,51 @@
             <div class="grid grid-cols-2 gap-3 mb-3">
                 <div class="col-span-2">
                     <label class="block text-xs text-gray-500 font-bold mb-1">Nombre / Razón Social</label>
-                    <input type="text" id="nd-nombre" placeholder="Ej: Juan Pérez o Distribuidora SA"
-                        class="w-full bg-black border border-gray-700 text-white rounded p-2">
+                    <input type="text" id="nd-nombre" placeholder="Ej: Juan Pérez o Distribuidora SA" class="w-full bg-black border border-gray-700 text-white rounded p-2">
                 </div>
                 <div>
                     <label class="block text-xs text-gray-500 font-bold mb-1">DNI</label>
-                    <input type="text" id="nd-dni" placeholder="36.766.797"
-                        class="w-full bg-black border border-gray-700 text-white rounded p-2">
+                    <input type="text" id="nd-dni" placeholder="36.766.797" class="w-full bg-black border border-gray-700 text-white rounded p-2">
                 </div>
                 <div>
                     <label class="block text-xs text-gray-500 font-bold mb-1">CUIT</label>
-                    <input type="text" id="nd-cuit" placeholder="XX-XXXXXXXX-X"
-                        class="w-full bg-black border border-gray-700 text-white rounded p-2">
+                    <input type="text" id="nd-cuit" placeholder="XX-XXXXXXXX-X" class="w-full bg-black border border-gray-700 text-white rounded p-2">
                 </div>
                 <div>
                     <label class="block text-xs text-gray-500 font-bold mb-1">Teléfono</label>
-                    <input type="text" id="nd-tel" placeholder="261 XXX XXXX"
-                        class="w-full bg-black border border-gray-700 text-white rounded p-2">
+                    <input type="text" id="nd-tel" placeholder="261 XXX XXXX" class="w-full bg-black border border-gray-700 text-white rounded p-2">
                 </div>
                 <div>
                     <label class="block text-xs text-gray-500 font-bold mb-1">Email</label>
-                    <input type="email" id="nd-email" placeholder="correo@ejemplo.com"
-                        class="w-full bg-black border border-gray-700 text-white rounded p-2">
+                    <input type="email" id="nd-email" placeholder="correo@ejemplo.com" class="w-full bg-black border border-gray-700 text-white rounded p-2">
                 </div>
                 <div class="col-span-2">
                     <label class="block text-xs text-gray-500 font-bold mb-1">Dirección (calle y altura)</label>
-                    <input type="text" id="nd-dir" placeholder="Ej: Av. San Martín 1234"
-                        class="w-full bg-black border border-gray-700 text-white rounded p-2">
+                    <input type="text" id="nd-dir" placeholder="Ej: Av. San Martín 1234" class="w-full bg-black border border-gray-700 text-white rounded p-2">
                 </div>
                 <div>
                     <label class="block text-xs text-gray-500 font-bold mb-1">Localidad</label>
-                    <input type="text" id="nd-localidad" placeholder="Ej: San Rafael"
-                        class="w-full bg-black border border-gray-700 text-white rounded p-2">
+                    <input type="text" id="nd-localidad" placeholder="Ej: San Rafael" class="w-full bg-black border border-gray-700 text-white rounded p-2">
                 </div>
                 <div>
                     <label class="block text-xs text-gray-500 font-bold mb-1">Provincia</label>
-                    <input type="text" id="nd-provincia" placeholder="Ej: Mendoza"
-                        class="w-full bg-black border border-gray-700 text-white rounded p-2">
+                    <input type="text" id="nd-provincia" placeholder="Ej: Mendoza" class="w-full bg-black border border-gray-700 text-white rounded p-2">
                 </div>
                 <div>
                     <label class="block text-xs text-gray-500 font-bold mb-1">Código Postal</label>
-                    <input type="text" id="nd-cp" placeholder="5600"
-                        class="w-full bg-black border border-gray-700 text-white rounded p-2">
+                    <input type="text" id="nd-cp" placeholder="5600" class="w-full bg-black border border-gray-700 text-white rounded p-2">
                 </div>
                 <div>
                     <label class="block text-xs text-neon font-bold mb-1">Límite de Crédito ($)</label>
-                    <input type="number" id="nd-credito" placeholder="0"
-                        class="w-full bg-black border border-neon text-white rounded p-2 font-bold">
+                    <input type="number" id="nd-credito" placeholder="0" class="w-full bg-black border border-neon text-white rounded p-2 font-bold">
                 </div>
             </div>
             <label class="block text-xs text-gray-500 font-bold mb-1">Notas internas</label>
-            <textarea id="nd-notas" rows="2" placeholder="Condiciones, zona de entrega, etc."
-                class="w-full bg-black border border-gray-700 text-white rounded p-2 mb-5 text-sm resize-none"></textarea>
+            <textarea id="nd-notas" rows="2" placeholder="Condiciones, zona de entrega, etc." class="w-full bg-black border border-gray-700 text-white rounded p-2 mb-5 text-sm resize-none"></textarea>
 
             <div class="flex justify-end gap-3">
                 <button onclick="cerrarModales()" class="px-4 py-2 text-gray-400 hover:text-white font-bold">Cancelar</button>
-                <button onclick="guardarNuevo()" id="btn-guardar-dist"
-                    class="bg-neon text-black px-6 py-2 rounded font-bold hover:bg-yellow-300 disabled:opacity-50">Registrar</button>
+                <button onclick="guardarNuevo()" id="btn-guardar-dist" class="bg-neon text-black px-6 py-2 rounded font-bold hover:bg-yellow-300 disabled:opacity-50">Registrar</button>
             </div>
         </div>
     </div>
@@ -240,8 +270,7 @@
             <div class="grid grid-cols-2 gap-3 mb-3">
                 <div class="col-span-2">
                     <label class="block text-xs text-gray-500 font-bold mb-1">Nombre / Razón Social</label>
-                    <input type="text" id="ed-nombre"
-                        class="w-full bg-black border border-gray-700 text-white rounded p-2">
+                    <input type="text" id="ed-nombre" class="w-full bg-black border border-gray-700 text-white rounded p-2">
                 </div>
                 <div>
                     <label class="block text-xs text-gray-500 font-bold mb-1">DNI</label>
@@ -331,7 +360,6 @@
 
     <script>
         var API_URL = window.location.origin + "/api";
-        // Ajuste en caso de no correr desde el puerto 8000 directamente
         if(window.location.hostname === '127.0.0.1' && window.location.port !== '8000') {
             API_URL = "http://127.0.0.1:8000/api";
         }
@@ -371,7 +399,6 @@
                 tr.className = 'hover:bg-gray-900 transition border-b border-gray-800';
 
                 var locProv = [d.localidad, d.provincia].filter(Boolean).join(', ') || '—';
-                
                 var btnAprobar = d.aprobado ? '' : '<button class="text-xs bg-blue-700 hover:bg-blue-600 text-white font-bold px-3 py-1 rounded transition btn-aprobar">Aprobar</button>';
 
                 tr.innerHTML =
@@ -460,7 +487,6 @@
             document.getElementById('modal-detalle').classList.replace('modal-oculto','modal-visible');
         }
 
-        // ── NUEVO ─────────────────────────────────────────────────
         function abrirModalNuevo() {
             ['nd-nombre','nd-dni','nd-cuit','nd-tel','nd-email','nd-dir','nd-localidad','nd-provincia','nd-cp','nd-notas'].forEach(function(id) {
                 document.getElementById(id).value = '';
@@ -494,7 +520,6 @@
             } finally { btn.disabled = false; btn.textContent = 'Registrar'; }
         }
 
-        // ── EDITAR Y ELIMINAR ─────────────────────────────────────
         function abrirModalEditar(d) {
             document.getElementById('editar-id').value       = d.id;
             document.getElementById('editar-titulo').textContent = d.razon_social;
@@ -559,7 +584,7 @@
 
         window.onload = cargarDistribuidores;
     
-        // ── ESTADO DE CUENTA ──────────────────────────────────────
+        // ── ESTADO DE CUENTA Y PAGOS ──────────────────────────────────────
         function poblarSelectCuenta() {
             var sel = document.getElementById('cuenta-distribuidor');
             fetch(API_URL + '/distribuidores_lista').then(function(r) { return r.json(); }).then(function(lista) {
@@ -578,6 +603,7 @@
             if (!id) {
                 document.getElementById('cuenta-contenido').classList.add('hidden');
                 document.getElementById('cuenta-vacia').classList.remove('hidden');
+                document.getElementById('btn-abrir-cobro').classList.add('hidden'); // Ocultar botón de pago
                 return;
             }
 
@@ -589,8 +615,8 @@
 
             document.getElementById('cuenta-vacia').classList.add('hidden');
             document.getElementById('cuenta-contenido').classList.remove('hidden');
+            document.getElementById('btn-abrir-cobro').classList.remove('hidden'); // Mostrar botón de pago
             
-            // Validación anti-NaN para los totales principales
             var tPedidos = parseFloat(data.total_pedidos || 0) || 0;
             var tCobrado = parseFloat(data.total_cobrado || 0) || 0;
             var tSaldo   = parseFloat(data.saldo_pendiente || 0) || 0;
@@ -599,7 +625,6 @@
             document.getElementById('cuenta-total-cob').textContent = '$ ' + tCobrado.toLocaleString('es-AR');
             document.getElementById('cuenta-saldo').textContent     = '$ ' + tSaldo.toLocaleString('es-AR');
 
-            // Mezclar movimientos
             var movimientos = [];
             (data.pedidos || []).forEach(function(p) {
                 movimientos.push({ fecha: p.fecha, tipo: 'pedido', detalle: 'Pedido #' + String(p.id).padStart(4,'0'), monto: parseFloat(p.total || 0) || 0 });
@@ -611,9 +636,7 @@
 
             var tbody = document.getElementById('tabla-movimientos');
             tbody.innerHTML = '';
-            var saldoAcum = 0;
             
-            // Calcular saldo acumulado de viejo a nuevo
             var ordenAsc = [...movimientos].reverse();
             var saldos = [];
             var s = 0;
@@ -632,14 +655,14 @@
                     '<td class="p-4 text-gray-400 text-xs">' + fecha + '</td>' +
                     '<td class="p-4">' +
                         '<span class="text-xs font-bold px-2 py-1 rounded ' + (esPedido ? 'bg-blue-900/30 text-blue-400' : 'bg-green-900/30 text-green-400') + '">' +
-                            (esPedido ? '📦 Pedido' : '💰 Cobro') +
+                            (esPedido ? '📦 Pedido' : '💰 Pago') +
                         '</span>' +
                     '</td>' +
                     '<td class="p-4 text-gray-300 text-sm">' + m.detalle + '</td>' +
                     '<td class="p-4 text-right font-bold ' + (esPedido ? 'text-white' : 'text-green-400') + '">' +
-                        (esPedido ? '' : '+ ') + '$ ' + m.monto.toLocaleString('es-AR') +
+                        (esPedido ? '' : '− ') + '$ ' + m.monto.toLocaleString('es-AR') +
                     '</td>' +
-                    '<td class="p-4 text-right font-bold ' + (saldos[idx] > 0 ? 'text-red-400' : 'text-green-400') + '">' +
+                    '<td class="p-4 text-right font-bold ' + (saldos[idx] > 0 ? 'text-red-400' : 'text-gray-400') + '">' +
                         '$ ' + Math.abs(saldos[idx]).toLocaleString('es-AR') +
                     '</td>';
                 tbody.appendChild(tr);
@@ -647,6 +670,58 @@
 
             if (!movimientos.length) {
                 tbody.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-gray-500">Sin movimientos.</td></tr>';
+            }
+        }
+
+        // ── FUNCIONES DEL NUEVO MODAL DE COBRO ─────────────────────────────────
+        function abrirModalCobro() {
+            if (!estadoCuentaData) return;
+            document.getElementById('cobro-dist-nombre').textContent = 'Cliente: ' + distNombreActual;
+            document.getElementById('cobro-fecha').value = new Date().toISOString().split('T')[0];
+            document.getElementById('cobro-monto').value = '';
+            document.getElementById('cobro-referencia').value = '';
+            document.getElementById('modal-cobro').classList.replace('modal-oculto', 'modal-visible');
+            // Hacemos focus en el monto para que sea más rápido
+            setTimeout(() => document.getElementById('cobro-monto').focus(), 100);
+        }
+
+        async function guardarCobro() {
+            var idDist = document.getElementById('cuenta-distribuidor').value;
+            var data = {
+                fecha: document.getElementById('cobro-fecha').value,
+                monto: parseFloat(document.getElementById('cobro-monto').value) || 0,
+                metodo: document.getElementById('cobro-metodo').value,
+                referencia: document.getElementById('cobro-referencia').value || null
+            };
+
+            if (data.monto <= 0) {
+                alert('Por favor, ingresá un monto mayor a $0.');
+                return;
+            }
+
+            var btn = document.getElementById('btn-guardar-cobro');
+            btn.disabled = true;
+            btn.textContent = 'Registrando...';
+
+            try {
+                var res = await fetch(API_URL + '/distribuidores/' + idDist + '/cobros', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+
+                if (res.ok) {
+                    cerrarModales();
+                    await cargarEstadoCuenta(); // Recargamos para que aparezca el nuevo pago y baje la deuda
+                } else {
+                    var err = await res.json();
+                    alert('Error al registrar el pago: ' + err.detail);
+                }
+            } catch (error) {
+                alert('No se pudo conectar con el servidor.');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Registrar Pago';
             }
         }
 
@@ -669,7 +744,6 @@
             var doc = new jsPDF();
             var data = estadoCuentaData;
 
-            // Validación anti-NaN para el PDF
             var tPedidos = parseFloat(data.total_pedidos || 0) || 0;
             var tCobrado = parseFloat(data.total_cobrado || 0) || 0;
             var tSaldo   = parseFloat(data.saldo_pendiente || 0) || 0;
@@ -681,20 +755,18 @@
             doc.setFontSize(9); doc.setTextColor(120,120,120);
             doc.text('Generado: ' + new Date().toLocaleString('es-AR'), 14, 32);
 
-            // Resumen
             doc.setFontSize(10); doc.setFont('helvetica','bold'); doc.setTextColor(40,40,40);
             doc.text('Total pedidos despachados: $ ' + tPedidos.toLocaleString('es-AR'), 14, 44);
             doc.text('Total cobrado:             $ ' + tCobrado.toLocaleString('es-AR'), 14, 51);
             doc.setTextColor(200, 50, 50);
             doc.text('Saldo pendiente:           $ ' + tSaldo.toLocaleString('es-AR'), 14, 58);
 
-            // Movimientos
             var movs = [];
             (data.pedidos || []).forEach(function(p) {
                 movs.push({ fecha: p.fecha, tipo: 'Pedido', detalle: '#' + String(p.id).padStart(4,'0'), monto: parseFloat(p.total || 0) || 0 });
             });
             (data.cobros || []).forEach(function(c) {
-                movs.push({ fecha: c.fecha, tipo: 'Cobro', detalle: c.metodo + (c.referencia ? ' · ' + c.referencia : ''), monto: parseFloat(c.monto || 0) || 0 });
+                movs.push({ fecha: c.fecha, tipo: 'Pago', detalle: c.metodo + (c.referencia ? ' · ' + c.referencia : ''), monto: parseFloat(c.monto || 0) || 0 });
             });
             movs.sort(function(a, b) { return new Date(b.fecha) - new Date(a.fecha); });
 
@@ -703,7 +775,7 @@
                     new Date(m.fecha).toLocaleDateString('es-AR'),
                     m.tipo,
                     m.detalle,
-                    '$ ' + m.monto.toLocaleString('es-AR')
+                    (m.tipo === 'Pedido' ? '' : '- ') + '$ ' + m.monto.toLocaleString('es-AR')
                 ];
             });
 
