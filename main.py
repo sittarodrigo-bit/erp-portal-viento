@@ -1714,7 +1714,7 @@ def listar_distribuidores():
         cur = conn.cursor()
         cur.execute("""
             SELECT id, razon_social, cuit, limite_credito,
-                   direccion, localidad, provincia, cp, telefono, email, dni
+                   direccion, localidad, provincia, cp, telefono, email, dni, aprobado
             FROM distribuidores WHERE activo=true ORDER BY razon_social
         """)
         return fetchall_dict(cur)
