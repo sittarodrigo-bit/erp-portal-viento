@@ -118,7 +118,7 @@
                 <button onclick="imprimirRotulo()" class="border border-gray-600 hover:border-gray-400 text-gray-300 hover:text-white py-2 px-3 rounded text-sm transition">🏷️ Rótulo / Guía</button>
                 <button onclick="wsp('preparado')" class="bg-green-800 hover:bg-green-700 text-white py-2 px-3 rounded text-sm transition">📱 WSP Listo</button>
                 <button onclick="wsp('despachado')" class="bg-green-700 hover:bg-green-600 text-white py-2 px-3 rounded text-sm transition">📱 WSP Despachado</button>
-                <button onclick="guardarCambios()" class="bg-neon text-black font-bold py-2 px-3 rounded text-sm hover:bg-yellow-300">💾 Guardar Cambios</button>
+                <button onclick="guardarCambios()" id="btn-guardar-cambios" class="bg-neon text-black font-bold py-2 px-3 rounded text-sm hover:bg-yellow-300">💾 Guardar Cambios</button>
             </div>
 
             <div class="flex justify-between items-center border-t border-gray-700 pt-4">
@@ -233,7 +233,6 @@
             var tr = document.createElement('tr');
             tr.className = 'hover:bg-gray-900 transition';
 
-            // Celdas de datos
             var celdas = [
                 { txt: '#' + String(p.id).padStart(4,'0'), cls: 'p-4 font-bold text-neon text-sm' },
                 { txt: fecha, cls: 'p-4 text-gray-400 text-sm' },
@@ -247,7 +246,6 @@
                 tr.appendChild(td);
             });
 
-            // Estado
             var tdEst = document.createElement('td'); tdEst.className = 'p-4';
             var span = document.createElement('span');
             span.className = 'text-xs px-3 py-1 rounded-full font-bold ' + color;
@@ -255,7 +253,6 @@
             tdEst.appendChild(span);
             tr.appendChild(tdEst);
 
-            // Acciones
             var tdAcc = document.createElement('td'); tdAcc.className = 'p-4';
             var div = document.createElement('div'); div.className = 'flex justify-end items-center gap-1';
 
@@ -264,6 +261,8 @@
                 b.className = cls; b.textContent = txt; b.onclick = fn; return b;
             }
 
+            // Botón MODIFICAR visible y directo
+            div.appendChild(btn('✏️ Modificar', 'text-xs bg-neon text-black font-bold px-3 py-1.5 rounded hover:bg-yellow-300 transition', function() { abrirDetalle(p.id); }));
             div.appendChild(btn('📋 Orden', 'text-xs border border-gray-700 bg-gray-800 hover:bg-gray-700 text-gray-300 px-2 py-1.5 rounded transition', function() { abrirYAccion(p.id, 'orden'); }));
             div.appendChild(btn('📄 Remito', 'text-xs border border-gray-700 bg-gray-800 hover:bg-gray-700 text-gray-300 px-2 py-1.5 rounded transition', function() { abrirYAccion(p.id, 'remito'); }));
             div.appendChild(btn('🏷️ Rótulo', 'text-xs border border-yellow-800 bg-yellow-900/30 text-yellow-400 px-2 py-1.5 rounded transition', function() { abrirYAccion(p.id, 'rotulo'); }));
@@ -272,7 +271,6 @@
                 div.appendChild(btn('✓ Despachar', 'text-xs bg-green-700 hover:bg-green-600 text-white font-bold px-2 py-1.5 rounded transition', function() { despacharRapido(p.id); }));
             }
 
-            // Menú ⋮
             var rel = document.createElement('div'); rel.className = 'relative';
             var btnMenu = btn('⋮', 'text-xs border border-gray-700 bg-gray-800 hover:bg-gray-700 text-gray-400 px-2 py-1.5 rounded', function(e) {
                 e.stopPropagation();
@@ -290,7 +288,7 @@
                 return b;
             }
 
-            menu.appendChild(mBtn('👁 Ver detalle',    'text-gray-300', function() { abrirDetalle(p.id); }));
+            menu.appendChild(mBtn('👁 Ver / Modificar', 'text-gray-300', function() { abrirDetalle(p.id); }));
             menu.appendChild(mBtn('📱 WSP Listo',      'text-gray-300', function() { wspRapido(p.id, 'preparado'); }));
             menu.appendChild(mBtn('📱 WSP Despachado', 'text-gray-300', function() { wspRapido(p.id, 'despachado'); }));
             menu.appendChild(mBtn('📦 Preparar',       'text-blue-400', function() { estadoRapido(p.id, 'Preparado'); }));
@@ -307,8 +305,6 @@
             document.querySelectorAll('.relative div').forEach(function(m) { m.classList.add('hidden'); });
         }
         document.addEventListener('click', cerrarMenus);
-
-        // ── ACCIONES RÁPIDAS DESDE TABLA ────────────────────────
 
         async function cargarPedidoYItems(id) {
             var lista = await fetch(API_URL + '/pedidos_b2b/historial').then(function(r) { return r.json(); });
@@ -347,11 +343,9 @@
             cargarPedidos();
         }
 
-        // ── MODAL DETALLE ────────────────────────────────────────
-
         async function abrirDetalle(id) {
             await cargarPedidoYItems(id);
-            if (!pedidoActual) return;
+            if (!pedidoActual) { alert('No se pudo cargar el pedido. Refrescá la página.'); return; }
 
             var dist = distribuidores.find(function(d) { return String(d.id) === String(pedidoActual.id_distribuidor); }) || {};
             document.getElementById('det-titulo').textContent = 'Pedido #' + String(id).padStart(4,'0');
@@ -369,7 +363,7 @@
             cont.innerHTML = '';
             var tabla = document.createElement('table');
             tabla.className = 'w-full text-sm mb-2';
-            tabla.innerHTML = '<thead class="text-xs text-gray-400 border-b border-gray-700"><tr><th class="py-2 text-left">Producto</th><th class="py-2 text-center w-20">Cant.</th><th class="py-2 text-right">Precio</th><th class="py-2 text-right">Subtotal</th></tr></thead>';
+            tabla.innerHTML = '<thead class="text-xs text-gray-400 border-b border-gray-700"><tr><th class="py-2 text-left">Producto</th><th class="py-2 text-center w-20">Cant.</th><th class="py-2 text-right">Precio</th><th class="py-2 text-right">Subtotal</th><th class="py-2"></th></tr></thead>';
             var tbody = document.createElement('tbody');
             tbody.className = 'divide-y divide-gray-800';
             itemsActuales.forEach(function(i, idx) {
@@ -384,11 +378,21 @@
                 var tdCant = document.createElement('td'); tdCant.className = 'py-3 text-center'; tdCant.appendChild(inp);
                 var tdPric = document.createElement('td'); tdPric.className = 'py-3 text-right text-gray-300'; tdPric.textContent = '$ ' + parseFloat(i.precio_unitario).toLocaleString('es-AR');
                 var tdSub  = document.createElement('td'); tdSub.className = 'py-3 text-right text-neon font-bold'; tdSub.id = 'sub-' + idx; tdSub.textContent = '$ ' + parseFloat(i.subtotal).toLocaleString('es-AR');
-                tr.appendChild(tdProd); tr.appendChild(tdCant); tr.appendChild(tdPric); tr.appendChild(tdSub);
+                var tdDel  = document.createElement('td'); tdDel.className = 'py-3 text-right';
+                var btnDel = document.createElement('button');
+                btnDel.className = 'text-red-500 hover:text-red-400 font-bold px-2'; btnDel.textContent = '✕';
+                btnDel.onclick = function() { itemsActuales.splice(idx,1); renderDetalle(); recalcularTotal(); };
+                tdDel.appendChild(btnDel);
+                tr.appendChild(tdProd); tr.appendChild(tdCant); tr.appendChild(tdPric); tr.appendChild(tdSub); tr.appendChild(tdDel);
                 tbody.appendChild(tr);
             });
             tabla.appendChild(tbody);
             cont.appendChild(tabla);
+        }
+
+        function recalcularTotal() {
+            var total = itemsActuales.reduce(function(a, b) { return a + b.cantidad * parseFloat(b.precio_unitario); }, 0);
+            document.getElementById('det-total').textContent = '$ ' + total.toLocaleString('es-AR');
         }
 
         function actualizarSubtotal(idx, inp) {
@@ -398,8 +402,7 @@
             itemsActuales[idx].cantidad = cant;
             itemsActuales[idx].subtotal = sub;
             document.getElementById('sub-' + idx).textContent = '$ ' + sub.toLocaleString('es-AR');
-            var total = itemsActuales.reduce(function(a, b) { return a + b.cantidad * parseFloat(b.precio_unitario); }, 0);
-            document.getElementById('det-total').textContent = '$ ' + total.toLocaleString('es-AR');
+            recalcularTotal();
         }
 
         async function cargarProductosAgregar() {
@@ -440,19 +443,32 @@
             }
             sel.value = ''; document.getElementById('agregar-cant').value = 1; document.getElementById('agregar-precio').value = '';
             renderDetalle();
-            var total = itemsActuales.reduce(function(a, b) { return a + b.cantidad * parseFloat(b.precio_unitario); }, 0);
-            document.getElementById('det-total').textContent = '$ ' + total.toLocaleString('es-AR');
+            recalcularTotal();
         }
 
         async function guardarCambios() {
-            var detalle = itemsActuales.map(function(i) { return { id_producto: i.id_producto, cantidad: i.cantidad, precio_unitario: parseFloat(i.precio_unitario) }; });
-            var total   = detalle.reduce(function(a, b) { return a + b.cantidad * b.precio_unitario; }, 0);
-            await fetch(API_URL + '/pedidos_b2b/' + pedidoActual.id + '/actualizar', {
-                method:'PUT', headers:{'Content-Type':'application/json'},
-                body: JSON.stringify({ detalle: detalle, total: total })
-            });
-            alert('✅ Pedido actualizado');
-            cerrarModales(); cargarPedidos();
+            if (!pedidoActual) { alert('No hay pedido cargado.'); return; }
+            var btn = document.getElementById('btn-guardar-cambios');
+            btn.disabled = true; btn.textContent = 'Guardando...';
+            try {
+                var detalle = itemsActuales.map(function(i) { return { id_producto: i.id_producto, cantidad: i.cantidad, precio_unitario: parseFloat(i.precio_unitario) }; });
+                var total   = detalle.reduce(function(a, b) { return a + b.cantidad * b.precio_unitario; }, 0);
+                var res = await fetch(API_URL + '/pedidos_b2b/' + pedidoActual.id + '/actualizar', {
+                    method:'PUT', headers:{'Content-Type':'application/json'},
+                    body: JSON.stringify({ detalle: detalle, total: total })
+                });
+                if (res.ok) {
+                    alert('✅ Pedido actualizado');
+                    cerrarModales(); cargarPedidos();
+                } else {
+                    var e = await res.json().catch(function(){ return {}; });
+                    alert('❌ No se pudo guardar: ' + (e.detail || ('Error ' + res.status)));
+                }
+            } catch (err) {
+                alert('❌ Error de conexión al guardar.');
+            } finally {
+                btn.disabled = false; btn.textContent = '💾 Guardar Cambios';
+            }
         }
 
         async function cambiarEstado(estado) {
@@ -466,7 +482,6 @@
             cerrarModales(); cargarPedidos();
         }
 
-        // ── WHATSAPP ─────────────────────────────────────────────
         function wsp(tipo) {
             var dist = distribuidores.find(function(d) { return String(d.id) === String(pedidoActual.id_distribuidor); }) || {};
             var num  = String(pedidoActual.id).padStart(4,'0');
@@ -478,7 +493,6 @@
             window.open(tel ? 'https://wa.me/54' + tel + '?text=' + encodeURIComponent(msg) : 'https://wa.me/?text=' + encodeURIComponent(msg), '_blank');
         }
 
-        // ── PDF HELPERS ──────────────────────────────────────────
         function membrete(doc) {
             doc.setFillColor(20,20,20);
             doc.rect(0, 0, 210, 38, 'F');
@@ -543,7 +557,7 @@
             doc.autoTable({
                 startY: 85,
                 head: [['Producto','Cantidad','Recibido conforme']],
-                body: itemsActuales.map(function(i) { return [i.producto, i.cantidad, '□']; }),
+                body: itemsActuales.map(function(i) { return [i.producto, i.cantidad, '☐']; }),
                 headStyles: {fillColor:[30,30,30], textColor:[228,252,116], fontStyle:'bold'},
                 styles: {fontSize:9, cellPadding:4}
             });
@@ -556,7 +570,6 @@
         }
 
         function imprimirRotulo() {
-            // Pedir empresa de transporte primero
             document.getElementById('input-transporte').value = '';
             document.getElementById('modal-transporte').classList.replace('modal-oculto','modal-visible');
         }
@@ -572,34 +585,26 @@
             var doc  = new jsPDF({orientation:'portrait', unit:'mm', format:'a4'});
             var num  = String(pedidoActual.id).padStart(4,'0');
             var dist = distribuidores.find(function(d) { return String(d.id) === String(pedidoActual.id_distribuidor); }) || {};
-
-            // Generar 2 rótulos por hoja (arriba y abajo)
             [0, 140].forEach(function(offsetY) {
                 dibujarRotulo(doc, dist, num, transporte, offsetY);
                 if (offsetY === 0) {
-                    // Línea de corte entre los dos rótulos
                     doc.setLineDashPattern([3,3], 0);
                     doc.setDrawColor(150,150,150);
                     doc.line(10, 138, 200, 138);
                     doc.setLineDashPattern([], 0);
                     doc.setDrawColor(0,0,0);
                     doc.setFontSize(6); doc.setTextColor(150,150,150);
-                    doc.text('✂ Cortar aquí', 85, 140);
+                    doc.text('Cortar aqui', 95, 140);
                 }
             });
-
             mostrarPreview(doc, 'Rótulo #' + num, 'rotulo_' + num + '.pdf');
         }
 
         function dibujarRotulo(doc, dist, num, transporte, offsetY) {
-            var H = 132; // altura de cada rótulo en mm
+            var H = 132;
             var y = offsetY;
-
-            // Borde exterior
             doc.setLineWidth(0.8); doc.setDrawColor(0,0,0);
             doc.rect(10, y+4, 190, H);
-
-            // ── REMITENTE ────────────────────────────────────────
             doc.setFillColor(240,240,240);
             doc.rect(10, y+4, 190, 22, 'F');
             doc.setFontSize(7); doc.setTextColor(80,80,80); doc.setFont('helvetica','bold');
@@ -615,18 +620,12 @@
                 var dirRem = empresa.direccion + (empresa.localidad ? ', ' + empresa.localidad : '') + (empresa.provincia ? ', ' + empresa.provincia : '');
                 doc.text(dirRem, 14, y+23);
             }
-
-            // Línea separadora
             doc.setLineWidth(0.5); doc.line(10, y+26, 200, y+26);
-
-            // ── DESTINATARIO ─────────────────────────────────────
             doc.setFontSize(7); doc.setTextColor(80,80,80); doc.setFont('helvetica','bold');
             doc.text('DESTINATARIO OFICIAL:', 14, y+33);
             doc.setFontSize(16); doc.setTextColor(0,0,0); doc.setFont('helvetica','bold');
             doc.text((dist.razon_social || pedidoActual.distribuidor).toUpperCase(), 14, y+43);
-
             doc.setLineWidth(0.3); doc.line(14, y+46, 196, y+46);
-
             doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(20,20,20);
             var dyD = y+54;
             if (dist.dni || dist.cuit) {
@@ -654,8 +653,6 @@
                 doc.setFont('helvetica','bold'); doc.text('Código Postal:', 14, dyD);
                 doc.setFont('helvetica','normal'); doc.text(dist.cp, 50, dyD); dyD += 8;
             }
-
-            // ── TRANSPORTE ───────────────────────────────────────
             var tY = y + 100;
             doc.setLineWidth(0.5);
             doc.setLineDashPattern([2,2], 0);
@@ -665,14 +662,11 @@
             doc.text('VÍA DE TRANSPORTE:', 105, tY+6, {align:'center'});
             doc.setFontSize(14); doc.setTextColor(0,0,0);
             doc.text(transporte.toUpperCase(), 105, tY+15, {align:'center'});
-
-            // ── N° PEDIDO ────────────────────────────────────────
             doc.setLineWidth(0.3); doc.line(14, y+122, 196, y+122);
             doc.setFontSize(10); doc.setTextColor(150,150,150); doc.setFont('helvetica','normal');
-            doc.text('|||| #' + (pedidoActual.id_pedido_externo || 'PV-' + num) + ' ||||', 105, y+129, {align:'center'});
+            doc.text('#PV-' + num, 105, y+129, {align:'center'});
         }
 
-        // ── NUEVO PEDIDO ─────────────────────────────────────────
         async function abrirModalNuevo() {
             var sel = document.getElementById('np-dist');
             sel.innerHTML = distribuidores.map(function(d) { return '<option value="' + d.id + '">' + d.razon_social + '</option>'; }).join('');
@@ -686,14 +680,14 @@
             cont.innerHTML = '';
             todosProductos.forEach(function(p) {
                 if (!p.presentaciones || !p.presentaciones.length) return;
-                var presOpts = p.presentaciones.map(function(pr) {
-                    return '<option value="' + pr.id + '" data-precio="' + pr.precio_mayorista + '">' + pr.nombre + ' - $ ' + parseFloat(pr.precio_mayorista).toLocaleString('es-AR') + '</option>';
-                }).join('');
+                var pres = p.presentaciones[0];
+                var precio = parseFloat(pres.precio_mayorista) || 0;
                 var div = document.createElement('div');
                 div.className = 'flex items-center gap-3 bg-black border border-gray-800 rounded-lg px-3 py-2';
                 div.innerHTML =
                     '<p class="flex-1 text-white text-sm font-bold truncate">' + p.nombre + '</p>' +
-                    '<select class="bg-gray-900 border border-gray-700 text-white rounded p-1 text-xs np-pres" data-prod="' + p.id + '" onchange="recalcNuevo()">' + presOpts + '</select>' +
+                    '<span class="text-neon text-xs font-bold">$ ' + precio.toLocaleString('es-AR') + '</span>' +
+                    '<input type="hidden" class="np-precio" value="' + precio + '" data-prod="' + p.id + '">' +
                     '<input type="number" min="0" value="0" class="w-16 bg-gray-900 border border-gray-700 text-white rounded p-1 text-sm text-center np-cant" oninput="recalcNuevo()">';
                 cont.appendChild(div);
             });
@@ -704,8 +698,7 @@
             var total = 0;
             document.querySelectorAll('#np-items > div').forEach(function(row) {
                 var cant  = parseInt(row.querySelector('.np-cant').value) || 0;
-                var sel   = row.querySelector('.np-pres');
-                var precio = parseFloat(sel.options[sel.selectedIndex].dataset.precio) || 0;
+                var precio = parseFloat(row.querySelector('.np-precio').value) || 0;
                 total += cant * precio;
             });
             document.getElementById('np-total').textContent = '$ ' + total.toLocaleString('es-AR');
@@ -718,9 +711,9 @@
             document.querySelectorAll('#np-items > div').forEach(function(row) {
                 var cant  = parseInt(row.querySelector('.np-cant').value) || 0;
                 if (!cant) return;
-                var sel    = row.querySelector('.np-pres');
-                var precio = parseFloat(sel.options[sel.selectedIndex].dataset.precio) || 0;
-                var prodId = parseInt(sel.dataset.prod);
+                var precioEl = row.querySelector('.np-precio');
+                var precio = parseFloat(precioEl.value) || 0;
+                var prodId = parseInt(precioEl.dataset.prod);
                 total     += cant * precio;
                 detalle.push({ id_producto: prodId, cantidad: cant, precio_unitario: precio });
             });
@@ -743,7 +736,7 @@
         }
 
         window.onload = init;
-    
+
         var _pdfDoc = null, _pdfNombre = '';
 
         function mostrarPreview(doc, titulo, nombre) {
@@ -765,7 +758,6 @@
             iframe.contentWindow.focus();
             iframe.contentWindow.print();
         }
-
     </script>
 
     <!-- Modal Vista Previa PDF -->
@@ -783,7 +775,6 @@
         </div>
     </div>
 
-
     <!-- Modal selector transporte -->
     <div id="modal-transporte" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-[70]">
         <div class="bg-gray-900 border border-gray-700 rounded-xl p-6 w-80 shadow-2xl">
@@ -793,9 +784,9 @@
                 class="w-full bg-black border border-neon text-white rounded-lg p-3 mb-5 font-bold text-lg text-center focus:outline-none"
                 onkeydown="if(event.key==='Enter') confirmarTransporte()">
             <div class="flex justify-end gap-3">
-                <button onclick="document.getElementById('modal-transporte').classList.replace('modal-visible','modal-oculto')" 
+                <button onclick="document.getElementById('modal-transporte').classList.replace('modal-visible','modal-oculto')"
                     class="px-4 py-2 text-gray-400 hover:text-white font-bold">Cancelar</button>
-                <button onclick="confirmarTransporte()" 
+                <button onclick="confirmarTransporte()"
                     class="bg-neon text-black px-6 py-2 rounded font-bold hover:bg-yellow-300">Generar Rótulo</button>
             </div>
         </div>
