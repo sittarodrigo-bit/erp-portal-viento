@@ -37,11 +37,11 @@
                 <input type="password" id="l-pass" placeholder="Contraseña" autocomplete="current-password"
                     class="w-full bg-black border border-gray-700 text-white rounded-xl p-4 mb-5 outline-none focus:border-neon placeholder-gray-600"
                     onkeydown="if(event.key==='Enter') loginDist()">
-                <button onclick="loginDist()" id="btn-login"
+                <button type="button" onclick="loginDist()" id="btn-login"
                     class="w-full bg-neon text-black font-bold py-4 rounded-xl text-lg hover:bg-yellow-300 transition mb-3">
                     Ingresar
                 </button>
-                <button onclick="mostrarPantalla('p-registro')"
+                <button type="button" onclick="mostrarPantalla('p-registro')"
                     class="w-full border border-gray-700 text-gray-400 hover:text-white py-3 rounded-xl text-sm transition">
                     ¿Sos nuevo? Registrate acá
                 </button>
@@ -90,11 +90,11 @@
                     <input type="password" id="r-pass" placeholder="Contraseña *"
                         class="bg-black border border-neon text-white rounded-lg p-3 outline-none placeholder-gray-600">
                 </div>
-                <button onclick="registrarDist()" id="btn-reg"
+                <button type="button" onclick="registrarDist()" id="btn-reg"
                     class="w-full bg-neon text-black font-bold py-4 rounded-xl text-lg hover:bg-yellow-300 transition mb-3">
                     Crear cuenta
                 </button>
-                <button onclick="mostrarPantalla('p-login')" class="w-full text-gray-500 text-sm py-2 hover:text-gray-300">
+                <button type="button" onclick="mostrarPantalla('p-login')" class="w-full text-gray-500 text-sm py-2 hover:text-gray-300">
                     ← Ya tengo cuenta
                 </button>
             </div>
@@ -113,7 +113,7 @@
         <div class="bg-black px-5 pt-4 pb-2">
             <div class="flex justify-between items-center mb-4">
                 <p class="text-white font-bold text-lg">Hola, <span id="panel-nombre" class="text-neon"></span> 👋</p>
-                <button onclick="cerrarSesionDist()" class="text-xs text-gray-500 hover:text-white border border-gray-700 px-3 py-1.5 rounded-lg">Salir</button>
+                <button type="button" onclick="cerrarSesionDist()" class="text-xs text-gray-500 hover:text-white border border-gray-700 px-3 py-1.5 rounded-lg">Salir</button>
             </div>
 
             <!-- Alerta no aprobado -->
@@ -139,9 +139,9 @@
 
             <!-- Tabs -->
             <div class="grid grid-cols-3 gap-2 mb-2">
-                <button onclick="cambiarTabDist('pedido')"    id="dt-pedido"    class="tab-btn activo rounded-xl py-2.5 text-sm border border-gray-700">🛒 Pedido</button>
-                <button onclick="cambiarTabDist('historial')" id="dt-historial" class="tab-btn bg-gray-900 rounded-xl py-2.5 text-sm text-gray-400 border border-gray-700">📦 Pedidos</button>
-                <button onclick="cambiarTabDist('cuenta')"    id="dt-cuenta"    class="tab-btn bg-gray-900 rounded-xl py-2.5 text-sm text-gray-400 border border-gray-700">💳 Cuenta</button>
+                <button type="button" onclick="cambiarTabDist('pedido')"    id="dt-pedido"    class="tab-btn activo rounded-xl py-2.5 text-sm border border-gray-700">🛒 Pedido</button>
+                <button type="button" onclick="cambiarTabDist('historial')" id="dt-historial" class="tab-btn bg-gray-900 rounded-xl py-2.5 text-sm text-gray-400 border border-gray-700">📦 Pedidos</button>
+                <button type="button" onclick="cambiarTabDist('cuenta')"    id="dt-cuenta"    class="tab-btn bg-gray-900 rounded-xl py-2.5 text-sm text-gray-400 border border-gray-700">💳 Cuenta</button>
             </div>
         </div>
 
@@ -155,7 +155,7 @@
                     <span class="text-gray-400 font-bold text-sm">TOTAL DEL PEDIDO</span>
                     <span id="dist-total" class="text-neon font-bold text-2xl">$ 0</span>
                 </div>
-                <button onclick="enviarPedidoDist()" id="btn-pedido"
+                <button type="button" onclick="enviarPedidoDist()" id="btn-pedido"
                     class="w-full bg-neon text-black font-bold py-4 rounded-xl text-lg hover:bg-yellow-300 transition active:scale-95">
                     ✅ Confirmar Pedido
                 </button>
@@ -327,9 +327,9 @@
                                 : '<input type="hidden" class="dist-pres" data-prod="' + p.id + '" value="' + pres.id + '" data-precio-fixed="' + precio + '">') +
                             '<p class="text-neon font-bold text-sm mb-2">$ ' + precio.toLocaleString('es-AR') + '</p>' +
                             '<div class="flex items-center justify-between">' +
-                                '<button onclick="cambiarCantCard(this,-1)" class="cant-btn bg-gray-700 hover:bg-gray-600 text-white">−</button>' +
+                                '<button type="button" onclick="cambiarCantCard(this,-1)" class="cant-btn bg-gray-700 hover:bg-gray-600 text-white">−</button>' +
                                 '<input type="number" min="0" value="0" class="dist-cant w-10 bg-transparent text-white text-center font-bold text-lg outline-none" oninput="recalcDist()">' +
-                                '<button onclick="cambiarCantCard(this,1)" class="cant-btn bg-neon text-black hover:bg-yellow-300">+</button>' +
+                                '<button type="button" onclick="cambiarCantCard(this,1)" class="cant-btn bg-neon text-black hover:bg-yellow-300">+</button>' +
                             '</div>' +
                         '</div>';
                     grid.appendChild(card);
@@ -355,8 +355,8 @@
             var total = 0, hayItems = false;
             document.querySelectorAll('.prod-card').forEach(function(card) {
                 var cant  = parseInt(card.querySelector('.dist-cant').value) || 0;
-                var hidEl = card.querySelector('input.dist-pres');
-                var precio = parseFloat(hidEl ? hidEl.dataset.precioFixed : 0) || 0;
+                var hidEl = card.querySelector('input.dist-pres') || card.querySelector('select.dist-pres').options[card.querySelector('select.dist-pres').selectedIndex];
+                var precio = parseFloat(hidEl ? (hidEl.dataset.precioFixed || hidEl.dataset.precio) : 0) || 0;
                 if (cant > 0) hayItems = true;
                 total += cant * precio;
             });
@@ -369,9 +369,9 @@
             document.querySelectorAll('.prod-card').forEach(function(card) {
                 var cant  = parseInt(card.querySelector('.dist-cant').value) || 0;
                 if (!cant) return;
-                var hidEl = card.querySelector('input.dist-pres');
-                var prodId = parseInt(hidEl.dataset.prod);
-                var precio = parseFloat(hidEl.dataset.precioFixed) || 0;
+                var hidEl = card.querySelector('input.dist-pres') || card.querySelector('select.dist-pres').options[card.querySelector('select.dist-pres').selectedIndex];
+                var prodId = parseInt(hidEl.dataset.prod || card.querySelector('select.dist-pres').dataset.prod);
+                var precio = parseFloat(hidEl.dataset.precioFixed || hidEl.dataset.precio) || 0;
                 total += cant * precio;
                 detalle.push({ id_producto: prodId, cantidad: cant, precio_unitario: precio });
             });
