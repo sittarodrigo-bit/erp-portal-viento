@@ -384,7 +384,8 @@ def listar_fichajes(fecha: Optional[str] = None, id_empleado: Optional[int] = No
         return fetchall_dict(cur)
     finally:
         liberar_conexion(conn)
-        # ═══════════════════════════════════════════════════════════════
+        
+# ═══════════════════════════════════════════════════════════════
 #  REPORTE DE HORAS TRABAJADAS
 # ═══════════════════════════════════════════════════════════════
 
@@ -566,7 +567,8 @@ def obtener_productos():
             SELECT p.id, p.sku, p.nombre, p.tipo, p.stock_actual as stock,
                    p.id_categoria, p.stock_alerta,
                    COALESCE(pr.precio_minorista, 0) as precio_minorista,
-                   COALESCE(pr.precio_mayorista, 0) as precio_mayorista
+                   COALESCE(pr.precio_mayorista, 0) as precio_mayorista,
+                   p.imagen_url
             FROM productos p
             LEFT JOIN LATERAL (
                 SELECT precio_minorista, precio_mayorista FROM presentaciones
@@ -762,7 +764,7 @@ def historial_produccion():
             JOIN productos p ON o.id_producto = p.id
             JOIN empleados e ON o.id_empleado = e.id
             LEFT JOIN LATERAL (
-                SELECT precio_minorista FROM presentaciones
+                SELECT precio_minorista FROM presentations
                 WHERE id_producto = p.id AND nombre = 'Unidad'
                 LIMIT 1
             ) pr ON true
@@ -1443,6 +1445,7 @@ class ActualizarProducto(BaseModel):
     id_categoria: Optional[int] = None
     stock_alerta: int = 20
     stock_inicial: int = 0
+    imagen_url: Optional[str] = None
 
 @app.put("/api/productos/{id_producto}")
 def actualizar_producto(id_producto: int, prod: ActualizarProducto):
@@ -1450,9 +1453,10 @@ def actualizar_producto(id_producto: int, prod: ActualizarProducto):
     try:
         cur = conn.cursor()
         cur.execute("""
-            UPDATE productos SET sku=%s, nombre=%s, tipo=%s, id_categoria=%s, stock_alerta=%s
+            UPDATE productos 
+            SET sku=%s, nombre=%s, tipo=%s, id_categoria=%s, stock_alerta=%s, imagen_url=%s
             WHERE id=%s
-        """, (prod.sku, prod.nombre, prod.tipo, prod.id_categoria, prod.stock_alerta, id_producto))
+        """, (prod.sku, prod.nombre, prod.tipo, prod.id_categoria, prod.stock_alerta, prod.imagen_url, id_producto))
         conn.commit()
         return {"status": "ok"}
     except Exception as e:
@@ -1797,6 +1801,7 @@ def abrir_proveedores_html():
 @app.get("/fichajes")
 def abrir_portal_fichaje():
     return serve_html("portal_fichaje.html")
+
 @app.get("/qr")
 def abrir_qr_fichaje():
     return serve_html("qr_fichaje.html")
