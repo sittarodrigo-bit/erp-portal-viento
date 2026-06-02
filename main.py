@@ -1482,18 +1482,21 @@ def cobros_pendientes():
 
 
 # ==============================================================================
-# MÓDULO POS  (independiente del catálogo y del stock)
+# MÓDULO POS  (locales independientes: productos, caja y ventas por local)
 # ==============================================================================
+class PosLocal(BaseModel):
+    nombre: str
+    direccion: Optional[str] = None
+
 class PosProducto(BaseModel):
+    id_local: int
     nombre: str
     precio: float = 0.0
     categoria: Optional[str] = None
 
 class PosAbrirCaja(BaseModel):
-    id_local: Optional[int] = None
-    nombre_local: Optional[str] = None
-    id_empleado: Optional[int] = None
-    nombre_empleado: Optional[str] = None
+    id_local: int
+    nombre_responsable: Optional[str] = None
     monto_apertura: float = 0.0
 
 class PosCerrarCaja(BaseModel):
@@ -1507,18 +1510,69 @@ class PosItemVenta(BaseModel):
 
 class PosVenta(BaseModel):
     id_caja: int
-    id_local: Optional[int] = None
+    id_local: int
     metodo_pago: str
     total: float
     detalle: List[PosItemVenta]
 
-# ---- PRODUCTOS POS ----
-@app.get("/api/pos/productos")
-def pos_listar_productos():
+# ---- LOCALES ----
+@app.get("/api/pos/locales")
+def pos_listar_locales():
     conn = obtener_conexion()
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
-        cur.execute("SELECT id, nombre, precio, categoria FROM pos_productos WHERE COALESCE(activo,true)=true ORDER BY categoria NULLS LAST, nombre")
+        cur.execute("SELECT id, nombre, direccion FROM pos_locales WHERE COALESCE(activo,true)=true ORDER BY nombre")
+        return fetchall_dict(cur)
+    finally:
+        liberar_conexion(conn)
+
+@app.post("/api/pos/locales")
+def pos_crear_local(l: PosLocal):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        cur.execute("INSERT INTO pos_locales (nombre, direccion) VALUES (%s,%s) RETURNING id", (l.nombre, l.direccion))
+        lid = cur.fetchone()[0]
+        conn.commit()
+        return {"id": lid}
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
+@app.put("/api/pos/locales/{id}")
+def pos_actualizar_local(id: int, l: PosLocal):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        cur.execute("UPDATE pos_locales SET nombre=%s, direccion=%s WHERE id=%s", (l.nombre, l.direccion, id))
+        conn.commit()
+        return {"status": "ok"}
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
+@app.delete("/api/pos/locales/{id}")
+def pos_eliminar_local(id: int):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        cur.execute("UPDATE pos_locales SET activo=false WHERE id=%s", (id,))
+        conn.commit()
+        return {"status": "ok"}
+    finally:
+        liberar_conexion(conn)
+
+# ---- PRODUCTOS (por local) ----
+@app.get("/api/pos/productos")
+def pos_listar_productos(id_local: int):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("SELECT id, nombre, precio, categoria FROM pos_productos WHERE id_local=%s AND COALESCE(activo,true)=true ORDER BY categoria NULLS LAST, nombre", (id_local,))
         return fetchall_dict(cur)
     finally:
         liberar_conexion(conn)
@@ -1528,8 +1582,8 @@ def pos_crear_producto(p: PosProducto):
     conn = obtener_conexion()
     try:
         cur = conn.cursor()
-        cur.execute("INSERT INTO pos_productos (nombre, precio, categoria) VALUES (%s,%s,%s) RETURNING id",
-                    (p.nombre, p.precio, p.categoria))
+        cur.execute("INSERT INTO pos_productos (id_local, nombre, precio, categoria) VALUES (%s,%s,%s,%s) RETURNING id",
+                    (p.id_local, p.nombre, p.precio, p.categoria))
         pid = cur.fetchone()[0]
         conn.commit()
         return {"id": pid}
@@ -1565,16 +1619,13 @@ def pos_eliminar_producto(id: int):
     finally:
         liberar_conexion(conn)
 
-# ---- CAJA POS ----
+# ---- CAJA (por local) ----
 @app.get("/api/pos/caja/estado")
 def pos_estado_caja(id_local: int):
     conn = obtener_conexion()
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
-        cur.execute("""
-            SELECT * FROM pos_cajas WHERE id_local=%s AND estado='abierta'
-            ORDER BY fecha_apertura DESC LIMIT 1
-        """, (id_local,))
+        cur.execute("SELECT * FROM pos_cajas WHERE id_local=%s AND estado='abierta' ORDER BY fecha_apertura DESC LIMIT 1", (id_local,))
         caja = cur.fetchone()
         if not caja:
             return {"caja_abierta": False}
@@ -1599,10 +1650,13 @@ def pos_abrir_caja(data: PosAbrirCaja):
         cur.execute("SELECT id FROM pos_cajas WHERE id_local=%s AND estado='abierta'", (data.id_local,))
         if cur.fetchone():
             raise HTTPException(status_code=400, detail="Ya hay una caja abierta en este local")
+        cur.execute("SELECT nombre FROM pos_locales WHERE id=%s", (data.id_local,))
+        row = cur.fetchone()
+        nombre_local = row[0] if row else None
         cur.execute("""
-            INSERT INTO pos_cajas (id_local, nombre_local, id_empleado_apertura, nombre_empleado, monto_apertura)
-            VALUES (%s,%s,%s,%s,%s) RETURNING id
-        """, (data.id_local, data.nombre_local, data.id_empleado, data.nombre_empleado, data.monto_apertura))
+            INSERT INTO pos_cajas (id_local, nombre_local, nombre_responsable, monto_apertura)
+            VALUES (%s,%s,%s,%s) RETURNING id
+        """, (data.id_local, nombre_local, data.nombre_responsable, data.monto_apertura))
         cid = cur.fetchone()[0]
         conn.commit()
         return {"id_caja": cid}
@@ -1640,7 +1694,7 @@ def pos_cerrar_caja(id_caja: int, data: PosCerrarCaja):
     finally:
         liberar_conexion(conn)
 
-# ---- VENTAS POS ----
+# ---- VENTAS ----
 @app.post("/api/pos/ventas")
 def pos_registrar_venta(venta: PosVenta):
     conn = obtener_conexion()
@@ -1665,10 +1719,7 @@ def pos_ventas_dia(id_caja: int):
     conn = obtener_conexion()
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
-        cur.execute("""
-            SELECT id, metodo_pago, total, fecha::text FROM pos_ventas
-            WHERE id_caja=%s ORDER BY fecha DESC
-        """, (id_caja,))
+        cur.execute("SELECT id, metodo_pago, total, fecha::text FROM pos_ventas WHERE id_caja=%s ORDER BY fecha DESC", (id_caja,))
         return fetchall_dict(cur)
     finally:
         liberar_conexion(conn)
@@ -1690,13 +1741,12 @@ def pos_reporte_caja(id_caja: int):
         cur.execute("""
             SELECT d.nombre_producto, SUM(d.cantidad) as unidades, SUM(d.cantidad*d.precio_unitario) as total
             FROM pos_detalle_ventas d JOIN pos_ventas v ON d.id_venta=v.id
-            WHERE v.id_caja=%s GROUP BY d.nombre_producto ORDER BY unidades DESC LIMIT 20
+            WHERE v.id_caja=%s GROUP BY d.nombre_producto ORDER BY unidades DESC LIMIT 50
         """, (id_caja,))
         productos = fetchall_dict(cur)
         return {"resumen": dict(resumen), "productos": productos}
     finally:
         liberar_conexion(conn)
-
 
 # ==============================================================================
 # IMPORTAR CLIENTES (distribuidores) en lote
