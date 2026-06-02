@@ -1479,6 +1479,286 @@ def cobros_pendientes():
     finally:
         liberar_conexion(conn)
 
+
+# ==============================================================================
+# MÓDULO POS  (independiente del catálogo y del stock)
+# ==============================================================================
+class PosProducto(BaseModel):
+    nombre: str
+    precio: float = 0.0
+    categoria: Optional[str] = None
+
+class PosAbrirCaja(BaseModel):
+    id_local: Optional[int] = None
+    nombre_local: Optional[str] = None
+    id_empleado: Optional[int] = None
+    nombre_empleado: Optional[str] = None
+    monto_apertura: float = 0.0
+
+class PosCerrarCaja(BaseModel):
+    monto_cierre: float = 0.0
+    observaciones: Optional[str] = None
+
+class PosItemVenta(BaseModel):
+    nombre_producto: str
+    cantidad: int
+    precio_unitario: float
+
+class PosVenta(BaseModel):
+    id_caja: int
+    id_local: Optional[int] = None
+    metodo_pago: str
+    total: float
+    detalle: List[PosItemVenta]
+
+# ---- PRODUCTOS POS ----
+@app.get("/api/pos/productos")
+def pos_listar_productos():
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("SELECT id, nombre, precio, categoria FROM pos_productos WHERE COALESCE(activo,true)=true ORDER BY categoria NULLS LAST, nombre")
+        return fetchall_dict(cur)
+    finally:
+        liberar_conexion(conn)
+
+@app.post("/api/pos/productos")
+def pos_crear_producto(p: PosProducto):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        cur.execute("INSERT INTO pos_productos (nombre, precio, categoria) VALUES (%s,%s,%s) RETURNING id",
+                    (p.nombre, p.precio, p.categoria))
+        pid = cur.fetchone()[0]
+        conn.commit()
+        return {"id": pid}
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
+@app.put("/api/pos/productos/{id}")
+def pos_actualizar_producto(id: int, p: PosProducto):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        cur.execute("UPDATE pos_productos SET nombre=%s, precio=%s, categoria=%s WHERE id=%s",
+                    (p.nombre, p.precio, p.categoria, id))
+        conn.commit()
+        return {"status": "ok"}
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
+@app.delete("/api/pos/productos/{id}")
+def pos_eliminar_producto(id: int):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        cur.execute("UPDATE pos_productos SET activo=false WHERE id=%s", (id,))
+        conn.commit()
+        return {"status": "ok"}
+    finally:
+        liberar_conexion(conn)
+
+# ---- CAJA POS ----
+@app.get("/api/pos/caja/estado")
+def pos_estado_caja(id_local: int):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("""
+            SELECT * FROM pos_cajas WHERE id_local=%s AND estado='abierta'
+            ORDER BY fecha_apertura DESC LIMIT 1
+        """, (id_local,))
+        caja = cur.fetchone()
+        if not caja:
+            return {"caja_abierta": False}
+        cur.execute("""
+            SELECT COALESCE(SUM(CASE WHEN metodo_pago='Efectivo' THEN total ELSE 0 END),0) as efectivo,
+                   COALESCE(SUM(CASE WHEN metodo_pago='Tarjeta' THEN total ELSE 0 END),0) as tarjeta,
+                   COALESCE(SUM(CASE WHEN metodo_pago='Transferencia' THEN total ELSE 0 END),0) as transferencia,
+                   COALESCE(SUM(CASE WHEN metodo_pago='QR' THEN total ELSE 0 END),0) as qr,
+                   COALESCE(SUM(total),0) as total, COUNT(*) as tickets
+            FROM pos_ventas WHERE id_caja=%s
+        """, (caja['id'],))
+        resumen = cur.fetchone()
+        return {"caja_abierta": True, **dict(caja), **dict(resumen)}
+    finally:
+        liberar_conexion(conn)
+
+@app.post("/api/pos/caja/abrir")
+def pos_abrir_caja(data: PosAbrirCaja):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT id FROM pos_cajas WHERE id_local=%s AND estado='abierta'", (data.id_local,))
+        if cur.fetchone():
+            raise HTTPException(status_code=400, detail="Ya hay una caja abierta en este local")
+        cur.execute("""
+            INSERT INTO pos_cajas (id_local, nombre_local, id_empleado_apertura, nombre_empleado, monto_apertura)
+            VALUES (%s,%s,%s,%s,%s) RETURNING id
+        """, (data.id_local, data.nombre_local, data.id_empleado, data.nombre_empleado, data.monto_apertura))
+        cid = cur.fetchone()[0]
+        conn.commit()
+        return {"id_caja": cid}
+    except HTTPException:
+        raise
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
+@app.put("/api/pos/caja/{id_caja}/cerrar")
+def pos_cerrar_caja(id_caja: int, data: PosCerrarCaja):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("""
+            SELECT COALESCE(SUM(CASE WHEN metodo_pago='Efectivo' THEN total ELSE 0 END),0) as efectivo,
+                   COALESCE(SUM(CASE WHEN metodo_pago='Tarjeta' THEN total ELSE 0 END),0) as tarjeta,
+                   COALESCE(SUM(CASE WHEN metodo_pago='Transferencia' THEN total ELSE 0 END),0) as transferencia,
+                   COALESCE(SUM(CASE WHEN metodo_pago='QR' THEN total ELSE 0 END),0) as qr
+            FROM pos_ventas WHERE id_caja=%s
+        """, (id_caja,))
+        t = cur.fetchone()
+        cur.execute("""
+            UPDATE pos_cajas SET estado='cerrada', fecha_cierre=NOW(), monto_cierre=%s,
+                total_efectivo=%s, total_tarjeta=%s, total_transferencia=%s, total_qr=%s, observaciones=%s
+            WHERE id=%s
+        """, (data.monto_cierre, t['efectivo'], t['tarjeta'], t['transferencia'], t['qr'], data.observaciones, id_caja))
+        conn.commit()
+        return {"status": "ok", **dict(t)}
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
+# ---- VENTAS POS ----
+@app.post("/api/pos/ventas")
+def pos_registrar_venta(venta: PosVenta):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        cur.execute("INSERT INTO pos_ventas (id_caja, id_local, metodo_pago, total) VALUES (%s,%s,%s,%s) RETURNING id",
+                    (venta.id_caja, venta.id_local, venta.metodo_pago, venta.total))
+        vid = cur.fetchone()[0]
+        for it in venta.detalle:
+            cur.execute("INSERT INTO pos_detalle_ventas (id_venta, nombre_producto, cantidad, precio_unitario) VALUES (%s,%s,%s,%s)",
+                        (vid, it.nombre_producto, it.cantidad, it.precio_unitario))
+        conn.commit()
+        return {"id_venta": vid}
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
+@app.get("/api/pos/ventas/dia")
+def pos_ventas_dia(id_caja: int):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("""
+            SELECT id, metodo_pago, total, fecha::text FROM pos_ventas
+            WHERE id_caja=%s ORDER BY fecha DESC
+        """, (id_caja,))
+        return fetchall_dict(cur)
+    finally:
+        liberar_conexion(conn)
+
+@app.get("/api/pos/reportes/caja/{id_caja}")
+def pos_reporte_caja(id_caja: int):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("""
+            SELECT COALESCE(SUM(CASE WHEN metodo_pago='Efectivo' THEN total ELSE 0 END),0) as efectivo,
+                   COALESCE(SUM(CASE WHEN metodo_pago='Tarjeta' THEN total ELSE 0 END),0) as tarjeta,
+                   COALESCE(SUM(CASE WHEN metodo_pago='Transferencia' THEN total ELSE 0 END),0) as transferencia,
+                   COALESCE(SUM(CASE WHEN metodo_pago='QR' THEN total ELSE 0 END),0) as qr,
+                   COALESCE(SUM(total),0) as total, COUNT(*) as tickets
+            FROM pos_ventas WHERE id_caja=%s
+        """, (id_caja,))
+        resumen = cur.fetchone()
+        cur.execute("""
+            SELECT d.nombre_producto, SUM(d.cantidad) as unidades, SUM(d.cantidad*d.precio_unitario) as total
+            FROM pos_detalle_ventas d JOIN pos_ventas v ON d.id_venta=v.id
+            WHERE v.id_caja=%s GROUP BY d.nombre_producto ORDER BY unidades DESC LIMIT 20
+        """, (id_caja,))
+        productos = fetchall_dict(cur)
+        return {"resumen": dict(resumen), "productos": productos}
+    finally:
+        liberar_conexion(conn)
+
+
+# ==============================================================================
+# IMPORTAR CLIENTES (distribuidores) en lote
+# ==============================================================================
+class ClienteImportar(BaseModel):
+    razon_social: str
+    dni: Optional[str] = None
+    cuit: Optional[str] = None
+    telefono: Optional[str] = None
+    email: Optional[str] = None
+    direccion: Optional[str] = None
+    localidad: Optional[str] = None
+    provincia: Optional[str] = None
+    cp: Optional[str] = None
+    limite_credito: float = 0.0
+    notas: Optional[str] = None
+
+class ImportarClientes(BaseModel):
+    clientes: List[ClienteImportar]
+
+@app.post("/api/distribuidores/importar")
+def importar_distribuidores(data: ImportarClientes):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        # CUITs ya existentes para no duplicar
+        cur.execute("SELECT cuit FROM distribuidores WHERE cuit IS NOT NULL AND cuit <> ''")
+        existentes = set((r[0] or '').strip() for r in cur.fetchall())
+
+        insertados = 0
+        salteados = 0
+        errores = []
+        for i, c in enumerate(data.clientes, start=1):
+            nombre = (c.razon_social or '').strip()
+            if not nombre:
+                salteados += 1
+                continue
+            cuit = (c.cuit or '').strip()
+            if cuit and cuit in existentes:
+                salteados += 1
+                continue
+            try:
+                cur.execute("""
+                    INSERT INTO distribuidores
+                    (razon_social, dni, cuit, telefono, email, direccion, localidad, provincia, cp, limite_credito, notas, aprobado, activo)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s, true, true)
+                """, (nombre, c.dni, cuit or None, c.telefono, c.email, c.direccion,
+                       c.localidad, c.provincia, c.cp, c.limite_credito or 0, c.notas))
+                if cuit:
+                    existentes.add(cuit)
+                insertados += 1
+            except Exception as e:
+                conn.rollback()
+                errores.append({"fila": i, "nombre": nombre, "error": str(e)})
+                continue
+        conn.commit()
+        return {"insertados": insertados, "salteados": salteados, "errores": errores}
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
 # ==============================================================================
 # RUTAS WEB (HTML)
 # ==============================================================================
@@ -1559,6 +1839,11 @@ def route_fichajes():
 @app.get("/qr")
 def route_qr():
     return serve_html("qr_fichaje.html")
+
+
+@app.get("/pos")
+def route_pos():
+    return serve_html("pos.html")
 
 if __name__ == "__main__":
     import uvicorn
