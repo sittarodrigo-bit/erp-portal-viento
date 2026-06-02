@@ -502,18 +502,19 @@
         }
 
         function membrete(doc) {
-            doc.setFillColor(20,20,20);
-            doc.rect(0, 0, 210, 38, 'F');
+            // Modo ahorro de tinta: sin fondo, solo texto negro y una línea fina
             var x = 14;
-            if (empresa.logo_url) { try { doc.addImage(empresa.logo_url, 'PNG', 14, 4, 28, 28); x = 48; } catch(e) {} }
-            doc.setTextColor(228,252,116); doc.setFontSize(18); doc.setFont('helvetica','bold');
-            doc.text(empresa.nombre || 'Portal del Viento', x, 14);
-            doc.setTextColor(200,200,200); doc.setFontSize(8); doc.setFont('helvetica','normal');
-            if (empresa.razon_social) doc.text(empresa.razon_social, x, 20);
-            if (empresa.cuit)         doc.text('CUIT: ' + empresa.cuit, x, 25);
-            if (empresa.direccion)    doc.text(empresa.direccion + (empresa.localidad ? ', ' + empresa.localidad : ''), x, 30);
-            if (empresa.telefono)     doc.text('Tel: ' + empresa.telefono, 140, 20);
-            if (empresa.email)        doc.text(empresa.email, 140, 25);
+            if (empresa.logo_url) { try { doc.addImage(empresa.logo_url, 'PNG', 14, 6, 24, 24); x = 44; } catch(e) {} }
+            doc.setTextColor(0,0,0); doc.setFontSize(18); doc.setFont('helvetica','bold');
+            doc.text(empresa.nombre || 'Portal del Viento', x, 16);
+            doc.setTextColor(60,60,60); doc.setFontSize(8); doc.setFont('helvetica','normal');
+            if (empresa.razon_social) doc.text(empresa.razon_social, x, 22);
+            if (empresa.cuit)         doc.text('CUIT: ' + empresa.cuit, x, 27);
+            if (empresa.direccion)    doc.text(empresa.direccion + (empresa.localidad ? ', ' + empresa.localidad : ''), x, 32);
+            if (empresa.telefono)     doc.text('Tel: ' + empresa.telefono, 140, 22);
+            if (empresa.email)        doc.text(empresa.email, 140, 27);
+            doc.setDrawColor(0,0,0); doc.setLineWidth(0.5);
+            doc.line(14, 37, 196, 37);
         }
 
         function imprimirOrden() {
@@ -536,9 +537,9 @@
                     return [i.producto, i.cantidad, '$ ' + parseFloat(i.precio_unitario).toLocaleString('es-AR'), '$ ' + parseFloat(i.subtotal).toLocaleString('es-AR')];
                 }),
                 foot: [['','','TOTAL','$ ' + parseFloat(pedidoActual.total).toLocaleString('es-AR')]],
-                headStyles: {fillColor:[30,30,30], textColor:[228,252,116], fontStyle:'bold'},
-                footStyles: {fillColor:[240,240,240], fontStyle:'bold', fontSize:10},
-                styles: {fontSize:9, cellPadding:4}
+                headStyles: {fillColor:[255,255,255], textColor:[0,0,0], fontStyle:'bold', lineWidth:0.3, lineColor:[0,0,0]},
+                footStyles: {fillColor:[255,255,255], textColor:[0,0,0], fontStyle:'bold', fontSize:10, lineWidth:0.3, lineColor:[0,0,0]},
+                styles: {fontSize:9, cellPadding:4, lineWidth:0.1, lineColor:[120,120,120]}
             });
             var y = doc.lastAutoTable.finalY + 25;
             doc.line(14, y, 80, y); doc.line(130, y, 196, y);
@@ -566,8 +567,8 @@
                 startY: 85,
                 head: [['Producto','Cantidad','Recibido conforme']],
                 body: itemsActuales.map(function(i) { return [i.producto, i.cantidad, '☐']; }),
-                headStyles: {fillColor:[30,30,30], textColor:[228,252,116], fontStyle:'bold'},
-                styles: {fontSize:9, cellPadding:4}
+                headStyles: {fillColor:[255,255,255], textColor:[0,0,0], fontStyle:'bold', lineWidth:0.3, lineColor:[0,0,0]},
+                styles: {fontSize:9, cellPadding:4, lineWidth:0.1, lineColor:[120,120,120]}
             });
             var y = doc.lastAutoTable.finalY + 25;
             doc.line(14, y, 80, y); doc.line(130, y, 196, y);
@@ -613,8 +614,9 @@
             var y = offsetY;
             doc.setLineWidth(0.8); doc.setDrawColor(0,0,0);
             doc.rect(10, y+4, 190, H);
-            doc.setFillColor(240,240,240);
-            doc.rect(10, y+4, 190, 22, 'F');
+            // Modo ahorro: sin relleno gris, solo una línea que separa el remitente
+            doc.setLineWidth(0.3);
+            doc.line(10, y+26, 200, y+26);
             doc.setFontSize(7); doc.setTextColor(80,80,80); doc.setFont('helvetica','bold');
             doc.text('REMITENTE:', 14, y+11);
             doc.setFontSize(10); doc.setTextColor(20,20,20);
@@ -628,7 +630,6 @@
                 var dirRem = empresa.direccion + (empresa.localidad ? ', ' + empresa.localidad : '') + (empresa.provincia ? ', ' + empresa.provincia : '');
                 doc.text(dirRem, 14, y+23);
             }
-            doc.setLineWidth(0.5); doc.line(10, y+26, 200, y+26);
             doc.setFontSize(7); doc.setTextColor(80,80,80); doc.setFont('helvetica','bold');
             doc.text('DESTINATARIO OFICIAL:', 14, y+33);
             doc.setFontSize(16); doc.setTextColor(0,0,0); doc.setFont('helvetica','bold');
