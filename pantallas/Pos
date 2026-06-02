@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>POS | Portal del Viento</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <style>
+        .text-neon { color: #e4fc74; }
+        .bg-neon { background-color: #e4fc74; }
+        .border-neon { border-color: #e4fc74; }
+        .modal-oculto { display: none; }
+        .modal-visible { display: flex; }
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }
+    </style>
+</head>
+<body class="bg-gray-950 text-gray-200 font-sans h-screen flex flex-col overflow-hidden">
+
+    <!-- BARRA SUPERIOR -->
+    <header class="bg-black border-b border-gray-800 px-6 py-3 flex items-center justify-between shrink-0">
+        <div class="flex items-center gap-4">
+            <div>
+                <h1 class="text-neon font-bold text-base tracking-widest uppercase leading-none">Portal del Viento</h1>
+                <p class="text-gray-600 text-xs mt-0.5">Punto de Venta</p>
+            </div>
+            <div class="h-8 w-px bg-gray-800"></div>
+            <div class="flex items-center gap-2">
+                <label class="text-xs text-gray-500 font-bold">LOCAL:</label>
+                <select id="sel-local" onchange="cambiarLocal()" class="bg-gray-900 border border-gray-700 text-white rounded-lg px-3 py-1.5 text-sm font-bold">
+                    <option value="">— Elegí un local —</option>
+                </select>
+                <button onclick="abrirGestionLocales()" class="text-gray-500 hover:text-white text-xs border border-gray-700 rounded px-2 py-1.5" title="Administrar locales">⚙️</button>
+            </div>
+        </div>
+        <div class="flex items-center gap-3">
+            <div id="estado-caja-badge" class="text-xs font-bold px-3 py-1.5 rounded-full bg-gray-800 text-gray-500">Sin caja</div>
+            <a href="/admin" class="text-gray-500 hover:text-white text-sm">← Volver al sistema</a>
+        </div>
+    </header>
+
+    <!-- SIN LOCAL SELECCIONADO -->
+    <div id="vista-inicial" class="flex-1 flex items-center justify-center">
+        <div class="text-center">
+            <p class="text-6xl mb-4">🏪</p>
+            <p class="text-gray-400 text-lg mb-2">Elegí un local para empezar</p>
+            <p class="text-gray-600 text-sm">Cada local tiene su propia caja, productos y ventas.</p>
+            <button onclick="abrirGestionLocales()" class="mt-6 bg-neon text-black font-bold px-6 py-2 rounded-lg hover:bg-yellow-300">+ Administrar locales</button>
+        </div>
+    </div>
+
+    <!-- CAJA CERRADA -->
+    <div id="vista-caja-cerrada" class="hidden flex-1 flex items-center justify-center">
+        <div class="bg-black border border-gray-800 rounded-2xl p-8 w-[400px] text-center shadow-2xl">
+            <p class="text-5xl mb-3">🔒</p>
+            <h2 class="text-white font-bold text-xl mb-1">Caja cerrada</h2>
+            <p id="cerrada-local-nombre" class="text-neon text-sm font-bold mb-6"></p>
+            <label class="block text-xs text-gray-500 font-bold mb-1 text-left">Responsable de caja</label>
+            <input type="text" id="apertura-responsable" placeholder="Tu nombre" class="w-full bg-gray-900 border border-gray-700 text-white rounded-lg p-3 mb-3 text-sm">
+            <label class="block text-xs text-gray-500 font-bold mb-1 text-left">Monto inicial en caja ($)</label>
+            <input type="number" id="apertura-monto" value="0" step="0.01" class="w-full bg-gray-900 border border-neon text-white rounded-lg p-3 mb-6 font-bold text-xl text-center">
+            <button onclick="abrirCaja()" id="btn-abrir-caja" class="w-full bg-neon text-black font-bold py-3 rounded-lg hover:bg-yellow-300 transition">🔓 Abrir Caja</button>
+        </div>
+    </div>
+
+    <!-- POS ACTIVO -->
+    <div id="vista-pos" class="hidden flex-1 flex overflow-hidden">
+        <!-- IZQUIERDA: PRODUCTOS -->
+        <div class="flex-1 flex flex-col overflow-hidden border-r border-gray-800">
+            <div class="p-4 border-b border-gray-800 flex items-center gap-3 shrink-0">
+                <input type="text" id="buscar-prod-pos" placeholder="🔍 Buscar producto..." oninput="renderProductos()"
+                       class="flex-1 bg-black border border-gray-700 focus:border-neon text-white rounded-lg p-3 text-sm outline-none">
+                <button onclick="abrirGestionProductos()" class="bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white font-bold px-4 py-3 rounded-lg text-sm border border-gray-700">📦 Productos</button>
+            </div>
+            <div id="grilla-productos" class="flex-1 overflow-y-auto p-4 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 content-start">
+            </div>
+        </div>
+
+        <!-- DERECHA: CARRITO -->
+        <div class="w-[380px] flex flex-col bg-black shrink-0">
+            <div class="p-4 border-b border-gray-800 flex items-center justify-between">
+                <h2 class="font-bold text-white">🛒 Venta actual</h2>
+                <button onclick="vaciarCarrito()" class="text-gray-500 hover:text-red-400 text-xs">Vaciar</button>
+            </div>
+            <div id="carrito" class="flex-1 overflow-y-auto p-3 space-y-2">
+                <p class="text-gray-600 text-sm text-center py-12">Tocá un producto para agregarlo</p>
+            </div>
+            <div class="p-4 border-t border-gray-800">
+                <div class="flex justify-between items-center mb-4">
+                    <span class="text-gray-400 font-bold">TOTAL</span>
+                    <span id="carrito-total" class="text-neon font-bold text-3xl">$ 0</span>
+                </div>
+                <button onclick="abrirModalCobro()" id="btn-cobrar" class="w-full bg-neon text-black font-bold py-4 rounded-xl hover:bg-yellow-300 transition text-lg disabled:opacity-40" disabled>💵 Cobrar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- BARRA INFERIOR DE CAJA (cuando POS activo) -->
+    <footer id="barra-caja" class="hidden bg-black border-t border-gray-800 px-6 py-2 flex items-center justify-between shrink-0 text-sm">
+        <div class="flex items-center gap-6">
+            <span class="text-gray-500">Caja: <span id="caja-responsable" class="text-white font-bold"></span></span>
+            <span class="text-gray-500">Vendido hoy: <span id="caja-vendido" class="text-neon font-bold">$ 0</span></span>
+            <span class="text-gray-500">Tickets: <span id="caja-tickets" class="text-white font-bold">0</span></span>
+        </div>
+        <div class="flex gap-2">
+            <button onclick="abrirReporte()" class="border border-gray-700 text-gray-300 hover:text-white px-4 py-1.5 rounded-lg text-xs">📊 Reporte del día</button>
+            <button onclick="abrirModalCierre()" class="bg-red-800 hover:bg-red-700 text-white font-bold px-4 py-1.5 rounded-lg text-xs">🔒 Cerrar Caja</button>
+        </div>
+    </footer>
+
+    <!-- MODAL COBRO -->
+    <div id="modal-cobro" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
+        <div class="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-[440px] shadow-2xl">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-lg font-bold text-white">Cobrar venta</h3>
+                <button onclick="cerrarModales()" class="text-gray-500 hover:text-white text-2xl leading-none">×</button>
+            </div>
+            <div class="bg-black rounded-xl p-4 mb-4 text-center">
+                <p class="text-gray-500 text-xs font-bold uppercase mb-1">Total a cobrar</p>
+                <p id="cobro-total" class="text-neon font-bold text-4xl">$ 0</p>
+            </div>
+            <label class="block text-xs text-gray-500 font-bold mb-2">Método de pago</label>
+            <div class="grid grid-cols-2 gap-2 mb-4">
+                <button onclick="seleccionarMetodo('Efectivo', this)" class="metodo-btn bg-black border-2 border-gray-700 text-white rounded-xl py-3 font-bold text-sm hover:border-neon">💵 Efectivo</button>
+                <button onclick="seleccionarMetodo('Tarjeta', this)" class="metodo-btn bg-black border-2 border-gray-700 text-white rounded-xl py-3 font-bold text-sm hover:border-neon">💳 Tarjeta</button>
+                <button onclick="seleccionarMetodo('Transferencia', this)" class="metodo-btn bg-black border-2 border-gray-700 text-white rounded-xl py-3 font-bold text-sm hover:border-neon">🏦 Transferencia</button>
+                <button onclick="seleccionarMetodo('QR', this)" class="metodo-btn bg-black border-2 border-gray-700 text-white rounded-xl py-3 font-bold text-sm hover:border-neon">📱 QR</button>
+            </div>
+            <div id="efectivo-extra" class="hidden mb-4">
+                <label class="block text-xs text-gray-500 font-bold mb-1">Paga con ($)</label>
+                <input type="number" id="cobro-paga-con" oninput="calcularVuelto()" class="w-full bg-black border border-gray-700 text-white rounded-lg p-3 text-lg text-center">
+                <p class="text-right text-sm mt-1">Vuelto: <span id="cobro-vuelto" class="text-neon font-bold">$ 0</span></p>
+            </div>
+            <button onclick="confirmarVenta()" id="btn-confirmar-venta" class="w-full bg-green-600 hover:bg-green-500 text-white font-bold py-4 rounded-xl transition text-lg disabled:opacity-40" disabled>✓ Confirmar e imprimir ticket</button>
+        </div>
+    </div>
+
+    <!-- MODAL CIERRE DE CAJA -->
+    <div id="modal-cierre" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
+        <div class="bg-gray-900 border border-red-700 rounded-2xl p-6 w-[440px] shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-lg font-bold text-white">🔒 Cierre de caja</h3>
+                <button onclick="cerrarModales()" class="text-gray-500 hover:text-white text-2xl leading-none">×</button>
+            </div>
+            <div id="cierre-resumen" class="space-y-2 mb-4"></div>
+            <label class="block text-xs text-gray-500 font-bold mb-1">Efectivo contado en caja ($)</label>
+            <input type="number" id="cierre-contado" step="0.01" class="w-full bg-black border border-neon text-white rounded-lg p-3 mb-2 font-bold text-xl text-center">
+            <p id="cierre-diferencia" class="text-center text-sm mb-4"></p>
+            <label class="block text-xs text-gray-500 font-bold mb-1">Observaciones (opcional)</label>
+            <textarea id="cierre-obs" rows="2" class="w-full bg-black border border-gray-700 text-white rounded-lg p-2 mb-4 text-sm resize-none"></textarea>
+            <div class="flex gap-2">
+                <button onclick="cerrarModales()" class="flex-1 border border-gray-700 text-gray-400 hover:text-white py-3 rounded-xl font-bold">Cancelar</button>
+                <button onclick="confirmarCierre()" class="flex-1 bg-red-700 hover:bg-red-600 text-white py-3 rounded-xl font-bold">Cerrar caja</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL REPORTE -->
+    <div id="modal-reporte" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
+        <div class="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-[480px] shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-lg font-bold text-white">📊 Reporte del día</h3>
+                <button onclick="cerrarModales()" class="text-gray-500 hover:text-white text-2xl leading-none">×</button>
+            </div>
+            <div id="reporte-contenido"></div>
+        </div>
+    </div>
+
+    <!-- MODAL GESTIÓN LOCALES -->
+    <div id="modal-locales" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
+        <div class="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-[460px] shadow-2xl max-h-[85vh] overflow-y-auto">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-lg font-bold text-white border-l-4 border-neon pl-2">Locales</h3>
+                <button onclick="cerrarModales()" class="text-gray-500 hover:text-white text-2xl leading-none">×</button>
+            </div>
+            <div id="lista-locales" class="space-y-2 mb-4"></div>
+            <div class="border border-dashed border-gray-700 rounded-xl p-4">
+                <p class="text-xs text-gray-400 font-bold mb-2">+ Nuevo local</p>
+                <input type="text" id="local-nombre" placeholder="Nombre del local" class="w-full bg-black border border-gray-700 text-white rounded-lg p-2 text-sm mb-2">
+                <input type="text" id="local-dir" placeholder="Dirección (opcional)" class="w-full bg-black border border-gray-700 text-white rounded-lg p-2 text-sm mb-2">
+                <button onclick="guardarLocal()" class="w-full bg-neon text-black font-bold py-2 rounded-lg hover:bg-yellow-300 text-sm">Agregar local</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL GESTIÓN PRODUCTOS -->
+    <div id="modal-productos" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
+        <div class="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-[560px] shadow-2xl max-h-[88vh] overflow-y-auto">
+            <div class="flex justify-between items-center mb-1">
+                <h3 class="text-lg font-bold text-white border-l-4 border-neon pl-2">Productos del local</h3>
+                <button onclick="cerrarModales()" class="text-gray-500 hover:text-white text-2xl leading-none">×</button>
+            </div>
+            <p id="prod-local-nombre" class="text-neon text-sm font-bold mb-4 pl-3"></p>
+            <div id="lista-prod-gestion" class="space-y-2 mb-4"></div>
+            <div class="border border-dashed border-gray-700 rounded-xl p-4">
+                <p class="text-xs text-gray-400 font-bold mb-2" id="prod-form-titulo">+ Nuevo producto</p>
+                <input type="hidden" id="prod-edit-id">
+                <input type="text" id="prod-nombre" placeholder="Nombre del producto" class="w-full bg-black border border-gray-700 text-white rounded-lg p-2 text-sm mb-2">
+                <div class="grid grid-cols-2 gap-2 mb-2">
+                    <input type="number" id="prod-precio" step="0.01" placeholder="Precio $" class="bg-black border border-neon text-white rounded-lg p-2 text-sm font-bold">
+                    <input type="text" id="prod-categoria" placeholder="Categoría (opcional)" class="bg-black border border-gray-700 text-white rounded-lg p-2 text-sm">
+                </div>
+                <div class="flex gap-2">
+                    <button onclick="cancelarEdicionProd()" id="btn-cancelar-prod" class="hidden flex-1 border border-gray-700 text-gray-400 py-2 rounded-lg text-sm">Cancelar</button>
+                    <button onclick="guardarProductoPos()" id="btn-guardar-prod-pos" class="flex-1 bg-neon text-black font-bold py-2 rounded-lg hover:bg-yellow-300 text-sm">Agregar producto</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- TICKET (oculto, para imprimir) -->
+    <div id="ticket-area" style="display:none"></div>
+
+    <script>
+        var API_URL = window.location.origin + "/api";
+        var localActual = null;       // {id, nombre}
+        var cajaActual = null;        // {id, ...}
+        var productosLocal = [];      // productos del local
+        var carrito = [];             // items de la venta
+        var metodoSel = null;
+        var empresa = {};
+
+        async function init() {
+            try { empresa = await fetch(API_URL + '/empresa').then(function(r){return r.json();}); } catch(e){ empresa = {}; }
+            await cargarLocales();
+        }
+
+        async function cargarLocales() {
+            var locales = await fetch(API_URL + '/pos/locales').then(function(r){return r.json();}).catch(function(){return [];});
+            var sel = document.getElementById('sel-local');
+            var actual = sel.value;
+            sel.innerHTML = '<option value="">— Elegí un local —</option>';
+            locales.forEach(function(l){
+                sel.innerHTML += '<option value="' + l.id + '">' + l.nombre + '</option>';
+            });
+            if (actual) sel.value = actual;
+            return locales;
+        }
+
+        async function cambiarLocal() {
+            var sel = document.getElementById('sel-local');
+            var id = sel.value;
+            if (!id) {
+                localActual = null; cajaActual = null;
+                mostrarVista('inicial');
+                return;
+            }
+            localActual = { id: parseInt(id), nombre: sel.options[sel.selectedIndex].textContent };
+            await verificarCaja();
+        }
+
+        async function verificarCaja() {
+            if (!localActual) return;
+            var est = await fetch(API_URL + '/pos/caja/estado?id_local=' + localActual.id).then(function(r){return r.json();});
+            if (est.caja_abierta) {
+                cajaActual = est;
+                await cargarProductos();
+                mostrarVista('pos');
+                actualizarBarraCaja(est);
+                document.getElementById('estado-caja-badge').textContent = '🟢 Caja abierta';
+                document.getElementById('estado-caja-badge').className = 'text-xs font-bold px-3 py-1.5 rounded-full bg-green-900/40 text-green-400';
+            } else {
+                cajaActual = null;
+                document.getElementById('cerrada-local-nombre').textContent = localActual.nombre;
+                document.getElementById('apertura-responsable').value = '';
+                document.getElementById('apertura-monto').value = '0';
+                mostrarVista('cerrada');
+                document.getElementById('estado-caja-badge').textContent = '🔴 Caja cerrada';
+                document.getElementById('estado-caja-badge').className = 'text-xs font-bold px-3 py-1.5 rounded-full bg-red-900/40 text-red-400';
+            }
+        }
+
+        function mostrarVista(v) {
+            document.getElementById('vista-inicial').classList.toggle('hidden', v !== 'inicial');
+            document.getElementById('vista-caja-cerrada').classList.toggle('hidden', v !== 'cerrada');
+            document.getElementById('vista-pos').classList.toggle('hidden', v !== 'pos');
+            document.getElementById('barra-caja').classList.toggle('hidden', v !== 'pos');
+            document.getElementById('vista-inicial').classList.toggle('flex', v === 'inicial');
+            document.getElementById('vista-caja-cerrada').classList.toggle('flex', v === 'cerrada');
+            document.getElementById('vista-pos').classList.toggle('flex', v === 'pos');
+        }
+
+        async function abrirCaja() {
+            var resp = document.getElementById('apertura-responsable').value.trim();
+            var monto = parseFloat(document.getElementById('apertura-monto').value) || 0;
+            var btn = document.getElementById('btn-abrir-caja');
+            btn.disabled = true; btn.textContent = 'Abriendo...';
+            try {
+                var res = await fetch(API_URL + '/pos/caja/abrir', {
+                    method:'POST', headers:{'Content-Type':'application/json'},
+                    body: JSON.stringify({ id_local: localActual.id, nombre_responsable: resp, monto_apertura: monto })
+                });
+                if (res.ok) { carrito = []; await verificarCaja(); }
+                else { var e = await res.json(); alert('❌ ' + (e.detail || 'No se pudo abrir')); }
+            } catch(err) { alert('❌ Error de conexión.'); }
+            finally { btn.disabled = false; btn.textContent = '🔓 Abrir Caja'; }
+        }
+
+        async function cargarProductos() {
+            productosLocal = await fetch(API_URL + '/pos/productos?id_local=' + localActual.id).then(function(r){return r.json();}).catch(function(){return [];});
+            renderProductos();
+        }
+
+        function renderProductos() {
+            var q = (document.getElementById('buscar-prod-pos').value || '').toLowerCase().trim();
+            var cont = document.getElementById('grilla-productos');
+            cont.innerHTML = '';
+            var lista = productosLocal.filter(function(p){ return !q || (p.nombre||'').toLowerCase().indexOf(q) !== -1 || (p.categoria||'').toLowerCase().indexOf(q) !== -1; });
+            if (!lista.length) {
+                cont.innerHTML = '<p class="text-gray-600 text-sm col-span-full text-center py-12">' + (productosLocal.length ? 'Sin resultados.' : 'Este local no tiene productos. Tocá 📦 Productos para cargar.') + '</p>';
+                return;
+            }
+            lista.forEach(function(p){
+                var precio = parseFloat(p.precio) || 0;
+                var div = document.createElement('button');
+                div.className = 'bg-black border border-gray-800 hover:border-neon rounded-xl p-3 text-left transition active:scale-95';
+                div.onclick = function(){ agregarAlCarrito(p); };
+                div.innerHTML =
+                    (p.categoria ? '<p class="text-gray-600 text-xs mb-1">' + p.categoria + '</p>' : '<p class="text-gray-600 text-xs mb-1">&nbsp;</p>') +
+                    '<p class="text-white font-bold text-sm leading-tight mb-2 line-clamp-2">' + p.nombre + '</p>' +
+                    '<p class="text-neon font-bold">$ ' + precio.toLocaleString('es-AR') + '</p>';
+                cont.appendChild(div);
+            });
+        }
+
+        function agregarAlCarrito(p) {
+            var ex = carrito.find(function(i){ return i.id === p.id; });
+            if (ex) ex.cantidad++;
+            else carrito.push({ id: p.id, nombre: p.nombre, precio: parseFloat(p.precio)||0, cantidad: 1 });
+            renderCarrito();
+        }
+
+        function renderCarrito() {
+            var cont = document.getElementById('carrito');
+            cont.innerHTML = '';
+            if (!carrito.length) {
+                cont.innerHTML = '<p class="text-gray-600 text-sm text-center py-12">Tocá un producto para agregarlo</p>';
+                document.getElementById('btn-cobrar').disabled = true;
+            } else {
+                document.getElementById('btn-cobrar').disabled = false;
+                carrito.forEach(function(it, idx){
+                    var sub = it.precio * it.cantidad;
+                    var div = document.createElement('div');
+                    div.className = 'bg-gray-900 rounded-lg p-2 flex items-center gap-2';
+                    div.innerHTML =
+                        '<div class="flex-1 min-w-0">' +
+                            '<p class="text-white text-sm font-bold truncate">' + it.nombre + '</p>' +
+                            '<p class="text-gray-500 text-xs">$ ' + it.precio.toLocaleString('es-AR') + ' c/u</p>' +
+                        '</div>' +
+                        '<div class="flex items-center gap-1">' +
+                            '<button class="bg-gray-800 text-white w-6 h-6 rounded text-sm font-bold btn-menos">−</button>' +
+                            '<span class="text-white font-bold w-6 text-center text-sm">' + it.cantidad + '</span>' +
+                            '<button class="bg-gray-800 text-white w-6 h-6 rounded text-sm font-bold btn-mas">+</button>' +
+                        '</div>' +
+                        '<span class="text-neon font-bold text-sm w-20 text-right">$ ' + sub.toLocaleString('es-AR') + '</span>' +
+                        '<button class="text-red-500 hover:text-red-400 text-lg btn-quitar">×</button>';
+                    div.querySelector('.btn-menos').onclick = function(){ it.cantidad--; if(it.cantidad<=0) carrito.splice(idx,1); renderCarrito(); };
+                    div.querySelector('.btn-mas').onclick = function(){ it.cantidad++; renderCarrito(); };
+                    div.querySelector('.btn-quitar').onclick = function(){ carrito.splice(idx,1); renderCarrito(); };
+                    cont.appendChild(div);
+                });
+            }
+            var total = carrito.reduce(function(a,i){ return a + i.precio*i.cantidad; }, 0);
+            document.getElementById('carrito-total').textContent = '$ ' + total.toLocaleString('es-AR');
+        }
+
+        function vaciarCarrito() {
+            if (!carrito.length) return;
+            if (confirm('¿Vaciar la venta actual?')) { carrito = []; renderCarrito(); }
+        }
+
+        function totalCarrito() { return carrito.reduce(function(a,i){ return a + i.precio*i.cantidad; }, 0); }
+
+        // ── COBRO ──
+        function abrirModalCobro() {
+            if (!carrito.length) return;
+            metodoSel = null;
+            document.getElementById('cobro-total').textContent = '$ ' + totalCarrito().toLocaleString('es-AR');
+            document.getElementById('efectivo-extra').classList.add('hidden');
+            document.getElementById('cobro-paga-con').value = '';
+            document.getElementById('cobro-vuelto').textContent = '$ 0';
+            document.getElementById('btn-confirmar-venta').disabled = true;
+            document.querySelectorAll('.metodo-btn').forEach(function(b){ b.classList.remove('border-neon','bg-neon','text-black'); b.classList.add('border-gray-700'); });
+            document.getElementById('modal-cobro').classList.replace('modal-oculto','modal-visible');
+        }
+
+        function seleccionarMetodo(metodo, btn) {
+            metodoSel = metodo;
+            document.querySelectorAll('.metodo-btn').forEach(function(b){ b.classList.remove('border-neon','bg-neon','text-black'); b.classList.add('border-gray-700','text-white'); });
+            btn.classList.add('border-neon'); btn.classList.remove('border-gray-700');
+            document.getElementById('efectivo-extra').classList.toggle('hidden', metodo !== 'Efectivo');
+            document.getElementById('btn-confirmar-venta').disabled = false;
+        }
+
+        function calcularVuelto() {
+            var pagaCon = parseFloat(document.getElementById('cobro-paga-con').value) || 0;
+            var vuelto = pagaCon - totalCarrito();
+            document.getElementById('cobro-vuelto').textContent = '$ ' + (vuelto > 0 ? vuelto.toLocaleString('es-AR') : '0');
+        }
+
+        async function confirmarVenta() {
+            if (!metodoSel) { alert('Elegí un método de pago.'); return; }
+            var btn = document.getElementById('btn-confirmar-venta');
+            btn.disabled = true; btn.textContent = 'Procesando...';
+            var total = totalCarrito();
+            var detalle = carrito.map(function(i){ return { nombre_producto: i.nombre, cantidad: i.cantidad, precio_unitario: i.precio }; });
+            try {
+                var res = await fetch(API_URL + '/pos/ventas', {
+                    method:'POST', headers:{'Content-Type':'application/json'},
+                    body: JSON.stringify({ id_caja: cajaActual.id, id_local: localActual.id, metodo_pago: metodoSel, total: total, detalle: detalle })
+                });
+                if (res.ok) {
+                    var r = await res.json();
+                    imprimirTicket(r.id_venta, total, metodoSel, detalle);
+                    carrito = [];
+                    renderCarrito();
+                    cerrarModales();
+                    await verificarCaja();
+                } else {
+                    var e = await res.json(); alert('❌ ' + (e.detail || 'Error al registrar'));
+                    btn.disabled = false; btn.textContent = '✓ Confirmar e imprimir ticket';
+                }
+            } catch(err) {
+                alert('❌ Error de conexión.');
+                btn.disabled = false; btn.textContent = '✓ Confirmar e imprimir ticket';
+            }
+        }
+
+        // ── TICKET 80mm ──
+        function imprimirTicket(idVenta, total, metodo, detalle) {
+            var jsPDF = window.jspdf.jsPDF;
+            // ancho 80mm, alto dinámico
+            var alto = 60 + detalle.length * 6 + 40;
+            var doc = new jsPDF({ unit:'mm', format:[80, alto] });
+            var y = 8;
+            doc.setFont('helvetica','bold'); doc.setFontSize(12);
+            doc.text((empresa.nombre || 'Portal del Viento'), 40, y, {align:'center'}); y += 5;
+            doc.setFont('helvetica','normal'); doc.setFontSize(7);
+            if (empresa.cuit) { doc.text('CUIT: ' + empresa.cuit, 40, y, {align:'center'}); y += 3.5; }
+            doc.text((localActual.nombre || ''), 40, y, {align:'center'}); y += 4;
+            doc.setLineWidth(0.2); doc.line(4, y, 76, y); y += 4;
+            doc.setFontSize(7);
+            doc.text('Ticket #' + String(idVenta).padStart(5,'0'), 4, y);
+            doc.text(new Date().toLocaleString('es-AR'), 76, y, {align:'right'}); y += 5;
+            doc.setFont('helvetica','bold');
+            doc.text('Cant', 4, y); doc.text('Producto', 16, y); doc.text('Importe', 76, y, {align:'right'}); y += 2;
+            doc.line(4, y, 76, y); y += 4;
+            doc.setFont('helvetica','normal');
+            detalle.forEach(function(it){
+                var sub = it.cantidad * it.precio_unitario;
+                var nombre = it.nombre_producto.length > 22 ? it.nombre_producto.substring(0,21) + '…' : it.nombre_producto;
+                doc.text(String(it.cantidad), 5, y);
+                doc.text(nombre, 16, y);
+                doc.text('$' + sub.toLocaleString('es-AR'), 76, y, {align:'right'}); y += 5;
+            });
+            doc.line(4, y, 76, y); y += 5;
+            doc.setFont('helvetica','bold'); doc.setFontSize(11);
+            doc.text('TOTAL', 4, y); doc.text('$ ' + total.toLocaleString('es-AR'), 76, y, {align:'right'}); y += 6;
+            doc.setFontSize(8); doc.setFont('helvetica','normal');
+            doc.text('Pago: ' + metodo, 4, y); y += 6;
+            doc.setFontSize(7);
+            doc.text('¡Gracias por su compra!', 40, y, {align:'center'});
+            // abrir para imprimir
+            var blob = doc.output('blob');
+            var url = URL.createObjectURL(blob);
+            var w = window.open(url);
+            if (w) { w.onload = function(){ try { w.print(); } catch(e){} }; }
+        }
+
+        // ── BARRA CAJA / REPORTE ──
+        function actualizarBarraCaja(est) {
+            document.getElementById('caja-responsable').textContent = est.nombre_responsable || '—';
+            document.getElementById('caja-vendido').textContent = '$ ' + parseFloat(est.total || 0).toLocaleString('es-AR');
+            document.getElementById('caja-tickets').textContent = est.tickets || 0;
+        }
+
+        async function abrirReporte() {
+            var rep = await fetch(API_URL + '/pos/reportes/caja/' + cajaActual.id).then(function(r){return r.json();});
+            var r = rep.resumen || {};
+            var cont = document.getElementById('reporte-contenido');
+            var html = '<div class="grid grid-cols-2 gap-2 mb-4">' +
+                metodoCard('💵 Efectivo', r.efectivo) +
+                metodoCard('💳 Tarjeta', r.tarjeta) +
+                metodoCard('🏦 Transferencia', r.transferencia) +
+                metodoCard('📱 QR', r.qr) +
+                '</div>' +
+                '<div class="bg-black border border-neon rounded-xl p-4 text-center mb-4">' +
+                    '<p class="text-gray-500 text-xs font-bold uppercase mb-1">Total del día — ' + (r.tickets||0) + ' tickets</p>' +
+                    '<p class="text-neon font-bold text-3xl">$ ' + parseFloat(r.total||0).toLocaleString('es-AR') + '</p>' +
+                '</div>';
+            if (rep.productos && rep.productos.length) {
+                html += '<p class="text-gray-400 font-bold text-sm mb-2">Productos vendidos</p><div class="space-y-1">';
+                rep.productos.forEach(function(p){
+                    html += '<div class="flex justify-between text-sm bg-black rounded px-3 py-1.5">' +
+                        '<span class="text-gray-300">' + p.unidades + '× ' + p.nombre_producto + '</span>' +
+                        '<span class="text-neon font-bold">$ ' + parseFloat(p.total||0).toLocaleString('es-AR') + '</span></div>';
+                });
+                html += '</div>';
+            }
+            cont.innerHTML = html;
+            document.getElementById('modal-reporte').classList.replace('modal-oculto','modal-visible');
+        }
+
+        function metodoCard(label, monto) {
+            return '<div class="bg-black border border-gray-800 rounded-xl p-3 text-center">' +
+                '<p class="text-gray-500 text-xs font-bold mb-1">' + label + '</p>' +
+                '<p class="text-white font-bold">$ ' + parseFloat(monto||0).toLocaleString('es-AR') + '</p></div>';
+        }
+
+        // ── CIERRE ──
+        async function abrirModalCierre() {
+            var rep = await fetch(API_URL + '/pos/reportes/caja/' + cajaActual.id).then(function(r){return r.json();});
+            var r = rep.resumen || {};
+            var apertura = parseFloat(cajaActual.monto_apertura || 0);
+            var efectivo = parseFloat(r.efectivo || 0);
+            var esperadoEfectivo = apertura + efectivo;
+            document.getElementById('cierre-resumen').innerHTML =
+                filaResumen('Monto de apertura', apertura) +
+                filaResumen('Ventas en efectivo', efectivo) +
+                filaResumen('Efectivo esperado en caja', esperadoEfectivo, true) +
+                filaResumen('Tarjeta', parseFloat(r.tarjeta||0)) +
+                filaResumen('Transferencia', parseFloat(r.transferencia||0)) +
+                filaResumen('QR', parseFloat(r.qr||0)) +
+                filaResumen('TOTAL VENDIDO', parseFloat(r.total||0), true);
+            document.getElementById('cierre-contado').value = '';
+            document.getElementById('cierre-diferencia').textContent = '';
+            document.getElementById('cierre-obs').value = '';
+            document.getElementById('cierre-contado').oninput = function() {
+                var contado = parseFloat(this.value) || 0;
+                var dif = contado - esperadoEfectivo;
+                var el = document.getElementById('cierre-diferencia');
+                if (!this.value) { el.textContent = ''; return; }
+                if (Math.abs(dif) < 0.5) { el.textContent = '✓ Caja cuadra'; el.className = 'text-center text-sm mb-4 text-green-400 font-bold'; }
+                else if (dif > 0) { el.textContent = 'Sobran $ ' + dif.toLocaleString('es-AR'); el.className = 'text-center text-sm mb-4 text-yellow-400 font-bold'; }
+                else { el.textContent = 'Faltan $ ' + Math.abs(dif).toLocaleString('es-AR'); el.className = 'text-center text-sm mb-4 text-red-400 font-bold'; }
+            };
+            document.getElementById('modal-cierre').classList.replace('modal-oculto','modal-visible');
+        }
+
+        function filaResumen(label, monto, destacar) {
+            return '<div class="flex justify-between ' + (destacar ? 'border-t border-gray-700 pt-2 mt-1' : '') + '">' +
+                '<span class="' + (destacar ? 'text-white font-bold' : 'text-gray-400') + ' text-sm">' + label + '</span>' +
+                '<span class="' + (destacar ? 'text-neon font-bold' : 'text-gray-300') + ' text-sm">$ ' + parseFloat(monto||0).toLocaleString('es-AR') + '</span></div>';
+        }
+
+        async function confirmarCierre() {
+            var contado = parseFloat(document.getElementById('cierre-contado').value) || 0;
+            var obs = document.getElementById('cierre-obs').value || null;
+            try {
+                var res = await fetch(API_URL + '/pos/caja/' + cajaActual.id + '/cerrar', {
+                    method:'PUT', headers:{'Content-Type':'application/json'},
+                    body: JSON.stringify({ monto_cierre: contado, observaciones: obs })
+                });
+                if (res.ok) { cerrarModales(); carrito = []; await verificarCaja(); }
+                else { var e = await res.json(); alert('❌ ' + (e.detail || 'Error al cerrar')); }
+            } catch(err){ alert('❌ Error de conexión.'); }
+        }
+
+        // ── GESTIÓN LOCALES ──
+        async function abrirGestionLocales() {
+            await renderLocales();
+            document.getElementById('modal-locales').classList.replace('modal-oculto','modal-visible');
+        }
+
+        async function renderLocales() {
+            var locales = await fetch(API_URL + '/pos/locales').then(function(r){return r.json();}).catch(function(){return [];});
+            var cont = document.getElementById('lista-locales');
+            cont.innerHTML = '';
+            if (!locales.length) { cont.innerHTML = '<p class="text-gray-600 text-sm text-center py-2">Sin locales todavía.</p>'; return; }
+            locales.forEach(function(l){
+                var div = document.createElement('div');
+                div.className = 'flex justify-between items-center bg-black border border-gray-800 rounded-lg px-4 py-3';
+                div.innerHTML = '<div><p class="text-white font-bold text-sm">' + l.nombre + '</p>' + (l.direccion ? '<p class="text-gray-500 text-xs">' + l.direccion + '</p>' : '') + '</div>' +
+                    '<button class="text-gray-600 hover:text-red-500 text-xs btn-del-local">Eliminar</button>';
+                div.querySelector('.btn-del-local').onclick = function(){ eliminarLocal(l.id, l.nombre); };
+                cont.appendChild(div);
+            });
+        }
+
+        async function guardarLocal() {
+            var nombre = document.getElementById('local-nombre').value.trim();
+            var dir = document.getElementById('local-dir').value.trim();
+            if (!nombre) { alert('Poné un nombre.'); return; }
+            await fetch(API_URL + '/pos/locales', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ nombre: nombre, direccion: dir || null }) });
+            document.getElementById('local-nombre').value = '';
+            document.getElementById('local-dir').value = '';
+            await renderLocales();
+            await cargarLocales();
+        }
+
+        async function eliminarLocal(id, nombre) {
+            if (!confirm('¿Eliminar el local "' + nombre + '"? Sus ventas históricas se conservan.')) return;
+            await fetch(API_URL + '/pos/locales/' + id, { method:'DELETE' });
+            await renderLocales();
+            await cargarLocales();
+        }
+
+        // ── GESTIÓN PRODUCTOS ──
+        async function abrirGestionProductos() {
+            if (!localActual) { alert('Elegí un local primero.'); return; }
+            document.getElementById('prod-local-nombre').textContent = localActual.nombre;
+            cancelarEdicionProd();
+            await renderProductosGestion();
+            document.getElementById('modal-productos').classList.replace('modal-oculto','modal-visible');
+        }
+
+        async function renderProductosGestion() {
+            var lista = await fetch(API_URL + '/pos/productos?id_local=' + localActual.id).then(function(r){return r.json();}).catch(function(){return [];});
+            var cont = document.getElementById('lista-prod-gestion');
+            cont.innerHTML = '';
+            if (!lista.length) { cont.innerHTML = '<p class="text-gray-600 text-sm text-center py-2">Sin productos en este local.</p>'; return; }
+            lista.forEach(function(p){
+                var div = document.createElement('div');
+                div.className = 'flex justify-between items-center bg-black border border-gray-800 rounded-lg px-4 py-2';
+                div.innerHTML = '<div class="flex-1"><p class="text-white font-bold text-sm">' + p.nombre + '</p>' +
+                        '<p class="text-gray-500 text-xs">' + (p.categoria || 'Sin categoría') + ' · <span class="text-neon">$ ' + parseFloat(p.precio).toLocaleString('es-AR') + '</span></p></div>' +
+                    '<div class="flex gap-1">' +
+                        '<button class="text-xs border border-gray-700 px-2 py-1 rounded text-gray-400 hover:text-white btn-edit-prod">✎</button>' +
+                        '<button class="text-xs bg-red-900/50 text-red-400 hover:text-white px-2 py-1 rounded btn-del-prod">×</button>' +
+                    '</div>';
+                div.querySelector('.btn-edit-prod').onclick = function(){ editarProd(p); };
+                div.querySelector('.btn-del-prod').onclick = function(){ eliminarProd(p.id, p.nombre); };
+                cont.appendChild(div);
+            });
+        }
+
+        function editarProd(p) {
+            document.getElementById('prod-edit-id').value = p.id;
+            document.getElementById('prod-nombre').value = p.nombre;
+            document.getElementById('prod-precio').value = p.precio;
+            document.getElementById('prod-categoria').value = p.categoria || '';
+            document.getElementById('prod-form-titulo').textContent = '✎ Editar producto';
+            document.getElementById('btn-guardar-prod-pos').textContent = 'Guardar cambios';
+            document.getElementById('btn-cancelar-prod').classList.remove('hidden');
+        }
+
+        function cancelarEdicionProd() {
+            document.getElementById('prod-edit-id').value = '';
+            document.getElementById('prod-nombre').value = '';
+            document.getElementById('prod-precio').value = '';
+            document.getElementById('prod-categoria').value = '';
+            document.getElementById('prod-form-titulo').textContent = '+ Nuevo producto';
+            document.getElementById('btn-guardar-prod-pos').textContent = 'Agregar producto';
+            document.getElementById('btn-cancelar-prod').classList.add('hidden');
+        }
+
+        async function guardarProductoPos() {
+            var id = document.getElementById('prod-edit-id').value;
+            var nombre = document.getElementById('prod-nombre').value.trim();
+            var precio = parseFloat(document.getElementById('prod-precio').value) || 0;
+            var categoria = document.getElementById('prod-categoria').value.trim() || null;
+            if (!nombre) { alert('Poné un nombre.'); return; }
+            var payload = { id_local: localActual.id, nombre: nombre, precio: precio, categoria: categoria };
+            if (id) {
+                await fetch(API_URL + '/pos/productos/' + id, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+            } else {
+                await fetch(API_URL + '/pos/productos', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+            }
+            cancelarEdicionProd();
+            await renderProductosGestion();
+            await cargarProductos();
+        }
+
+        async function eliminarProd(id, nombre) {
+            if (!confirm('¿Eliminar "' + nombre + '"?')) return;
+            await fetch(API_URL + '/pos/productos/' + id, { method:'DELETE' });
+            await renderProductosGestion();
+            await cargarProductos();
+        }
+
+        function cerrarModales() {
+            document.querySelectorAll('.modal-visible').forEach(function(m){ m.classList.replace('modal-visible','modal-oculto'); });
+        }
+
+        window.onload = init;
+    </script>
+</body>
+</html>
