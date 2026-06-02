@@ -204,14 +204,18 @@
                 <button onclick="cerrarModales()" class="text-gray-500 hover:text-white text-2xl leading-none">×</button>
             </div>
             <p id="saldo-dist-nombre" class="text-orange-400 text-sm font-bold mb-2"></p>
-            <p class="text-gray-500 text-xs mb-5">Deuda que el cliente arrastra del sistema anterior. Se carga como un pedido "Despachado" para que aparezca en el saldo. Después se descuenta cuando registres sus pagos.</p>
+            <p class="text-gray-500 text-xs mb-5">Para deudas que arrastra del sistema anterior o cargos manuales que no están en el catálogo (fletes, ajustes, etc.). Se carga como un movimiento "Despachado" que suma al saldo. Después se descuenta cuando registres sus pagos.</p>
             <div class="mb-4">
                 <label class="block text-xs text-orange-400 font-bold mb-1">Monto que debe ($)</label>
                 <input type="number" id="saldo-monto" step="0.01" class="w-full bg-black border-2 border-orange-700 text-white rounded p-3 font-bold text-2xl text-center outline-none focus:border-orange-500">
             </div>
-            <div class="mb-5">
+            <div class="mb-4">
                 <label class="block text-xs text-gray-500 font-bold mb-1">Fecha (opcional)</label>
                 <input type="date" id="saldo-fecha" class="w-full bg-black border border-gray-700 text-white rounded p-2 text-sm">
+            </div>
+            <div class="mb-5">
+                <label class="block text-xs text-orange-400 font-bold mb-1">Observaciones / Concepto (opcional)</label>
+                <input type="text" id="saldo-nota" placeholder="Ej: Saldo planilla vieja, Flete San Rafael, Ajuste..." class="w-full bg-black border border-gray-700 text-white rounded p-2 text-sm">
             </div>
             <div class="flex justify-end gap-3">
                 <button onclick="cerrarModales()" class="px-4 py-2 text-gray-400 hover:text-white font-bold">Cancelar</button>
@@ -755,7 +759,7 @@
 
             var movimientos = [];
             (data.pedidos || []).forEach(function(p) {
-                movimientos.push({ fecha: p.fecha, tipo: 'pedido', detalle: 'Pedido #' + String(p.id).padStart(4,'0'), monto: parseFloat(p.total || 0) || 0 });
+                movimientos.push({ fecha: p.fecha, tipo: 'pedido', detalle: (p.observaciones ? p.observaciones : 'Pedido #' + String(p.id).padStart(4,'0')), monto: parseFloat(p.total || 0) || 0 });
             });
             (data.cobros || []).forEach(function(c) {
                 movimientos.push({ fecha: c.fecha, tipo: 'cobro', detalle: 'Cobro · ' + c.metodo + (c.referencia ? ' · ' + c.referencia : ''), monto: parseFloat(c.monto || 0) || 0 });
@@ -882,6 +886,7 @@
             document.getElementById('saldo-dist-nombre').textContent = 'Cliente: ' + distNombreActual;
             document.getElementById('saldo-fecha').value = new Date().toISOString().split('T')[0];
             document.getElementById('saldo-monto').value = '';
+            document.getElementById('saldo-nota').value = '';
             document.getElementById('modal-saldo').classList.replace('modal-oculto', 'modal-visible');
             setTimeout(function(){ document.getElementById('saldo-monto').focus(); }, 100);
         }
@@ -890,6 +895,7 @@
             var idDist = document.getElementById('cuenta-distribuidor').value;
             var monto  = parseFloat(document.getElementById('saldo-monto').value) || 0;
             var fecha  = document.getElementById('saldo-fecha').value || null;
+            var nota   = document.getElementById('saldo-nota').value.trim() || null;
             if (monto <= 0) { alert('Ingresá el monto que debe el cliente (mayor a $0).'); return; }
             if (!confirm('Cargar una deuda inicial de $' + monto.toLocaleString('es-AR') + ' a ' + distNombreActual + '?')) return;
             var btn = document.getElementById('btn-guardar-saldo');
@@ -897,7 +903,7 @@
             try {
                 var res = await fetch(API_URL + '/distribuidores/' + idDist + '/saldo_inicial', {
                     method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ monto: monto, fecha: fecha })
+                    body: JSON.stringify({ monto: monto, fecha: fecha, nota: nota })
                 });
                 if (res.ok) {
                     cerrarModales();
@@ -975,7 +981,7 @@
             doc.text('Saldo pendiente:           $ ' + tSaldo.toLocaleString('es-AR'), 14, 58);
             var movs = [];
             (data.pedidos || []).forEach(function(p) {
-                movs.push({ fecha: p.fecha, tipo: 'Pedido', detalle: '#' + String(p.id).padStart(4,'0'), monto: parseFloat(p.total || 0) || 0 });
+                movs.push({ fecha: p.fecha, tipo: 'Pedido', detalle: (p.observaciones ? p.observaciones : '#' + String(p.id).padStart(4,'0')), monto: parseFloat(p.total || 0) || 0 });
             });
             (data.cobros || []).forEach(function(c) {
                 movs.push({ fecha: c.fecha, tipo: 'Pago', detalle: c.metodo + (c.referencia ? ' · ' + c.referencia : ''), monto: parseFloat(c.monto || 0) || 0 });
