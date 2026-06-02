@@ -701,7 +701,7 @@ def estado_cuenta_distribuidor(id_dist: int):
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
         cur.execute("""
-            SELECT id, fecha::text, total, estado FROM pedidos_b2b
+            SELECT id, fecha::text, total, estado, observaciones FROM pedidos_b2b
             WHERE id_distribuidor = %s AND estado = 'Despachado' ORDER BY fecha DESC
         """, (id_dist,))
         pedidos = fetchall_dict(cur)
@@ -1782,14 +1782,14 @@ def cargar_saldo_inicial(id_dist: int, data: SaldoInicial):
         # Insertar el pedido de saldo inicial (estado Despachado para que cuente en el saldo)
         if data.fecha:
             cur.execute("""
-                INSERT INTO pedidos_b2b (id_distribuidor, total, estado, fecha)
-                VALUES (%s, %s, 'Despachado', %s) RETURNING id
-            """, (id_dist, data.monto, data.fecha))
+                INSERT INTO pedidos_b2b (id_distribuidor, total, estado, fecha, observaciones)
+                VALUES (%s, %s, 'Despachado', %s, %s) RETURNING id
+            """, (id_dist, data.monto, data.fecha, data.nota))
         else:
             cur.execute("""
-                INSERT INTO pedidos_b2b (id_distribuidor, total, estado)
-                VALUES (%s, %s, 'Despachado') RETURNING id
-            """, (id_dist, data.monto))
+                INSERT INTO pedidos_b2b (id_distribuidor, total, estado, observaciones)
+                VALUES (%s, %s, 'Despachado', %s) RETURNING id
+            """, (id_dist, data.monto, data.nota))
         conn.commit()
         return {"status": "ok"}
     except Exception as e:
