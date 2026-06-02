@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <title>Distribuidores | Portal del Viento</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <style>
         .text-neon { color: #e4fc74; }
         .bg-neon { background-color: #e4fc74; }
@@ -38,7 +39,12 @@
     <main class="flex-1 flex flex-col overflow-hidden">
         <header class="bg-gray-900 border-b border-gray-800 py-4 px-8 flex justify-between items-center shrink-0">
             <h2 class="text-xl font-bold text-white">Gestión de Distribuidores</h2>
-            <button onclick="abrirModalNuevo()" class="bg-neon hover:bg-yellow-300 text-black font-bold py-2 px-6 rounded-lg transition">+ Nuevo Distribuidor</button>
+            <div class="flex gap-2">
+                <button onclick="document.getElementById('input-importar').click()" class="border border-gray-600 text-gray-300 hover:text-white font-bold py-2 px-4 rounded-lg text-sm transition">📥 Importar</button>
+                <button onclick="exportarClientes()" class="border border-gray-600 text-gray-300 hover:text-white font-bold py-2 px-4 rounded-lg text-sm transition">📤 Exportar</button>
+                <button onclick="abrirModalNuevo()" class="bg-neon hover:bg-yellow-300 text-black font-bold py-2 px-6 rounded-lg transition">+ Nuevo Distribuidor</button>
+                <input type="file" id="input-importar" accept=".xlsx,.xls,.csv" style="display:none" onchange="importarClientes(event)">
+            </div>
         </header>
 
         <div class="bg-gray-900 border-b border-gray-800 px-8 flex gap-6 shrink-0">
@@ -165,12 +171,10 @@
                 <button onclick="cerrarModales()" class="text-gray-500 hover:text-white text-2xl leading-none">×</button>
             </div>
             <p id="cobro-dist-nombre" class="text-neon text-sm font-bold mb-6"></p>
-
             <div class="mb-4">
                 <label class="block text-xs text-green-400 font-bold mb-1">Monto recibido ($)</label>
                 <input type="number" id="cobro-monto" step="0.01" class="w-full bg-black border-2 border-green-700 text-white rounded p-3 font-bold text-2xl text-center outline-none focus:border-green-500">
             </div>
-            
             <div class="grid grid-cols-2 gap-4 mb-4">
                 <div>
                     <label class="block text-xs text-gray-500 font-bold mb-1">Fecha de pago</label>
@@ -186,12 +190,10 @@
                     </select>
                 </div>
             </div>
-            
             <div class="mb-6">
                 <label class="block text-xs text-gray-500 font-bold mb-1">Referencia / Comprobante (Opcional)</label>
                 <input type="text" id="cobro-referencia" placeholder="Ej: Transferencia Nro 998822" class="w-full bg-black border border-gray-700 text-white rounded p-2 text-sm">
             </div>
-            
             <div class="flex justify-end gap-3">
                 <button onclick="cerrarModales()" class="px-4 py-2 text-gray-400 hover:text-white font-bold">Cancelar</button>
                 <button onclick="guardarCobro()" id="btn-guardar-cobro" class="bg-green-700 hover:bg-green-600 text-white px-6 py-2 rounded font-bold transition">Registrar Pago</button>
@@ -205,7 +207,6 @@
                 <h3 class="text-lg font-bold text-white border-l-4 border-neon pl-2">Alta de Distribuidor</h3>
                 <button onclick="cerrarModales()" class="text-gray-500 hover:text-white text-2xl">×</button>
             </div>
-
             <div class="grid grid-cols-2 gap-3 mb-3">
                 <div class="col-span-2">
                     <label class="block text-xs text-gray-500 font-bold mb-1">Nombre / Razón Social</label>
@@ -250,7 +251,6 @@
             </div>
             <label class="block text-xs text-gray-500 font-bold mb-1">Notas internas</label>
             <textarea id="nd-notas" rows="2" placeholder="Condiciones, zona de entrega, etc." class="w-full bg-black border border-gray-700 text-white rounded p-2 mb-5 text-sm resize-none"></textarea>
-
             <div class="flex justify-end gap-3">
                 <button onclick="cerrarModales()" class="px-4 py-2 text-gray-400 hover:text-white font-bold">Cancelar</button>
                 <button onclick="guardarNuevo()" id="btn-guardar-dist" class="bg-neon text-black px-6 py-2 rounded font-bold hover:bg-yellow-300 disabled:opacity-50">Registrar</button>
@@ -266,7 +266,6 @@
             </div>
             <p id="editar-titulo" class="text-neon text-sm font-bold mb-4"></p>
             <input type="hidden" id="editar-id">
-
             <div class="grid grid-cols-2 gap-3 mb-3">
                 <div class="col-span-2">
                     <label class="block text-xs text-gray-500 font-bold mb-1">Nombre / Razón Social</label>
@@ -311,7 +310,6 @@
             </div>
             <label class="block text-xs text-gray-500 font-bold mb-1">Notas internas</label>
             <textarea id="ed-notas" rows="2" class="w-full bg-black border border-gray-700 text-white rounded p-2 mb-5 text-sm resize-none"></textarea>
-
             <div class="flex justify-end gap-3">
                 <button onclick="cerrarModales()" class="px-4 py-2 text-gray-400 hover:text-white font-bold">Cancelar</button>
                 <button onclick="guardarEdicion()" class="bg-neon text-black px-6 py-2 rounded font-bold hover:bg-yellow-300">Actualizar</button>
@@ -363,12 +361,11 @@
         if(window.location.hostname === '127.0.0.1' && window.location.port !== '8000') {
             API_URL = "http://127.0.0.1:8000/api";
         }
-        
+
         var usr = JSON.parse(sessionStorage.getItem('usuario') || '{}');
         if (usr.nombre) document.getElementById('usuario-info').textContent = usr.nombre + ' ' + usr.apellido + ' · ' + usr.rol;
 
         var estadoColores = { Pendiente:'bg-yellow-900/30 text-yellow-400', Preparado:'bg-blue-900/30 text-blue-400', Despachado:'bg-green-900/30 text-green-400', Cancelado:'bg-red-900/30 text-red-500' };
-        
         var distribuidorEliminarActual = null;
 
         function cambiarTab(tab) {
@@ -385,7 +382,6 @@
         async function cargarDistribuidores() {
             var res   = await fetch(API_URL + '/distribuidores_lista');
             var lista = await res.json();
-
             var sel = document.getElementById('hist-distribuidor');
             sel.innerHTML = '<option value="">Todos los distribuidores</option>';
             lista.forEach(function(d) { sel.innerHTML += '<option value="' + d.id + '">' + d.razon_social + '</option>'; });
@@ -397,10 +393,8 @@
             lista.forEach(function(d) {
                 var tr = document.createElement('tr');
                 tr.className = 'hover:bg-gray-900 transition border-b border-gray-800';
-
                 var locProv = [d.localidad, d.provincia].filter(Boolean).join(', ') || '—';
                 var btnAprobar = d.aprobado ? '' : '<button class="text-xs bg-blue-700 hover:bg-blue-600 text-white font-bold px-3 py-1 rounded transition btn-aprobar">Aprobar</button>';
-
                 tr.innerHTML =
                     '<td class="p-4">' +
                         '<p class="font-bold text-white">' + d.razon_social + '</p>' +
@@ -419,13 +413,11 @@
                             '<button class="text-xs bg-red-900/50 hover:bg-red-700 text-red-400 hover:text-white px-2 py-1 rounded transition btn-eliminar">✕</button>' +
                         '</div>' +
                     '</td>';
-
                 tr.querySelector('.btn-editar').onclick = function() { abrirModalEditar(d); };
                 tr.querySelector('.btn-pedidos').onclick = function() { verPedidosDistribuidor(d.id, d.razon_social); };
                 var btnApr = tr.querySelector('.btn-aprobar');
                 if (btnApr) btnApr.onclick = function() { aprobarDistribuidor(d.id, d.razon_social); };
                 tr.querySelector('.btn-eliminar').onclick = function() { abrirModalEliminar(d.id, d.razon_social); };
-                
                 tabla.appendChild(tr);
             });
         }
@@ -438,7 +430,6 @@
             if (estado) params.push('estado=' + estado);
             if (dist)   params.push('id_distribuidor=' + dist);
             if (params.length) url += '?' + params.join('&');
-
             var lista = await fetch(url).then(function(r) { return r.json(); });
             var tabla = document.getElementById('tabla-historial');
             tabla.innerHTML = '';
@@ -583,7 +574,88 @@
         }
 
         window.onload = cargarDistribuidores;
-    
+
+        // ── IMPORTAR / EXPORTAR CLIENTES ──────────────────────────────────
+        async function exportarClientes() {
+            var lista = await fetch(API_URL + '/distribuidores_lista').then(function(r){ return r.json(); });
+            if (!lista.length) { alert('No hay clientes para exportar.'); return; }
+            var filas = lista.map(function(d) {
+                return {
+                    'Nombre / Razón Social *': d.razon_social || '',
+                    'DNI': d.dni || '',
+                    'CUIT *': d.cuit || '',
+                    'Teléfono': d.telefono || '',
+                    'Email': d.email || '',
+                    'Dirección': d.direccion || '',
+                    'Localidad': d.localidad || '',
+                    'Provincia': d.provincia || '',
+                    'Código Postal': d.cp || '',
+                    'Límite de Crédito ($)': d.limite_credito || 0,
+                    'Notas internas': d.notas || ''
+                };
+            });
+            var ws = XLSX.utils.json_to_sheet(filas);
+            var wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'Clientes');
+            var hoy = new Date().toISOString().split('T')[0];
+            XLSX.writeFile(wb, 'clientes_portal_del_viento_' + hoy + '.xlsx');
+        }
+
+        function importarClientes(event) {
+            var file = event.target.files[0];
+            if (!file) return;
+            var reader = new FileReader();
+            reader.onload = async function(e) {
+                try {
+                    var data = new Uint8Array(e.target.result);
+                    var wb = XLSX.read(data, { type: 'array' });
+                    var hoja = wb.SheetNames.indexOf('Clientes') >= 0 ? 'Clientes' : wb.SheetNames[0];
+                    var rows = XLSX.utils.sheet_to_json(wb.Sheets[hoja], { defval: '' });
+                    function val(row, claves) {
+                        for (var i=0;i<claves.length;i++){ if (row[claves[i]] !== undefined && String(row[claves[i]]).trim() !== '') return String(row[claves[i]]).trim(); }
+                        return '';
+                    }
+                    var clientes = rows.map(function(r) {
+                        return {
+                            razon_social: val(r, ['Nombre / Razón Social *','Nombre / Razón Social','razon_social','Nombre','Razon Social']),
+                            dni:          val(r, ['DNI','dni']) || null,
+                            cuit:         val(r, ['CUIT *','CUIT','cuit']) || null,
+                            telefono:     val(r, ['Teléfono','Telefono','telefono']) || null,
+                            email:        val(r, ['Email','email','Correo']) || null,
+                            direccion:    val(r, ['Dirección','Direccion','direccion']) || null,
+                            localidad:    val(r, ['Localidad','localidad']) || null,
+                            provincia:    val(r, ['Provincia','provincia']) || null,
+                            cp:           val(r, ['Código Postal','Codigo Postal','cp','CP']) || null,
+                            limite_credito: parseFloat(val(r, ['Límite de Crédito ($)','Limite de Credito','limite_credito'])) || 0,
+                            notas:        val(r, ['Notas internas','Notas','notas']) || null
+                        };
+                    }).filter(function(c){ return c.razon_social; });
+
+                    if (!clientes.length) { alert('No se encontraron clientes válidos. Revisá que los títulos de las columnas coincidan con la plantilla.'); return; }
+                    if (!confirm('Se van a importar ' + clientes.length + ' clientes. ¿Continuar?')) { event.target.value=''; return; }
+
+                    var res = await fetch(API_URL + '/distribuidores/importar', {
+                        method:'POST', headers:{'Content-Type':'application/json'},
+                        body: JSON.stringify({ clientes: clientes })
+                    });
+                    var r = await res.json();
+                    if (res.ok) {
+                        var msg = '✅ Importación lista.\n\nNuevos cargados: ' + r.insertados + '\nSalteados (ya existían o sin nombre): ' + r.salteados;
+                        if (r.errores && r.errores.length) msg += '\nCon error: ' + r.errores.length;
+                        alert(msg);
+                        cargarDistribuidores();
+                    } else {
+                        alert('❌ Error: ' + (r.detail || 'no se pudo importar'));
+                    }
+                } catch (err) {
+                    alert('❌ No se pudo leer el archivo. ¿Es un Excel válido?');
+                } finally {
+                    event.target.value = '';
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
         // ── ESTADO DE CUENTA Y PAGOS ──────────────────────────────────────
         function poblarSelectCuenta() {
             var sel = document.getElementById('cuenta-distribuidor');
@@ -603,24 +675,19 @@
             if (!id) {
                 document.getElementById('cuenta-contenido').classList.add('hidden');
                 document.getElementById('cuenta-vacia').classList.remove('hidden');
-                document.getElementById('btn-abrir-cobro').classList.add('hidden'); // Ocultar botón de pago
+                document.getElementById('btn-abrir-cobro').classList.add('hidden');
                 return;
             }
-
             var sel = document.getElementById('cuenta-distribuidor');
             distNombreActual = sel.options[sel.selectedIndex].textContent;
-
             var data = await fetch(API_URL + '/distribuidores/' + id + '/estado_cuenta').then(function(r) { return r.json(); });
             estadoCuentaData = data;
-
             document.getElementById('cuenta-vacia').classList.add('hidden');
             document.getElementById('cuenta-contenido').classList.remove('hidden');
-            document.getElementById('btn-abrir-cobro').classList.remove('hidden'); // Mostrar botón de pago
-            
+            document.getElementById('btn-abrir-cobro').classList.remove('hidden');
             var tPedidos = parseFloat(data.total_pedidos || 0) || 0;
             var tCobrado = parseFloat(data.total_cobrado || 0) || 0;
             var tSaldo   = parseFloat(data.saldo_pendiente || 0) || 0;
-
             document.getElementById('cuenta-total-ped').textContent = '$ ' + tPedidos.toLocaleString('es-AR');
             document.getElementById('cuenta-total-cob').textContent = '$ ' + tCobrado.toLocaleString('es-AR');
             document.getElementById('cuenta-saldo').textContent     = '$ ' + tSaldo.toLocaleString('es-AR');
@@ -636,7 +703,6 @@
 
             var tbody = document.getElementById('tabla-movimientos');
             tbody.innerHTML = '';
-            
             var ordenAsc = [...movimientos].reverse();
             var saldos = [];
             var s = 0;
@@ -645,7 +711,6 @@
                 else s -= m.monto;
                 saldos.unshift(s);
             });
-
             movimientos.forEach(function(m, idx) {
                 var fecha = new Date(m.fecha).toLocaleDateString('es-AR', {day:'2-digit', month:'2-digit', year:'numeric'});
                 var esPedido = m.tipo === 'pedido';
@@ -667,13 +732,11 @@
                     '</td>';
                 tbody.appendChild(tr);
             });
-
             if (!movimientos.length) {
                 tbody.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-gray-500">Sin movimientos.</td></tr>';
             }
         }
 
-        // ── FUNCIONES DEL NUEVO MODAL DE COBRO ─────────────────────────────────
         function abrirModalCobro() {
             if (!estadoCuentaData) return;
             document.getElementById('cobro-dist-nombre').textContent = 'Cliente: ' + distNombreActual;
@@ -681,8 +744,7 @@
             document.getElementById('cobro-monto').value = '';
             document.getElementById('cobro-referencia').value = '';
             document.getElementById('modal-cobro').classList.replace('modal-oculto', 'modal-visible');
-            // Hacemos focus en el monto para que sea más rápido
-            setTimeout(() => document.getElementById('cobro-monto').focus(), 100);
+            setTimeout(function(){ document.getElementById('cobro-monto').focus(); }, 100);
         }
 
         async function guardarCobro() {
@@ -693,26 +755,16 @@
                 metodo: document.getElementById('cobro-metodo').value,
                 referencia: document.getElementById('cobro-referencia').value || null
             };
-
-            if (data.monto <= 0) {
-                alert('Por favor, ingresá un monto mayor a $0.');
-                return;
-            }
-
+            if (data.monto <= 0) { alert('Por favor, ingresá un monto mayor a $0.'); return; }
             var btn = document.getElementById('btn-guardar-cobro');
-            btn.disabled = true;
-            btn.textContent = 'Registrando...';
-
+            btn.disabled = true; btn.textContent = 'Registrando...';
             try {
                 var res = await fetch(API_URL + '/distribuidores/' + idDist + '/cobros', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(data)
+                    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data)
                 });
-
                 if (res.ok) {
                     cerrarModales();
-                    await cargarEstadoCuenta(); // Recargamos para que aparezca el nuevo pago y baje la deuda
+                    await cargarEstadoCuenta();
                 } else {
                     var err = await res.json();
                     alert('Error al registrar el pago: ' + err.detail);
@@ -720,14 +772,12 @@
             } catch (error) {
                 alert('No se pudo conectar con el servidor.');
             } finally {
-                btn.disabled = false;
-                btn.textContent = 'Registrar Pago';
+                btn.disabled = false; btn.textContent = 'Registrar Pago';
             }
         }
 
         async function imprimirEstadoCuenta() {
             if (!estadoCuentaData) { alert('Seleccioná un distribuidor primero.'); return; }
-
             var script1 = document.createElement('script');
             script1.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
             script1.onload = function() {
@@ -743,24 +793,20 @@
             var jsPDF = window.jspdf.jsPDF;
             var doc = new jsPDF();
             var data = estadoCuentaData;
-
             var tPedidos = parseFloat(data.total_pedidos || 0) || 0;
             var tCobrado = parseFloat(data.total_cobrado || 0) || 0;
             var tSaldo   = parseFloat(data.saldo_pendiente || 0) || 0;
-
             doc.setFontSize(18); doc.setFont('helvetica','bold'); doc.setTextColor(40,40,40);
             doc.text('Portal del Viento — Estado de Cuenta', 14, 18);
             doc.setFontSize(12); doc.setFont('helvetica','normal'); doc.setTextColor(80,80,80);
             doc.text(distNombreActual, 14, 26);
             doc.setFontSize(9); doc.setTextColor(120,120,120);
             doc.text('Generado: ' + new Date().toLocaleString('es-AR'), 14, 32);
-
             doc.setFontSize(10); doc.setFont('helvetica','bold'); doc.setTextColor(40,40,40);
             doc.text('Total pedidos despachados: $ ' + tPedidos.toLocaleString('es-AR'), 14, 44);
             doc.text('Total cobrado:             $ ' + tCobrado.toLocaleString('es-AR'), 14, 51);
             doc.setTextColor(200, 50, 50);
             doc.text('Saldo pendiente:           $ ' + tSaldo.toLocaleString('es-AR'), 14, 58);
-
             var movs = [];
             (data.pedidos || []).forEach(function(p) {
                 movs.push({ fecha: p.fecha, tipo: 'Pedido', detalle: '#' + String(p.id).padStart(4,'0'), monto: parseFloat(p.total || 0) || 0 });
@@ -769,16 +815,13 @@
                 movs.push({ fecha: c.fecha, tipo: 'Pago', detalle: c.metodo + (c.referencia ? ' · ' + c.referencia : ''), monto: parseFloat(c.monto || 0) || 0 });
             });
             movs.sort(function(a, b) { return new Date(b.fecha) - new Date(a.fecha); });
-
             var filas = movs.map(function(m) {
                 return [
                     new Date(m.fecha).toLocaleDateString('es-AR'),
-                    m.tipo,
-                    m.detalle,
+                    m.tipo, m.detalle,
                     (m.tipo === 'Pedido' ? '' : '- ') + '$ ' + m.monto.toLocaleString('es-AR')
                 ];
             });
-
             doc.autoTable({
                 startY: 66,
                 head: [['Fecha', 'Tipo', 'Detalle', 'Monto']],
@@ -787,10 +830,8 @@
                 alternateRowStyles: { fillColor:[245,245,245] },
                 styles: { fontSize:9, cellPadding:3 }
             });
-
             doc.save('cuenta_' + distNombreActual.replace(/\s/g,'_') + '.pdf');
         }
-
     </script>
 </body>
 </html>
