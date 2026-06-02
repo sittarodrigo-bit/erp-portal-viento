@@ -274,11 +274,19 @@
             var rel = document.createElement('div'); rel.className = 'relative';
             var btnMenu = btn('⋮', 'text-xs border border-gray-700 bg-gray-800 hover:bg-gray-700 text-gray-400 px-2 py-1.5 rounded', function(e) {
                 e.stopPropagation();
+                var yaAbierto = !menu.classList.contains('hidden');
                 cerrarMenus();
-                menu.classList.toggle('hidden');
+                if (yaAbierto) return;
+                // Posicionar el menú de forma fija respecto a la pantalla, así no lo recorta nada
+                var r = btnMenu.getBoundingClientRect();
+                menu.style.position = 'fixed';
+                menu.style.top  = (r.bottom + 4) + 'px';
+                menu.style.left = (r.right - 176) + 'px';
+                menu.classList.remove('hidden');
             });
             var menu = document.createElement('div');
-            menu.className = 'hidden absolute right-0 top-8 bg-gray-800 border border-gray-700 rounded-lg shadow-xl z-20 w-44';
+            menu.className = 'menu-acciones hidden bg-gray-800 border border-gray-700 rounded-lg shadow-2xl w-44';
+            menu.style.zIndex = '9999';
 
             function mBtn(txt, cls, fn) {
                 var b = document.createElement('button');
@@ -302,7 +310,7 @@
         }
 
         function cerrarMenus() {
-            document.querySelectorAll('.relative div').forEach(function(m) { m.classList.add('hidden'); });
+            document.querySelectorAll('.menu-acciones').forEach(function(m) { m.classList.add('hidden'); });
         }
         document.addEventListener('click', cerrarMenus);
 
