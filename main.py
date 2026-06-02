@@ -536,7 +536,8 @@ def get_distribuidores():
         cur = conn.cursor(cursor_factory=RealDictCursor)
         cur.execute("""
             SELECT id, razon_social, cuit, limite_credito, direccion, localidad, provincia,
-                   cp, telefono, email, dni, aprobado, notas
+                   cp, telefono, email, dni, aprobado, notas, username,
+                   (password_hash IS NOT NULL) AS tiene_clave
             FROM distribuidores WHERE COALESCE(activo, true) = true ORDER BY razon_social ASC
         """)
         return fetchall_dict(cur)
@@ -1794,6 +1795,54 @@ def cargar_saldo_inicial(id_dist: int, data: SaldoInicial):
     except Exception as e:
         conn.rollback()
         raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
+# ==============================================================================
+# ASIGNAR ACCESO AL PORTAL (usuario y clave) a un distribuidor
+# ==============================================================================
+class AccesoDistribuidor(BaseModel):
+    username: str
+    password: str
+    aprobar: bool = True
+
+@app.put("/api/distribuidores/{id_dist}/acceso")
+def asignar_acceso_distribuidor(id_dist: int, data: AccesoDistribuidor):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        usuario = (data.username or "").strip()
+        if not usuario or not data.password:
+            raise HTTPException(status_code=400, detail="Usuario y contraseña son obligatorios")
+        # Verificar que el username no esté tomado por OTRO distribuidor
+        cur.execute("SELECT id FROM distribuidores WHERE username = %s AND id <> %s", (usuario, id_dist))
+        if cur.fetchone():
+            raise HTTPException(status_code=400, detail="Ese nombre de usuario ya está en uso por otro cliente")
+        hash_pw = bcrypt.hashpw(data.password.encode(), bcrypt.gensalt()).decode()
+        if data.aprobar:
+            cur.execute("UPDATE distribuidores SET username=%s, password_hash=%s, aprobado=true WHERE id=%s",
+                        (usuario, hash_pw, id_dist))
+        else:
+            cur.execute("UPDATE distribuidores SET username=%s, password_hash=%s WHERE id=%s",
+                        (usuario, hash_pw, id_dist))
+        conn.commit()
+        return {"status": "ok"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
+@app.get("/api/distribuidores/{id_dist}/acceso")
+def ver_acceso_distribuidor(id_dist: int):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("SELECT username, (password_hash IS NOT NULL) AS tiene_clave, aprobado FROM distribuidores WHERE id=%s", (id_dist,))
+        row = cur.fetchone()
+        return dict(row) if row else {}
     finally:
         liberar_conexion(conn)
 
