@@ -526,25 +526,32 @@
             var num  = String(pedidoActual.id).padStart(4,'0');
             var dist = distribuidores.find(function(d) { return String(d.id) === String(pedidoActual.id_distribuidor); }) || {};
             membrete(doc);
-            doc.setTextColor(40,40,40); doc.setFontSize(16); doc.setFont('helvetica','bold');
-            doc.text('ORDEN DE COMPRA  N° ' + num, 105, 52, {align:'center'});
-            doc.setFontSize(9); doc.setFont('helvetica','normal');
-            doc.text('CLIENTE: ' + (dist.razon_social || pedidoActual.distribuidor), 14, 65);
-            if (dist.cuit)      doc.text('CUIT: ' + dist.cuit, 14, 71);
-            if (dist.direccion) doc.text(dist.direccion, 14, 77);
-            doc.text('Fecha: ' + new Date(pedidoActual.fecha).toLocaleDateString('es-AR'), 140, 65);
+            doc.setTextColor(40,40,40); doc.setFontSize(14); doc.setFont('helvetica','bold');
+            doc.text('ORDEN DE COMPRA  N° ' + num, 105, 45, {align:'center'});
+            doc.setFontSize(8); doc.setFont('helvetica','normal');
+            doc.text('CLIENTE: ' + (dist.razon_social || pedidoActual.distribuidor), 14, 53);
+            if (dist.cuit)      doc.text('CUIT: ' + dist.cuit, 14, 58);
+            if (dist.direccion) doc.text(dist.direccion, 14, 63);
+            doc.text('Fecha: ' + new Date(pedidoActual.fecha).toLocaleDateString('es-AR'), 150, 53);
+
+            var totalUnidades = itemsActuales.reduce(function(a, i){ return a + (parseInt(i.cantidad) || 0); }, 0);
+
             doc.autoTable({
-                startY: 85,
+                startY: 67,
                 head: [['Producto','Cant.','Precio Unit.','Subtotal']],
                 body: itemsActuales.map(function(i) {
                     return [i.producto, i.cantidad, '$ ' + parseFloat(i.precio_unitario).toLocaleString('es-AR'), '$ ' + parseFloat(i.subtotal).toLocaleString('es-AR')];
                 }),
-                foot: [['','','TOTAL','$ ' + parseFloat(pedidoActual.total).toLocaleString('es-AR')]],
-                headStyles: {fillColor:[255,255,255], textColor:[0,0,0], fontStyle:'bold', lineWidth:0.3, lineColor:[0,0,0]},
-                footStyles: {fillColor:[255,255,255], textColor:[0,0,0], fontStyle:'bold', fontSize:10, lineWidth:0.3, lineColor:[0,0,0]},
-                styles: {fontSize:9, cellPadding:4, lineWidth:0.1, lineColor:[120,120,120]}
+                foot: [
+                    ['TOTAL PRODUCTOS: ' + totalUnidades + ' u.', '', 'TOTAL', '$ ' + parseFloat(pedidoActual.total).toLocaleString('es-AR')]
+                ],
+                headStyles: {fillColor:[255,255,255], textColor:[0,0,0], fontStyle:'bold', lineWidth:0.3, lineColor:[0,0,0], fontSize:8},
+                footStyles: {fillColor:[255,255,255], textColor:[0,0,0], fontStyle:'bold', fontSize:9, lineWidth:0.3, lineColor:[0,0,0]},
+                styles: {fontSize:8, cellPadding:1.5, lineWidth:0.1, lineColor:[120,120,120]},
+                columnStyles: {1:{halign:'center'}, 2:{halign:'right'}, 3:{halign:'right'}}
             });
-            var y = doc.lastAutoTable.finalY + 25;
+            var y = doc.lastAutoTable.finalY + 18;
+            if (y > 270) y = 270;
             doc.line(14, y, 80, y); doc.line(130, y, 196, y);
             doc.setFontSize(8);
             doc.text('Firma cliente', 14, y+5);
@@ -558,22 +565,32 @@
             var num  = String(pedidoActual.id).padStart(4,'0');
             var dist = distribuidores.find(function(d) { return String(d.id) === String(pedidoActual.id_distribuidor); }) || {};
             membrete(doc);
-            doc.setTextColor(40,40,40); doc.setFontSize(16); doc.setFont('helvetica','bold');
-            doc.text('REMITO  N° ' + num, 105, 52, {align:'center'});
-            doc.setFontSize(9); doc.setFont('helvetica','normal');
-            doc.text('DESTINATARIO: ' + (dist.razon_social || pedidoActual.distribuidor), 14, 65);
-            if (dist.cuit)      doc.text('CUIT: ' + dist.cuit, 14, 71);
-            if (dist.direccion) doc.text(dist.direccion + (dist.localidad ? ' - ' + dist.localidad : ''), 14, 77);
-            doc.text('Fecha: ' + new Date(pedidoActual.fecha).toLocaleDateString('es-AR'), 140, 65);
-            doc.text('Estado: ' + pedidoActual.estado, 140, 71);
+            doc.setTextColor(40,40,40); doc.setFontSize(14); doc.setFont('helvetica','bold');
+            doc.text('REMITO  N° ' + num, 105, 45, {align:'center'});
+            doc.setFontSize(8); doc.setFont('helvetica','normal');
+            doc.text('DESTINATARIO: ' + (dist.razon_social || pedidoActual.distribuidor), 14, 53);
+            if (dist.cuit)      doc.text('CUIT: ' + dist.cuit, 14, 58);
+            if (dist.direccion) doc.text(dist.direccion + (dist.localidad ? ' - ' + dist.localidad : ''), 14, 63);
+            doc.text('Fecha: ' + new Date(pedidoActual.fecha).toLocaleDateString('es-AR'), 150, 53);
+            doc.text('Estado: ' + pedidoActual.estado, 150, 58);
+
+            var totalUnidades = itemsActuales.reduce(function(a, i){ return a + (parseInt(i.cantidad) || 0); }, 0);
+            var itemsDistintos = itemsActuales.length;
+
             doc.autoTable({
-                startY: 85,
+                startY: 67,
                 head: [['Producto','Cantidad','Recibido conforme']],
                 body: itemsActuales.map(function(i) { return [i.producto, i.cantidad, '☐']; }),
-                headStyles: {fillColor:[255,255,255], textColor:[0,0,0], fontStyle:'bold', lineWidth:0.3, lineColor:[0,0,0]},
-                styles: {fontSize:9, cellPadding:4, lineWidth:0.1, lineColor:[120,120,120]}
+                foot: [
+                    ['TOTAL: ' + itemsDistintos + ' productos / ' + totalUnidades + ' unidades', '', '']
+                ],
+                headStyles: {fillColor:[255,255,255], textColor:[0,0,0], fontStyle:'bold', lineWidth:0.3, lineColor:[0,0,0], fontSize:8},
+                footStyles: {fillColor:[255,255,255], textColor:[0,0,0], fontStyle:'bold', fontSize:9, lineWidth:0.3, lineColor:[0,0,0]},
+                styles: {fontSize:8, cellPadding:1.5, lineWidth:0.1, lineColor:[120,120,120]},
+                columnStyles: {1:{halign:'center'}, 2:{halign:'center'}}
             });
-            var y = doc.lastAutoTable.finalY + 25;
+            var y = doc.lastAutoTable.finalY + 18;
+            if (y > 270) y = 270;
             doc.line(14, y, 80, y); doc.line(130, y, 196, y);
             doc.setFontSize(8);
             doc.text('Firma recepción', 14, y+5);
