@@ -117,6 +117,7 @@
                     </select>
                 </div>
                 <button id="btn-abrir-cobro" onclick="abrirModalCobro()" class="hidden bg-green-700 hover:bg-green-600 text-white font-bold px-4 py-2 rounded-lg text-sm transition shadow-lg shadow-green-900/50">+ Registrar Pago</button>
+                <button id="btn-saldo-inicial" onclick="abrirModalSaldo()" class="hidden bg-orange-700 hover:bg-orange-600 text-white font-bold px-4 py-2 rounded-lg text-sm transition">💰 Saldo inicial</button>
                 <button onclick="imprimirEstadoCuenta()" class="border border-gray-600 text-gray-300 hover:text-white px-4 py-2 rounded-lg text-sm transition">🖨️ Imprimir</button>
             </div>
 
@@ -163,6 +164,29 @@
         </div>
 
     </main>
+
+    <div id="modal-saldo" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
+        <div class="bg-gray-900 border border-orange-700 rounded-xl p-6 w-[420px] shadow-2xl">
+            <div class="flex justify-between items-center mb-2">
+                <h3 class="text-lg font-bold text-white border-l-4 border-orange-500 pl-2">Cargar Saldo Inicial</h3>
+                <button onclick="cerrarModales()" class="text-gray-500 hover:text-white text-2xl leading-none">×</button>
+            </div>
+            <p id="saldo-dist-nombre" class="text-orange-400 text-sm font-bold mb-2"></p>
+            <p class="text-gray-500 text-xs mb-5">Deuda que el cliente arrastra del sistema anterior. Se carga como un pedido "Despachado" para que aparezca en el saldo. Después se descuenta cuando registres sus pagos.</p>
+            <div class="mb-4">
+                <label class="block text-xs text-orange-400 font-bold mb-1">Monto que debe ($)</label>
+                <input type="number" id="saldo-monto" step="0.01" class="w-full bg-black border-2 border-orange-700 text-white rounded p-3 font-bold text-2xl text-center outline-none focus:border-orange-500">
+            </div>
+            <div class="mb-5">
+                <label class="block text-xs text-gray-500 font-bold mb-1">Fecha (opcional)</label>
+                <input type="date" id="saldo-fecha" class="w-full bg-black border border-gray-700 text-white rounded p-2 text-sm">
+            </div>
+            <div class="flex justify-end gap-3">
+                <button onclick="cerrarModales()" class="px-4 py-2 text-gray-400 hover:text-white font-bold">Cancelar</button>
+                <button onclick="guardarSaldoInicial()" id="btn-guardar-saldo" class="bg-orange-700 hover:bg-orange-600 text-white px-6 py-2 rounded font-bold transition">Cargar Saldo</button>
+            </div>
+        </div>
+    </div>
 
     <div id="modal-cobro" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
         <div class="bg-gray-900 border border-gray-700 rounded-xl p-6 w-[420px] shadow-2xl">
@@ -676,6 +700,7 @@
                 document.getElementById('cuenta-contenido').classList.add('hidden');
                 document.getElementById('cuenta-vacia').classList.remove('hidden');
                 document.getElementById('btn-abrir-cobro').classList.add('hidden');
+                document.getElementById('btn-saldo-inicial').classList.add('hidden');
                 return;
             }
             var sel = document.getElementById('cuenta-distribuidor');
@@ -685,6 +710,7 @@
             document.getElementById('cuenta-vacia').classList.add('hidden');
             document.getElementById('cuenta-contenido').classList.remove('hidden');
             document.getElementById('btn-abrir-cobro').classList.remove('hidden');
+            document.getElementById('btn-saldo-inicial').classList.remove('hidden');
             var tPedidos = parseFloat(data.total_pedidos || 0) || 0;
             var tCobrado = parseFloat(data.total_cobrado || 0) || 0;
             var tSaldo   = parseFloat(data.saldo_pendiente || 0) || 0;
@@ -745,6 +771,42 @@
             document.getElementById('cobro-referencia').value = '';
             document.getElementById('modal-cobro').classList.replace('modal-oculto', 'modal-visible');
             setTimeout(function(){ document.getElementById('cobro-monto').focus(); }, 100);
+        }
+
+        function abrirModalSaldo() {
+            if (!estadoCuentaData) return;
+            document.getElementById('saldo-dist-nombre').textContent = 'Cliente: ' + distNombreActual;
+            document.getElementById('saldo-fecha').value = new Date().toISOString().split('T')[0];
+            document.getElementById('saldo-monto').value = '';
+            document.getElementById('modal-saldo').classList.replace('modal-oculto', 'modal-visible');
+            setTimeout(function(){ document.getElementById('saldo-monto').focus(); }, 100);
+        }
+
+        async function guardarSaldoInicial() {
+            var idDist = document.getElementById('cuenta-distribuidor').value;
+            var monto  = parseFloat(document.getElementById('saldo-monto').value) || 0;
+            var fecha  = document.getElementById('saldo-fecha').value || null;
+            if (monto <= 0) { alert('Ingresá el monto que debe el cliente (mayor a $0).'); return; }
+            if (!confirm('Cargar una deuda inicial de $' + monto.toLocaleString('es-AR') + ' a ' + distNombreActual + '?')) return;
+            var btn = document.getElementById('btn-guardar-saldo');
+            btn.disabled = true; btn.textContent = 'Cargando...';
+            try {
+                var res = await fetch(API_URL + '/distribuidores/' + idDist + '/saldo_inicial', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ monto: monto, fecha: fecha })
+                });
+                if (res.ok) {
+                    cerrarModales();
+                    await cargarEstadoCuenta();
+                } else {
+                    var err = await res.json();
+                    alert('Error al cargar el saldo: ' + (err.detail || 'desconocido'));
+                }
+            } catch (e) {
+                alert('No se pudo conectar con el servidor.');
+            } finally {
+                btn.disabled = false; btn.textContent = 'Cargar Saldo';
+            }
         }
 
         async function guardarCobro() {
