@@ -1760,6 +1760,44 @@ def importar_distribuidores(data: ImportarClientes):
         liberar_conexion(conn)
 
 # ==============================================================================
+# SALDO INICIAL (deuda arrastrada del sistema anterior)
+# ==============================================================================
+class SaldoInicial(BaseModel):
+    monto: float
+    fecha: Optional[str] = None
+    nota: Optional[str] = None
+
+@app.post("/api/distribuidores/{id_dist}/saldo_inicial")
+def cargar_saldo_inicial(id_dist: int, data: SaldoInicial):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        # Evitar duplicar: si ya tiene un pedido de saldo inicial, avisar
+        cur.execute("""
+            SELECT id FROM pedidos_b2b
+            WHERE id_distribuidor=%s AND estado='Despachado'
+              AND id IN (SELECT id_pedido FROM detalle_pedidos_b2b WHERE id_producto IS NULL)
+        """, (id_dist,))
+        # Insertar el pedido de saldo inicial (estado Despachado para que cuente en el saldo)
+        if data.fecha:
+            cur.execute("""
+                INSERT INTO pedidos_b2b (id_distribuidor, total, estado, fecha)
+                VALUES (%s, %s, 'Despachado', %s) RETURNING id
+            """, (id_dist, data.monto, data.fecha))
+        else:
+            cur.execute("""
+                INSERT INTO pedidos_b2b (id_distribuidor, total, estado)
+                VALUES (%s, %s, 'Despachado') RETURNING id
+            """, (id_dist, data.monto))
+        conn.commit()
+        return {"status": "ok"}
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
+# ==============================================================================
 # RUTAS WEB (HTML)
 # ==============================================================================
 def serve_html(filename: str):
