@@ -54,6 +54,12 @@
         </div>
 
         <div id="panel-lista" class="flex-1 overflow-y-auto p-8">
+            <div class="mb-4 flex items-center gap-3">
+                <input type="text" id="buscar-cliente" placeholder="🔍 Buscar cliente por nombre, CUIT, localidad..."
+                       class="flex-1 bg-black border border-neon text-white rounded-lg p-3 text-sm outline-none"
+                       oninput="filtrarClientes()">
+                <span id="contador-clientes" class="text-gray-500 text-xs whitespace-nowrap"></span>
+            </div>
             <div class="bg-black rounded-xl border border-gray-800 overflow-hidden">
                 <table class="w-full text-left">
                     <thead class="bg-gray-950 text-xs text-gray-400 uppercase border-b border-gray-800">
@@ -452,8 +458,10 @@
 
             lista.forEach(function(d) {
                 var tr = document.createElement('tr');
-                tr.className = 'hover:bg-gray-900 transition border-b border-gray-800';
+                tr.className = 'fila-cliente hover:bg-gray-900 transition border-b border-gray-800';
                 var locProv = [d.localidad, d.provincia].filter(Boolean).join(', ') || '—';
+                var buscable = [d.razon_social, d.cuit, d.dni, d.telefono, d.email, d.localidad, d.provincia].filter(Boolean).join(' ').toLowerCase();
+                tr.setAttribute('data-buscar', buscable);
                 var btnAprobar = d.aprobado ? '' : '<button class="text-xs bg-blue-700 hover:bg-blue-600 text-white font-bold px-3 py-1 rounded transition btn-aprobar">Aprobar</button>';
                 tr.innerHTML =
                     '<td class="p-4">' +
@@ -483,6 +491,25 @@
                 tr.querySelector('.btn-eliminar').onclick = function() { abrirModalEliminar(d.id, d.razon_social); };
                 tabla.appendChild(tr);
             });
+            var cont = document.getElementById('contador-clientes');
+            if (cont) cont.textContent = lista.length + ' clientes';
+            filtrarClientes();
+        }
+
+        function filtrarClientes() {
+            var input = document.getElementById('buscar-cliente');
+            if (!input) return;
+            var q = input.value.toLowerCase().trim();
+            var filas = document.querySelectorAll('#tabla-distribuidores > .fila-cliente');
+            var visibles = 0;
+            filas.forEach(function(f) {
+                var txt = f.getAttribute('data-buscar') || '';
+                var match = !q || txt.indexOf(q) !== -1;
+                f.style.display = match ? '' : 'none';
+                if (match) visibles++;
+            });
+            var cont = document.getElementById('contador-clientes');
+            if (cont) cont.textContent = q ? (visibles + ' de ' + filas.length + ' clientes') : (filas.length + ' clientes');
         }
 
         async function cargarHistorialPedidos() {
