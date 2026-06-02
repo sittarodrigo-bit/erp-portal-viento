@@ -1847,6 +1847,94 @@ def ver_acceso_distribuidor(id_dist: int):
         liberar_conexion(conn)
 
 # ==============================================================================
+# DESCUENTOS POR CLIENTE + CATEGORÍA (solo B2B)
+# ==============================================================================
+class DescuentoItem(BaseModel):
+    id_categoria: int
+    porcentaje: float
+
+class DescuentosUpdate(BaseModel):
+    descuentos: List[DescuentoItem]
+
+@app.get("/api/distribuidores/{id_dist}/descuentos")
+def get_descuentos(id_dist: int):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("""
+            SELECT c.id AS id_categoria, c.nombre AS categoria,
+                   COALESCE(d.porcentaje, 0) AS porcentaje
+            FROM categorias c
+            LEFT JOIN descuentos_distribuidor d
+              ON d.id_categoria = c.id AND d.id_distribuidor = %s
+            WHERE COALESCE(c.activo, true) = true
+            ORDER BY c.nombre
+        """, (id_dist,))
+        return fetchall_dict(cur)
+    finally:
+        liberar_conexion(conn)
+
+@app.put("/api/distribuidores/{id_dist}/descuentos")
+def guardar_descuentos(id_dist: int, data: DescuentosUpdate):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        for item in data.descuentos:
+            pct = item.porcentaje or 0
+            if pct <= 0:
+                # Si es 0 o negativo, borramos el descuento (no aplica)
+                cur.execute("DELETE FROM descuentos_distribuidor WHERE id_distribuidor=%s AND id_categoria=%s",
+                            (id_dist, item.id_categoria))
+            else:
+                cur.execute("""
+                    INSERT INTO descuentos_distribuidor (id_distribuidor, id_categoria, porcentaje)
+                    VALUES (%s,%s,%s)
+                    ON CONFLICT (id_distribuidor, id_categoria)
+                    DO UPDATE SET porcentaje = EXCLUDED.porcentaje
+                """, (id_dist, item.id_categoria, pct))
+        conn.commit()
+        return {"status": "ok"}
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
+# Devuelve los productos con el precio YA ajustado por los descuentos del cliente
+@app.get("/api/distribuidores/{id_dist}/precios")
+def precios_para_distribuidor(id_dist: int):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        # Mapa de descuentos del cliente por categoría
+        cur.execute("SELECT id_categoria, porcentaje FROM descuentos_distribuidor WHERE id_distribuidor=%s", (id_dist,))
+        desc = {r['id_categoria']: float(r['porcentaje']) for r in fetchall_dict(cur)}
+        cur.execute("""
+            SELECT id, sku, nombre, id_categoria,
+                   COALESCE(precio_minorista,0) AS precio_minorista,
+                   COALESCE(precio_mayorista,0) AS precio_mayorista
+            FROM productos
+            WHERE COALESCE(activo, true) = true
+            ORDER BY nombre ASC
+        """)
+        productos = fetchall_dict(cur)
+        for p in productos:
+            base = float(p['precio_mayorista'] or 0)
+            pct = desc.get(p['id_categoria'], 0)
+            p['descuento'] = pct
+            p['precio_base'] = base
+            p['precio_final'] = round(base * (1 - pct/100.0), 2)
+            # presentación virtual con el precio ya descontado
+            p['presentaciones'] = [{
+                'id': p['id'], 'nombre': 'Unidad', 'cantidad_unidades': 1,
+                'precio_minorista': float(p['precio_minorista'] or 0),
+                'precio_mayorista': p['precio_final']
+            }]
+        return productos
+    finally:
+        liberar_conexion(conn)
+
+# ==============================================================================
 # RUTAS WEB (HTML)
 # ==============================================================================
 def serve_html(filename: str):
