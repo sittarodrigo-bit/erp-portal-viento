@@ -47,6 +47,12 @@
         </header>
 
         <div class="flex-1 overflow-y-auto p-8">
+            <div class="mb-4 flex items-center gap-3">
+                <input type="text" id="buscar-producto" placeholder="🔍 Buscar producto por nombre, SKU o categoría..."
+                       class="flex-1 bg-black border border-neon text-white rounded-lg p-3 text-sm outline-none"
+                       oninput="filtrarProductos()">
+                <span id="contador-productos" class="text-gray-500 text-xs whitespace-nowrap"></span>
+            </div>
             <div class="bg-black rounded-xl border border-gray-800 overflow-hidden">
                 <table class="w-full text-left">
                     <thead class="bg-gray-950 text-xs text-gray-400 uppercase">
@@ -207,6 +213,7 @@
             tabla.innerHTML = '';
             if (!productos.length) {
                 tabla.innerHTML = '<tr><td colspan="7" class="p-4 text-center text-gray-500">Sin productos.</td></tr>';
+                document.getElementById('contador-productos').textContent = '';
                 return;
             }
             for (const p of productos) {
@@ -226,8 +233,10 @@
                        </div>`
                     : p.nombre;
 
+                const buscable = [p.sku, p.nombre, catNombre].filter(Boolean).join(' ').toLowerCase();
+
                 tabla.innerHTML += `
-                    <tr class="hover:bg-gray-900 transition border-b border-gray-800">
+                    <tr class="fila-producto hover:bg-gray-900 transition border-b border-gray-800" data-buscar="${buscable.replace(/"/g,'')}">
                         <td class="p-4 text-gray-400 text-xs font-mono">${p.sku}</td>
                         <td class="p-4 font-bold text-white">${nombreHTML}</td>
                         <td class="p-4"><span class="text-xs bg-gray-800 px-2 py-1 rounded text-gray-300">${catNombre}</span></td>
@@ -256,6 +265,23 @@
                         </td>
                     </tr>`;
             }
+            filtrarProductos();
+        }
+
+        function filtrarProductos() {
+            const input = document.getElementById('buscar-producto');
+            if (!input) return;
+            const q = input.value.toLowerCase().trim();
+            const filas = document.querySelectorAll('#tabla-productos > .fila-producto');
+            let visibles = 0;
+            filas.forEach(f => {
+                const txt = f.getAttribute('data-buscar') || '';
+                const match = !q || txt.indexOf(q) !== -1;
+                f.style.display = match ? '' : 'none';
+                if (match) visibles++;
+            });
+            const cont = document.getElementById('contador-productos');
+            if (cont) cont.textContent = q ? `${visibles} de ${filas.length} productos` : `${filas.length} productos`;
         }
 
         // ── NUEVO / EDITAR PRODUCTO ──────────────────────────────
@@ -312,7 +338,9 @@
                 stock_inicial: parseInt(document.getElementById('prod-stock').value) || 0,
                 id_categoria:  parseInt(document.getElementById('prod-categoria').value) || null,
                 stock_alerta:  parseInt(document.getElementById('prod-alerta').value) || 20,
-                imagen_url:    document.getElementById('prod-imagen').value.trim() || null
+                imagen_url:    document.getElementById('prod-imagen').value.trim() || null,
+                precio_mayorista: precioMay,
+                precio_minorista: 0
             };
             if (!data.sku || !data.nombre) { alert('Completá SKU y nombre.'); return; }
 
@@ -575,8 +603,8 @@
                 startY: 38,
                 head: [['SKU', 'Producto', 'Categoría', 'Stock', 'Alerta', 'Estado']],
                 body: filas,
-                headStyles: { fillColor: [30, 30, 30], textColor: [228, 252, 116], fontStyle: 'bold' },
-                alternateRowStyles: { fillColor: [245, 245, 245] },
+                headStyles: { fillColor: [255, 255, 255], textColor: [0, 0, 0], fontStyle: 'bold', lineWidth: 0.3, lineColor: [0,0,0] },
+                styles: { fontSize: 9, cellPadding: 3, lineWidth: 0.1, lineColor: [120,120,120] },
                 didDrawCell: (data) => {
                     if (data.section === 'body' && data.column.index === 5) {
                         if (data.cell.raw === '⚠ BAJO') {
@@ -586,7 +614,6 @@
                         }
                     }
                 },
-                styles: { fontSize: 9, cellPadding: 3 },
                 columnStyles: {
                     0: { cellWidth: 20 },
                     1: { cellWidth: 70 },
