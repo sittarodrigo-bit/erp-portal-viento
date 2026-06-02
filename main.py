@@ -808,11 +808,10 @@ def crear_pedido_b2b(pedido: PedidoB2B):
         """, (pedido.id_distribuidor, pedido.total))
         id_pedido = cur.fetchone()[0]
         for item in pedido.detalle:
-            subtotal = item.cantidad * item.precio_unitario
             cur.execute("""
-                INSERT INTO detalle_pedidos_b2b (id_pedido, id_producto, cantidad, precio_unitario, subtotal)
-                VALUES (%s,%s,%s,%s,%s)
-            """, (id_pedido, item.id_producto, item.cantidad, item.precio_unitario, subtotal))
+                INSERT INTO detalle_pedidos_b2b (id_pedido, id_producto, cantidad, precio_unitario)
+                VALUES (%s,%s,%s,%s)
+            """, (id_pedido, item.id_producto, item.cantidad, item.precio_unitario))
             cur.execute("UPDATE productos SET stock_actual = stock_actual - %s WHERE id = %s",
                         (item.cantidad, item.id_producto))
         conn.commit()
@@ -874,11 +873,10 @@ def actualizar_pedido(id: int, payload: PedidoUpdate):
         cur.execute("UPDATE pedidos_b2b SET total = %s WHERE id = %s", (payload.total, id))
         for item in payload.detalle:
             if item.cantidad > 0:
-                subtotal = item.cantidad * item.precio_unitario
                 cur.execute("""
-                    INSERT INTO detalle_pedidos_b2b (id_pedido, id_producto, cantidad, precio_unitario, subtotal)
-                    VALUES (%s,%s,%s,%s,%s)
-                """, (id, item.id_producto, item.cantidad, item.precio_unitario, subtotal))
+                    INSERT INTO detalle_pedidos_b2b (id_pedido, id_producto, cantidad, precio_unitario)
+                    VALUES (%s,%s,%s,%s)
+                """, (id, item.id_producto, item.cantidad, item.precio_unitario))
                 cur.execute("UPDATE productos SET stock_actual = stock_actual - %s WHERE id = %s",
                             (item.cantidad, item.id_producto))
         conn.commit()
