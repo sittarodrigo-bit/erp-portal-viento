@@ -163,9 +163,14 @@
                 </div>
             </div>
 
-            <div id="cuenta-vacia" class="text-center text-gray-500 py-16">
-                <p class="text-4xl mb-3">💰</p>
-                <p>Seleccioná un distribuidor para ver su estado de cuenta.</p>
+            <div id="cuenta-vacia">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-white font-bold text-lg">📊 Deudores <span class="text-gray-500 text-sm font-normal">(ordenados de mayor a menor deuda)</span></h3>
+                    <span id="deudores-total" class="text-red-400 font-bold text-sm"></span>
+                </div>
+                <div id="lista-deudores" class="space-y-2">
+                    <p class="text-gray-500 text-sm text-center py-8">Cargando deudores...</p>
+                </div>
             </div>
         </div>
 
@@ -774,6 +779,52 @@
                     sel.innerHTML += '<option value="' + d.id + '">' + d.razon_social + '</option>';
                 });
             });
+            cargarDeudores();
+        }
+
+        async function cargarDeudores() {
+            var cont = document.getElementById('lista-deudores');
+            if (!cont) return;
+            cont.innerHTML = '<p class="text-gray-500 text-sm text-center py-8">Cargando deudores...</p>';
+            var lista = await fetch(API_URL + '/distribuidores/cuenta_corriente').then(function(r){ return r.json(); }).catch(function(){ return []; });
+            // Solo los que deben (saldo > 0), ya vienen ordenados de mayor a menor
+            var deudores = lista.filter(function(d){ return parseFloat(d.saldo || 0) > 0.5; });
+            var totalDeuda = deudores.reduce(function(a,d){ return a + parseFloat(d.saldo || 0); }, 0);
+            document.getElementById('deudores-total').textContent = deudores.length ? ('Total a cobrar: $ ' + totalDeuda.toLocaleString('es-AR')) : '';
+            cont.innerHTML = '';
+            if (!deudores.length) {
+                cont.innerHTML = '<div class="text-center text-gray-500 py-12"><p class="text-4xl mb-3">✅</p><p>No hay clientes con deuda. ¡Todo al día!</p><p class="text-xs text-gray-600 mt-3">Seleccioná un distribuidor arriba para ver su estado de cuenta igual.</p></div>';
+                return;
+            }
+            var maxDeuda = parseFloat(deudores[0].saldo || 0) || 1;
+            deudores.forEach(function(d, idx) {
+                var saldo = parseFloat(d.saldo || 0);
+                var pct = Math.max(4, Math.round((saldo / maxDeuda) * 100));
+                var limite = parseFloat(d.limite_credito || 0);
+                var excede = limite > 0 && saldo > limite;
+                var div = document.createElement('div');
+                div.className = 'cursor-pointer bg-black border border-gray-800 hover:border-red-700 rounded-lg px-4 py-3 transition';
+                div.innerHTML =
+                    '<div class="flex items-center justify-between mb-1">' +
+                        '<div class="flex items-center gap-2">' +
+                            '<span class="text-gray-600 text-xs font-bold w-5">' + (idx+1) + '</span>' +
+                            '<span class="font-bold text-white text-sm">' + d.razon_social + '</span>' +
+                            (excede ? '<span class="text-xs bg-red-900/50 text-red-400 px-2 py-0.5 rounded font-bold">⚠ Excede crédito</span>' : '') +
+                        '</div>' +
+                        '<span class="text-red-400 font-bold">$ ' + saldo.toLocaleString('es-AR') + '</span>' +
+                    '</div>' +
+                    '<div class="w-full bg-gray-900 rounded-full h-1.5 ml-7" style="width:calc(100% - 1.75rem)">' +
+                        '<div class="bg-red-600 h-1.5 rounded-full" style="width:' + pct + '%"></div>' +
+                    '</div>';
+                div.onclick = function() { abrirDeudor(d.id, d.razon_social); };
+                cont.appendChild(div);
+            });
+        }
+
+        function abrirDeudor(id, nombre) {
+            var sel = document.getElementById('cuenta-distribuidor');
+            sel.value = String(id);
+            cargarEstadoCuenta();
         }
 
         var estadoCuentaData = null;
@@ -786,6 +837,7 @@
                 document.getElementById('cuenta-vacia').classList.remove('hidden');
                 document.getElementById('btn-abrir-cobro').classList.add('hidden');
                 document.getElementById('btn-saldo-inicial').classList.add('hidden');
+                cargarDeudores();
                 return;
             }
             var sel = document.getElementById('cuenta-distribuidor');
