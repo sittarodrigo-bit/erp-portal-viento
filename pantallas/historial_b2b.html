@@ -150,6 +150,9 @@
                 </div>
             </div>
             <h4 class="text-sm font-bold text-white mb-2">Productos</h4>
+            <input type="text" id="np-buscar" placeholder="🔍 Buscar producto... (Enter agrega el primero)"
+                   class="w-full bg-black border border-neon text-white rounded p-2 text-sm mb-2 outline-none"
+                   oninput="filtrarProductosNuevo()" onkeydown="if(event.key==='Enter'){event.preventDefault();agregarPrimeroNuevo();}">
             <div id="np-items" class="space-y-2 mb-3 max-h-64 overflow-y-auto"></div>
             <div class="flex justify-between items-center border-t border-gray-700 pt-3 mb-4">
                 <span class="text-gray-400 font-bold text-sm">Total:</span>
@@ -681,6 +684,7 @@
             sel.innerHTML = distribuidores.map(function(d) { return '<option value="' + d.id + '">' + d.razon_social + '</option>'; }).join('');
             document.getElementById('np-fecha').value = new Date().toISOString().split('T')[0];
             document.getElementById('np-total').textContent = '$ 0';
+            document.getElementById('np-buscar').value = '';
 
             if (!todosProductos.length) {
                 todosProductos = await fetch(API_URL + '/productos/con_presentaciones').then(function(r) { return r.json(); });
@@ -692,7 +696,8 @@
                 var pres = p.presentaciones[0];
                 var precio = parseFloat(pres.precio_mayorista) || 0;
                 var div = document.createElement('div');
-                div.className = 'flex items-center gap-3 bg-black border border-gray-800 rounded-lg px-3 py-2';
+                div.className = 'np-fila flex items-center gap-3 bg-black border border-gray-800 rounded-lg px-3 py-2';
+                div.setAttribute('data-nombre', (p.nombre || '').toLowerCase());
                 div.innerHTML =
                     '<p class="flex-1 text-white text-sm font-bold truncate">' + p.nombre + '</p>' +
                     '<span class="text-neon text-xs font-bold">$ ' + precio.toLocaleString('es-AR') + '</span>' +
@@ -701,6 +706,35 @@
                 cont.appendChild(div);
             });
             document.getElementById('modal-nuevo').classList.replace('modal-oculto','modal-visible');
+            setTimeout(function(){ document.getElementById('np-buscar').focus(); }, 100);
+        }
+
+        function filtrarProductosNuevo() {
+            var q = document.getElementById('np-buscar').value.toLowerCase().trim();
+            document.querySelectorAll('#np-items > .np-fila').forEach(function(fila) {
+                var nombre = fila.getAttribute('data-nombre') || '';
+                fila.style.display = (!q || nombre.indexOf(q) !== -1) ? '' : 'none';
+            });
+        }
+
+        function agregarPrimeroNuevo() {
+            var q = document.getElementById('np-buscar').value.toLowerCase().trim();
+            if (!q) return;
+            var filas = document.querySelectorAll('#np-items > .np-fila');
+            for (var i = 0; i < filas.length; i++) {
+                if (filas[i].style.display !== 'none') {
+                    var inp = filas[i].querySelector('.np-cant');
+                    inp.value = (parseInt(inp.value) || 0) + 1;
+                    recalcNuevo();
+                    // feedback visual rápido
+                    filas[i].classList.add('border-neon');
+                    setTimeout(function(f){ return function(){ f.classList.remove('border-neon'); }; }(filas[i]), 600);
+                    document.getElementById('np-buscar').value = '';
+                    filtrarProductosNuevo();
+                    document.getElementById('np-buscar').focus();
+                    break;
+                }
+            }
         }
 
         function recalcNuevo() {
