@@ -171,6 +171,23 @@
 
     </main>
 
+    <div id="modal-descuentos" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
+        <div class="bg-gray-900 border border-purple-700 rounded-xl p-6 w-[460px] shadow-2xl max-h-[85vh] overflow-y-auto">
+            <div class="flex justify-between items-center mb-2">
+                <h3 class="text-lg font-bold text-white border-l-4 border-purple-500 pl-2">% Descuentos por Categoría</h3>
+                <button onclick="cerrarModales()" class="text-gray-500 hover:text-white text-2xl leading-none">×</button>
+            </div>
+            <p id="desc-dist-nombre" class="text-purple-400 text-sm font-bold mb-1"></p>
+            <p class="text-gray-500 text-xs mb-5">Estos descuentos se aplican solos sobre el precio mayorista cuando armás un pedido para este cliente. Dejá en 0 las categorías sin descuento.</p>
+            <input type="hidden" id="desc-id">
+            <div id="desc-lista" class="space-y-2 mb-5"></div>
+            <div class="flex justify-end gap-3">
+                <button onclick="cerrarModales()" class="px-4 py-2 text-gray-400 hover:text-white font-bold">Cancelar</button>
+                <button onclick="guardarDescuentos()" id="btn-guardar-desc" class="bg-purple-700 hover:bg-purple-600 text-white px-6 py-2 rounded font-bold transition">Guardar Descuentos</button>
+            </div>
+        </div>
+    </div>
+
     <div id="modal-acceso" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
         <div class="bg-gray-900 border border-blue-700 rounded-xl p-6 w-[440px] shadow-2xl">
             <div class="flex justify-between items-center mb-2">
@@ -478,6 +495,7 @@
                         '<div class="flex justify-end gap-1">' +
                             '<button class="text-xs border border-gray-700 bg-gray-800 hover:border-gray-500 px-3 py-1 rounded text-gray-400 hover:text-white transition btn-editar">Editar</button>' +
                             '<button class="text-xs border border-blue-800 bg-blue-900/30 hover:bg-blue-800 px-3 py-1 rounded text-blue-300 hover:text-white transition btn-acceso">🔑 Acceso</button>' +
+                            '<button class="text-xs border border-purple-800 bg-purple-900/30 hover:bg-purple-800 px-3 py-1 rounded text-purple-300 hover:text-white transition btn-descuentos">% Desc.</button>' +
                             '<button class="text-xs bg-neon text-black font-bold px-3 py-1 rounded hover:bg-yellow-300 transition btn-pedidos">Pedidos</button>' +
                             btnAprobar +
                             '<button class="text-xs bg-red-900/50 hover:bg-red-700 text-red-400 hover:text-white px-2 py-1 rounded transition btn-eliminar">✕</button>' +
@@ -485,6 +503,7 @@
                     '</td>';
                 tr.querySelector('.btn-editar').onclick = function() { abrirModalEditar(d); };
                 tr.querySelector('.btn-acceso').onclick = function() { abrirModalAcceso(d); };
+                tr.querySelector('.btn-descuentos').onclick = function() { abrirModalDescuentos(d); };
                 tr.querySelector('.btn-pedidos').onclick = function() { verPedidosDistribuidor(d.id, d.razon_social); };
                 var btnApr = tr.querySelector('.btn-aprobar');
                 if (btnApr) btnApr.onclick = function() { aprobarDistribuidor(d.id, d.razon_social); };
@@ -840,6 +859,52 @@
         }
 
         var accesoDistActual = null;
+
+        async function abrirModalDescuentos(d) {
+            document.getElementById('desc-id').value = d.id;
+            document.getElementById('desc-dist-nombre').textContent = d.razon_social;
+            var cont = document.getElementById('desc-lista');
+            cont.innerHTML = '<p class="text-gray-500 text-sm text-center py-4">Cargando...</p>';
+            document.getElementById('modal-descuentos').classList.replace('modal-oculto','modal-visible');
+            var lista = await fetch(API_URL + '/distribuidores/' + d.id + '/descuentos').then(function(r){ return r.json(); });
+            cont.innerHTML = '';
+            if (!lista.length) {
+                cont.innerHTML = '<p class="text-gray-500 text-sm text-center py-4">No hay categorías cargadas.</p>';
+                return;
+            }
+            lista.forEach(function(c) {
+                var div = document.createElement('div');
+                div.className = 'flex items-center gap-3 bg-black border border-gray-800 rounded-lg px-3 py-2';
+                div.innerHTML =
+                    '<span class="flex-1 text-white text-sm font-bold">' + c.categoria + '</span>' +
+                    '<input type="number" min="0" max="100" step="0.5" value="' + (parseFloat(c.porcentaje) || 0) + '" ' +
+                       'class="w-20 bg-gray-900 border border-purple-700 text-white rounded p-1 text-sm text-center desc-pct" data-cat="' + c.id_categoria + '">' +
+                    '<span class="text-purple-400 text-sm font-bold">%</span>';
+                cont.appendChild(div);
+            });
+        }
+
+        async function guardarDescuentos() {
+            var id = document.getElementById('desc-id').value;
+            var descuentos = [];
+            document.querySelectorAll('#desc-lista .desc-pct').forEach(function(inp) {
+                descuentos.push({ id_categoria: parseInt(inp.dataset.cat), porcentaje: parseFloat(inp.value) || 0 });
+            });
+            var btn = document.getElementById('btn-guardar-desc');
+            btn.disabled = true; btn.textContent = 'Guardando...';
+            try {
+                var res = await fetch(API_URL + '/distribuidores/' + id + '/descuentos', {
+                    method:'PUT', headers:{'Content-Type':'application/json'},
+                    body: JSON.stringify({ descuentos: descuentos })
+                });
+                if (res.ok) { alert('✅ Descuentos guardados'); cerrarModales(); }
+                else { var e = await res.json(); alert('❌ ' + (e.detail || 'Error')); }
+            } catch (err) {
+                alert('❌ Error de conexión.');
+            } finally {
+                btn.disabled = false; btn.textContent = 'Guardar Descuentos';
+            }
+        }
 
         function abrirModalAcceso(d) {
             accesoDistActual = d;
