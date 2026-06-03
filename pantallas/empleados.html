@@ -27,6 +27,7 @@
             <a href="/proveedores" class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">🏪 Proveedores</a>
             <a href="/distribuidores" class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">🚚 Distribuidores</a>
             <a href="/historial-b2b" class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">📋 Pedidos B2B</a>
+            <a href="/gastos" class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">💸 Gastos</a>
             <a href="/empleados" class="block bg-gray-900 text-white py-2 px-4 rounded-lg border-l-4 border-neon font-medium">👥 Empleados</a>
             <a href="/reportes" class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">📈 Reportes</a>
             <a href="/configuracion" class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">⚙️ Configuración</a>
@@ -58,12 +59,13 @@
                             <th class="p-4">DNI</th>
                             <th class="p-4">Rol</th>
                             <th class="p-4">Usuario</th>
+                            <th class="p-4">POS</th>
                             <th class="p-4">Estado</th>
                             <th class="p-4 text-right">Acciones</th>
                         </tr>
                     </thead>
                     <tbody id="tabla-empleados" class="divide-y divide-gray-800 text-sm">
-                        <tr><td colspan="6" class="p-4 text-center text-gray-500">Cargando...</td></tr>
+                        <tr><td colspan="7" class="p-4 text-center text-gray-500">Cargando...</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -265,6 +267,35 @@
         </div>
     </div>
 
+    <!-- MODAL ACCESO (usuario / clave / POS) -->
+    <div id="modal-acceso" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
+        <div class="bg-gray-900 border border-gray-700 rounded-xl p-6 w-[440px] shadow-2xl">
+            <h3 class="text-lg font-bold text-white mb-1 border-l-4 border-neon pl-2">Acceso al sistema</h3>
+            <p id="acceso-emp-nombre" class="text-neon text-sm font-bold mb-4 pl-3"></p>
+            <input type="hidden" id="acceso-emp-id">
+
+            <label class="block text-xs text-gray-500 font-bold mb-1">Nombre de usuario</label>
+            <input type="text" id="acceso-username" placeholder="Ej: jperez" class="w-full bg-black border border-gray-700 text-white rounded p-3 mb-3 text-sm">
+
+            <label class="block text-xs text-gray-500 font-bold mb-1">Contraseña</label>
+            <div class="flex gap-2 mb-1">
+                <input type="text" id="acceso-password" placeholder="Dejar vacío para no cambiarla" class="flex-1 bg-black border border-neon text-white rounded p-3 text-sm">
+                <button onclick="generarClave()" class="border border-gray-600 text-gray-300 hover:text-white px-3 rounded text-sm" title="Generar clave">🎲</button>
+            </div>
+            <p id="acceso-hint" class="text-gray-600 text-xs mb-4 h-4"></p>
+
+            <label class="flex items-center gap-2 text-sm text-gray-300 cursor-pointer bg-black border border-gray-800 rounded-lg px-4 py-3 mb-5">
+                <input type="checkbox" id="acceso-pos" class="w-4 h-4 accent-neon">
+                <span>🛒 Puede usar el <b>Punto de Venta (POS)</b></span>
+            </label>
+
+            <div class="flex justify-end gap-3">
+                <button onclick="cerrarModales()" class="px-4 py-2 text-gray-400 hover:text-white font-bold">Cancelar</button>
+                <button onclick="guardarAcceso()" id="btn-guardar-acceso" class="bg-neon text-black px-6 py-2 rounded font-bold hover:bg-yellow-300 disabled:opacity-50">Guardar acceso</button>
+            </div>
+        </div>
+    </div>
+
     <div id="modal-fichaje" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
         <div class="bg-gray-900 border border-gray-700 rounded-xl p-6 w-96 shadow-2xl">
             <h3 id="titulo-fichaje" class="text-lg font-bold text-white mb-4 border-l-4 border-neon pl-2">Registrar Fichaje</h3>
@@ -305,18 +336,16 @@
         const API_URL = window.location.origin + "/api";
         let empleados = [];
 
-        // Info usuario
         const usr = JSON.parse(sessionStorage.getItem('usuario') || '{}');
         if (usr.nombre) document.getElementById('usuario-info').textContent = `${usr.nombre} ${usr.apellido} · ${usr.rol}`;
 
-        // Fechas por defecto
         document.getElementById('filtro-fecha').value = new Date().toISOString().split('T')[0];
-        
+
         const hoy = new Date();
         const inicioMes = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
         const hoyStr = hoy.toISOString().split('T')[0];
         const inicioStr = inicioMes.toISOString().split('T')[0];
-        
+
         document.getElementById('horas-desde').value = inicioStr;
         document.getElementById('horas-hasta').value = hoyStr;
         document.getElementById('ant-desde').value = inicioStr;
@@ -349,15 +378,20 @@
             let opcionesSelect = '<option value="">Seleccione un empleado...</option>';
 
             empleados.forEach(e => {
+                const badgePos = e.acceso_pos
+                    ? '<span class="text-xs bg-green-900/40 text-green-400 px-2 py-1 rounded font-bold">🛒 Sí</span>'
+                    : '<span class="text-gray-600 text-xs">—</span>';
                 tabla.innerHTML += `
                     <tr class="hover:bg-gray-900 transition border-b border-gray-800">
                         <td class="p-4 font-bold text-white">${e.apellido}, ${e.nombre}</td>
                         <td class="p-4 text-gray-400 text-xs">${e.dni || '—'}</td>
                         <td class="p-4"><span class="text-xs bg-gray-800 px-2 py-1 rounded font-bold">${roles[e.rol] || e.rol}</span></td>
                         <td class="p-4 text-gray-400 text-xs">${e.username || '—'}</td>
+                        <td class="p-4">${badgePos}</td>
                         <td class="p-4">${e.activo ? '<span class="text-green-400 font-bold text-xs">● Activo</span>' : '<span class="text-red-500 font-bold text-xs">● Inactivo</span>'}</td>
                         <td class="p-4 text-right">
                             <div class="flex justify-end gap-1">
+                                <button onclick="abrirModalAcceso(empleados.find(x=>x.id===${e.id}))" class="text-xs border border-neon bg-neon/10 text-neon hover:bg-neon hover:text-black px-2 py-1 rounded font-bold transition">🔑 Acceso</button>
                                 <button onclick="abrirEditarEmpleado(empleados.find(x=>x.id===${e.id}))" class="text-xs border border-gray-700 bg-gray-800 hover:border-gray-500 px-2 py-1 rounded text-gray-400 hover:text-white">Editar</button>
                                 <button onclick="toggleEstado(${e.id}, ${e.activo})" class="text-xs border border-gray-700 bg-gray-800 hover:border-gray-500 px-2 py-1 rounded text-gray-400 hover:text-white">${e.activo ? 'Desactivar' : 'Activar'}</button>
                             </div>
@@ -369,9 +403,52 @@
                 }
             });
 
-            // Llenar todos los selects de empleados en los distintos modales
             document.getElementById('select-empleado').innerHTML = opcionesSelect;
             document.getElementById('ant-empleado').innerHTML = opcionesSelect;
+        }
+
+        // ── ACCESO (usuario / clave / POS) ───────────────────────
+        async function abrirModalAcceso(e) {
+            document.getElementById('acceso-emp-id').value = e.id;
+            document.getElementById('acceso-emp-nombre').textContent = `${e.apellido}, ${e.nombre}`;
+            document.getElementById('acceso-username').value = e.username || '';
+            document.getElementById('acceso-password').value = '';
+            document.getElementById('acceso-pos').checked = !!e.acceso_pos;
+            document.getElementById('acceso-hint').textContent = e.username ? 'Ya tiene usuario. Dejá la clave vacía si no querés cambiarla.' : 'Nuevo acceso: poné un usuario y una contraseña.';
+            document.getElementById('modal-acceso').classList.replace('modal-oculto','modal-visible');
+        }
+
+        function generarClave() {
+            const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
+            let c = '';
+            for (let i=0;i<8;i++) c += chars[Math.floor(Math.random()*chars.length)];
+            document.getElementById('acceso-password').value = c;
+        }
+
+        async function guardarAcceso() {
+            const id = document.getElementById('acceso-emp-id').value;
+            const username = document.getElementById('acceso-username').value.trim();
+            const password = document.getElementById('acceso-password').value;
+            const acceso_pos = document.getElementById('acceso-pos').checked;
+            if (!username) { alert('Poné un nombre de usuario.'); return; }
+
+            const btn = document.getElementById('btn-guardar-acceso');
+            btn.disabled = true; btn.textContent = 'Guardando...';
+            try {
+                const body = { username, acceso_pos };
+                if (password) body.password = password;
+                const res = await fetch(`${API_URL}/empleados/${id}/acceso`, {
+                    method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)
+                });
+                if (res.ok) {
+                    cerrarModales();
+                    await cargarEmpleados();
+                    if (password) alert('✅ Acceso guardado.\n\nUsuario: ' + username + '\nContraseña: ' + password + '\n\nAnotá la contraseña: no se vuelve a mostrar.');
+                } else {
+                    const e = await res.json(); alert('Error: ' + (e.detail || 'no se pudo guardar'));
+                }
+            } catch(err) { alert('Error de conexión.'); }
+            finally { btn.disabled = false; btn.textContent = 'Guardar acceso'; }
         }
 
         // ── FICHAJES DIARIOS ─────────────────────────────────────
