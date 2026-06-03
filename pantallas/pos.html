@@ -36,7 +36,8 @@
         </div>
         <div class="flex items-center gap-3">
             <div id="estado-caja-badge" class="text-xs font-bold px-3 py-1.5 rounded-full bg-gray-800 text-gray-500">Sin caja</div>
-            <a href="/admin" class="text-gray-500 hover:text-white text-sm">← Volver al sistema</a>
+            <span id="pos-cajero" class="text-gray-400 text-sm"></span>
+            <button onclick="cerrarSesionPos()" class="text-gray-500 hover:text-white text-sm border border-gray-700 rounded px-3 py-1.5">Salir</button>
         </div>
     </header>
 
@@ -214,6 +215,19 @@
 
     <script>
         var API_URL = window.location.origin + "/api";
+
+        // ── Control de sesión del POS ──
+        var posUsuario = null;
+        try { posUsuario = JSON.parse(sessionStorage.getItem('pos_usuario') || 'null'); } catch(e) { posUsuario = null; }
+        if (!posUsuario) {
+            window.location.href = '/pos-login';
+        }
+
+        function cerrarSesionPos() {
+            sessionStorage.removeItem('pos_usuario');
+            window.location.href = '/pos-login';
+        }
+
         var localActual = null;       // {id, nombre}
         var cajaActual = null;        // {id, ...}
         var productosLocal = [];      // productos del local
@@ -222,6 +236,9 @@
         var empresa = {};
 
         async function init() {
+            if (posUsuario) {
+                document.getElementById('pos-cajero').textContent = '👤 ' + posUsuario.nombre + ' ' + posUsuario.apellido;
+            }
             try { empresa = await fetch(API_URL + '/empresa').then(function(r){return r.json();}); } catch(e){ empresa = {}; }
             await cargarLocales();
         }
@@ -263,7 +280,7 @@
             } else {
                 cajaActual = null;
                 document.getElementById('cerrada-local-nombre').textContent = localActual.nombre;
-                document.getElementById('apertura-responsable').value = '';
+                document.getElementById('apertura-responsable').value = posUsuario ? (posUsuario.nombre + ' ' + posUsuario.apellido) : '';
                 document.getElementById('apertura-monto').value = '0';
                 mostrarVista('cerrada');
                 document.getElementById('estado-caja-badge').textContent = '🔴 Caja cerrada';
