@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Acceso POS | Portal del Viento</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .text-neon { color: #e4fc74; }
+        .bg-neon { background-color: #e4fc74; }
+        .border-neon { border-color: #e4fc74; }
+    </style>
+</head>
+<body class="bg-gray-950 text-gray-200 font-sans h-screen flex items-center justify-center">
+    <div class="w-full max-w-sm px-6">
+        <div class="text-center mb-8">
+            <h1 class="text-neon font-bold text-2xl tracking-widest uppercase">Portal del Viento</h1>
+            <p class="text-white text-sm mt-1 font-bold italic">ALFAJORES</p>
+            <p class="text-gray-500 text-xs mt-3 uppercase tracking-widest">Punto de Venta</p>
+        </div>
+
+        <div class="bg-black border border-gray-800 rounded-2xl p-8 shadow-2xl">
+            <h2 class="text-white font-bold text-lg mb-6 text-center">Acceso de cajero</h2>
+
+            <label class="block text-xs text-gray-500 font-bold mb-1">Usuario</label>
+            <input type="text" id="usuario" autocomplete="username"
+                class="w-full bg-gray-900 border border-gray-700 focus:border-neon text-white rounded-lg p-3 mb-4 text-sm outline-none"
+                onkeydown="if(event.key==='Enter') document.getElementById('clave').focus()">
+
+            <label class="block text-xs text-gray-500 font-bold mb-1">Contraseña</label>
+            <input type="password" id="clave" autocomplete="current-password"
+                class="w-full bg-gray-900 border border-gray-700 focus:border-neon text-white rounded-lg p-3 mb-2 text-sm outline-none"
+                onkeydown="if(event.key==='Enter') ingresar()">
+
+            <p id="error" class="text-red-400 text-xs h-4 mb-3"></p>
+
+            <button onclick="ingresar()" id="btn-ingresar"
+                class="w-full bg-neon text-black font-bold py-3 rounded-lg hover:bg-yellow-300 transition disabled:opacity-50">
+                Ingresar al POS
+            </button>
+        </div>
+
+        <p class="text-center text-gray-700 text-xs mt-6">
+            ¿Sos administrador? <a href="/login" class="text-gray-500 hover:text-gray-300 underline">Entrá al sistema</a>
+        </p>
+    </div>
+
+    <script>
+        const API_URL = window.location.origin + "/api";
+
+        // Si ya hay sesión de cajero, ir directo al POS
+        if (sessionStorage.getItem('pos_usuario')) {
+            window.location.href = '/pos';
+        }
+
+        async function ingresar() {
+            const username = document.getElementById('usuario').value.trim();
+            const password = document.getElementById('clave').value;
+            const err = document.getElementById('error');
+            err.textContent = '';
+            if (!username || !password) { err.textContent = 'Completá usuario y contraseña.'; return; }
+
+            const btn = document.getElementById('btn-ingresar');
+            btn.disabled = true; btn.textContent = 'Ingresando...';
+            try {
+                const res = await fetch(`${API_URL}/pos/login`, {
+                    method: 'POST', headers: {'Content-Type':'application/json'},
+                    body: JSON.stringify({ username, password })
+                });
+                if (res.ok) {
+                    const u = await res.json();
+                    sessionStorage.setItem('pos_usuario', JSON.stringify(u));
+                    window.location.href = '/pos';
+                } else {
+                    const e = await res.json();
+                    err.textContent = e.detail || 'No se pudo ingresar.';
+                    btn.disabled = false; btn.textContent = 'Ingresar al POS';
+                }
+            } catch (e) {
+                err.textContent = 'Error de conexión con el servidor.';
+                btn.disabled = false; btn.textContent = 'Ingresar al POS';
+            }
+        }
+    </script>
+</body>
+</html>
