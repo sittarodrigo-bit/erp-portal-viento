@@ -2618,13 +2618,21 @@ def locales_resumen():
             # Productos con stock bajo
             cur.execute("SELECT COUNT(*) AS c FROM pos_productos WHERE id_local=%s AND COALESCE(activo,true)=true AND COALESCE(stock_alerta,0)>0 AND COALESCE(stock,0)<=COALESCE(stock_alerta,0)", (lid,))
             stock_bajo = cur.fetchone()['c']
+            # Reposiciones pendientes
+            repos_pend = 0
+            try:
+                cur.execute("SELECT COUNT(*) AS c FROM pos_reposiciones WHERE id_local=%s AND estado='pendiente'", (lid,))
+                repos_pend = cur.fetchone()['c']
+            except Exception:
+                conn.rollback()
             salida.append({
                 "id": lid, "nombre": loc['nombre'], "direccion": loc['direccion'],
                 "caja_abierta": caja_abierta, "id_caja": id_caja, "responsable": responsable,
                 "efectivo_en_caja": efectivo_en_caja,
                 "ventas_hoy": float(hoy['total'] or 0), "tickets_hoy": hoy['tickets'],
                 "ventas_mes": float(mes['total'] or 0), "tickets_mes": mes['tickets'],
-                "faltantes_pendientes": faltantes, "gastos_pendientes": gastos_pend, "stock_bajo": stock_bajo
+                "faltantes_pendientes": faltantes, "gastos_pendientes": gastos_pend, "stock_bajo": stock_bajo,
+                "reposiciones_pendientes": repos_pend
             })
         return salida
     finally:
@@ -2666,6 +2674,105 @@ def locales_mas_vendidos(id_local: int, desde: Optional[str] = None, hasta: Opti
         q += " GROUP BY d.nombre_producto ORDER BY unidades DESC LIMIT 50"
         cur.execute(q, tuple(params))
         return fetchall_dict(cur)
+    finally:
+        liberar_conexion(conn)
+
+# ==============================================================================
+# REPOSICIONES (el cajero pide stock de productos del local)
+# ==============================================================================
+class ReposicionItem(BaseModel):
+    id_producto: Optional[int] = None
+    nombre_producto: str
+    cantidad: float
+
+class ReposicionCreate(BaseModel):
+    id_local: int
+    id_empleado: Optional[int] = None
+    notas: Optional[str] = None
+    detalle: List[ReposicionItem]
+
+@app.post("/api/pos/reposiciones")
+def pos_reposicion_crear(r: ReposicionCreate):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        cur.execute("INSERT INTO pos_reposiciones (id_local, id_empleado, notas) VALUES (%s,%s,%s) RETURNING id",
+                    (r.id_local, r.id_empleado, r.notas))
+        rid = cur.fetchone()[0]
+        for it in r.detalle:
+            cur.execute("INSERT INTO pos_reposiciones_detalle (id_reposicion, id_producto, nombre_producto, cantidad) VALUES (%s,%s,%s,%s)",
+                        (rid, it.id_producto, it.nombre_producto, it.cantidad))
+        conn.commit()
+        return {"id": rid}
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
+@app.get("/api/locales/reposiciones")
+def locales_reposiciones(id_local: Optional[int] = None, estado: Optional[str] = None):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        q = """
+            SELECT r.id, r.id_local, l.nombre AS local, r.estado, r.notas, r.fecha::text, r.id_empleado,
+                   e.nombre AS empleado_nombre, e.apellido AS empleado_apellido
+            FROM pos_reposiciones r
+            LEFT JOIN pos_locales l ON r.id_local = l.id
+            LEFT JOIN empleados e ON r.id_empleado = e.id
+            WHERE 1=1
+        """
+        params = []
+        if id_local: q += " AND r.id_local=%s"; params.append(id_local)
+        if estado: q += " AND r.estado=%s"; params.append(estado)
+        q += " ORDER BY r.fecha DESC"
+        cur.execute(q, tuple(params))
+        reps = fetchall_dict(cur)
+        for rep in reps:
+            cur.execute("SELECT id_producto, nombre_producto, cantidad FROM pos_reposiciones_detalle WHERE id_reposicion=%s", (rep['id'],))
+            rep['detalle'] = fetchall_dict(cur)
+        return reps
+    finally:
+        liberar_conexion(conn)
+
+# Marca la reposición como repuesta y suma el stock pedido a cada producto
+@app.put("/api/locales/reposiciones/{id}/reponer")
+def locales_reposicion_reponer(id: int):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("SELECT estado FROM pos_reposiciones WHERE id=%s", (id,))
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Reposición no encontrada")
+        if row['estado'] == 'repuesto':
+            return {"status": "ya_repuesto"}
+        cur.execute("SELECT id_producto, cantidad FROM pos_reposiciones_detalle WHERE id_reposicion=%s", (id,))
+        items = fetchall_dict(cur)
+        for it in items:
+            if it['id_producto']:
+                cur.execute("UPDATE pos_productos SET stock = COALESCE(stock,0) + %s WHERE id=%s", (it['cantidad'], it['id_producto']))
+        cur.execute("UPDATE pos_reposiciones SET estado='repuesto' WHERE id=%s", (id,))
+        conn.commit()
+        return {"status": "ok"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
+@app.delete("/api/locales/reposiciones/{id}")
+def locales_reposicion_eliminar(id: int):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM pos_reposiciones_detalle WHERE id_reposicion=%s", (id,))
+        cur.execute("DELETE FROM pos_reposiciones WHERE id=%s", (id,))
+        conn.commit()
+        return {"status": "ok"}
     finally:
         liberar_conexion(conn)
 
