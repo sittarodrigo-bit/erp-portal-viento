@@ -2086,6 +2086,251 @@ def importar_proveedores(data: ImportarProveedores):
         liberar_conexion(conn)
 
 # ==============================================================================
+# PANEL DE GASTOS GENERALES
+# ==============================================================================
+class GastoCategoria(BaseModel):
+    nombre: str
+
+class GastoCreate(BaseModel):
+    id_categoria: Optional[int] = None
+    concepto: str
+    monto: float
+    metodo: str = "Efectivo"
+    id_empleado: Optional[int] = None
+    fecha: Optional[str] = None
+    notas: Optional[str] = None
+
+class GastoRecurrente(BaseModel):
+    id_categoria: Optional[int] = None
+    concepto: str
+    monto: float
+    metodo: str = "Efectivo"
+    dia_mes: int = 1
+
+# ---- CATEGORÍAS ----
+@app.get("/api/gastos/categorias")
+def gastos_categorias():
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("SELECT id, nombre FROM gastos_categorias WHERE COALESCE(activo,true)=true ORDER BY nombre")
+        return fetchall_dict(cur)
+    finally:
+        liberar_conexion(conn)
+
+@app.post("/api/gastos/categorias")
+def gastos_crear_categoria(c: GastoCategoria):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        cur.execute("INSERT INTO gastos_categorias (nombre) VALUES (%s) ON CONFLICT (nombre) DO NOTHING", (c.nombre,))
+        conn.commit()
+        return {"status": "ok"}
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
+@app.delete("/api/gastos/categorias/{id}")
+def gastos_eliminar_categoria(id: int):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        cur.execute("UPDATE gastos_categorias SET activo=false WHERE id=%s", (id,))
+        conn.commit()
+        return {"status": "ok"}
+    finally:
+        liberar_conexion(conn)
+
+# ---- GASTOS ----
+@app.get("/api/gastos")
+def gastos_listar(desde: Optional[str] = None, hasta: Optional[str] = None, id_categoria: Optional[int] = None):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        q = """
+            SELECT g.id, g.concepto, g.monto, g.metodo, g.fecha::text, g.notas, g.id_categoria,
+                   c.nombre AS categoria, g.id_empleado,
+                   e.nombre AS empleado_nombre, e.apellido AS empleado_apellido
+            FROM gastos g
+            LEFT JOIN gastos_categorias c ON g.id_categoria = c.id
+            LEFT JOIN empleados e ON g.id_empleado = e.id
+            WHERE COALESCE(g.activo,true)=true
+        """
+        params = []
+        if desde: q += " AND g.fecha >= %s"; params.append(desde)
+        if hasta: q += " AND g.fecha <= %s"; params.append(hasta)
+        if id_categoria: q += " AND g.id_categoria = %s"; params.append(id_categoria)
+        q += " ORDER BY g.fecha DESC, g.id DESC"
+        cur.execute(q, tuple(params))
+        return fetchall_dict(cur)
+    finally:
+        liberar_conexion(conn)
+
+@app.post("/api/gastos")
+def gastos_crear(g: GastoCreate):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        if g.fecha:
+            cur.execute("""
+                INSERT INTO gastos (id_categoria, concepto, monto, metodo, id_empleado, fecha, notas)
+                VALUES (%s,%s,%s,%s,%s,%s,%s) RETURNING id
+            """, (g.id_categoria, g.concepto, g.monto, g.metodo, g.id_empleado, g.fecha, g.notas))
+        else:
+            cur.execute("""
+                INSERT INTO gastos (id_categoria, concepto, monto, metodo, id_empleado, notas)
+                VALUES (%s,%s,%s,%s,%s,%s) RETURNING id
+            """, (g.id_categoria, g.concepto, g.monto, g.metodo, g.id_empleado, g.notas))
+        gid = cur.fetchone()[0]
+        conn.commit()
+        return {"id": gid}
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
+@app.put("/api/gastos/{id}")
+def gastos_editar(id: int, g: GastoCreate):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            UPDATE gastos SET id_categoria=%s, concepto=%s, monto=%s, metodo=%s, fecha=COALESCE(%s, fecha), notas=%s
+            WHERE id=%s
+        """, (g.id_categoria, g.concepto, g.monto, g.metodo, g.fecha, g.notas, id))
+        conn.commit()
+        return {"status": "ok"}
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
+@app.delete("/api/gastos/{id}")
+def gastos_eliminar(id: int):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        cur.execute("UPDATE gastos SET activo=false WHERE id=%s", (id,))
+        conn.commit()
+        return {"status": "ok"}
+    finally:
+        liberar_conexion(conn)
+
+# ---- RECURRENTES ----
+@app.get("/api/gastos/recurrentes")
+def gastos_recurrentes_listar():
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("""
+            SELECT r.id, r.concepto, r.monto, r.metodo, r.dia_mes, r.id_categoria, c.nombre AS categoria
+            FROM gastos_recurrentes r LEFT JOIN gastos_categorias c ON r.id_categoria=c.id
+            WHERE COALESCE(r.activo,true)=true ORDER BY r.dia_mes
+        """)
+        return fetchall_dict(cur)
+    finally:
+        liberar_conexion(conn)
+
+@app.post("/api/gastos/recurrentes")
+def gastos_recurrentes_crear(r: GastoRecurrente):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO gastos_recurrentes (id_categoria, concepto, monto, metodo, dia_mes)
+            VALUES (%s,%s,%s,%s,%s) RETURNING id
+        """, (r.id_categoria, r.concepto, r.monto, r.metodo, r.dia_mes))
+        rid = cur.fetchone()[0]
+        conn.commit()
+        return {"id": rid}
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
+@app.delete("/api/gastos/recurrentes/{id}")
+def gastos_recurrentes_eliminar(id: int):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        cur.execute("UPDATE gastos_recurrentes SET activo=false WHERE id=%s", (id,))
+        conn.commit()
+        return {"status": "ok"}
+    finally:
+        liberar_conexion(conn)
+
+# Genera los gastos del mes a partir de los recurrentes (no duplica si ya se generaron ese mes)
+@app.post("/api/gastos/recurrentes/{id}/generar")
+def gastos_recurrente_generar(id: int, mes: Optional[str] = None):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("SELECT * FROM gastos_recurrentes WHERE id=%s AND COALESCE(activo,true)=true", (id,))
+        r = cur.fetchone()
+        if not r:
+            raise HTTPException(status_code=404, detail="Recurrente no encontrado")
+        import datetime
+        hoy = datetime.date.today()
+        anio = hoy.year; m = hoy.month
+        if mes:
+            partes = mes.split('-')
+            anio = int(partes[0]); m = int(partes[1])
+        dia = min(int(r['dia_mes'] or 1), 28)
+        fecha = "%04d-%02d-%02d" % (anio, m, dia)
+        # Evitar duplicado: mismo concepto y mes
+        cur.execute("""
+            SELECT id FROM gastos WHERE concepto=%s AND EXTRACT(YEAR FROM fecha)=%s AND EXTRACT(MONTH FROM fecha)=%s AND COALESCE(activo,true)=true
+        """, (r['concepto'], anio, m))
+        if cur.fetchone():
+            return {"status": "ya_existe"}
+        cur.execute("""
+            INSERT INTO gastos (id_categoria, concepto, monto, metodo, fecha, notas)
+            VALUES (%s,%s,%s,%s,%s,%s)
+        """, (r['id_categoria'], r['concepto'], r['monto'], r['metodo'], fecha, 'Gasto recurrente generado'))
+        conn.commit()
+        return {"status": "ok"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
+# ---- REPORTE ----
+@app.get("/api/gastos/reporte")
+def gastos_reporte(desde: str, hasta: str):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("""
+            SELECT COALESCE(SUM(monto),0) AS total, COUNT(*) AS cantidad
+            FROM gastos WHERE COALESCE(activo,true)=true AND fecha>=%s AND fecha<=%s
+        """, (desde, hasta))
+        resumen = cur.fetchone()
+        cur.execute("""
+            SELECT COALESCE(c.nombre,'Sin categoría') AS categoria, SUM(g.monto) AS total, COUNT(*) AS cantidad
+            FROM gastos g LEFT JOIN gastos_categorias c ON g.id_categoria=c.id
+            WHERE COALESCE(g.activo,true)=true AND g.fecha>=%s AND g.fecha<=%s
+            GROUP BY c.nombre ORDER BY total DESC
+        """, (desde, hasta))
+        por_categoria = fetchall_dict(cur)
+        cur.execute("""
+            SELECT metodo, SUM(monto) AS total, COUNT(*) AS cantidad
+            FROM gastos WHERE COALESCE(activo,true)=true AND fecha>=%s AND fecha<=%s
+            GROUP BY metodo ORDER BY total DESC
+        """, (desde, hasta))
+        por_metodo = fetchall_dict(cur)
+        return {"resumen": dict(resumen), "por_categoria": por_categoria, "por_metodo": por_metodo}
+    finally:
+        liberar_conexion(conn)
+
+# ==============================================================================
 # RUTAS WEB (HTML)
 # ==============================================================================
 def serve_html(filename: str):
@@ -2170,6 +2415,11 @@ def route_qr():
 @app.get("/pos")
 def route_pos():
     return serve_html("pos.html")
+
+
+@app.get("/gastos")
+def route_gastos():
+    return serve_html("gastos.html")
 
 if __name__ == "__main__":
     import uvicorn
