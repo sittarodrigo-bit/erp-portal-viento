@@ -1571,6 +1571,8 @@ class PosProducto(BaseModel):
     nombre: str
     precio: float = 0.0
     categoria: Optional[str] = None
+    stock: float = 0.0
+    stock_alerta: float = 0.0
 
 class PosAbrirCaja(BaseModel):
     id_local: int
@@ -1585,6 +1587,7 @@ class PosItemVenta(BaseModel):
     nombre_producto: str
     cantidad: int
     precio_unitario: float
+    id_producto: Optional[int] = None
 
 class PosVenta(BaseModel):
     id_caja: int
@@ -1650,7 +1653,7 @@ def pos_listar_productos(id_local: int):
     conn = obtener_conexion()
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
-        cur.execute("SELECT id, nombre, precio, categoria FROM pos_productos WHERE id_local=%s AND COALESCE(activo,true)=true ORDER BY categoria NULLS LAST, nombre", (id_local,))
+        cur.execute("SELECT id, nombre, precio, categoria, COALESCE(stock,0) AS stock, COALESCE(stock_alerta,0) AS stock_alerta FROM pos_productos WHERE id_local=%s AND COALESCE(activo,true)=true ORDER BY categoria NULLS LAST, nombre", (id_local,))
         return fetchall_dict(cur)
     finally:
         liberar_conexion(conn)
@@ -1660,8 +1663,8 @@ def pos_crear_producto(p: PosProducto):
     conn = obtener_conexion()
     try:
         cur = conn.cursor()
-        cur.execute("INSERT INTO pos_productos (id_local, nombre, precio, categoria) VALUES (%s,%s,%s,%s) RETURNING id",
-                    (p.id_local, p.nombre, p.precio, p.categoria))
+        cur.execute("INSERT INTO pos_productos (id_local, nombre, precio, categoria, stock, stock_alerta) VALUES (%s,%s,%s,%s,%s,%s) RETURNING id",
+                    (p.id_local, p.nombre, p.precio, p.categoria, p.stock, p.stock_alerta))
         pid = cur.fetchone()[0]
         conn.commit()
         return {"id": pid}
@@ -1676,8 +1679,26 @@ def pos_actualizar_producto(id: int, p: PosProducto):
     conn = obtener_conexion()
     try:
         cur = conn.cursor()
-        cur.execute("UPDATE pos_productos SET nombre=%s, precio=%s, categoria=%s WHERE id=%s",
-                    (p.nombre, p.precio, p.categoria, id))
+        cur.execute("UPDATE pos_productos SET nombre=%s, precio=%s, categoria=%s, stock=%s, stock_alerta=%s WHERE id=%s",
+                    (p.nombre, p.precio, p.categoria, p.stock, p.stock_alerta, id))
+        conn.commit()
+        return {"status": "ok"}
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
+# Sumar stock a un producto del local (reposición)
+class PosSumarStock(BaseModel):
+    cantidad: float
+
+@app.post("/api/pos/productos/{id}/sumar_stock")
+def pos_sumar_stock(id: int, data: PosSumarStock):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        cur.execute("UPDATE pos_productos SET stock = COALESCE(stock,0) + %s WHERE id=%s", (data.cantidad, id))
         conn.commit()
         return {"status": "ok"}
     except Exception as e:
@@ -1784,6 +1805,9 @@ def pos_registrar_venta(venta: PosVenta):
         for it in venta.detalle:
             cur.execute("INSERT INTO pos_detalle_ventas (id_venta, nombre_producto, cantidad, precio_unitario) VALUES (%s,%s,%s,%s)",
                         (vid, it.nombre_producto, it.cantidad, it.precio_unitario))
+            # Descontar stock del producto (si vino identificado)
+            if it.id_producto:
+                cur.execute("UPDATE pos_productos SET stock = COALESCE(stock,0) - %s WHERE id=%s", (it.cantidad, it.id_producto))
         conn.commit()
         return {"id_venta": vid}
     except Exception as e:
@@ -2409,6 +2433,243 @@ def gastos_reporte(desde: str, hasta: str):
         liberar_conexion(conn)
 
 # ==============================================================================
+# GESTIÓN DE LOCALES (panel admin): resumen, faltantes, gastos por local
+# ==============================================================================
+
+# ---- FALTANTES (el cajero marca qué falta) ----
+class FaltanteCreate(BaseModel):
+    id_local: int
+    descripcion: str
+    cantidad: Optional[str] = None
+    id_empleado: Optional[int] = None
+
+@app.get("/api/pos/faltantes")
+def pos_faltantes_listar(id_local: Optional[int] = None, estado: Optional[str] = None):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        q = """
+            SELECT f.id, f.id_local, l.nombre AS local, f.descripcion, f.cantidad,
+                   f.estado, f.fecha::text, f.id_empleado,
+                   e.nombre AS empleado_nombre, e.apellido AS empleado_apellido
+            FROM pos_faltantes f
+            LEFT JOIN pos_locales l ON f.id_local = l.id
+            LEFT JOIN empleados e ON f.id_empleado = e.id
+            WHERE 1=1
+        """
+        params = []
+        if id_local: q += " AND f.id_local=%s"; params.append(id_local)
+        if estado: q += " AND f.estado=%s"; params.append(estado)
+        q += " ORDER BY f.fecha DESC"
+        cur.execute(q, tuple(params))
+        return fetchall_dict(cur)
+    finally:
+        liberar_conexion(conn)
+
+@app.post("/api/pos/faltantes")
+def pos_faltantes_crear(f: FaltanteCreate):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        cur.execute("INSERT INTO pos_faltantes (id_local, descripcion, cantidad, id_empleado) VALUES (%s,%s,%s,%s) RETURNING id",
+                    (f.id_local, f.descripcion, f.cantidad, f.id_empleado))
+        fid = cur.fetchone()[0]
+        conn.commit()
+        return {"id": fid}
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
+@app.put("/api/pos/faltantes/{id}/resolver")
+def pos_faltantes_resolver(id: int):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        cur.execute("UPDATE pos_faltantes SET estado='resuelto' WHERE id=%s", (id,))
+        conn.commit()
+        return {"status": "ok"}
+    finally:
+        liberar_conexion(conn)
+
+@app.delete("/api/pos/faltantes/{id}")
+def pos_faltantes_eliminar(id: int):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM pos_faltantes WHERE id=%s", (id,))
+        conn.commit()
+        return {"status": "ok"}
+    finally:
+        liberar_conexion(conn)
+
+# ---- GASTOS POR LOCAL (cajero carga -> pendiente -> admin aprueba) ----
+class GastoLocalCreate(BaseModel):
+    id_local: int
+    concepto: str
+    monto: float
+    metodo: str = "Efectivo"
+    id_empleado: Optional[int] = None
+    notas: Optional[str] = None
+
+@app.post("/api/pos/gastos")
+def pos_gasto_crear(g: GastoLocalCreate):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO gastos (concepto, monto, metodo, id_empleado, notas, id_local, estado)
+            VALUES (%s,%s,%s,%s,%s,%s,'pendiente') RETURNING id
+        """, (g.concepto, g.monto, g.metodo, g.id_empleado, g.notas, g.id_local))
+        gid = cur.fetchone()[0]
+        conn.commit()
+        return {"id": gid}
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
+@app.get("/api/locales/gastos")
+def locales_gastos(id_local: Optional[int] = None, estado: Optional[str] = None):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        q = """
+            SELECT g.id, g.concepto, g.monto, g.metodo, g.fecha::text, g.notas,
+                   COALESCE(g.estado,'aprobado') AS estado, g.id_local, l.nombre AS local,
+                   e.nombre AS empleado_nombre, e.apellido AS empleado_apellido
+            FROM gastos g
+            LEFT JOIN pos_locales l ON g.id_local = l.id
+            LEFT JOIN empleados e ON g.id_empleado = e.id
+            WHERE COALESCE(g.activo,true)=true AND g.id_local IS NOT NULL
+        """
+        params = []
+        if id_local: q += " AND g.id_local=%s"; params.append(id_local)
+        if estado: q += " AND COALESCE(g.estado,'aprobado')=%s"; params.append(estado)
+        q += " ORDER BY g.fecha DESC, g.id DESC"
+        cur.execute(q, tuple(params))
+        return fetchall_dict(cur)
+    finally:
+        liberar_conexion(conn)
+
+@app.put("/api/locales/gastos/{id}/aprobar")
+def locales_gasto_aprobar(id: int):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        cur.execute("UPDATE gastos SET estado='aprobado' WHERE id=%s", (id,))
+        conn.commit()
+        return {"status": "ok"}
+    finally:
+        liberar_conexion(conn)
+
+@app.put("/api/locales/gastos/{id}/rechazar")
+def locales_gasto_rechazar(id: int):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        cur.execute("UPDATE gastos SET estado='rechazado', activo=false WHERE id=%s", (id,))
+        conn.commit()
+        return {"status": "ok"}
+    finally:
+        liberar_conexion(conn)
+
+# ---- RESUMEN GENERAL DE LOCALES (para las tarjetas del panel) ----
+@app.get("/api/locales/resumen")
+def locales_resumen():
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("SELECT id, nombre, direccion FROM pos_locales WHERE COALESCE(activo,true)=true ORDER BY nombre")
+        locales = fetchall_dict(cur)
+        salida = []
+        for loc in locales:
+            lid = loc['id']
+            # Caja abierta?
+            cur.execute("SELECT id, monto_apertura, nombre_responsable, fecha_apertura::text FROM pos_cajas WHERE id_local=%s AND estado='abierta' ORDER BY fecha_apertura DESC LIMIT 1", (lid,))
+            caja = cur.fetchone()
+            caja_abierta = bool(caja)
+            efectivo_en_caja = 0
+            id_caja = None
+            responsable = None
+            if caja:
+                id_caja = caja['id']
+                responsable = caja['nombre_responsable']
+                cur.execute("SELECT COALESCE(SUM(CASE WHEN metodo_pago='Efectivo' THEN total ELSE 0 END),0) AS ef FROM pos_ventas WHERE id_caja=%s", (id_caja,))
+                ef = cur.fetchone()['ef']
+                efectivo_en_caja = float(caja['monto_apertura'] or 0) + float(ef or 0)
+            # Ventas de hoy
+            cur.execute("""SELECT COALESCE(SUM(total),0) AS total, COUNT(*) AS tickets
+                           FROM pos_ventas WHERE id_local=%s AND fecha::date = CURRENT_DATE""", (lid,))
+            hoy = cur.fetchone()
+            # Ventas del mes
+            cur.execute("""SELECT COALESCE(SUM(total),0) AS total, COUNT(*) AS tickets
+                           FROM pos_ventas WHERE id_local=%s AND EXTRACT(YEAR FROM fecha)=EXTRACT(YEAR FROM CURRENT_DATE)
+                           AND EXTRACT(MONTH FROM fecha)=EXTRACT(MONTH FROM CURRENT_DATE)""", (lid,))
+            mes = cur.fetchone()
+            # Faltantes pendientes
+            cur.execute("SELECT COUNT(*) AS c FROM pos_faltantes WHERE id_local=%s AND estado='pendiente'", (lid,))
+            faltantes = cur.fetchone()['c']
+            # Gastos pendientes de aprobar
+            cur.execute("SELECT COUNT(*) AS c FROM gastos WHERE id_local=%s AND COALESCE(estado,'aprobado')='pendiente' AND COALESCE(activo,true)=true", (lid,))
+            gastos_pend = cur.fetchone()['c']
+            # Productos con stock bajo
+            cur.execute("SELECT COUNT(*) AS c FROM pos_productos WHERE id_local=%s AND COALESCE(activo,true)=true AND COALESCE(stock_alerta,0)>0 AND COALESCE(stock,0)<=COALESCE(stock_alerta,0)", (lid,))
+            stock_bajo = cur.fetchone()['c']
+            salida.append({
+                "id": lid, "nombre": loc['nombre'], "direccion": loc['direccion'],
+                "caja_abierta": caja_abierta, "id_caja": id_caja, "responsable": responsable,
+                "efectivo_en_caja": efectivo_en_caja,
+                "ventas_hoy": float(hoy['total'] or 0), "tickets_hoy": hoy['tickets'],
+                "ventas_mes": float(mes['total'] or 0), "tickets_mes": mes['tickets'],
+                "faltantes_pendientes": faltantes, "gastos_pendientes": gastos_pend, "stock_bajo": stock_bajo
+            })
+        return salida
+    finally:
+        liberar_conexion(conn)
+
+# ---- DETALLE DE UN LOCAL: ventas con su detalle + más vendidos ----
+@app.get("/api/locales/{id_local}/ventas")
+def locales_ventas(id_local: int, desde: Optional[str] = None, hasta: Optional[str] = None):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        q = "SELECT id, metodo_pago, total, fecha::text FROM pos_ventas WHERE id_local=%s"
+        params = [id_local]
+        if desde: q += " AND fecha::date >= %s"; params.append(desde)
+        if hasta: q += " AND fecha::date <= %s"; params.append(hasta)
+        q += " ORDER BY fecha DESC LIMIT 300"
+        cur.execute(q, tuple(params))
+        ventas = fetchall_dict(cur)
+        for v in ventas:
+            cur.execute("SELECT nombre_producto, cantidad, precio_unitario FROM pos_detalle_ventas WHERE id_venta=%s", (v['id'],))
+            v['detalle'] = fetchall_dict(cur)
+        return ventas
+    finally:
+        liberar_conexion(conn)
+
+@app.get("/api/locales/{id_local}/mas_vendidos")
+def locales_mas_vendidos(id_local: int, desde: Optional[str] = None, hasta: Optional[str] = None):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        q = """
+            SELECT d.nombre_producto, SUM(d.cantidad) AS unidades, SUM(d.cantidad*d.precio_unitario) AS total
+            FROM pos_detalle_ventas d JOIN pos_ventas v ON d.id_venta=v.id
+            WHERE v.id_local=%s
+        """
+        params = [id_local]
+        if desde: q += " AND v.fecha::date >= %s"; params.append(desde)
+        if hasta: q += " AND v.fecha::date <= %s"; params.append(hasta)
+        q += " GROUP BY d.nombre_producto ORDER BY unidades DESC LIMIT 50"
+        cur.execute(q, tuple(params))
+        return fetchall_dict(cur)
+    finally:
+        liberar_conexion(conn)
+
+# ==============================================================================
 # RUTAS WEB (HTML)
 # ==============================================================================
 def serve_html(filename: str):
@@ -2502,6 +2763,11 @@ def route_pos_login():
 @app.get("/gastos")
 def route_gastos():
     return serve_html("gastos.html")
+
+
+@app.get("/locales")
+def route_locales():
+    return serve_html("locales.html")
 
 if __name__ == "__main__":
     import uvicorn
