@@ -213,6 +213,18 @@
         </div>
     </div>
 
+    <!-- MODAL SELECTOR DE VARIANTE -->
+    <div id="modal-variante" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
+        <div class="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-[380px] shadow-2xl">
+            <div class="flex justify-between items-center mb-1">
+                <h3 class="text-lg font-bold text-white">Elegí la presentación</h3>
+                <button onclick="cerrarModales()" class="text-gray-500 hover:text-white text-2xl leading-none">×</button>
+            </div>
+            <p id="variante-prod-nombre" class="text-neon text-sm font-bold mb-4"></p>
+            <div id="variante-opciones" class="space-y-2"></div>
+        </div>
+    </div>
+
     <!-- MODAL REPOSICIÓN -->
     <div id="modal-reposicion" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
         <div class="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-[480px] shadow-2xl max-h-[90vh] overflow-y-auto">
@@ -420,10 +432,42 @@
         }
 
         function agregarAlCarrito(p) {
-            var ex = carrito.find(function(i){ return i.id === p.id; });
+            // Si tiene variantes, abrir selector
+            if (p.variantes && p.variantes.length) {
+                abrirSelectorVariante(p);
+                return;
+            }
+            agregarItem(p.id, p.nombre, parseFloat(p.precio)||0, 1);
+        }
+
+        // clave única por producto+variante para no mezclar líneas
+        function agregarItem(idProd, nombre, precio, factor, variante) {
+            var clave = idProd + '|' + (variante || '');
+            var ex = carrito.find(function(i){ return i.clave === clave; });
             if (ex) ex.cantidad++;
-            else carrito.push({ id: p.id, nombre: p.nombre, precio: parseFloat(p.precio)||0, cantidad: 1 });
+            else carrito.push({ clave: clave, id: idProd, nombre: nombre + (variante ? ' (' + variante + ')' : ''), precio: precio, cantidad: 1, factor: factor || 1 });
             renderCarrito();
+        }
+
+        var prodVarianteActual = null;
+        function abrirSelectorVariante(p) {
+            prodVarianteActual = p;
+            document.getElementById('variante-prod-nombre').textContent = p.nombre;
+            var cont = document.getElementById('variante-opciones');
+            cont.innerHTML = '';
+            p.variantes.forEach(function(v){
+                var precio = parseFloat(v.precio)||0;
+                var factor = parseFloat(v.factor)||1;
+                var btn = document.createElement('button');
+                btn.className = 'w-full flex justify-between items-center bg-black border border-gray-700 hover:border-neon rounded-xl px-4 py-3 transition';
+                btn.innerHTML = '<span class="text-white font-bold">' + v.nombre + '</span><span class="text-neon font-bold">$ ' + precio.toLocaleString('es-AR') + '</span>';
+                btn.onclick = function(){
+                    agregarItem(p.id, p.nombre, precio, factor, v.nombre);
+                    cerrarModales();
+                };
+                cont.appendChild(btn);
+            });
+            document.getElementById('modal-variante').classList.replace('modal-oculto','modal-visible');
         }
 
         function renderCarrito() {
@@ -499,7 +543,7 @@
             var btn = document.getElementById('btn-confirmar-venta');
             btn.disabled = true; btn.textContent = 'Procesando...';
             var total = totalCarrito();
-            var detalle = carrito.map(function(i){ return { nombre_producto: i.nombre, cantidad: i.cantidad, precio_unitario: i.precio, id_producto: i.id }; });
+            var detalle = carrito.map(function(i){ return { nombre_producto: i.nombre, cantidad: i.cantidad, precio_unitario: i.precio, id_producto: i.id, unidades_stock: i.cantidad * (i.factor || 1) }; });
             try {
                 var res = await fetch(API_URL + '/pos/ventas', {
                     method:'POST', headers:{'Content-Type':'application/json'},
@@ -765,12 +809,12 @@
         }
 
         // ── REPOSICIÓN ──
-        var repoCantidades = {};   // id_producto -> cantidad
+        var repoItems = [];   // [{id_producto, nombre, sabor, cantidad}]
 
         function abrirModalReposicion() {
             if (!localActual) { alert('Elegí un local primero.'); return; }
             if (!productosLocal.length) { alert('Este local no tiene productos cargados.'); return; }
-            repoCantidades = {};
+            repoItems = [];
             document.getElementById('repo-buscar').value = '';
             renderRepoProductos();
             actualizarRepoResumen();
@@ -784,20 +828,32 @@
             var lista = productosLocal.filter(function(p){ return !q || (p.nombre||'').toLowerCase().indexOf(q) !== -1; });
             if (!lista.length) { cont.innerHTML = '<p class="text-gray-600 text-sm text-center py-4">Sin resultados.</p>'; return; }
             lista.forEach(function(p){
-                var val = repoCantidades[p.id] || '';
                 var row = document.createElement('div');
-                row.className = 'flex items-center gap-3 bg-black border border-gray-800 rounded-lg px-3 py-2';
+                row.className = 'bg-black border border-gray-800 rounded-lg px-3 py-2';
+                var tieneSabores = p.sabores && p.sabores.length;
+                var selectSabor = '';
+                if (tieneSabores) {
+                    selectSabor = '<select class="repo-sabor bg-gray-900 border border-gray-700 text-white rounded p-1.5 text-sm flex-1 mr-2">' +
+                        p.sabores.map(function(s){ return '<option value="' + (s.nombre||'').replace(/"/g,'') + '">' + s.nombre + '</option>'; }).join('') +
+                        '</select>';
+                }
                 row.innerHTML =
-                    '<div class="flex-1 min-w-0">' +
-                        '<p class="text-white text-sm font-bold truncate">' + p.nombre + '</p>' +
-                        '<p class="text-gray-600 text-xs">Stock actual: ' + (parseFloat(p.stock)||0) + '</p>' +
+                    '<div class="flex items-center gap-2">' +
+                        '<div class="flex-1 min-w-0">' +
+                            '<p class="text-white text-sm font-bold truncate">' + p.nombre + (tieneSabores?' <span class="text-blue-300 text-xs">(por sabor)</span>':'') + '</p>' +
+                            '<p class="text-gray-600 text-xs">Stock actual: ' + (parseFloat(p.stock)||0) + '</p>' +
+                        '</div>' +
+                        '<input type="number" min="0" step="1" placeholder="Cant." class="repo-cant w-20 bg-gray-900 border border-gray-700 text-white rounded p-1.5 text-sm text-center">' +
+                        '<button class="repo-add text-xs bg-neon text-black font-bold px-3 py-1.5 rounded">+</button>' +
                     '</div>' +
-                    '<input type="number" min="0" step="1" placeholder="Cant." value="' + val + '" ' +
-                    'class="w-20 bg-gray-900 border border-gray-700 text-white rounded p-1.5 text-sm text-center repo-input" data-id="' + p.id + '" data-nombre="' + (p.nombre||'').replace(/"/g,'') + '">';
-                var inp = row.querySelector('.repo-input');
-                inp.oninput = function(){
-                    var c = parseFloat(this.value) || 0;
-                    if (c > 0) repoCantidades[p.id] = c; else delete repoCantidades[p.id];
+                    (tieneSabores ? '<div class="flex items-center mt-2">' + selectSabor + '</div>' : '');
+                var btn = row.querySelector('.repo-add');
+                btn.onclick = function(){
+                    var cant = parseFloat(row.querySelector('.repo-cant').value) || 0;
+                    if (cant <= 0) { alert('Poné una cantidad.'); return; }
+                    var sabor = tieneSabores ? row.querySelector('.repo-sabor').value : null;
+                    repoItems.push({ id_producto: p.id, nombre: p.nombre, sabor: sabor, cantidad: cant });
+                    row.querySelector('.repo-cant').value = '';
                     actualizarRepoResumen();
                 };
                 cont.appendChild(row);
@@ -805,22 +861,24 @@
         }
 
         function actualizarRepoResumen() {
-            var ids = Object.keys(repoCantidades);
             var res = document.getElementById('repo-resumen');
-            if (!ids.length) { res.textContent = 'Nada seleccionado.'; return; }
-            var partes = ids.map(function(id){
-                var prod = productosLocal.find(function(p){ return String(p.id) === String(id); });
-                return repoCantidades[id] + '× ' + (prod ? prod.nombre : '');
-            });
-            res.textContent = partes.join(', ');
+            if (!repoItems.length) { res.innerHTML = 'Nada agregado.'; return; }
+            res.innerHTML = repoItems.map(function(it, idx){
+                return '<span class="inline-block bg-gray-800 rounded px-2 py-1 mr-1 mb-1 text-xs">' +
+                    it.cantidad + '× ' + it.nombre + (it.sabor ? ' · ' + it.sabor : '') +
+                    ' <button onclick="quitarRepoItem(' + idx + ')" class="text-red-400 ml-1">×</button></span>';
+            }).join('');
+        }
+
+        function quitarRepoItem(idx) {
+            repoItems.splice(idx, 1);
+            actualizarRepoResumen();
         }
 
         async function enviarReposicion() {
-            var ids = Object.keys(repoCantidades);
-            if (!ids.length) { alert('Elegí al menos un producto con cantidad.'); return; }
-            var detalle = ids.map(function(id){
-                var prod = productosLocal.find(function(p){ return String(p.id) === String(id); });
-                return { id_producto: parseInt(id), nombre_producto: prod ? prod.nombre : '', cantidad: repoCantidades[id] };
+            if (!repoItems.length) { alert('Agregá al menos un producto.'); return; }
+            var detalle = repoItems.map(function(it){
+                return { id_producto: it.id_producto, nombre_producto: it.nombre, cantidad: it.cantidad, sabor: it.sabor };
             });
             var body = { id_local: localActual.id, id_empleado: (posUsuario ? posUsuario.id_empleado : null), detalle: detalle };
             try {
