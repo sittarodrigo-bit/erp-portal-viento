@@ -1985,6 +1985,56 @@ def precios_para_distribuidor(id_dist: int):
         liberar_conexion(conn)
 
 # ==============================================================================
+# IMPORTAR INSUMOS en lote
+# ==============================================================================
+class InsumoImportar(BaseModel):
+    nombre: str
+    unidad_medida: str = "unidad"
+    stock_minimo: float = 0.0
+    presentacion_compra: Optional[str] = None
+    cantidad_por_presentacion: float = 1.0
+    costo_por_bulto: float = 0.0
+    costo_unitario: float = 0.0
+
+class ImportarInsumos(BaseModel):
+    insumos: List[InsumoImportar]
+
+@app.post("/api/insumos/importar")
+def importar_insumos(data: ImportarInsumos):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT LOWER(TRIM(nombre)) FROM insumos WHERE COALESCE(activo,true)=true")
+        existentes = set(r[0] for r in cur.fetchall())
+        insertados = 0; salteados = 0; errores = []
+        for idx, it in enumerate(data.insumos, start=1):
+            nombre = (it.nombre or '').strip()
+            if not nombre:
+                salteados += 1; continue
+            if nombre.lower() in existentes:
+                salteados += 1; continue
+            try:
+                cur.execute("""
+                    INSERT INTO insumos (nombre, unidad_medida, stock_minimo, costo_unitario,
+                        presentacion_compra, cantidad_por_presentacion, costo_por_bulto)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s)
+                """, (nombre, it.unidad_medida or 'unidad', it.stock_minimo or 0, it.costo_unitario or 0,
+                      it.presentacion_compra, it.cantidad_por_presentacion or 1, it.costo_por_bulto or 0))
+                existentes.add(nombre.lower())
+                insertados += 1
+            except Exception as e:
+                conn.rollback()
+                errores.append({"fila": idx, "nombre": nombre, "error": str(e)})
+                continue
+        conn.commit()
+        return {"insertados": insertados, "salteados": salteados, "errores": errores}
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
+# ==============================================================================
 # RUTAS WEB (HTML)
 # ==============================================================================
 def serve_html(filename: str):
