@@ -31,7 +31,7 @@
                 <select id="sel-local" onchange="cambiarLocal()" class="bg-gray-900 border border-gray-700 text-white rounded-lg px-3 py-1.5 text-sm font-bold">
                     <option value="">— Elegí un local —</option>
                 </select>
-                <button onclick="abrirGestionLocales()" class="text-gray-500 hover:text-white text-xs border border-gray-700 rounded px-2 py-1.5" title="Administrar locales">⚙️</button>
+                <button id="btn-gestion-locales" onclick="abrirGestionLocales()" class="text-gray-500 hover:text-white text-xs border border-gray-700 rounded px-2 py-1.5" title="Administrar locales">⚙️</button>
             </div>
         </div>
         <div class="flex items-center gap-3">
@@ -47,7 +47,7 @@
             <p class="text-6xl mb-4">🏪</p>
             <p class="text-gray-400 text-lg mb-2">Elegí un local para empezar</p>
             <p class="text-gray-600 text-sm">Cada local tiene su propia caja, productos y ventas.</p>
-            <button onclick="abrirGestionLocales()" class="mt-6 bg-neon text-black font-bold px-6 py-2 rounded-lg hover:bg-yellow-300">+ Administrar locales</button>
+            <button id="btn-admin-locales-inicial" onclick="abrirGestionLocales()" class="mt-6 bg-neon text-black font-bold px-6 py-2 rounded-lg hover:bg-yellow-300">+ Administrar locales</button>
         </div>
     </div>
 
@@ -72,7 +72,8 @@
             <div class="p-4 border-b border-gray-800 flex items-center gap-3 shrink-0">
                 <input type="text" id="buscar-prod-pos" placeholder="🔍 Buscar producto..." oninput="renderProductos()"
                        class="flex-1 bg-black border border-gray-700 focus:border-neon text-white rounded-lg p-3 text-sm outline-none">
-                <button onclick="abrirGestionProductos()" class="bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white font-bold px-4 py-3 rounded-lg text-sm border border-gray-700">📦 Productos</button>
+                <button id="btn-gestion-productos" onclick="abrirGestionProductos()" class="bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white font-bold px-4 py-3 rounded-lg text-sm border border-gray-700">📦 Productos</button>
+                <button onclick="abrirModalReposicion()" class="bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white font-bold px-4 py-3 rounded-lg text-sm border border-gray-700">🛒 Pedir reposición</button>
                 <button onclick="abrirModalFaltante()" class="bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white font-bold px-4 py-3 rounded-lg text-sm border border-gray-700">⚠️ Falta algo</button>
                 <button onclick="abrirModalGastoPos()" class="bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white font-bold px-4 py-3 rounded-lg text-sm border border-gray-700">💸 Gasto</button>
             </div>
@@ -212,6 +213,25 @@
         </div>
     </div>
 
+    <!-- MODAL REPOSICIÓN -->
+    <div id="modal-reposicion" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
+        <div class="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-[480px] shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div class="flex justify-between items-center mb-2">
+                <h3 class="text-lg font-bold text-white">🛒 Pedir reposición</h3>
+                <button onclick="cerrarModales()" class="text-gray-500 hover:text-white text-2xl leading-none">×</button>
+            </div>
+            <p class="text-gray-500 text-xs mb-4">Elegí los productos del local y la cantidad que necesitás. Le llega al admin.</p>
+            <input type="text" id="repo-buscar" placeholder="🔍 Buscar producto..." oninput="renderRepoProductos()"
+                   class="w-full bg-black border border-gray-700 focus:border-neon text-white rounded-lg p-3 mb-3 text-sm outline-none">
+            <div id="repo-lista" class="space-y-1 mb-4 max-h-72 overflow-y-auto"></div>
+            <div class="bg-black border border-gray-800 rounded-lg p-3 mb-4">
+                <p class="text-xs text-gray-500 font-bold mb-1">A pedir:</p>
+                <p id="repo-resumen" class="text-gray-400 text-sm">Nada seleccionado.</p>
+            </div>
+            <button onclick="enviarReposicion()" class="w-full bg-neon text-black font-bold py-3 rounded-xl hover:bg-yellow-300">Enviar pedido al admin</button>
+        </div>
+    </div>
+
     <!-- MODAL FALTANTE -->
     <div id="modal-faltante" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
         <div class="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-[400px] shadow-2xl">
@@ -281,6 +301,14 @@
         async function init() {
             if (posUsuario) {
                 document.getElementById('pos-cajero').textContent = '👤 ' + posUsuario.nombre + ' ' + posUsuario.apellido;
+            }
+            // Solo el admin gestiona locales/productos desde el POS; el cajero no.
+            var esAdmin = posUsuario && String(posUsuario.rol || '').toLowerCase() === 'admin';
+            if (!esAdmin) {
+                ['btn-gestion-locales','btn-admin-locales-inicial','btn-gestion-productos'].forEach(function(id){
+                    var el = document.getElementById(id);
+                    if (el) el.style.display = 'none';
+                });
             }
             try { empresa = await fetch(API_URL + '/empresa').then(function(r){return r.json();}); } catch(e){ empresa = {}; }
             await cargarLocales();
@@ -734,6 +762,72 @@
             await fetch(API_URL + '/pos/productos/' + id, { method:'DELETE' });
             await renderProductosGestion();
             await cargarProductos();
+        }
+
+        // ── REPOSICIÓN ──
+        var repoCantidades = {};   // id_producto -> cantidad
+
+        function abrirModalReposicion() {
+            if (!localActual) { alert('Elegí un local primero.'); return; }
+            if (!productosLocal.length) { alert('Este local no tiene productos cargados.'); return; }
+            repoCantidades = {};
+            document.getElementById('repo-buscar').value = '';
+            renderRepoProductos();
+            actualizarRepoResumen();
+            document.getElementById('modal-reposicion').classList.replace('modal-oculto','modal-visible');
+        }
+
+        function renderRepoProductos() {
+            var q = (document.getElementById('repo-buscar').value || '').toLowerCase().trim();
+            var cont = document.getElementById('repo-lista');
+            cont.innerHTML = '';
+            var lista = productosLocal.filter(function(p){ return !q || (p.nombre||'').toLowerCase().indexOf(q) !== -1; });
+            if (!lista.length) { cont.innerHTML = '<p class="text-gray-600 text-sm text-center py-4">Sin resultados.</p>'; return; }
+            lista.forEach(function(p){
+                var val = repoCantidades[p.id] || '';
+                var row = document.createElement('div');
+                row.className = 'flex items-center gap-3 bg-black border border-gray-800 rounded-lg px-3 py-2';
+                row.innerHTML =
+                    '<div class="flex-1 min-w-0">' +
+                        '<p class="text-white text-sm font-bold truncate">' + p.nombre + '</p>' +
+                        '<p class="text-gray-600 text-xs">Stock actual: ' + (parseFloat(p.stock)||0) + '</p>' +
+                    '</div>' +
+                    '<input type="number" min="0" step="1" placeholder="Cant." value="' + val + '" ' +
+                    'class="w-20 bg-gray-900 border border-gray-700 text-white rounded p-1.5 text-sm text-center repo-input" data-id="' + p.id + '" data-nombre="' + (p.nombre||'').replace(/"/g,'') + '">';
+                var inp = row.querySelector('.repo-input');
+                inp.oninput = function(){
+                    var c = parseFloat(this.value) || 0;
+                    if (c > 0) repoCantidades[p.id] = c; else delete repoCantidades[p.id];
+                    actualizarRepoResumen();
+                };
+                cont.appendChild(row);
+            });
+        }
+
+        function actualizarRepoResumen() {
+            var ids = Object.keys(repoCantidades);
+            var res = document.getElementById('repo-resumen');
+            if (!ids.length) { res.textContent = 'Nada seleccionado.'; return; }
+            var partes = ids.map(function(id){
+                var prod = productosLocal.find(function(p){ return String(p.id) === String(id); });
+                return repoCantidades[id] + '× ' + (prod ? prod.nombre : '');
+            });
+            res.textContent = partes.join(', ');
+        }
+
+        async function enviarReposicion() {
+            var ids = Object.keys(repoCantidades);
+            if (!ids.length) { alert('Elegí al menos un producto con cantidad.'); return; }
+            var detalle = ids.map(function(id){
+                var prod = productosLocal.find(function(p){ return String(p.id) === String(id); });
+                return { id_producto: parseInt(id), nombre_producto: prod ? prod.nombre : '', cantidad: repoCantidades[id] };
+            });
+            var body = { id_local: localActual.id, id_empleado: (posUsuario ? posUsuario.id_empleado : null), detalle: detalle };
+            try {
+                var res = await fetch(API_URL + '/pos/reposiciones', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+                if (res.ok) { cerrarModales(); alert('✅ Pedido de reposición enviado al admin.'); }
+                else { alert('No se pudo enviar.'); }
+            } catch(e) { alert('Error de conexión.'); }
         }
 
         // ── FALTANTES ──
