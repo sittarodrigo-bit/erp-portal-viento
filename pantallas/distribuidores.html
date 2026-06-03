@@ -81,7 +81,7 @@
         </div>
 
         <div id="panel-historial" class="hidden flex-1 overflow-y-auto p-8">
-            <div class="flex gap-4 mb-5">
+            <div class="flex gap-4 mb-3">
                 <select id="hist-distribuidor" class="bg-gray-900 border border-gray-700 text-white rounded p-2 text-sm flex-1">
                     <option value="">Todos los distribuidores</option>
                 </select>
@@ -93,6 +93,12 @@
                     <option value="Cancelado">Cancelado</option>
                 </select>
                 <button onclick="cargarHistorialPedidos()" class="bg-neon text-black font-bold px-4 py-2 rounded text-sm hover:bg-yellow-300">Filtrar</button>
+            </div>
+            <div class="mb-5 flex items-center gap-3">
+                <input type="text" id="buscar-pedido" placeholder="🔍 Buscar por N° de pedido o distribuidor..."
+                       class="flex-1 bg-black border border-neon text-white rounded-lg p-3 text-sm outline-none"
+                       oninput="filtrarPedidos()">
+                <span id="contador-pedidos" class="text-gray-500 text-xs whitespace-nowrap"></span>
             </div>
             <div class="bg-black rounded-xl border border-gray-800 overflow-hidden">
                 <table class="w-full text-left">
@@ -168,6 +174,9 @@
                     <h3 class="text-white font-bold text-lg">📊 Deudores <span class="text-gray-500 text-sm font-normal">(ordenados de mayor a menor deuda)</span></h3>
                     <span id="deudores-total" class="text-red-400 font-bold text-sm"></span>
                 </div>
+                <input type="text" id="buscar-deudor" placeholder="🔍 Buscar deudor por nombre..."
+                       class="w-full bg-black border border-neon text-white rounded-lg p-3 text-sm outline-none mb-4"
+                       oninput="filtrarDeudores()">
                 <div id="lista-deudores" class="space-y-2">
                     <p class="text-gray-500 text-sm text-center py-8">Cargando deudores...</p>
                 </div>
@@ -547,12 +556,14 @@
             var lista = await fetch(url).then(function(r) { return r.json(); });
             var tabla = document.getElementById('tabla-historial');
             tabla.innerHTML = '';
-            if (!lista.length) { tabla.innerHTML = '<tr><td colspan="6" class="p-4 text-center text-gray-500">Sin pedidos.</td></tr>'; return; }
+            if (!lista.length) { tabla.innerHTML = '<tr><td colspan="6" class="p-4 text-center text-gray-500">Sin pedidos.</td></tr>'; document.getElementById('contador-pedidos').textContent = ''; return; }
             lista.forEach(function(p) {
                 var dt    = new Date(p.fecha).toLocaleString('es-AR', {dateStyle:'short', timeStyle:'short'});
                 var color = estadoColores[p.estado] || 'bg-gray-800 text-gray-400';
                 var tr = document.createElement('tr');
-                tr.className = 'hover:bg-gray-900 transition';
+                tr.className = 'fila-pedido hover:bg-gray-900 transition';
+                var buscable = ('#' + String(p.id).padStart(4,'0') + ' ' + String(p.id) + ' ' + (p.distribuidor||'') + ' ' + (p.estado||'')).toLowerCase();
+                tr.setAttribute('data-buscar', buscable.replace(/"/g,''));
                 tr.innerHTML =
                     '<td class="p-4 font-bold text-neon">#' + String(p.id).padStart(4,'0') + '</td>' +
                     '<td class="p-4 font-bold text-white">' + p.distribuidor + '</td>' +
@@ -563,6 +574,23 @@
                 tr.querySelector('button').onclick = function() { verDetallePedido(p.id, p.distribuidor, p.total, p.fecha); };
                 tabla.appendChild(tr);
             });
+            filtrarPedidos();
+        }
+
+        function filtrarPedidos() {
+            var input = document.getElementById('buscar-pedido');
+            if (!input) return;
+            var q = input.value.toLowerCase().trim();
+            var filas = document.querySelectorAll('#tabla-historial > .fila-pedido');
+            var visibles = 0;
+            filas.forEach(function(f) {
+                var txt = f.getAttribute('data-buscar') || '';
+                var match = !q || txt.indexOf(q) !== -1;
+                f.style.display = match ? '' : 'none';
+                if (match) visibles++;
+            });
+            var cont = document.getElementById('contador-pedidos');
+            if (cont) cont.textContent = q ? (visibles + ' de ' + filas.length + ' pedidos') : (filas.length + ' pedidos');
         }
 
         function verPedidosDistribuidor(id, nombre) {
@@ -803,7 +831,8 @@
                 var limite = parseFloat(d.limite_credito || 0);
                 var excede = limite > 0 && saldo > limite;
                 var div = document.createElement('div');
-                div.className = 'cursor-pointer bg-black border border-gray-800 hover:border-red-700 rounded-lg px-4 py-3 transition';
+                div.className = 'fila-deudor cursor-pointer bg-black border border-gray-800 hover:border-red-700 rounded-lg px-4 py-3 transition';
+                div.setAttribute('data-buscar', (d.razon_social||'').toLowerCase().replace(/"/g,''));
                 div.innerHTML =
                     '<div class="flex items-center justify-between mb-1">' +
                         '<div class="flex items-center gap-2">' +
@@ -818,6 +847,18 @@
                     '</div>';
                 div.onclick = function() { abrirDeudor(d.id, d.razon_social); };
                 cont.appendChild(div);
+            });
+            filtrarDeudores();
+        }
+
+        function filtrarDeudores() {
+            var input = document.getElementById('buscar-deudor');
+            if (!input) return;
+            var q = input.value.toLowerCase().trim();
+            var filas = document.querySelectorAll('#lista-deudores > .fila-deudor');
+            filas.forEach(function(f) {
+                var txt = f.getAttribute('data-buscar') || '';
+                f.style.display = (!q || txt.indexOf(q) !== -1) ? '' : 'none';
             });
         }
 
