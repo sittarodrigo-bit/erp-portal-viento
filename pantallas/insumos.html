@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <title>Insumos | Portal del Viento</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <style>
         .text-neon { color: #e4fc74; }
         .bg-neon { background-color: #e4fc74; }
@@ -36,13 +37,22 @@
     <main class="flex-1 flex flex-col overflow-hidden">
         <header class="bg-gray-900 border-b border-gray-800 py-4 px-8 flex justify-between items-center shrink-0">
             <h2 class="text-xl font-bold text-white">Gestión de Insumos</h2>
-            <div class="flex gap-3">
+            <div class="flex gap-2">
+                <button onclick="document.getElementById('input-importar-ins').click()" class="border border-gray-600 text-gray-300 hover:text-white font-bold py-2 px-4 rounded-lg text-sm transition">📥 Importar</button>
+                <button onclick="exportarInsumos()" class="border border-gray-600 text-gray-300 hover:text-white font-bold py-2 px-4 rounded-lg text-sm transition">📤 Exportar</button>
                 <button onclick="abrirModalOrdenPedido()" class="border border-gray-600 text-gray-300 hover:text-white font-bold py-2 px-4 rounded-lg text-sm transition">📦 Orden de Pedido</button>
                 <button onclick="abrirModalNuevo()" class="bg-neon hover:bg-yellow-300 text-black font-bold py-2 px-6 rounded-lg transition">+ Nuevo Insumo</button>
+                <input type="file" id="input-importar-ins" accept=".xlsx,.xls,.csv" style="display:none" onchange="importarInsumos(event)">
             </div>
         </header>
 
         <div class="flex-1 overflow-y-auto p-8">
+            <div class="mb-4 flex items-center gap-3">
+                <input type="text" id="buscar-insumo" placeholder="🔍 Buscar insumo por nombre, presentación o proveedor..."
+                       class="flex-1 bg-black border border-neon text-white rounded-lg p-3 text-sm outline-none"
+                       oninput="filtrarInsumos()">
+                <span id="contador-insumos" class="text-gray-500 text-xs whitespace-nowrap"></span>
+            </div>
             <div class="bg-black rounded-xl border border-gray-800 overflow-hidden">
                 <table class="w-full text-left">
                     <thead class="bg-gray-950 text-xs text-gray-400 uppercase">
@@ -267,6 +277,7 @@
             tabla.innerHTML = '';
             if (!insumos.length) {
                 tabla.innerHTML = '<tr><td colspan="9" class="p-4 text-center text-gray-500">Sin insumos cargados.</td></tr>';
+                document.getElementById('contador-insumos').textContent = '';
                 return;
             }
             insumos.forEach(i => {
@@ -277,8 +288,9 @@
                 const presBadge = i.presentacion_compra
                     ? `<span class="text-xs bg-gray-800 border border-gray-700 px-2 py-0.5 rounded">${i.presentacion_compra}</span>`
                     : '<span class="text-gray-600 text-xs">—</span>';
+                const _buscable = [i.nombre, i.presentacion_compra, (prov?prov.razon_social:''), i.unidad].filter(Boolean).join(' ').toLowerCase().replace(/"/g,'');
                 tabla.innerHTML += `
-                    <tr class="hover:bg-gray-900 transition">
+                    <tr class="fila-insumo hover:bg-gray-900 transition" data-buscar="${_buscable}">
                         <td class="p-4 font-bold text-white">${i.nombre}</td>
                         <td class="p-4 text-gray-400 text-xs font-bold">${i.unidad}</td>
                         <td class="p-4">${presBadge}</td>
@@ -309,6 +321,87 @@
                         </td>
                     </tr>`;
             });
+            filtrarInsumos();
+        }
+
+        function filtrarInsumos() {
+            const input = document.getElementById('buscar-insumo');
+            if (!input) return;
+            const q = input.value.toLowerCase().trim();
+            const filas = document.querySelectorAll('#tabla-insumos > .fila-insumo');
+            let visibles = 0;
+            filas.forEach(f => {
+                const txt = f.getAttribute('data-buscar') || '';
+                const match = !q || txt.indexOf(q) !== -1;
+                f.style.display = match ? '' : 'none';
+                if (match) visibles++;
+            });
+            const cont = document.getElementById('contador-insumos');
+            if (cont) cont.textContent = q ? `${visibles} de ${filas.length} insumos` : `${filas.length} insumos`;
+        }
+
+        function exportarInsumos() {
+            if (!insumos.length) { alert('No hay insumos para exportar.'); return; }
+            const filas = insumos.map(i => ({
+                'Nombre del Insumo *': i.nombre || '',
+                'Unidad Base (g/kg/ml/L/unidad)': i.unidad || '',
+                'Stock Mínimo': parseFloat(i.minimo) || 0,
+                'Presentación Compra (ej: Bolsa 25kg)': i.presentacion_compra || '',
+                'Cantidad por Presentación': parseFloat(i.cantidad_por_presentacion) || 0,
+                'Costo por Bulto ($)': parseFloat(i.costo_por_bulto) || 0,
+                'Costo Unitario ($)': parseFloat(i.costo_unitario || i.costo) || 0
+            }));
+            const ws = XLSX.utils.json_to_sheet(filas);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'Insumos');
+            XLSX.writeFile(wb, 'insumos_portal_del_viento_' + new Date().toISOString().split('T')[0] + '.xlsx');
+        }
+
+        function importarInsumos(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = async function(e) {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const wb = XLSX.read(data, { type: 'array' });
+                    const hoja = wb.SheetNames.indexOf('Insumos') >= 0 ? 'Insumos' : wb.SheetNames[0];
+                    const rows = XLSX.utils.sheet_to_json(wb.Sheets[hoja], { defval: '' });
+                    function val(row, claves) {
+                        for (let i=0;i<claves.length;i++){ if (row[claves[i]] !== undefined && String(row[claves[i]]).trim() !== '') return String(row[claves[i]]).trim(); }
+                        return '';
+                    }
+                    const lista = rows.map(r => {
+                        const bulto = parseFloat(val(r,['Costo por Bulto ($)','Costo por Bulto','costo_por_bulto'])) || 0;
+                        const cantPres = parseFloat(val(r,['Cantidad por Presentación','Cantidad por Presentacion','cantidad_por_presentacion'])) || 1;
+                        let costoUnit = parseFloat(val(r,['Costo Unitario ($)','Costo Unitario','costo_unitario'])) || 0;
+                        if (!costoUnit && bulto > 0 && cantPres > 0) costoUnit = bulto / cantPres;
+                        return {
+                            nombre: val(r,['Nombre del Insumo *','Nombre del Insumo','nombre','Nombre']),
+                            unidad_medida: val(r,['Unidad Base (g/kg/ml/L/unidad)','Unidad Base','unidad_medida','Unidad']) || 'unidad',
+                            stock_minimo: parseFloat(val(r,['Stock Mínimo','Stock Minimo','stock_minimo'])) || 0,
+                            presentacion_compra: val(r,['Presentación Compra (ej: Bolsa 25kg)','Presentación Compra','Presentacion Compra','presentacion_compra']) || null,
+                            cantidad_por_presentacion: cantPres,
+                            costo_por_bulto: bulto,
+                            costo_unitario: costoUnit
+                        };
+                    }).filter(x => x.nombre);
+                    if (!lista.length) { alert('No se encontraron insumos válidos. Revisá los títulos de las columnas.'); return; }
+                    if (!confirm('Se van a importar ' + lista.length + ' insumos. ¿Continuar?')) { event.target.value=''; return; }
+                    const res = await fetch(`${API_URL}/insumos/importar`, {
+                        method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ insumos: lista })
+                    });
+                    const r = await res.json();
+                    if (res.ok) {
+                        let msg = '✅ Importación lista.\n\nNuevos cargados: ' + r.insertados + '\nSalteados (ya existían o sin nombre): ' + r.salteados;
+                        if (r.errores && r.errores.length) msg += '\nCon error: ' + r.errores.length;
+                        alert(msg);
+                        await cargarDatos();
+                    } else { alert('❌ Error: ' + (r.detail || 'no se pudo importar')); }
+                } catch(err) { alert('❌ No se pudo leer el archivo. ¿Es un Excel válido?'); }
+                finally { event.target.value = ''; }
+            };
+            reader.readAsArrayBuffer(file);
         }
 
         // ── NUEVO / EDITAR INSUMO ────────────────────────────────
