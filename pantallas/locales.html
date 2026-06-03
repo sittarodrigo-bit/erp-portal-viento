@@ -60,6 +60,7 @@
                 <button onclick="cambiarTab('ventas')" id="tab-ventas" class="py-3 text-sm font-bold tab-activa">🧾 Ventas</button>
                 <button onclick="cambiarTab('productos')" id="tab-productos" class="py-3 text-sm font-bold text-gray-400 hover:text-white">📦 Productos y Stock</button>
                 <button onclick="cambiarTab('faltantes')" id="tab-faltantes" class="py-3 text-sm font-bold text-gray-400 hover:text-white">⚠️ Faltantes</button>
+                <button onclick="cambiarTab('reposiciones')" id="tab-reposiciones" class="py-3 text-sm font-bold text-gray-400 hover:text-white">🛒 Reposiciones</button>
                 <button onclick="cambiarTab('gastos')" id="tab-gastos" class="py-3 text-sm font-bold text-gray-400 hover:text-white">💸 Gastos</button>
             </div>
             <div class="flex-1 overflow-y-auto p-8">
@@ -88,6 +89,11 @@
                 <!-- FALTANTES -->
                 <div id="panel-faltantes" class="hidden">
                     <div id="lista-faltantes" class="space-y-2"></div>
+                </div>
+                <!-- REPOSICIONES -->
+                <div id="panel-reposiciones" class="hidden">
+                    <p class="text-gray-400 text-sm mb-4">Pedidos de reposición del cajero. Al marcar "Reponer", se suma el stock pedido a cada producto.</p>
+                    <div id="lista-reposiciones" class="space-y-2"></div>
                 </div>
                 <!-- GASTOS -->
                 <div id="panel-gastos-local" class="hidden">
@@ -174,6 +180,7 @@
                     : `<span class="text-xs bg-gray-800 text-gray-500 px-2 py-1 rounded font-bold">🔴 Caja cerrada</span>`;
                 let alertas = '';
                 if (l.faltantes_pendientes) alertas += `<span class="text-xs bg-yellow-900/40 text-yellow-400 px-2 py-0.5 rounded">⚠️ ${l.faltantes_pendientes} faltantes</span> `;
+                if (l.reposiciones_pendientes) alertas += `<span class="text-xs bg-blue-900/40 text-blue-300 px-2 py-0.5 rounded">🛒 ${l.reposiciones_pendientes} reposiciones</span> `;
                 if (l.gastos_pendientes) alertas += `<span class="text-xs bg-orange-900/40 text-orange-400 px-2 py-0.5 rounded">💸 ${l.gastos_pendientes} gastos a aprobar</span> `;
                 if (l.stock_bajo) alertas += `<span class="text-xs bg-red-900/40 text-red-400 px-2 py-0.5 rounded">📦 ${l.stock_bajo} stock bajo</span> `;
                 const card = document.createElement('div');
@@ -239,17 +246,19 @@
         }
 
         function cambiarTab(tab) {
-            ['ventas','productos','faltantes','gastos'].forEach(t => {
+            ['ventas','productos','faltantes','reposiciones','gastos'].forEach(t => {
                 const p = document.getElementById('panel-' + (t==='gastos'?'gastos-local':t));
                 if (p) p.classList.toggle('hidden', t!==tab);
             });
             document.getElementById('tab-ventas').className = tab==='ventas' ? 'py-3 text-sm font-bold tab-activa' : 'py-3 text-sm font-bold text-gray-400 hover:text-white';
             document.getElementById('tab-productos').className = tab==='productos' ? 'py-3 text-sm font-bold tab-activa' : 'py-3 text-sm font-bold text-gray-400 hover:text-white';
             document.getElementById('tab-faltantes').className = tab==='faltantes' ? 'py-3 text-sm font-bold tab-activa' : 'py-3 text-sm font-bold text-gray-400 hover:text-white';
+            document.getElementById('tab-reposiciones').className = tab==='reposiciones' ? 'py-3 text-sm font-bold tab-activa' : 'py-3 text-sm font-bold text-gray-400 hover:text-white';
             document.getElementById('tab-gastos').className = tab==='gastos' ? 'py-3 text-sm font-bold tab-activa' : 'py-3 text-sm font-bold text-gray-400 hover:text-white';
             if (tab==='ventas') cargarVentas();
             if (tab==='productos') cargarProductos();
             if (tab==='faltantes') cargarFaltantes();
+            if (tab==='reposiciones') cargarReposiciones();
             if (tab==='gastos') cargarGastosLocal();
         }
 
@@ -397,6 +406,48 @@
                     </div>`;
                 const ok = div.querySelector('.btn-ok'); if (ok) ok.onclick = async () => { await fetch(`${API_URL}/pos/faltantes/${f.id}/resolver`,{method:'PUT'}); cargarFaltantes(); };
                 div.querySelector('.btn-del').onclick = async () => { if(confirm('¿Borrar este faltante?')){ await fetch(`${API_URL}/pos/faltantes/${f.id}`,{method:'DELETE'}); cargarFaltantes(); } };
+                cont.appendChild(div);
+            });
+        }
+
+        // ── REPOSICIONES ──
+        async function cargarReposiciones() {
+            const lista = await fetch(`${API_URL}/locales/reposiciones?id_local=${localActual.id}`).then(r=>r.json()).catch(()=>[]);
+            const cont = document.getElementById('lista-reposiciones');
+            cont.innerHTML = '';
+            if (!lista.length) { cont.innerHTML = '<p class="text-gray-600 text-sm text-center py-8">No hay pedidos de reposición.</p>'; return; }
+            lista.forEach(r => {
+                const dt = r.fecha ? new Date(r.fecha.replace(' ','T')).toLocaleString('es-AR',{dateStyle:'short',timeStyle:'short'}) : '';
+                const repuesto = r.estado==='repuesto';
+                const emp = r.empleado_apellido ? `${r.empleado_apellido}, ${r.empleado_nombre}` : '';
+                const items = (r.detalle||[]).map(d=>`${d.cantidad}× ${d.nombre_producto}`).join(', ');
+                const div = document.createElement('div');
+                div.className = 'rounded-lg px-4 py-3 border ' + (repuesto?'bg-black border-gray-800 opacity-60':'bg-yellow-900/10 border-yellow-800');
+                div.innerHTML = `
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="font-bold text-white">Pedido #${String(r.id).padStart(3,'0')} ${repuesto?'<span class="text-green-400 text-xs">· ✅ repuesto</span>':'<span class="text-yellow-400 text-xs">· ⏳ pendiente</span>'}</p>
+                            <p class="text-gray-500 text-xs">${dt} ${emp?'· '+emp:''}</p>
+                        </div>
+                        <div class="flex gap-1">
+                            ${repuesto?'':'<button class="text-xs bg-green-800 hover:bg-green-700 text-white px-3 py-1.5 rounded font-bold btn-rep">Reponer (sumar stock)</button>'}
+                            <button class="text-xs bg-red-900/50 hover:bg-red-700 text-red-400 hover:text-white px-2 py-1.5 rounded btn-del">✕</button>
+                        </div>
+                    </div>
+                    <p class="text-gray-400 text-sm mt-2">${items}</p>`;
+                const rep = div.querySelector('.btn-rep');
+                if (rep) rep.onclick = async () => {
+                    if (confirm('¿Marcar como repuesto? Se sumará el stock pedido a cada producto del local.')) {
+                        await fetch(`${API_URL}/locales/reposiciones/${r.id}/reponer`, {method:'PUT'});
+                        cargarReposiciones();
+                    }
+                };
+                div.querySelector('.btn-del').onclick = async () => {
+                    if (confirm('¿Borrar este pedido de reposición?')) {
+                        await fetch(`${API_URL}/locales/reposiciones/${r.id}`, {method:'DELETE'});
+                        cargarReposiciones();
+                    }
+                };
                 cont.appendChild(div);
             });
         }
