@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <title>Proveedores | Portal del Viento</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <style>
         .text-neon { color: #e4fc74; }
         .bg-neon { background-color: #e4fc74; }
@@ -15,7 +16,6 @@
 </head>
 <body class="bg-gray-950 text-gray-200 font-sans h-screen flex">
 
-    <!-- Sidebar -->
     <aside class="w-64 bg-black border-r border-gray-800 flex flex-col shrink-0">
         <div class="p-6 border-b border-gray-800 text-center">
             <h1 class="text-neon font-bold text-lg tracking-widest uppercase leading-tight">Portal del Viento</h1>
@@ -35,25 +35,31 @@
         <div id="usuario-info" class="p-4 border-t border-gray-800 text-xs text-gray-500 text-center"></div>
     </aside>
 
-    <!-- Main -->
     <main class="flex-1 flex flex-col overflow-hidden">
         <header class="bg-gray-900 border-b border-gray-800 py-4 px-8 flex justify-between items-center shrink-0">
             <h2 class="text-xl font-bold text-white">Gestión de Proveedores</h2>
-            <div class="flex gap-3">
+            <div class="flex gap-2">
+                <button onclick="document.getElementById('input-importar-prov').click()" class="border border-gray-600 text-gray-300 hover:text-white font-bold py-2 px-4 rounded-lg text-sm transition">📥 Importar</button>
+                <button onclick="exportarProveedores()" class="border border-gray-600 text-gray-300 hover:text-white font-bold py-2 px-4 rounded-lg text-sm transition">📤 Exportar</button>
                 <button onclick="abrirModalOrden()" class="border border-gray-600 text-gray-300 hover:text-white hover:border-gray-400 font-bold py-2 px-5 rounded-lg transition text-sm">+ Nueva Orden de Compra</button>
                 <button onclick="abrirModalNuevo()" class="bg-neon hover:bg-yellow-300 text-black font-bold py-2 px-6 rounded-lg transition">+ Nuevo Proveedor</button>
+                <input type="file" id="input-importar-prov" accept=".xlsx,.xls,.csv" style="display:none" onchange="importarProveedores(event)">
             </div>
         </header>
 
-        <!-- Tabs -->
         <div class="bg-gray-900 border-b border-gray-800 px-8 flex gap-6 shrink-0">
             <button onclick="cambiarTab('proveedores')" id="tab-prov" class="py-3 text-sm font-bold tab-activa">🏪 Proveedores</button>
             <button onclick="cambiarTab('ordenes')"     id="tab-ord"  class="py-3 text-sm font-bold text-gray-400 hover:text-white">📦 Órdenes de Compra</button>
             <button onclick="cambiarTab('pagos')"       id="tab-pag"  class="py-3 text-sm font-bold text-gray-400 hover:text-white">💰 Pagos</button>
         </div>
 
-        <!-- ── TAB PROVEEDORES ───────────────────────────────── -->
         <div id="panel-proveedores" class="flex-1 overflow-y-auto p-8">
+            <div class="mb-4 flex items-center gap-3">
+                <input type="text" id="buscar-proveedor" placeholder="🔍 Buscar proveedor por nombre, CUIT, email o teléfono..."
+                       class="flex-1 bg-black border border-neon text-white rounded-lg p-3 text-sm outline-none"
+                       oninput="filtrarProveedores()">
+                <span id="contador-proveedores" class="text-gray-500 text-xs whitespace-nowrap"></span>
+            </div>
             <div class="bg-black rounded-xl border border-gray-800 overflow-hidden">
                 <table class="w-full text-left">
                     <thead class="bg-gray-950 text-xs text-gray-400 uppercase">
@@ -73,7 +79,6 @@
             </div>
         </div>
 
-        <!-- ── TAB ÓRDENES ──────────────────────────────────── -->
         <div id="panel-ordenes" class="hidden flex-1 overflow-y-auto p-8">
             <div class="flex gap-4 mb-5">
                 <select id="ord-filtro-prov" class="bg-gray-900 border border-gray-700 text-white rounded p-2 text-sm flex-1">
@@ -107,7 +112,6 @@
             </div>
         </div>
 
-        <!-- ── TAB PAGOS ────────────────────────────────────── -->
         <div id="panel-pagos" class="hidden flex-1 overflow-y-auto p-8">
             <div class="flex gap-4 mb-5 items-center">
                 <select id="pag-filtro-prov" class="bg-gray-900 border border-gray-700 text-white rounded p-2 text-sm flex-1">
@@ -150,7 +154,6 @@
         </div>
     </main>
 
-    <!-- ── MODAL NUEVO PROVEEDOR ─────────────────────────── -->
     <div id="modal-nuevo" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
         <div class="bg-gray-900 border border-gray-700 rounded-xl p-6 w-[480px] shadow-2xl">
             <h3 class="text-lg font-bold text-white mb-4 border-l-4 border-neon pl-2">Alta de Proveedor</h3>
@@ -187,7 +190,6 @@
         </div>
     </div>
 
-    <!-- ── MODAL EDITAR PROVEEDOR ────────────────────────── -->
     <div id="modal-editar" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
         <div class="bg-gray-900 border border-gray-700 rounded-xl p-6 w-[480px] shadow-2xl">
             <h3 class="text-lg font-bold text-white mb-1 border-l-4 border-neon pl-2">Editar Proveedor</h3>
@@ -212,7 +214,6 @@
                 </div>
             </div>
 
-            <!-- Insumos asociados -->
             <div class="border-t border-gray-700 pt-4 mt-2">
                 <div class="flex justify-between items-center mb-2">
                     <h4 class="text-sm font-bold text-white">Insumos que provee</h4>
@@ -234,7 +235,6 @@
         </div>
     </div>
 
-    <!-- ── MODAL NUEVA ORDEN DE COMPRA ───────────────────── -->
     <div id="modal-orden" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
         <div class="bg-gray-900 border border-gray-700 rounded-xl p-6 w-[560px] shadow-2xl max-h-[90vh] overflow-y-auto">
             <h3 class="text-lg font-bold text-white mb-4 border-l-4 border-neon pl-2">Nueva Orden de Compra</h3>
@@ -273,7 +273,6 @@
         </div>
     </div>
 
-    <!-- ── MODAL DETALLE ORDEN ───────────────────────────── -->
     <div id="modal-detalle-orden" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
         <div class="bg-gray-900 border border-gray-700 rounded-xl p-6 w-[500px] shadow-2xl max-h-[80vh] overflow-y-auto">
             <div class="flex justify-between items-center mb-4">
@@ -295,7 +294,6 @@
         </div>
     </div>
 
-    <!-- ── MODAL REGISTRAR PAGO ──────────────────────────── -->
     <div id="modal-pago" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
         <div class="bg-gray-900 border border-gray-700 rounded-xl p-6 w-[420px] shadow-2xl">
             <h3 class="text-lg font-bold text-white mb-4 border-l-4 border-neon pl-2">Registrar Pago a Proveedor</h3>
@@ -340,8 +338,6 @@
             Cancelada: 'bg-red-900/30 text-red-500'
         };
 
-        // ── TABS ─────────────────────────────────────────────
-
         function cambiarTab(tab) {
             ['proveedores','ordenes','pagos'].forEach(t => {
                 document.getElementById(`panel-${t}`).classList.toggle('hidden', t !== tab);
@@ -352,8 +348,6 @@
             if (tab === 'ordenes') cargarOrdenes();
         }
 
-        // ── CARGA INICIAL ────────────────────────────────────
-
         async function cargarDatos() {
             const [rProv, rIns, rEmp] = await Promise.all([
                 fetch(`${API_URL}/proveedores`).then(r => r.json()),
@@ -363,7 +357,6 @@
             proveedores = rProv; insumos = rIns;
             empleados = rEmp.filter(e => e.activo);
 
-            // Poblar selects globales
             const optsProv = proveedores.map(p => `<option value="${p.id}">${p.razon_social}</option>`).join('');
             const optsEmp  = empleados.map(e => `<option value="${e.id}">${e.apellido}, ${e.nombre}</option>`).join('');
 
@@ -381,23 +374,25 @@
             renderProveedores();
         }
 
-        // ── PROVEEDORES ──────────────────────────────────────
-
         function renderProveedores() {
             const tabla = document.getElementById('tabla-proveedores');
             tabla.innerHTML = '';
             if (!proveedores.length) {
                 tabla.innerHTML = '<tr><td colspan="6" class="p-4 text-center text-gray-500">Sin proveedores registrados.</td></tr>';
+                document.getElementById('contador-proveedores').textContent = '';
                 return;
             }
             proveedores.forEach(p => {
-                tabla.innerHTML += `
-                    <tr class="hover:bg-gray-900 transition">
+                const buscable = [p.razon_social, p.cuit, p.email, p.telefono, p.direccion].filter(Boolean).join(' ').toLowerCase().replace(/"/g,'');
+                const tr = document.createElement('tr');
+                tr.className = 'fila-proveedor hover:bg-gray-900 transition';
+                tr.setAttribute('data-buscar', buscable);
+                tr.innerHTML = `
                         <td class="p-4">
                             <p class="font-bold text-white">${p.razon_social}</p>
                             ${p.notas ? `<p class="text-gray-500 text-xs truncate max-w-xs">${p.notas}</p>` : ''}
                         </td>
-                        <td class="p-4 text-gray-400 text-sm">${p.cuit}</td>
+                        <td class="p-4 text-gray-400 text-sm">${p.cuit || '—'}</td>
                         <td class="p-4 text-gray-400 text-xs">
                             ${p.email ? `<p>${p.email}</p>` : ''}
                             ${p.telefono ? `<p>${p.telefono}</p>` : ''}
@@ -415,9 +410,83 @@
                                 class="text-xs bg-neon text-black font-bold px-3 py-1 rounded hover:bg-yellow-300 transition">
                                 Órdenes
                             </button>
-                        </td>
-                    </tr>`;
+                        </td>`;
+                tabla.appendChild(tr);
             });
+            filtrarProveedores();
+        }
+
+        function filtrarProveedores() {
+            const input = document.getElementById('buscar-proveedor');
+            if (!input) return;
+            const q = input.value.toLowerCase().trim();
+            const filas = document.querySelectorAll('#tabla-proveedores > .fila-proveedor');
+            let visibles = 0;
+            filas.forEach(f => {
+                const txt = f.getAttribute('data-buscar') || '';
+                const match = !q || txt.indexOf(q) !== -1;
+                f.style.display = match ? '' : 'none';
+                if (match) visibles++;
+            });
+            const cont = document.getElementById('contador-proveedores');
+            if (cont) cont.textContent = q ? `${visibles} de ${filas.length} proveedores` : `${filas.length} proveedores`;
+        }
+
+        // ── IMPORTAR / EXPORTAR ──────────────────────────────────
+        function exportarProveedores() {
+            if (!proveedores.length) { alert('No hay proveedores para exportar.'); return; }
+            const filas = proveedores.map(p => ({
+                'Razón Social *': p.razon_social || '',
+                'CUIT': p.cuit || '',
+                'Teléfono': p.telefono || '',
+                'Email': p.email || '',
+                'Dirección': p.direccion || '',
+                'Notas internas': p.notas || ''
+            }));
+            const ws = XLSX.utils.json_to_sheet(filas);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'Proveedores');
+            XLSX.writeFile(wb, 'proveedores_portal_del_viento_' + new Date().toISOString().split('T')[0] + '.xlsx');
+        }
+
+        function importarProveedores(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = async function(e) {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const wb = XLSX.read(data, { type: 'array' });
+                    const hoja = wb.SheetNames.indexOf('Proveedores') >= 0 ? 'Proveedores' : wb.SheetNames[0];
+                    const rows = XLSX.utils.sheet_to_json(wb.Sheets[hoja], { defval: '' });
+                    function val(row, claves) {
+                        for (let i=0;i<claves.length;i++){ if (row[claves[i]] !== undefined && String(row[claves[i]]).trim() !== '') return String(row[claves[i]]).trim(); }
+                        return '';
+                    }
+                    const lista = rows.map(r => ({
+                        razon_social: val(r,['Razón Social *','Razón Social','Razon Social','razon_social','Nombre']),
+                        cuit:      val(r,['CUIT','cuit']) || null,
+                        telefono:  val(r,['Teléfono','Telefono','telefono']) || null,
+                        email:     val(r,['Email','email','Correo']) || null,
+                        direccion: val(r,['Dirección','Direccion','direccion']) || null,
+                        notas:     val(r,['Notas internas','Notas','notas']) || null
+                    })).filter(x => x.razon_social);
+                    if (!lista.length) { alert('No se encontraron proveedores válidos. Revisá los títulos de las columnas.'); return; }
+                    if (!confirm('Se van a importar ' + lista.length + ' proveedores. ¿Continuar?')) { event.target.value=''; return; }
+                    const res = await fetch(`${API_URL}/proveedores/importar`, {
+                        method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ proveedores: lista })
+                    });
+                    const r = await res.json();
+                    if (res.ok) {
+                        let msg = '✅ Importación lista.\n\nNuevos cargados: ' + r.insertados + '\nSalteados (ya existían o sin nombre): ' + r.salteados;
+                        if (r.errores && r.errores.length) msg += '\nCon error: ' + r.errores.length;
+                        alert(msg);
+                        await cargarDatos();
+                    } else { alert('❌ Error: ' + (r.detail || 'no se pudo importar')); }
+                } catch(err) { alert('❌ No se pudo leer el archivo. ¿Es un Excel válido?'); }
+                finally { event.target.value = ''; }
+            };
+            reader.readAsArrayBuffer(file);
         }
 
         function abrirModalNuevo() {
@@ -449,10 +518,8 @@
             document.getElementById('edit-dir').value   = p.direccion || '';
             document.getElementById('edit-notas').value = p.notas || '';
 
-            // Cargar insumos del proveedor
             await renderInsumosProveedor(id);
 
-            // Poblar select de insumos disponibles
             document.getElementById('sel-insumo-nuevo').innerHTML =
                 insumos.map(i => `<option value="${i.id}">${i.nombre} (${i.unidad})</option>`).join('');
 
@@ -515,8 +582,6 @@
             cerrarModales();
             await cargarDatos();
         }
-
-        // ── ÓRDENES DE COMPRA ────────────────────────────────
 
         async function cargarOrdenes() {
             const id_prov = document.getElementById('ord-filtro-prov').value;
@@ -592,7 +657,6 @@
             cambiarTab('ordenes');
         }
 
-        // Formulario nueva orden
         function abrirModalOrden() {
             limpiarItemsOrden();
             agregarItemOrden();
@@ -605,8 +669,6 @@
         }
 
         function agregarItemOrden() {
-            const id_prov = document.getElementById('ord-proveedor').value;
-            // Intentar usar insumos del proveedor seleccionado, si no todos
             const opts = insumos.map(i => `<option value="${i.id}" data-unidad="${i.unidad}">${i.nombre} (${i.unidad})</option>`).join('');
             const idx = Date.now();
             const cont = document.getElementById('items-orden');
@@ -632,9 +694,7 @@
             document.getElementById('ord-total').textContent = `$ ${total.toLocaleString('es-AR')}`;
         }
 
-        async function cargarInsumosParaOrden() {
-            // Podría precargar precios del proveedor seleccionado — por ahora vacío
-        }
+        async function cargarInsumosParaOrden() {}
 
         async function guardarOrden() {
             const id_prov = parseInt(document.getElementById('ord-proveedor').value);
@@ -658,8 +718,6 @@
             else { const e = await res.json(); alert('Error: ' + e.detail); }
         }
 
-        // ── PAGOS ────────────────────────────────────────────
-
         async function cargarPagos() {
             const id_prov = document.getElementById('pag-filtro-prov').value;
             if (!id_prov) { alert('Seleccioná un proveedor.'); return; }
@@ -668,7 +726,6 @@
             const tabla = document.getElementById('tabla-pagos');
             tabla.innerHTML = '';
 
-            // Resumen
             const resumen = document.getElementById('resumen-pagos');
             if (lista.length) {
                 resumen.classList.remove('hidden');
@@ -720,8 +777,6 @@
             if (res.ok) { cerrarModales(); cargarPagos(); }
             else { const e = await res.json(); alert('Error: ' + e.detail); }
         }
-
-        // ── HELPERS ──────────────────────────────────────────
 
         function cerrarModales() {
             document.querySelectorAll('.modal-visible').forEach(m => m.classList.replace('modal-visible','modal-oculto'));
