@@ -1588,6 +1588,7 @@ class PosItemVenta(BaseModel):
     cantidad: int
     precio_unitario: float
     id_producto: Optional[int] = None
+    unidades_stock: Optional[float] = None
 
 class PosVenta(BaseModel):
     id_caja: int
@@ -1654,7 +1655,19 @@ def pos_listar_productos(id_local: int):
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
         cur.execute("SELECT id, nombre, precio, categoria, COALESCE(stock,0) AS stock, COALESCE(stock_alerta,0) AS stock_alerta FROM pos_productos WHERE id_local=%s AND COALESCE(activo,true)=true ORDER BY categoria NULLS LAST, nombre", (id_local,))
-        return fetchall_dict(cur)
+        productos = fetchall_dict(cur)
+        for p in productos:
+            try:
+                cur.execute("SELECT id, nombre, precio, factor FROM pos_producto_variantes WHERE id_producto=%s AND COALESCE(activo,true)=true ORDER BY factor", (p['id'],))
+                p['variantes'] = fetchall_dict(cur)
+            except Exception:
+                conn.rollback(); p['variantes'] = []
+            try:
+                cur.execute("SELECT id, nombre FROM pos_producto_sabores WHERE id_producto=%s AND COALESCE(activo,true)=true ORDER BY nombre", (p['id'],))
+                p['sabores'] = fetchall_dict(cur)
+            except Exception:
+                conn.rollback(); p['sabores'] = []
+        return productos
     finally:
         liberar_conexion(conn)
 
@@ -1805,9 +1818,11 @@ def pos_registrar_venta(venta: PosVenta):
         for it in venta.detalle:
             cur.execute("INSERT INTO pos_detalle_ventas (id_venta, nombre_producto, cantidad, precio_unitario) VALUES (%s,%s,%s,%s)",
                         (vid, it.nombre_producto, it.cantidad, it.precio_unitario))
-            # Descontar stock del producto (si vino identificado)
+            # Descontar stock del producto (si vino identificado).
+            # unidades_stock = cantidad x factor de variante; si no vino, usa cantidad.
             if it.id_producto:
-                cur.execute("UPDATE pos_productos SET stock = COALESCE(stock,0) - %s WHERE id=%s", (it.cantidad, it.id_producto))
+                baja = it.unidades_stock if it.unidades_stock is not None else it.cantidad
+                cur.execute("UPDATE pos_productos SET stock = COALESCE(stock,0) - %s WHERE id=%s", (baja, it.id_producto))
         conn.commit()
         return {"id_venta": vid}
     except Exception as e:
@@ -2684,6 +2699,7 @@ class ReposicionItem(BaseModel):
     id_producto: Optional[int] = None
     nombre_producto: str
     cantidad: float
+    sabor: Optional[str] = None
 
 class ReposicionCreate(BaseModel):
     id_local: int
@@ -2700,8 +2716,8 @@ def pos_reposicion_crear(r: ReposicionCreate):
                     (r.id_local, r.id_empleado, r.notas))
         rid = cur.fetchone()[0]
         for it in r.detalle:
-            cur.execute("INSERT INTO pos_reposiciones_detalle (id_reposicion, id_producto, nombre_producto, cantidad) VALUES (%s,%s,%s,%s)",
-                        (rid, it.id_producto, it.nombre_producto, it.cantidad))
+            cur.execute("INSERT INTO pos_reposiciones_detalle (id_reposicion, id_producto, nombre_producto, cantidad, sabor) VALUES (%s,%s,%s,%s,%s)",
+                        (rid, it.id_producto, it.nombre_producto, it.cantidad, it.sabor))
         conn.commit()
         return {"id": rid}
     except Exception as e:
@@ -2730,7 +2746,7 @@ def locales_reposiciones(id_local: Optional[int] = None, estado: Optional[str] =
         cur.execute(q, tuple(params))
         reps = fetchall_dict(cur)
         for rep in reps:
-            cur.execute("SELECT id_producto, nombre_producto, cantidad FROM pos_reposiciones_detalle WHERE id_reposicion=%s", (rep['id'],))
+            cur.execute("SELECT id_producto, nombre_producto, cantidad, sabor FROM pos_reposiciones_detalle WHERE id_reposicion=%s", (rep['id'],))
             rep['detalle'] = fetchall_dict(cur)
         return reps
     finally:
@@ -2771,6 +2787,108 @@ def locales_reposicion_eliminar(id: int):
         cur = conn.cursor()
         cur.execute("DELETE FROM pos_reposiciones_detalle WHERE id_reposicion=%s", (id,))
         cur.execute("DELETE FROM pos_reposiciones WHERE id=%s", (id,))
+        conn.commit()
+        return {"status": "ok"}
+    finally:
+        liberar_conexion(conn)
+
+# ==============================================================================
+# VARIANTES Y SABORES de productos del POS
+# ==============================================================================
+class VarianteModel(BaseModel):
+    id_producto: int
+    nombre: str
+    precio: float = 0.0
+    factor: float = 1.0
+
+class SaborModel(BaseModel):
+    id_producto: int
+    nombre: str
+
+@app.get("/api/pos/productos/{id_producto}/variantes")
+def pos_variantes_listar(id_producto: int):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("SELECT id, nombre, precio, factor FROM pos_producto_variantes WHERE id_producto=%s AND COALESCE(activo,true)=true ORDER BY factor", (id_producto,))
+        return fetchall_dict(cur)
+    finally:
+        liberar_conexion(conn)
+
+@app.post("/api/pos/variantes")
+def pos_variante_crear(v: VarianteModel):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        cur.execute("INSERT INTO pos_producto_variantes (id_producto, nombre, precio, factor) VALUES (%s,%s,%s,%s) RETURNING id",
+                    (v.id_producto, v.nombre, v.precio, v.factor))
+        vid = cur.fetchone()[0]
+        conn.commit()
+        return {"id": vid}
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
+@app.put("/api/pos/variantes/{id}")
+def pos_variante_editar(id: int, v: VarianteModel):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        cur.execute("UPDATE pos_producto_variantes SET nombre=%s, precio=%s, factor=%s WHERE id=%s",
+                    (v.nombre, v.precio, v.factor, id))
+        conn.commit()
+        return {"status": "ok"}
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
+@app.delete("/api/pos/variantes/{id}")
+def pos_variante_eliminar(id: int):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        cur.execute("UPDATE pos_producto_variantes SET activo=false WHERE id=%s", (id,))
+        conn.commit()
+        return {"status": "ok"}
+    finally:
+        liberar_conexion(conn)
+
+@app.get("/api/pos/productos/{id_producto}/sabores")
+def pos_sabores_listar(id_producto: int):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("SELECT id, nombre FROM pos_producto_sabores WHERE id_producto=%s AND COALESCE(activo,true)=true ORDER BY nombre", (id_producto,))
+        return fetchall_dict(cur)
+    finally:
+        liberar_conexion(conn)
+
+@app.post("/api/pos/sabores")
+def pos_sabor_crear(s: SaborModel):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        cur.execute("INSERT INTO pos_producto_sabores (id_producto, nombre) VALUES (%s,%s) RETURNING id",
+                    (s.id_producto, s.nombre))
+        sid = cur.fetchone()[0]
+        conn.commit()
+        return {"id": sid}
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
+@app.delete("/api/pos/sabores/{id}")
+def pos_sabor_eliminar(id: int):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        cur.execute("UPDATE pos_producto_sabores SET activo=false WHERE id=%s", (id,))
         conn.commit()
         return {"status": "ok"}
     finally:
