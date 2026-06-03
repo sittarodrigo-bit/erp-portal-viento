@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Gastos | Portal del Viento</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .text-neon { color: #e4fc74; }
+        .bg-neon { background-color: #e4fc74; }
+        .border-neon { border-color: #e4fc74; }
+        .modal-oculto { display: none; }
+        .modal-visible { display: flex; }
+        .tab-activa { border-bottom: 2px solid #e4fc74; color: white; }
+    </style>
+</head>
+<body class="bg-gray-950 text-gray-200 font-sans h-screen flex">
+    <aside class="w-64 bg-black border-r border-gray-800 flex flex-col shrink-0">
+        <div class="p-6 border-b border-gray-800 text-center">
+            <h1 class="text-neon font-bold text-lg tracking-widest uppercase">Portal del Viento</h1>
+            <p class="text-white text-xs mt-1 font-bold italic">ALFAJORES</p>
+        </div>
+        <nav class="flex-1 p-4 space-y-1 text-sm overflow-y-auto">
+            <a href="/admin"          class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">📊 Tablero</a>
+            <a href="/catalogo"       class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">📦 Catálogo</a>
+            <a href="/insumos"        class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">🧪 Insumos</a>
+            <a href="/produccion"     class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">🏭 Producción</a>
+            <a href="/proveedores"    class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">🏪 Proveedores</a>
+            <a href="/distribuidores" class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">🚚 Distribuidores</a>
+            <a href="/historial-b2b"  class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">📋 Pedidos B2B</a>
+            <a href="/gastos"         class="block bg-gray-900 text-white py-2 px-4 rounded-lg border-l-4 border-neon font-medium">💸 Gastos</a>
+            <a href="/empleados"      class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">👥 Empleados</a>
+            <a href="/reportes"       class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">📈 Reportes</a>
+            <a href="/configuracion"  class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">⚙️ Configuración</a>
+        </nav>
+        <div id="usuario-info" class="p-4 border-t border-gray-800 text-xs text-gray-500 text-center"></div>
+    </aside>
+
+    <main class="flex-1 flex flex-col overflow-hidden">
+        <header class="bg-gray-900 border-b border-gray-800 py-4 px-8 flex justify-between items-center shrink-0">
+            <h2 class="text-xl font-bold text-white">Gastos Generales</h2>
+            <div class="flex gap-2">
+                <button onclick="abrirModalCategorias()" class="border border-gray-600 text-gray-300 hover:text-white font-bold py-2 px-4 rounded-lg text-sm transition">🏷️ Categorías</button>
+                <button onclick="abrirModalGasto()" class="bg-neon hover:bg-yellow-300 text-black font-bold py-2 px-6 rounded-lg transition">+ Nuevo Gasto</button>
+            </div>
+        </header>
+
+        <div class="bg-gray-900 border-b border-gray-800 px-8 flex gap-6 shrink-0">
+            <button onclick="cambiarTab('gastos')" id="tab-gastos" class="py-3 text-sm font-bold tab-activa">💸 Gastos</button>
+            <button onclick="cambiarTab('recurrentes')" id="tab-rec" class="py-3 text-sm font-bold text-gray-400 hover:text-white">🔁 Recurrentes</button>
+            <button onclick="cambiarTab('reporte')" id="tab-rep" class="py-3 text-sm font-bold text-gray-400 hover:text-white">📊 Reporte</button>
+        </div>
+
+        <!-- TAB GASTOS -->
+        <div id="panel-gastos" class="flex-1 overflow-y-auto p-8">
+            <div class="flex gap-3 mb-3 flex-wrap items-end">
+                <div>
+                    <label class="block text-xs text-gray-500 font-bold mb-1">Desde</label>
+                    <input type="date" id="f-desde" class="bg-gray-900 border border-gray-700 text-white rounded p-2 text-sm">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 font-bold mb-1">Hasta</label>
+                    <input type="date" id="f-hasta" class="bg-gray-900 border border-gray-700 text-white rounded p-2 text-sm">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 font-bold mb-1">Categoría</label>
+                    <select id="f-categoria" class="bg-gray-900 border border-gray-700 text-white rounded p-2 text-sm">
+                        <option value="">Todas</option>
+                    </select>
+                </div>
+                <button onclick="cargarGastos()" class="bg-neon text-black font-bold px-4 py-2 rounded text-sm hover:bg-yellow-300">Filtrar</button>
+                <div class="flex-1"></div>
+                <div class="bg-black border border-gray-800 rounded-xl px-5 py-2 text-right">
+                    <p class="text-xs text-gray-500 font-bold uppercase">Total del período</p>
+                    <p id="gastos-total" class="text-neon font-bold text-xl">$ 0</p>
+                </div>
+            </div>
+            <div class="mb-4 flex items-center gap-3">
+                <input type="text" id="buscar-gasto" placeholder="🔍 Buscar por concepto, categoría o método..."
+                       class="flex-1 bg-black border border-neon text-white rounded-lg p-3 text-sm outline-none" oninput="filtrarGastos()">
+                <span id="contador-gastos" class="text-gray-500 text-xs whitespace-nowrap"></span>
+            </div>
+            <div class="bg-black rounded-xl border border-gray-800 overflow-hidden">
+                <table class="w-full text-left">
+                    <thead class="bg-gray-950 text-xs text-gray-400 uppercase">
+                        <tr>
+                            <th class="p-4">Fecha</th>
+                            <th class="p-4">Concepto</th>
+                            <th class="p-4">Categoría</th>
+                            <th class="p-4">Método</th>
+                            <th class="p-4">Registró</th>
+                            <th class="p-4 text-right">Monto</th>
+                            <th class="p-4 text-right">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tabla-gastos" class="divide-y divide-gray-800 text-sm">
+                        <tr><td colspan="7" class="p-4 text-center text-gray-500">Cargando...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- TAB RECURRENTES -->
+        <div id="panel-recurrentes" class="hidden flex-1 overflow-y-auto p-8">
+            <div class="flex justify-between items-center mb-4">
+                <p class="text-gray-400 text-sm">Gastos que se repiten cada mes (alquiler, servicios, etc.). Generá el del mes con un clic.</p>
+                <button onclick="abrirModalRecurrente()" class="bg-neon text-black font-bold px-4 py-2 rounded-lg text-sm hover:bg-yellow-300">+ Nuevo Recurrente</button>
+            </div>
+            <div id="lista-recurrentes" class="space-y-2"></div>
+        </div>
+
+        <!-- TAB REPORTE -->
+        <div id="panel-reporte" class="hidden flex-1 overflow-y-auto p-8">
+            <div class="flex gap-3 mb-5 items-end">
+                <div>
+                    <label class="block text-xs text-gray-500 font-bold mb-1">Desde</label>
+                    <input type="date" id="r-desde" class="bg-gray-900 border border-gray-700 text-white rounded p-2 text-sm">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 font-bold mb-1">Hasta</label>
+                    <input type="date" id="r-hasta" class="bg-gray-900 border border-gray-700 text-white rounded p-2 text-sm">
+                </div>
+                <button onclick="cargarReporte()" class="bg-neon text-black font-bold px-4 py-2 rounded text-sm hover:bg-yellow-300">Generar</button>
+            </div>
+            <div id="reporte-cont"></div>
+        </div>
+    </main>
+
+    <!-- MODAL GASTO -->
+    <div id="modal-gasto" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
+        <div class="bg-gray-900 border border-gray-700 rounded-xl p-6 w-[480px] shadow-2xl">
+            <div class="flex justify-between items-center mb-4">
+                <h3 id="gasto-titulo" class="text-lg font-bold text-white border-l-4 border-neon pl-2">Nuevo Gasto</h3>
+                <button onclick="cerrarModales()" class="text-gray-500 hover:text-white text-2xl leading-none">×</button>
+            </div>
+            <input type="hidden" id="gasto-id">
+            <label class="block text-xs text-gray-500 font-bold mb-1">Concepto</label>
+            <input type="text" id="gasto-concepto" placeholder="Ej: Factura de luz marzo" class="w-full bg-black border border-gray-700 text-white rounded p-3 mb-3">
+            <div class="grid grid-cols-2 gap-3 mb-3">
+                <div>
+                    <label class="block text-xs text-neon font-bold mb-1">Monto ($)</label>
+                    <input type="number" id="gasto-monto" step="0.01" class="w-full bg-black border border-neon text-white rounded p-2 font-bold text-lg">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 font-bold mb-1">Fecha</label>
+                    <input type="date" id="gasto-fecha" class="w-full bg-black border border-gray-700 text-white rounded p-2 text-sm">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 font-bold mb-1">Categoría</label>
+                    <select id="gasto-categoria" class="w-full bg-black border border-gray-700 text-white rounded p-2 text-sm"></select>
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 font-bold mb-1">Método de pago</label>
+                    <select id="gasto-metodo" class="w-full bg-black border border-gray-700 text-white rounded p-2 text-sm">
+                        <option>Efectivo</option><option>Transferencia</option><option>Tarjeta</option><option>Cheque</option><option>Débito automático</option>
+                    </select>
+                </div>
+            </div>
+            <label class="block text-xs text-gray-500 font-bold mb-1">Quién lo registra</label>
+            <select id="gasto-empleado" class="w-full bg-black border border-gray-700 text-white rounded p-2 mb-3 text-sm">
+                <option value="">— Sin especificar —</option>
+            </select>
+            <label class="block text-xs text-gray-500 font-bold mb-1">Notas (opcional)</label>
+            <input type="text" id="gasto-notas" class="w-full bg-black border border-gray-700 text-white rounded p-2 mb-5 text-sm">
+            <div class="flex justify-end gap-3">
+                <button onclick="cerrarModales()" class="px-4 py-2 text-gray-400 hover:text-white font-bold">Cancelar</button>
+                <button onclick="guardarGasto()" id="btn-guardar-gasto" class="bg-neon text-black px-6 py-2 rounded font-bold hover:bg-yellow-300">Guardar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL RECURRENTE -->
+    <div id="modal-recurrente" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
+        <div class="bg-gray-900 border border-gray-700 rounded-xl p-6 w-[440px] shadow-2xl">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-lg font-bold text-white border-l-4 border-neon pl-2">Nuevo Gasto Recurrente</h3>
+                <button onclick="cerrarModales()" class="text-gray-500 hover:text-white text-2xl leading-none">×</button>
+            </div>
+            <label class="block text-xs text-gray-500 font-bold mb-1">Concepto</label>
+            <input type="text" id="rec-concepto" placeholder="Ej: Alquiler local" class="w-full bg-black border border-gray-700 text-white rounded p-3 mb-3">
+            <div class="grid grid-cols-2 gap-3 mb-3">
+                <div>
+                    <label class="block text-xs text-neon font-bold mb-1">Monto ($)</label>
+                    <input type="number" id="rec-monto" step="0.01" class="w-full bg-black border border-neon text-white rounded p-2 font-bold text-lg">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 font-bold mb-1">Día del mes</label>
+                    <input type="number" id="rec-dia" min="1" max="28" value="1" class="w-full bg-black border border-gray-700 text-white rounded p-2 text-sm">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 font-bold mb-1">Categoría</label>
+                    <select id="rec-categoria" class="w-full bg-black border border-gray-700 text-white rounded p-2 text-sm"></select>
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 font-bold mb-1">Método</label>
+                    <select id="rec-metodo" class="w-full bg-black border border-gray-700 text-white rounded p-2 text-sm">
+                        <option>Efectivo</option><option>Transferencia</option><option>Tarjeta</option><option>Cheque</option><option>Débito automático</option>
+                    </select>
+                </div>
+            </div>
+            <div class="flex justify-end gap-3 mt-2">
+                <button onclick="cerrarModales()" class="px-4 py-2 text-gray-400 hover:text-white font-bold">Cancelar</button>
+                <button onclick="guardarRecurrente()" class="bg-neon text-black px-6 py-2 rounded font-bold hover:bg-yellow-300">Guardar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL CATEGORÍAS -->
+    <div id="modal-cats" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
+        <div class="bg-gray-900 border border-gray-700 rounded-xl p-6 w-[440px] shadow-2xl max-h-[80vh] overflow-y-auto">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-lg font-bold text-white border-l-4 border-neon pl-2">Categorías de Gasto</h3>
+                <button onclick="cerrarModales()" class="text-gray-500 hover:text-white text-2xl leading-none">×</button>
+            </div>
+            <div id="lista-cats" class="space-y-2 mb-4"></div>
+            <div class="border border-dashed border-gray-700 rounded-lg p-4">
+                <p class="text-xs text-gray-400 font-bold mb-2">+ Nueva categoría</p>
+                <input type="text" id="cat-nueva" placeholder="Ej: Combustible" class="w-full bg-black border border-gray-700 text-white rounded p-2 text-sm mb-2">
+                <button onclick="guardarCategoria()" class="w-full bg-neon text-black font-bold py-2 rounded hover:bg-yellow-300 text-sm">Agregar</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = window.location.origin + "/api";
+        const usr = JSON.parse(sessionStorage.getItem('usuario') || '{}');
+        if (usr.nombre) document.getElementById('usuario-info').textContent = `${usr.nombre} ${usr.apellido} · ${usr.rol}`;
+
+        let categorias = [], empleados = [], gastosCache = [];
+
+        function primerDiaMes() { const h = new Date(); return new Date(h.getFullYear(), h.getMonth(), 1).toISOString().split('T')[0]; }
+        function hoyStr() { return new Date().toISOString().split('T')[0]; }
+
+        function cambiarTab(tab) {
+            ['gastos','recurrentes','reporte'].forEach(t => document.getElementById('panel-'+t).classList.toggle('hidden', t!==tab));
+            document.getElementById('tab-gastos').className = tab==='gastos' ? 'py-3 text-sm font-bold tab-activa' : 'py-3 text-sm font-bold text-gray-400 hover:text-white';
+            document.getElementById('tab-rec').className    = tab==='recurrentes' ? 'py-3 text-sm font-bold tab-activa' : 'py-3 text-sm font-bold text-gray-400 hover:text-white';
+            document.getElementById('tab-rep').className    = tab==='reporte' ? 'py-3 text-sm font-bold tab-activa' : 'py-3 text-sm font-bold text-gray-400 hover:text-white';
+            if (tab==='recurrentes') cargarRecurrentes();
+            if (tab==='reporte') cargarReporte();
+        }
+
+        async function init() {
+            categorias = await fetch(`${API_URL}/gastos/categorias`).then(r=>r.json()).catch(()=>[]);
+            try { empleados = (await fetch(`${API_URL}/empleados`).then(r=>r.json())).filter(e=>e.activo); } catch(e){ empleados=[]; }
+            poblarSelectsCategorias();
+            document.getElementById('gasto-empleado').innerHTML = '<option value="">— Sin especificar —</option>' + empleados.map(e=>`<option value="${e.id}">${e.apellido}, ${e.nombre}</option>`).join('');
+            document.getElementById('f-desde').value = primerDiaMes();
+            document.getElementById('f-hasta').value = hoyStr();
+            document.getElementById('r-desde').value = primerDiaMes();
+            document.getElementById('r-hasta').value = hoyStr();
+            cargarGastos();
+        }
+
+        function poblarSelectsCategorias() {
+            const opts = categorias.map(c=>`<option value="${c.id}">${c.nombre}</option>`).join('');
+            document.getElementById('f-categoria').innerHTML = '<option value="">Todas</option>' + opts;
+            document.getElementById('gasto-categoria').innerHTML = '<option value="">Sin categoría</option>' + opts;
+            document.getElementById('rec-categoria').innerHTML = '<option value="">Sin categoría</option>' + opts;
+        }
+
+        async function cargarGastos() {
+            const desde = document.getElementById('f-desde').value;
+            const hasta = document.getElementById('f-hasta').value;
+            const cat   = document.getElementById('f-categoria').value;
+            let url = `${API_URL}/gastos?`;
+            const params = [];
+            if (desde) params.push('desde='+desde);
+            if (hasta) params.push('hasta='+hasta);
+            if (cat) params.push('id_categoria='+cat);
+            url += params.join('&');
+            gastosCache = await fetch(url).then(r=>r.json()).catch(()=>[]);
+            const tabla = document.getElementById('tabla-gastos');
+            tabla.innerHTML = '';
+            let total = 0;
+            if (!gastosCache.length) {
+                tabla.innerHTML = '<tr><td colspan="7" class="p-4 text-center text-gray-500">Sin gastos en el período.</td></tr>';
+                document.getElementById('gastos-total').textContent = '$ 0';
+                document.getElementById('contador-gastos').textContent = '';
+                return;
+            }
+            gastosCache.forEach(g => {
+                total += parseFloat(g.monto)||0;
+                const fecha = g.fecha ? g.fecha.split('-').reverse().join('/') : '—';
+                const emp = g.empleado_apellido ? `${g.empleado_apellido}, ${g.empleado_nombre}` : '—';
+                const buscable = [g.concepto, g.categoria, g.metodo].filter(Boolean).join(' ').toLowerCase().replace(/"/g,'');
+                const tr = document.createElement('tr');
+                tr.className = 'fila-gasto hover:bg-gray-900 transition';
+                tr.setAttribute('data-buscar', buscable);
+                tr.innerHTML = `
+                    <td class="p-4 text-gray-400 text-xs">${fecha}</td>
+                    <td class="p-4 font-bold text-white">${g.concepto}${g.notas?`<p class="text-gray-500 text-xs font-normal">${g.notas}</p>`:''}</td>
+                    <td class="p-4">${g.categoria?`<span class="text-xs bg-gray-800 px-2 py-1 rounded text-gray-300">${g.categoria}</span>`:'<span class="text-gray-600 text-xs">—</span>'}</td>
+                    <td class="p-4 text-gray-400 text-xs">${g.metodo}</td>
+                    <td class="p-4 text-gray-400 text-xs">${emp}</td>
+                    <td class="p-4 text-right text-neon font-bold">$ ${parseFloat(g.monto).toLocaleString('es-AR')}</td>
+                    <td class="p-4 text-right">
+                        <div class="flex justify-end gap-1">
+                            <button class="text-xs border border-gray-700 bg-gray-800 hover:border-gray-500 px-2 py-1 rounded text-gray-400 hover:text-white btn-edit">Editar</button>
+                            <button class="text-xs bg-red-900/50 hover:bg-red-700 text-red-400 hover:text-white px-2 py-1 rounded btn-del">✕</button>
+                        </div>
+                    </td>`;
+                tr.querySelector('.btn-edit').onclick = () => abrirModalGasto(g);
+                tr.querySelector('.btn-del').onclick = () => eliminarGasto(g.id, g.concepto);
+                tabla.appendChild(tr);
+            });
+            document.getElementById('gastos-total').textContent = '$ ' + total.toLocaleString('es-AR');
+            filtrarGastos();
+        }
+
+        function filtrarGastos() {
+            const input = document.getElementById('buscar-gasto');
+            if (!input) return;
+            const q = input.value.toLowerCase().trim();
+            const filas = document.querySelectorAll('#tabla-gastos > .fila-gasto');
+            let visibles = 0;
+            filas.forEach(f => {
+                const txt = f.getAttribute('data-buscar') || '';
+                const match = !q || txt.indexOf(q) !== -1;
+                f.style.display = match ? '' : 'none';
+                if (match) visibles++;
+            });
+            const cont = document.getElementById('contador-gastos');
+            if (cont) cont.textContent = q ? `${visibles} de ${filas.length} gastos` : `${filas.length} gastos`;
+        }
+
+        function abrirModalGasto(g) {
+            document.getElementById('gasto-titulo').textContent = g && g.id ? 'Editar Gasto' : 'Nuevo Gasto';
+            document.getElementById('gasto-id').value = g && g.id ? g.id : '';
+            document.getElementById('gasto-concepto').value = g ? g.concepto : '';
+            document.getElementById('gasto-monto').value = g ? g.monto : '';
+            document.getElementById('gasto-fecha').value = g && g.fecha ? g.fecha : hoyStr();
+            document.getElementById('gasto-categoria').value = g && g.id_categoria ? g.id_categoria : '';
+            document.getElementById('gasto-metodo').value = g ? g.metodo : 'Efectivo';
+            document.getElementById('gasto-empleado').value = g && g.id_empleado ? g.id_empleado : (usr.id_empleado||'');
+            document.getElementById('gasto-notas').value = g && g.notas ? g.notas : '';
+            document.getElementById('modal-gasto').classList.replace('modal-oculto','modal-visible');
+        }
+
+        async function guardarGasto() {
+            const id = document.getElementById('gasto-id').value;
+            const data = {
+                concepto: document.getElementById('gasto-concepto').value.trim(),
+                monto: parseFloat(document.getElementById('gasto-monto').value) || 0,
+                fecha: document.getElementById('gasto-fecha').value || null,
+                id_categoria: parseInt(document.getElementById('gasto-categoria').value) || null,
+                metodo: document.getElementById('gasto-metodo').value,
+                id_empleado: parseInt(document.getElementById('gasto-empleado').value) || null,
+                notas: document.getElementById('gasto-notas').value || null
+            };
+            if (!data.concepto) { alert('Ingresá el concepto.'); return; }
+            if (data.monto <= 0) { alert('Ingresá un monto válido.'); return; }
+            const btn = document.getElementById('btn-guardar-gasto');
+            btn.disabled = true; btn.textContent = 'Guardando...';
+            try {
+                const url = id ? `${API_URL}/gastos/${id}` : `${API_URL}/gastos`;
+                const res = await fetch(url, { method: id?'PUT':'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(data) });
+                if (res.ok) { cerrarModales(); cargarGastos(); }
+                else { const e = await res.json(); alert('Error: ' + (e.detail||'no se pudo guardar')); }
+            } finally { btn.disabled = false; btn.textContent = 'Guardar'; }
+        }
+
+        async function eliminarGasto(id, concepto) {
+            if (!confirm('¿Eliminar el gasto "' + concepto + '"?')) return;
+            await fetch(`${API_URL}/gastos/${id}`, { method:'DELETE' });
+            cargarGastos();
+        }
+
+        // ── RECURRENTES ──
+        async function cargarRecurrentes() {
+            const lista = await fetch(`${API_URL}/gastos/recurrentes`).then(r=>r.json()).catch(()=>[]);
+            const cont = document.getElementById('lista-recurrentes');
+            cont.innerHTML = '';
+            if (!lista.length) { cont.innerHTML = '<p class="text-gray-500 text-sm text-center py-8">No hay gastos recurrentes cargados.</p>'; return; }
+            lista.forEach(r => {
+                const div = document.createElement('div');
+                div.className = 'flex items-center justify-between bg-black border border-gray-800 rounded-xl px-5 py-4';
+                div.innerHTML = `
+                    <div>
+                        <p class="font-bold text-white">${r.concepto} <span class="text-gray-500 text-xs font-normal">· ${r.categoria||'Sin categoría'}</span></p>
+                        <p class="text-gray-500 text-xs">Todos los meses el día ${r.dia_mes} · ${r.metodo}</p>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <span class="text-neon font-bold text-lg">$ ${parseFloat(r.monto).toLocaleString('es-AR')}</span>
+                        <button class="text-xs bg-neon text-black font-bold px-3 py-1.5 rounded hover:bg-yellow-300 btn-gen">Generar este mes</button>
+                        <button class="text-xs bg-red-900/50 hover:bg-red-700 text-red-400 hover:text-white px-2 py-1.5 rounded btn-del">✕</button>
+                    </div>`;
+                div.querySelector('.btn-gen').onclick = () => generarRecurrente(r.id, r.concepto);
+                div.querySelector('.btn-del').onclick = () => eliminarRecurrente(r.id, r.concepto);
+                cont.appendChild(div);
+            });
+        }
+
+        function abrirModalRecurrente() {
+            document.getElementById('rec-concepto').value = '';
+            document.getElementById('rec-monto').value = '';
+            document.getElementById('rec-dia').value = '1';
+            document.getElementById('rec-categoria').value = '';
+            document.getElementById('rec-metodo').value = 'Efectivo';
+            document.getElementById('modal-recurrente').classList.replace('modal-oculto','modal-visible');
+        }
+
+        async function guardarRecurrente() {
+            const data = {
+                concepto: document.getElementById('rec-concepto').value.trim(),
+                monto: parseFloat(document.getElementById('rec-monto').value) || 0,
+                dia_mes: parseInt(document.getElementById('rec-dia').value) || 1,
+                id_categoria: parseInt(document.getElementById('rec-categoria').value) || null,
+                metodo: document.getElementById('rec-metodo').value
+            };
+            if (!data.concepto || data.monto<=0) { alert('Completá concepto y monto.'); return; }
+            const res = await fetch(`${API_URL}/gastos/recurrentes`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(data) });
+            if (res.ok) { cerrarModales(); cargarRecurrentes(); }
+            else { const e = await res.json(); alert('Error: ' + (e.detail||'')); }
+        }
+
+        async function generarRecurrente(id, concepto) {
+            if (!confirm('¿Generar el gasto "' + concepto + '" para este mes?')) return;
+            const res = await fetch(`${API_URL}/gastos/recurrentes/${id}/generar`, { method:'POST' });
+            const r = await res.json();
+            if (r.status === 'ok') alert('✅ Gasto generado para este mes.');
+            else if (r.status === 'ya_existe') alert('Ya estaba generado este mes.');
+            else alert('No se pudo generar.');
+        }
+
+        async function eliminarRecurrente(id, concepto) {
+            if (!confirm('¿Eliminar el recurrente "' + concepto + '"? (no borra los gastos ya generados)')) return;
+            await fetch(`${API_URL}/gastos/recurrentes/${id}`, { method:'DELETE' });
+            cargarRecurrentes();
+        }
+
+        // ── REPORTE ──
+        async function cargarReporte() {
+            const desde = document.getElementById('r-desde').value;
+            const hasta = document.getElementById('r-hasta').value;
+            const rep = await fetch(`${API_URL}/gastos/reporte?desde=${desde}&hasta=${hasta}`).then(r=>r.json()).catch(()=>null);
+            const cont = document.getElementById('reporte-cont');
+            if (!rep) { cont.innerHTML = '<p class="text-gray-500">No se pudo cargar el reporte.</p>'; return; }
+            const total = parseFloat(rep.resumen.total)||0;
+            let html = `<div class="bg-black border border-neon rounded-xl p-5 text-center mb-5">
+                <p class="text-gray-500 text-xs font-bold uppercase mb-1">Total gastado — ${rep.resumen.cantidad} gastos</p>
+                <p class="text-neon font-bold text-4xl">$ ${total.toLocaleString('es-AR')}</p></div>`;
+            html += '<div class="grid grid-cols-2 gap-5">';
+            // Por categoría
+            html += '<div><h3 class="text-white font-bold mb-3">Por categoría</h3><div class="space-y-2">';
+            if (rep.por_categoria.length) {
+                rep.por_categoria.forEach(c => {
+                    const m = parseFloat(c.total)||0;
+                    const pct = total>0 ? Math.round(m/total*100) : 0;
+                    html += `<div class="bg-black border border-gray-800 rounded-lg px-4 py-2">
+                        <div class="flex justify-between text-sm mb-1"><span class="text-gray-300">${c.categoria}</span><span class="text-neon font-bold">$ ${m.toLocaleString('es-AR')} <span class="text-gray-600 text-xs">(${pct}%)</span></span></div>
+                        <div class="w-full bg-gray-900 rounded-full h-1.5"><div class="bg-neon h-1.5 rounded-full" style="width:${pct}%"></div></div></div>`;
+                });
+            } else html += '<p class="text-gray-600 text-sm">Sin datos.</p>';
+            html += '</div></div>';
+            // Por método
+            html += '<div><h3 class="text-white font-bold mb-3">Por método de pago</h3><div class="space-y-2">';
+            if (rep.por_metodo.length) {
+                rep.por_metodo.forEach(m => {
+                    const mt = parseFloat(m.total)||0;
+                    html += `<div class="flex justify-between bg-black border border-gray-800 rounded-lg px-4 py-2 text-sm">
+                        <span class="text-gray-300">${m.metodo}</span><span class="text-neon font-bold">$ ${mt.toLocaleString('es-AR')}</span></div>`;
+                });
+            } else html += '<p class="text-gray-600 text-sm">Sin datos.</p>';
+            html += '</div></div></div>';
+            cont.innerHTML = html;
+        }
+
+        // ── CATEGORÍAS ──
+        async function abrirModalCategorias() {
+            await renderCategorias();
+            document.getElementById('modal-cats').classList.replace('modal-oculto','modal-visible');
+        }
+        async function renderCategorias() {
+            categorias = await fetch(`${API_URL}/gastos/categorias`).then(r=>r.json()).catch(()=>[]);
+            poblarSelectsCategorias();
+            const cont = document.getElementById('lista-cats');
+            cont.innerHTML = '';
+            if (!categorias.length) { cont.innerHTML = '<p class="text-gray-600 text-sm text-center py-2">Sin categorías.</p>'; return; }
+            categorias.forEach(c => {
+                const div = document.createElement('div');
+                div.className = 'flex justify-between items-center bg-black border border-gray-800 rounded-lg px-4 py-3';
+                div.innerHTML = `<span class="font-bold text-white text-sm">${c.nombre}</span><button class="text-gray-600 hover:text-red-500 text-xs btn-del-cat">Eliminar</button>`;
+                div.querySelector('.btn-del-cat').onclick = () => eliminarCategoria(c.id);
+                cont.appendChild(div);
+            });
+        }
+        async function guardarCategoria() {
+            const nombre = document.getElementById('cat-nueva').value.trim();
+            if (!nombre) return;
+            await fetch(`${API_URL}/gastos/categorias`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({nombre}) });
+            document.getElementById('cat-nueva').value = '';
+            await renderCategorias();
+        }
+        async function eliminarCategoria(id) {
+            if (!confirm('¿Eliminar esta categoría?')) return;
+            await fetch(`${API_URL}/gastos/categorias/${id}`, { method:'DELETE' });
+            await renderCategorias();
+        }
+
+        function cerrarModales() {
+            document.querySelectorAll('.modal-visible').forEach(m => m.classList.replace('modal-visible','modal-oculto'));
+        }
+
+        window.onload = init;
+    </script>
+</body>
+</html>
