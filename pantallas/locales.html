@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Locales | Portal del Viento</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .text-neon { color: #e4fc74; }
+        .bg-neon { background-color: #e4fc74; }
+        .border-neon { border-color: #e4fc74; }
+        .modal-oculto { display: none; }
+        .modal-visible { display: flex; }
+        .tab-activa { border-bottom: 2px solid #e4fc74; color: white; }
+    </style>
+</head>
+<body class="bg-gray-950 text-gray-200 font-sans h-screen flex">
+    <aside class="w-64 bg-black border-r border-gray-800 flex flex-col shrink-0">
+        <div class="p-6 border-b border-gray-800 text-center">
+            <h1 class="text-neon font-bold text-lg tracking-widest uppercase">Portal del Viento</h1>
+            <p class="text-white text-xs mt-1 font-bold italic">ALFAJORES</p>
+        </div>
+        <nav class="flex-1 p-4 space-y-1 text-sm overflow-y-auto">
+            <a href="/admin"          class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">📊 Tablero</a>
+            <a href="/catalogo"       class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">📦 Catálogo</a>
+            <a href="/insumos"        class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">🧪 Insumos</a>
+            <a href="/produccion"     class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">🏭 Producción</a>
+            <a href="/proveedores"    class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">🏪 Proveedores</a>
+            <a href="/distribuidores" class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">🚚 Distribuidores</a>
+            <a href="/historial-b2b"  class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">📋 Pedidos B2B</a>
+            <a href="/locales"        class="block bg-gray-900 text-white py-2 px-4 rounded-lg border-l-4 border-neon font-medium">🏬 Locales</a>
+            <a href="/gastos"         class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">💸 Gastos</a>
+            <a href="/empleados"      class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">👥 Empleados</a>
+            <a href="/reportes"       class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">📈 Reportes</a>
+            <a href="/configuracion"  class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">⚙️ Configuración</a>
+        </nav>
+        <div id="usuario-info" class="p-4 border-t border-gray-800 text-xs text-gray-500 text-center"></div>
+    </aside>
+
+    <main class="flex-1 flex flex-col overflow-hidden">
+        <header class="bg-gray-900 border-b border-gray-800 py-4 px-8 flex justify-between items-center shrink-0">
+            <h2 id="titulo" class="text-xl font-bold text-white">Locales</h2>
+            <button id="btn-volver" onclick="volverGeneral()" class="hidden border border-gray-600 text-gray-300 hover:text-white font-bold py-2 px-4 rounded-lg text-sm transition">← Volver a todos</button>
+        </header>
+
+        <!-- VISTA GENERAL -->
+        <div id="vista-general" class="flex-1 overflow-y-auto p-8">
+            <div id="cards-locales" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+                <p class="text-gray-500 col-span-full text-center py-12">Cargando locales...</p>
+            </div>
+
+            <div id="comparativa" class="mt-8 hidden">
+                <h3 class="text-white font-bold mb-3">📊 Comparativa de ventas del mes</h3>
+                <div class="bg-black border border-gray-800 rounded-xl p-5 space-y-3" id="comparativa-cont"></div>
+            </div>
+        </div>
+
+        <!-- VISTA DETALLE -->
+        <div id="vista-detalle" class="hidden flex-1 flex flex-col overflow-hidden">
+            <div class="bg-gray-900 border-b border-gray-800 px-8 flex gap-6 shrink-0">
+                <button onclick="cambiarTab('ventas')" id="tab-ventas" class="py-3 text-sm font-bold tab-activa">🧾 Ventas</button>
+                <button onclick="cambiarTab('productos')" id="tab-productos" class="py-3 text-sm font-bold text-gray-400 hover:text-white">📦 Productos y Stock</button>
+                <button onclick="cambiarTab('faltantes')" id="tab-faltantes" class="py-3 text-sm font-bold text-gray-400 hover:text-white">⚠️ Faltantes</button>
+                <button onclick="cambiarTab('gastos')" id="tab-gastos" class="py-3 text-sm font-bold text-gray-400 hover:text-white">💸 Gastos</button>
+            </div>
+            <div class="flex-1 overflow-y-auto p-8">
+                <!-- VENTAS -->
+                <div id="panel-ventas">
+                    <div class="grid grid-cols-3 gap-4 mb-5" id="ventas-kpis"></div>
+                    <h3 class="text-white font-bold mb-3">🏆 Más vendidos</h3>
+                    <div id="mas-vendidos" class="space-y-1 mb-6"></div>
+                    <h3 class="text-white font-bold mb-3">🧾 Últimas ventas (pedidos del cajero)</h3>
+                    <div id="lista-ventas" class="space-y-2"></div>
+                </div>
+                <!-- PRODUCTOS -->
+                <div id="panel-productos" class="hidden">
+                    <div class="flex justify-end mb-4">
+                        <button onclick="abrirModalProducto()" class="bg-neon text-black font-bold px-4 py-2 rounded-lg text-sm hover:bg-yellow-300">+ Nuevo producto</button>
+                    </div>
+                    <div class="bg-black rounded-xl border border-gray-800 overflow-hidden">
+                        <table class="w-full text-left">
+                            <thead class="bg-gray-950 text-xs text-gray-400 uppercase">
+                                <tr><th class="p-4">Producto</th><th class="p-4">Categoría</th><th class="p-4 text-right">Precio</th><th class="p-4 text-right">Stock</th><th class="p-4 text-right">Acciones</th></tr>
+                            </thead>
+                            <tbody id="tabla-productos" class="divide-y divide-gray-800 text-sm"></tbody>
+                        </table>
+                    </div>
+                </div>
+                <!-- FALTANTES -->
+                <div id="panel-faltantes" class="hidden">
+                    <div id="lista-faltantes" class="space-y-2"></div>
+                </div>
+                <!-- GASTOS -->
+                <div id="panel-gastos-local" class="hidden">
+                    <div class="flex gap-3 mb-4 text-sm">
+                        <span class="text-gray-400">Pendientes de aprobar resaltados en amarillo.</span>
+                    </div>
+                    <div id="lista-gastos-local" class="space-y-2"></div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- MODAL PRODUCTO -->
+    <div id="modal-producto" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
+        <div class="bg-gray-900 border border-gray-700 rounded-xl p-6 w-[460px] shadow-2xl">
+            <div class="flex justify-between items-center mb-4">
+                <h3 id="prod-titulo" class="text-lg font-bold text-white border-l-4 border-neon pl-2">Nuevo producto</h3>
+                <button onclick="cerrarModales()" class="text-gray-500 hover:text-white text-2xl leading-none">×</button>
+            </div>
+            <input type="hidden" id="prod-id">
+            <label class="block text-xs text-gray-500 font-bold mb-1">Nombre</label>
+            <input type="text" id="prod-nombre" class="w-full bg-black border border-gray-700 text-white rounded p-3 mb-3">
+            <div class="grid grid-cols-2 gap-3 mb-3">
+                <div>
+                    <label class="block text-xs text-neon font-bold mb-1">Precio ($)</label>
+                    <input type="number" id="prod-precio" step="0.01" class="w-full bg-black border border-neon text-white rounded p-2 font-bold">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 font-bold mb-1">Categoría</label>
+                    <input type="text" id="prod-categoria" class="w-full bg-black border border-gray-700 text-white rounded p-2 text-sm">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 font-bold mb-1">Stock actual</label>
+                    <input type="number" id="prod-stock" step="0.01" value="0" class="w-full bg-black border border-gray-700 text-white rounded p-2 text-sm">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 font-bold mb-1">Alerta stock</label>
+                    <input type="number" id="prod-alerta" step="0.01" value="0" class="w-full bg-black border border-gray-700 text-white rounded p-2 text-sm">
+                </div>
+            </div>
+            <div class="flex justify-end gap-3 mt-2">
+                <button onclick="cerrarModales()" class="px-4 py-2 text-gray-400 hover:text-white font-bold">Cancelar</button>
+                <button onclick="guardarProducto()" class="bg-neon text-black px-6 py-2 rounded font-bold hover:bg-yellow-300">Guardar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL SUMAR STOCK -->
+    <div id="modal-stock" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
+        <div class="bg-gray-900 border border-gray-700 rounded-xl p-6 w-96 shadow-2xl">
+            <h3 class="text-lg font-bold text-white mb-1">Sumar stock</h3>
+            <p id="stock-prod-nombre" class="text-neon text-sm font-bold mb-4"></p>
+            <input type="hidden" id="stock-prod-id">
+            <label class="block text-xs text-gray-500 font-bold mb-1">Cantidad a sumar</label>
+            <input type="number" id="stock-cantidad" step="0.01" class="w-full bg-black border border-neon text-white rounded p-3 mb-5 font-bold text-xl text-center">
+            <div class="flex justify-end gap-3">
+                <button onclick="cerrarModales()" class="px-4 py-2 text-gray-400 hover:text-white font-bold">Cancelar</button>
+                <button onclick="guardarSumarStock()" class="bg-neon text-black px-6 py-2 rounded font-bold hover:bg-yellow-300">Sumar</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = window.location.origin + "/api";
+        const usr = JSON.parse(sessionStorage.getItem('usuario') || '{}');
+        if (usr.nombre) document.getElementById('usuario-info').textContent = `${usr.nombre} ${usr.apellido} · ${usr.rol}`;
+
+        let localActual = null;
+
+        function fmt(n) { return '$ ' + (parseFloat(n)||0).toLocaleString('es-AR'); }
+
+        async function cargarGeneral() {
+            const data = await fetch(`${API_URL}/locales/resumen`).then(r=>r.json()).catch(()=>[]);
+            const cont = document.getElementById('cards-locales');
+            cont.innerHTML = '';
+            if (!data.length) {
+                cont.innerHTML = '<p class="text-gray-500 col-span-full text-center py-12">No hay locales cargados todavía. Se crean desde el POS (⚙️).</p>';
+                document.getElementById('comparativa').classList.add('hidden');
+                return;
+            }
+            data.forEach(l => {
+                const estadoCaja = l.caja_abierta
+                    ? `<span class="text-xs bg-green-900/40 text-green-400 px-2 py-1 rounded font-bold">🟢 Caja abierta</span>`
+                    : `<span class="text-xs bg-gray-800 text-gray-500 px-2 py-1 rounded font-bold">🔴 Caja cerrada</span>`;
+                let alertas = '';
+                if (l.faltantes_pendientes) alertas += `<span class="text-xs bg-yellow-900/40 text-yellow-400 px-2 py-0.5 rounded">⚠️ ${l.faltantes_pendientes} faltantes</span> `;
+                if (l.gastos_pendientes) alertas += `<span class="text-xs bg-orange-900/40 text-orange-400 px-2 py-0.5 rounded">💸 ${l.gastos_pendientes} gastos a aprobar</span> `;
+                if (l.stock_bajo) alertas += `<span class="text-xs bg-red-900/40 text-red-400 px-2 py-0.5 rounded">📦 ${l.stock_bajo} stock bajo</span> `;
+                const card = document.createElement('div');
+                card.className = 'bg-black border border-gray-800 hover:border-neon rounded-2xl p-5 cursor-pointer transition';
+                card.onclick = () => abrirLocal(l);
+                card.innerHTML = `
+                    <div class="flex justify-between items-start mb-3">
+                        <div>
+                            <h3 class="text-white font-bold text-lg">${l.nombre}</h3>
+                            ${l.direccion ? `<p class="text-gray-500 text-xs">${l.direccion}</p>` : ''}
+                        </div>
+                        ${estadoCaja}
+                    </div>
+                    <div class="grid grid-cols-2 gap-3 mb-3">
+                        <div class="bg-gray-950 rounded-lg p-3">
+                            <p class="text-gray-500 text-xs">Ventas hoy</p>
+                            <p class="text-neon font-bold text-lg">${fmt(l.ventas_hoy)}</p>
+                            <p class="text-gray-600 text-xs">${l.tickets_hoy} tickets</p>
+                        </div>
+                        <div class="bg-gray-950 rounded-lg p-3">
+                            <p class="text-gray-500 text-xs">Ventas del mes</p>
+                            <p class="text-white font-bold text-lg">${fmt(l.ventas_mes)}</p>
+                            <p class="text-gray-600 text-xs">${l.tickets_mes} tickets</p>
+                        </div>
+                    </div>
+                    ${l.caja_abierta ? `<p class="text-xs text-gray-400 mb-2">💵 En caja: <span class="text-white font-bold">${fmt(l.efectivo_en_caja)}</span> · ${l.responsable||'—'}</p>` : ''}
+                    <div class="flex flex-wrap gap-1">${alertas || '<span class="text-gray-700 text-xs">Sin alertas</span>'}</div>
+                `;
+                cont.appendChild(card);
+            });
+            // Comparativa
+            const comp = document.getElementById('comparativa');
+            const cc = document.getElementById('comparativa-cont');
+            const max = Math.max(...data.map(l=>l.ventas_mes), 1);
+            cc.innerHTML = '';
+            data.slice().sort((a,b)=>b.ventas_mes-a.ventas_mes).forEach(l => {
+                const pct = Math.max(3, Math.round(l.ventas_mes/max*100));
+                cc.innerHTML += `
+                    <div>
+                        <div class="flex justify-between text-sm mb-1"><span class="text-gray-300">${l.nombre}</span><span class="text-neon font-bold">${fmt(l.ventas_mes)}</span></div>
+                        <div class="w-full bg-gray-900 rounded-full h-2"><div class="bg-neon h-2 rounded-full" style="width:${pct}%"></div></div>
+                    </div>`;
+            });
+            comp.classList.remove('hidden');
+        }
+
+        function volverGeneral() {
+            localActual = null;
+            document.getElementById('vista-general').classList.remove('hidden');
+            document.getElementById('vista-detalle').classList.add('hidden');
+            document.getElementById('btn-volver').classList.add('hidden');
+            document.getElementById('titulo').textContent = 'Locales';
+            cargarGeneral();
+        }
+
+        function abrirLocal(l) {
+            localActual = l;
+            document.getElementById('vista-general').classList.add('hidden');
+            document.getElementById('vista-detalle').classList.remove('hidden');
+            document.getElementById('btn-volver').classList.remove('hidden');
+            document.getElementById('titulo').textContent = '🏬 ' + l.nombre;
+            cambiarTab('ventas');
+        }
+
+        function cambiarTab(tab) {
+            ['ventas','productos','faltantes','gastos'].forEach(t => {
+                const p = document.getElementById('panel-' + (t==='gastos'?'gastos-local':t));
+                if (p) p.classList.toggle('hidden', t!==tab);
+            });
+            document.getElementById('tab-ventas').className = tab==='ventas' ? 'py-3 text-sm font-bold tab-activa' : 'py-3 text-sm font-bold text-gray-400 hover:text-white';
+            document.getElementById('tab-productos').className = tab==='productos' ? 'py-3 text-sm font-bold tab-activa' : 'py-3 text-sm font-bold text-gray-400 hover:text-white';
+            document.getElementById('tab-faltantes').className = tab==='faltantes' ? 'py-3 text-sm font-bold tab-activa' : 'py-3 text-sm font-bold text-gray-400 hover:text-white';
+            document.getElementById('tab-gastos').className = tab==='gastos' ? 'py-3 text-sm font-bold tab-activa' : 'py-3 text-sm font-bold text-gray-400 hover:text-white';
+            if (tab==='ventas') cargarVentas();
+            if (tab==='productos') cargarProductos();
+            if (tab==='faltantes') cargarFaltantes();
+            if (tab==='gastos') cargarGastosLocal();
+        }
+
+        // ── VENTAS ──
+        async function cargarVentas() {
+            const id = localActual.id;
+            const [ventas, top] = await Promise.all([
+                fetch(`${API_URL}/locales/${id}/ventas`).then(r=>r.json()).catch(()=>[]),
+                fetch(`${API_URL}/locales/${id}/mas_vendidos`).then(r=>r.json()).catch(()=>[])
+            ]);
+            // KPIs
+            const hoy = new Date().toISOString().split('T')[0];
+            let totalHoy=0, totalTodo=0;
+            ventas.forEach(v=>{ totalTodo+=parseFloat(v.total)||0; if((v.fecha||'').split(' ')[0]===hoy) totalHoy+=parseFloat(v.total)||0; });
+            document.getElementById('ventas-kpis').innerHTML = `
+                <div class="bg-black border border-neon rounded-xl p-4 text-center"><p class="text-gray-500 text-xs">Ventas hoy</p><p class="text-neon font-bold text-2xl">${fmt(totalHoy)}</p></div>
+                <div class="bg-black border border-gray-800 rounded-xl p-4 text-center"><p class="text-gray-500 text-xs">Tickets (todo)</p><p class="text-white font-bold text-2xl">${ventas.length}</p></div>
+                <div class="bg-black border border-gray-800 rounded-xl p-4 text-center"><p class="text-gray-500 text-xs">Total acumulado</p><p class="text-white font-bold text-2xl">${fmt(totalTodo)}</p></div>`;
+            // Más vendidos
+            const mv = document.getElementById('mas-vendidos');
+            mv.innerHTML = '';
+            if (!top.length) mv.innerHTML = '<p class="text-gray-600 text-sm">Sin ventas todavía.</p>';
+            const maxu = top.length ? (parseFloat(top[0].unidades)||1) : 1;
+            top.slice(0,10).forEach(p => {
+                const pct = Math.max(3, Math.round((parseFloat(p.unidades)||0)/maxu*100));
+                mv.innerHTML += `<div class="bg-black border border-gray-800 rounded-lg px-4 py-2">
+                    <div class="flex justify-between text-sm mb-1"><span class="text-gray-300">${p.nombre_producto}</span><span class="text-neon font-bold">${p.unidades} u · ${fmt(p.total)}</span></div>
+                    <div class="w-full bg-gray-900 rounded-full h-1.5"><div class="bg-neon h-1.5 rounded-full" style="width:${pct}%"></div></div></div>`;
+            });
+            // Lista de ventas
+            const lv = document.getElementById('lista-ventas');
+            lv.innerHTML = '';
+            if (!ventas.length) { lv.innerHTML = '<p class="text-gray-600 text-sm">Sin ventas.</p>'; return; }
+            ventas.forEach(v => {
+                const dt = v.fecha ? new Date(v.fecha.replace(' ','T')).toLocaleString('es-AR',{dateStyle:'short',timeStyle:'short'}) : '';
+                const items = (v.detalle||[]).map(d=>`${d.cantidad}× ${d.nombre_producto}`).join(', ');
+                lv.innerHTML += `<div class="bg-black border border-gray-800 rounded-lg px-4 py-3">
+                    <div class="flex justify-between items-center">
+                        <div><span class="text-neon font-bold">#${String(v.id).padStart(4,'0')}</span> <span class="text-gray-500 text-xs">${dt} · ${v.metodo_pago}</span></div>
+                        <span class="text-white font-bold">${fmt(v.total)}</span>
+                    </div>
+                    <p class="text-gray-500 text-xs mt-1">${items}</p></div>`;
+            });
+        }
+
+        // ── PRODUCTOS Y STOCK ──
+        async function cargarProductos() {
+            const lista = await fetch(`${API_URL}/pos/productos?id_local=${localActual.id}`).then(r=>r.json()).catch(()=>[]);
+            const tabla = document.getElementById('tabla-productos');
+            tabla.innerHTML = '';
+            if (!lista.length) { tabla.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-gray-500">Sin productos en este local.</td></tr>'; return; }
+            lista.forEach(p => {
+                const stock = parseFloat(p.stock)||0;
+                const alerta = parseFloat(p.stock_alerta)||0;
+                const bajo = alerta>0 && stock<=alerta;
+                const tr = document.createElement('tr');
+                tr.className = 'hover:bg-gray-900 transition';
+                tr.innerHTML = `
+                    <td class="p-4 font-bold text-white">${p.nombre}</td>
+                    <td class="p-4 text-gray-400 text-xs">${p.categoria||'—'}</td>
+                    <td class="p-4 text-right text-neon font-bold">${fmt(p.precio)}</td>
+                    <td class="p-4 text-right ${bajo?'text-red-400 font-bold':'text-white'}">${stock}${bajo?' ⚠️':''}</td>
+                    <td class="p-4 text-right">
+                        <div class="flex justify-end gap-1">
+                            <button class="text-xs border border-gray-700 bg-gray-800 hover:border-neon px-2 py-1 rounded text-gray-400 hover:text-white btn-sumar">+ Stock</button>
+                            <button class="text-xs border border-gray-700 bg-gray-800 hover:border-gray-500 px-2 py-1 rounded text-gray-400 hover:text-white btn-edit">Editar</button>
+                            <button class="text-xs bg-red-900/50 hover:bg-red-700 text-red-400 hover:text-white px-2 py-1 rounded btn-del">✕</button>
+                        </div>
+                    </td>`;
+                tr.querySelector('.btn-sumar').onclick = () => abrirModalStock(p);
+                tr.querySelector('.btn-edit').onclick = () => abrirModalProducto(p);
+                tr.querySelector('.btn-del').onclick = () => eliminarProducto(p.id, p.nombre);
+                tabla.appendChild(tr);
+            });
+        }
+
+        function abrirModalProducto(p) {
+            document.getElementById('prod-titulo').textContent = p && p.id ? 'Editar producto' : 'Nuevo producto';
+            document.getElementById('prod-id').value = p && p.id ? p.id : '';
+            document.getElementById('prod-nombre').value = p ? p.nombre : '';
+            document.getElementById('prod-precio').value = p ? p.precio : '';
+            document.getElementById('prod-categoria').value = p && p.categoria ? p.categoria : '';
+            document.getElementById('prod-stock').value = p ? (p.stock||0) : 0;
+            document.getElementById('prod-alerta').value = p ? (p.stock_alerta||0) : 0;
+            document.getElementById('modal-producto').classList.replace('modal-oculto','modal-visible');
+        }
+
+        async function guardarProducto() {
+            const id = document.getElementById('prod-id').value;
+            const data = {
+                id_local: localActual.id,
+                nombre: document.getElementById('prod-nombre').value.trim(),
+                precio: parseFloat(document.getElementById('prod-precio').value)||0,
+                categoria: document.getElementById('prod-categoria').value.trim()||null,
+                stock: parseFloat(document.getElementById('prod-stock').value)||0,
+                stock_alerta: parseFloat(document.getElementById('prod-alerta').value)||0
+            };
+            if (!data.nombre) { alert('Poné un nombre.'); return; }
+            const url = id ? `${API_URL}/pos/productos/${id}` : `${API_URL}/pos/productos`;
+            await fetch(url, { method: id?'PUT':'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(data) });
+            cerrarModales(); cargarProductos();
+        }
+
+        async function eliminarProducto(id, nombre) {
+            if (!confirm('¿Eliminar "' + nombre + '"?')) return;
+            await fetch(`${API_URL}/pos/productos/${id}`, { method:'DELETE' });
+            cargarProductos();
+        }
+
+        function abrirModalStock(p) {
+            document.getElementById('stock-prod-id').value = p.id;
+            document.getElementById('stock-prod-nombre').textContent = p.nombre + ' (stock actual: ' + (p.stock||0) + ')';
+            document.getElementById('stock-cantidad').value = '';
+            document.getElementById('modal-stock').classList.replace('modal-oculto','modal-visible');
+        }
+
+        async function guardarSumarStock() {
+            const id = document.getElementById('stock-prod-id').value;
+            const cantidad = parseFloat(document.getElementById('stock-cantidad').value)||0;
+            if (cantidad===0) { alert('Poné una cantidad.'); return; }
+            await fetch(`${API_URL}/pos/productos/${id}/sumar_stock`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({cantidad}) });
+            cerrarModales(); cargarProductos();
+        }
+
+        // ── FALTANTES ──
+        async function cargarFaltantes() {
+            const lista = await fetch(`${API_URL}/pos/faltantes?id_local=${localActual.id}`).then(r=>r.json()).catch(()=>[]);
+            const cont = document.getElementById('lista-faltantes');
+            cont.innerHTML = '';
+            if (!lista.length) { cont.innerHTML = '<p class="text-gray-600 text-sm text-center py-8">No hay faltantes reportados.</p>'; return; }
+            lista.forEach(f => {
+                const dt = f.fecha ? new Date(f.fecha.replace(' ','T')).toLocaleString('es-AR',{dateStyle:'short',timeStyle:'short'}) : '';
+                const resuelto = f.estado==='resuelto';
+                const emp = f.empleado_apellido ? `${f.empleado_apellido}, ${f.empleado_nombre}` : '';
+                const div = document.createElement('div');
+                div.className = 'flex items-center justify-between bg-black border border-gray-800 rounded-lg px-4 py-3' + (resuelto?' opacity-50':'');
+                div.innerHTML = `
+                    <div>
+                        <p class="font-bold text-white">${f.descripcion} ${f.cantidad?`<span class="text-gray-500 text-sm font-normal">· ${f.cantidad}</span>`:''}</p>
+                        <p class="text-gray-500 text-xs">${dt} ${emp?'· '+emp:''} ${resuelto?'· ✅ resuelto':''}</p>
+                    </div>
+                    <div class="flex gap-1">
+                        ${resuelto?'':'<button class="text-xs bg-green-800 hover:bg-green-700 text-white px-3 py-1.5 rounded font-bold btn-ok">Marcar resuelto</button>'}
+                        <button class="text-xs bg-red-900/50 hover:bg-red-700 text-red-400 hover:text-white px-2 py-1.5 rounded btn-del">✕</button>
+                    </div>`;
+                const ok = div.querySelector('.btn-ok'); if (ok) ok.onclick = async () => { await fetch(`${API_URL}/pos/faltantes/${f.id}/resolver`,{method:'PUT'}); cargarFaltantes(); };
+                div.querySelector('.btn-del').onclick = async () => { if(confirm('¿Borrar este faltante?')){ await fetch(`${API_URL}/pos/faltantes/${f.id}`,{method:'DELETE'}); cargarFaltantes(); } };
+                cont.appendChild(div);
+            });
+        }
+
+        // ── GASTOS DEL LOCAL ──
+        async function cargarGastosLocal() {
+            const lista = await fetch(`${API_URL}/locales/gastos?id_local=${localActual.id}`).then(r=>r.json()).catch(()=>[]);
+            const cont = document.getElementById('lista-gastos-local');
+            cont.innerHTML = '';
+            if (!lista.length) { cont.innerHTML = '<p class="text-gray-600 text-sm text-center py-8">Sin gastos de este local.</p>'; return; }
+            lista.forEach(g => {
+                const dt = g.fecha ? g.fecha.split('-').reverse().join('/') : '';
+                const pend = g.estado==='pendiente';
+                const emp = g.empleado_apellido ? `${g.empleado_apellido}, ${g.empleado_nombre}` : '';
+                const div = document.createElement('div');
+                div.className = 'flex items-center justify-between rounded-lg px-4 py-3 border ' + (pend?'bg-yellow-900/10 border-yellow-800':'bg-black border-gray-800');
+                div.innerHTML = `
+                    <div>
+                        <p class="font-bold text-white">${g.concepto} <span class="text-gray-500 text-xs font-normal">· ${g.metodo}</span></p>
+                        <p class="text-gray-500 text-xs">${dt} ${emp?'· '+emp:''} ${pend?'· ⏳ pendiente':'· ✅ aprobado'}</p>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <span class="${pend?'text-yellow-400':'text-neon'} font-bold">${fmt(g.monto)}</span>
+                        ${pend?`<button class="text-xs bg-green-800 hover:bg-green-700 text-white px-3 py-1.5 rounded font-bold btn-ap">Aprobar</button>
+                                <button class="text-xs bg-red-900/50 hover:bg-red-700 text-red-400 hover:text-white px-2 py-1.5 rounded btn-rj">Rechazar</button>`:''}
+                    </div>`;
+                const ap = div.querySelector('.btn-ap'); if (ap) ap.onclick = async () => { await fetch(`${API_URL}/locales/gastos/${g.id}/aprobar`,{method:'PUT'}); cargarGastosLocal(); };
+                const rj = div.querySelector('.btn-rj'); if (rj) rj.onclick = async () => { if(confirm('¿Rechazar este gasto? No se sumará a gastos generales.')){ await fetch(`${API_URL}/locales/gastos/${g.id}/rechazar`,{method:'PUT'}); cargarGastosLocal(); } };
+                cont.appendChild(div);
+            });
+        }
+
+        function cerrarModales() {
+            document.querySelectorAll('.modal-visible').forEach(m => m.classList.replace('modal-visible','modal-oculto'));
+        }
+
+        window.onload = cargarGeneral;
+    </script>
+</body>
+</html>
