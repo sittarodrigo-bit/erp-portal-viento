@@ -141,6 +141,52 @@
         </div>
     </div>
 
+    <!-- MODAL VARIANTES Y SABORES -->
+    <div id="modal-variantes" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
+        <div class="bg-gray-900 border border-gray-700 rounded-xl p-6 w-[520px] shadow-2xl max-h-[88vh] overflow-y-auto">
+            <div class="flex justify-between items-center mb-1">
+                <h3 class="text-lg font-bold text-white border-l-4 border-neon pl-2">Variantes y Sabores</h3>
+                <button onclick="cerrarModales()" class="text-gray-500 hover:text-white text-2xl leading-none">×</button>
+            </div>
+            <p id="var-prod-nombre" class="text-neon text-sm font-bold mb-4 pl-3"></p>
+            <input type="hidden" id="var-prod-id">
+
+            <!-- VARIANTES -->
+            <div class="mb-5">
+                <h4 class="text-white font-bold text-sm mb-2">📦 Presentaciones (unidad / caja 6 / caja 12...)</h4>
+                <div id="lista-variantes" class="space-y-2 mb-3"></div>
+                <div class="border border-dashed border-gray-700 rounded-lg p-3 grid grid-cols-12 gap-2 items-end">
+                    <div class="col-span-5">
+                        <label class="block text-xs text-gray-500 font-bold mb-1">Nombre</label>
+                        <input type="text" id="var-nombre" placeholder="Caja de 6" class="w-full bg-black border border-gray-700 text-white rounded p-2 text-sm">
+                    </div>
+                    <div class="col-span-3">
+                        <label class="block text-xs text-neon font-bold mb-1">Precio $</label>
+                        <input type="number" id="var-precio" step="0.01" class="w-full bg-black border border-neon text-white rounded p-2 text-sm">
+                    </div>
+                    <div class="col-span-2">
+                        <label class="block text-xs text-gray-500 font-bold mb-1">Unidades</label>
+                        <input type="number" id="var-factor" step="1" value="1" class="w-full bg-black border border-gray-700 text-white rounded p-2 text-sm" title="Cuántas unidades de stock descuenta">
+                    </div>
+                    <div class="col-span-2">
+                        <button onclick="agregarVariante()" class="w-full bg-neon text-black font-bold py-2 rounded text-sm hover:bg-yellow-300">+</button>
+                    </div>
+                </div>
+                <p class="text-gray-600 text-xs mt-1">"Unidades" = cuánto descuenta del stock al vender (unidad=1, caja de 6=6).</p>
+            </div>
+
+            <!-- SABORES -->
+            <div>
+                <h4 class="text-white font-bold text-sm mb-2">🍫 Sabores (para pedir reposición por sabor)</h4>
+                <div id="lista-sabores" class="flex flex-wrap gap-2 mb-3"></div>
+                <div class="flex gap-2">
+                    <input type="text" id="sabor-nombre" placeholder="Ej: Maicena" class="flex-1 bg-black border border-gray-700 text-white rounded p-2 text-sm">
+                    <button onclick="agregarSabor()" class="bg-neon text-black font-bold px-4 py-2 rounded text-sm hover:bg-yellow-300">+ Sabor</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- MODAL SUMAR STOCK -->
     <div id="modal-stock" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
         <div class="bg-gray-900 border border-gray-700 rounded-xl p-6 w-96 shadow-2xl">
@@ -324,11 +370,13 @@
                     <td class="p-4 text-right">
                         <div class="flex justify-end gap-1">
                             <button class="text-xs border border-gray-700 bg-gray-800 hover:border-neon px-2 py-1 rounded text-gray-400 hover:text-white btn-sumar">+ Stock</button>
+                            <button class="text-xs border border-blue-800 bg-blue-900/20 text-blue-300 hover:bg-blue-900 px-2 py-1 rounded btn-var">Variantes/Sabores</button>
                             <button class="text-xs border border-gray-700 bg-gray-800 hover:border-gray-500 px-2 py-1 rounded text-gray-400 hover:text-white btn-edit">Editar</button>
                             <button class="text-xs bg-red-900/50 hover:bg-red-700 text-red-400 hover:text-white px-2 py-1 rounded btn-del">✕</button>
                         </div>
                     </td>`;
                 tr.querySelector('.btn-sumar').onclick = () => abrirModalStock(p);
+                tr.querySelector('.btn-var').onclick = () => abrirModalVariantes(p);
                 tr.querySelector('.btn-edit').onclick = () => abrirModalProducto(p);
                 tr.querySelector('.btn-del').onclick = () => eliminarProducto(p.id, p.nombre);
                 tabla.appendChild(tr);
@@ -420,7 +468,7 @@
                 const dt = r.fecha ? new Date(r.fecha.replace(' ','T')).toLocaleString('es-AR',{dateStyle:'short',timeStyle:'short'}) : '';
                 const repuesto = r.estado==='repuesto';
                 const emp = r.empleado_apellido ? `${r.empleado_apellido}, ${r.empleado_nombre}` : '';
-                const items = (r.detalle||[]).map(d=>`${d.cantidad}× ${d.nombre_producto}`).join(', ');
+                const items = (r.detalle||[]).map(d=>`${d.cantidad}× ${d.nombre_producto}${d.sabor?' ('+d.sabor+')':''}`).join(', ');
                 const div = document.createElement('div');
                 div.className = 'rounded-lg px-4 py-3 border ' + (repuesto?'bg-black border-gray-800 opacity-60':'bg-yellow-900/10 border-yellow-800');
                 div.innerHTML = `
@@ -478,6 +526,69 @@
                 const rj = div.querySelector('.btn-rj'); if (rj) rj.onclick = async () => { if(confirm('¿Rechazar este gasto? No se sumará a gastos generales.')){ await fetch(`${API_URL}/locales/gastos/${g.id}/rechazar`,{method:'PUT'}); cargarGastosLocal(); } };
                 cont.appendChild(div);
             });
+        }
+
+        // ── VARIANTES Y SABORES ──
+        async function abrirModalVariantes(p) {
+            document.getElementById('var-prod-id').value = p.id;
+            document.getElementById('var-prod-nombre').textContent = p.nombre;
+            document.getElementById('var-nombre').value = '';
+            document.getElementById('var-precio').value = '';
+            document.getElementById('var-factor').value = '1';
+            document.getElementById('sabor-nombre').value = '';
+            await renderVariantes(p.id);
+            await renderSabores(p.id);
+            document.getElementById('modal-variantes').classList.replace('modal-oculto','modal-visible');
+        }
+
+        async function renderVariantes(idProd) {
+            const lista = await fetch(`${API_URL}/pos/productos/${idProd}/variantes`).then(r=>r.json()).catch(()=>[]);
+            const cont = document.getElementById('lista-variantes');
+            cont.innerHTML = '';
+            if (!lista.length) { cont.innerHTML = '<p class="text-gray-600 text-xs">Sin presentaciones. El producto se vende como unidad simple.</p>'; return; }
+            lista.forEach(v => {
+                const div = document.createElement('div');
+                div.className = 'flex justify-between items-center bg-black border border-gray-800 rounded-lg px-3 py-2';
+                div.innerHTML = `<span class="text-white text-sm font-bold">${v.nombre} <span class="text-gray-500 font-normal">· descuenta ${v.factor} u.</span></span>
+                    <div class="flex items-center gap-2"><span class="text-neon font-bold">${fmt(v.precio)}</span>
+                    <button class="text-gray-600 hover:text-red-500 text-sm btn-x">✕</button></div>`;
+                div.querySelector('.btn-x').onclick = async () => { await fetch(`${API_URL}/pos/variantes/${v.id}`,{method:'DELETE'}); renderVariantes(idProd); };
+                cont.appendChild(div);
+            });
+        }
+
+        async function agregarVariante() {
+            const idProd = parseInt(document.getElementById('var-prod-id').value);
+            const nombre = document.getElementById('var-nombre').value.trim();
+            const precio = parseFloat(document.getElementById('var-precio').value)||0;
+            const factor = parseFloat(document.getElementById('var-factor').value)||1;
+            if (!nombre) { alert('Poné el nombre de la presentación.'); return; }
+            await fetch(`${API_URL}/pos/variantes`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({id_producto:idProd, nombre, precio, factor}) });
+            document.getElementById('var-nombre').value=''; document.getElementById('var-precio').value=''; document.getElementById('var-factor').value='1';
+            renderVariantes(idProd);
+        }
+
+        async function renderSabores(idProd) {
+            const lista = await fetch(`${API_URL}/pos/productos/${idProd}/sabores`).then(r=>r.json()).catch(()=>[]);
+            const cont = document.getElementById('lista-sabores');
+            cont.innerHTML = '';
+            if (!lista.length) { cont.innerHTML = '<p class="text-gray-600 text-xs">Sin sabores. (Solo necesario para alfajores u otros productos por sabor.)</p>'; return; }
+            lista.forEach(s => {
+                const span = document.createElement('span');
+                span.className = 'inline-flex items-center gap-2 bg-black border border-gray-700 rounded-full px-3 py-1 text-sm text-white';
+                span.innerHTML = `${s.nombre} <button class="text-gray-500 hover:text-red-500 btn-x">×</button>`;
+                span.querySelector('.btn-x').onclick = async () => { await fetch(`${API_URL}/pos/sabores/${s.id}`,{method:'DELETE'}); renderSabores(idProd); };
+                cont.appendChild(span);
+            });
+        }
+
+        async function agregarSabor() {
+            const idProd = parseInt(document.getElementById('var-prod-id').value);
+            const nombre = document.getElementById('sabor-nombre').value.trim();
+            if (!nombre) return;
+            await fetch(`${API_URL}/pos/sabores`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({id_producto:idProd, nombre}) });
+            document.getElementById('sabor-nombre').value='';
+            renderSabores(idProd);
         }
 
         function cerrarModales() {
