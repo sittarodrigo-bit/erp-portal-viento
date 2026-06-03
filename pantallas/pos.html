@@ -73,6 +73,8 @@
                 <input type="text" id="buscar-prod-pos" placeholder="🔍 Buscar producto..." oninput="renderProductos()"
                        class="flex-1 bg-black border border-gray-700 focus:border-neon text-white rounded-lg p-3 text-sm outline-none">
                 <button onclick="abrirGestionProductos()" class="bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white font-bold px-4 py-3 rounded-lg text-sm border border-gray-700">📦 Productos</button>
+                <button onclick="abrirModalFaltante()" class="bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white font-bold px-4 py-3 rounded-lg text-sm border border-gray-700">⚠️ Falta algo</button>
+                <button onclick="abrirModalGastoPos()" class="bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white font-bold px-4 py-3 rounded-lg text-sm border border-gray-700">💸 Gasto</button>
             </div>
             <div id="grilla-productos" class="flex-1 overflow-y-auto p-4 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 content-start">
             </div>
@@ -210,6 +212,47 @@
         </div>
     </div>
 
+    <!-- MODAL FALTANTE -->
+    <div id="modal-faltante" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
+        <div class="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-[400px] shadow-2xl">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-lg font-bold text-white">⚠️ Reportar faltante</h3>
+                <button onclick="cerrarModales()" class="text-gray-500 hover:text-white text-2xl leading-none">×</button>
+            </div>
+            <label class="block text-xs text-gray-500 font-bold mb-1">¿Qué falta?</label>
+            <input type="text" id="falta-desc" placeholder="Ej: Servilletas, vasos, alfajor maicena..." class="w-full bg-black border border-gray-700 text-white rounded-lg p-3 mb-3 text-sm">
+            <label class="block text-xs text-gray-500 font-bold mb-1">Cantidad (opcional)</label>
+            <input type="text" id="falta-cant" placeholder="Ej: 2 paquetes" class="w-full bg-black border border-gray-700 text-white rounded-lg p-3 mb-5 text-sm">
+            <button onclick="guardarFaltante()" class="w-full bg-neon text-black font-bold py-3 rounded-xl hover:bg-yellow-300">Enviar al admin</button>
+        </div>
+    </div>
+
+    <!-- MODAL GASTO -->
+    <div id="modal-gasto-pos" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
+        <div class="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-[400px] shadow-2xl">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-lg font-bold text-white">💸 Cargar gasto</h3>
+                <button onclick="cerrarModales()" class="text-gray-500 hover:text-white text-2xl leading-none">×</button>
+            </div>
+            <p class="text-gray-500 text-xs mb-3">Queda pendiente hasta que el administrador lo apruebe.</p>
+            <label class="block text-xs text-gray-500 font-bold mb-1">Concepto</label>
+            <input type="text" id="gasto-pos-concepto" placeholder="Ej: Flete, limpieza..." class="w-full bg-black border border-gray-700 text-white rounded-lg p-3 mb-3 text-sm">
+            <div class="grid grid-cols-2 gap-3 mb-5">
+                <div>
+                    <label class="block text-xs text-neon font-bold mb-1">Monto ($)</label>
+                    <input type="number" id="gasto-pos-monto" step="0.01" class="w-full bg-black border border-neon text-white rounded-lg p-2 font-bold text-lg">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 font-bold mb-1">Método</label>
+                    <select id="gasto-pos-metodo" class="w-full bg-black border border-gray-700 text-white rounded-lg p-2 text-sm">
+                        <option>Efectivo</option><option>Transferencia</option><option>Tarjeta</option>
+                    </select>
+                </div>
+            </div>
+            <button onclick="guardarGastoPos()" class="w-full bg-neon text-black font-bold py-3 rounded-xl hover:bg-yellow-300">Enviar al admin</button>
+        </div>
+    </div>
+
     <!-- TICKET (oculto, para imprimir) -->
     <div id="ticket-area" style="display:none"></div>
 
@@ -330,13 +373,20 @@
             }
             lista.forEach(function(p){
                 var precio = parseFloat(p.precio) || 0;
+                var stock = parseFloat(p.stock) || 0;
+                var alerta = parseFloat(p.stock_alerta) || 0;
+                var stockTxt;
+                if (stock <= 0) stockTxt = '<span class="text-red-500">Sin stock</span>';
+                else if (alerta > 0 && stock <= alerta) stockTxt = '<span class="text-yellow-400">Stock: ' + stock + '</span>';
+                else stockTxt = '<span class="text-gray-600">Stock: ' + stock + '</span>';
                 var div = document.createElement('button');
                 div.className = 'bg-black border border-gray-800 hover:border-neon rounded-xl p-3 text-left transition active:scale-95';
                 div.onclick = function(){ agregarAlCarrito(p); };
                 div.innerHTML =
                     (p.categoria ? '<p class="text-gray-600 text-xs mb-1">' + p.categoria + '</p>' : '<p class="text-gray-600 text-xs mb-1">&nbsp;</p>') +
                     '<p class="text-white font-bold text-sm leading-tight mb-2 line-clamp-2">' + p.nombre + '</p>' +
-                    '<p class="text-neon font-bold">$ ' + precio.toLocaleString('es-AR') + '</p>';
+                    '<p class="text-neon font-bold">$ ' + precio.toLocaleString('es-AR') + '</p>' +
+                    '<p class="text-xs mt-1">' + stockTxt + '</p>';
                 cont.appendChild(div);
             });
         }
@@ -421,7 +471,7 @@
             var btn = document.getElementById('btn-confirmar-venta');
             btn.disabled = true; btn.textContent = 'Procesando...';
             var total = totalCarrito();
-            var detalle = carrito.map(function(i){ return { nombre_producto: i.nombre, cantidad: i.cantidad, precio_unitario: i.precio }; });
+            var detalle = carrito.map(function(i){ return { nombre_producto: i.nombre, cantidad: i.cantidad, precio_unitario: i.precio, id_producto: i.id }; });
             try {
                 var res = await fetch(API_URL + '/pos/ventas', {
                     method:'POST', headers:{'Content-Type':'application/json'},
@@ -684,6 +734,44 @@
             await fetch(API_URL + '/pos/productos/' + id, { method:'DELETE' });
             await renderProductosGestion();
             await cargarProductos();
+        }
+
+        // ── FALTANTES ──
+        function abrirModalFaltante() {
+            if (!localActual) { alert('Elegí un local primero.'); return; }
+            document.getElementById('falta-desc').value = '';
+            document.getElementById('falta-cant').value = '';
+            document.getElementById('modal-faltante').classList.replace('modal-oculto','modal-visible');
+        }
+        async function guardarFaltante() {
+            var desc = document.getElementById('falta-desc').value.trim();
+            if (!desc) { alert('Escribí qué falta.'); return; }
+            var body = { id_local: localActual.id, descripcion: desc, cantidad: document.getElementById('falta-cant').value.trim() || null, id_empleado: (posUsuario ? posUsuario.id_empleado : null) };
+            try {
+                var res = await fetch(API_URL + '/pos/faltantes', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+                if (res.ok) { cerrarModales(); alert('✅ Reportado. El admin lo va a ver.'); }
+                else { alert('No se pudo enviar.'); }
+            } catch(e) { alert('Error de conexión.'); }
+        }
+
+        // ── GASTO ──
+        function abrirModalGastoPos() {
+            if (!localActual) { alert('Elegí un local primero.'); return; }
+            document.getElementById('gasto-pos-concepto').value = '';
+            document.getElementById('gasto-pos-monto').value = '';
+            document.getElementById('gasto-pos-metodo').value = 'Efectivo';
+            document.getElementById('modal-gasto-pos').classList.replace('modal-oculto','modal-visible');
+        }
+        async function guardarGastoPos() {
+            var concepto = document.getElementById('gasto-pos-concepto').value.trim();
+            var monto = parseFloat(document.getElementById('gasto-pos-monto').value) || 0;
+            if (!concepto || monto <= 0) { alert('Completá concepto y monto.'); return; }
+            var body = { id_local: localActual.id, concepto: concepto, monto: monto, metodo: document.getElementById('gasto-pos-metodo').value, id_empleado: (posUsuario ? posUsuario.id_empleado : null) };
+            try {
+                var res = await fetch(API_URL + '/pos/gastos', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+                if (res.ok) { cerrarModales(); alert('✅ Gasto enviado. Queda pendiente de aprobación del admin.'); }
+                else { alert('No se pudo enviar.'); }
+            } catch(e) { alert('Error de conexión.'); }
         }
 
         function cerrarModales() {
