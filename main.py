@@ -2035,6 +2035,57 @@ def importar_insumos(data: ImportarInsumos):
         liberar_conexion(conn)
 
 # ==============================================================================
+# IMPORTAR PROVEEDORES en lote
+# ==============================================================================
+class ProveedorImportar(BaseModel):
+    razon_social: str
+    cuit: Optional[str] = None
+    email: Optional[str] = None
+    telefono: Optional[str] = None
+    direccion: Optional[str] = None
+    notas: Optional[str] = None
+
+class ImportarProveedores(BaseModel):
+    proveedores: List[ProveedorImportar]
+
+@app.post("/api/proveedores/importar")
+def importar_proveedores(data: ImportarProveedores):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT LOWER(TRIM(COALESCE(cuit,''))), LOWER(TRIM(razon_social)) FROM proveedores WHERE COALESCE(activo,true)=true")
+        rows = cur.fetchall()
+        cuits = set(r[0] for r in rows if r[0])
+        nombres = set(r[1] for r in rows)
+        insertados = 0; salteados = 0; errores = []
+        for idx, p in enumerate(data.proveedores, start=1):
+            nombre = (p.razon_social or '').strip()
+            if not nombre:
+                salteados += 1; continue
+            cuit = (p.cuit or '').strip()
+            if (cuit and cuit.lower() in cuits) or (nombre.lower() in nombres):
+                salteados += 1; continue
+            try:
+                cur.execute("""
+                    INSERT INTO proveedores (razon_social, cuit, email, telefono, direccion, notas)
+                    VALUES (%s,%s,%s,%s,%s,%s)
+                """, (nombre, cuit or None, p.email, p.telefono, p.direccion, p.notas))
+                if cuit: cuits.add(cuit.lower())
+                nombres.add(nombre.lower())
+                insertados += 1
+            except Exception as e:
+                conn.rollback()
+                errores.append({"fila": idx, "nombre": nombre, "error": str(e)})
+                continue
+        conn.commit()
+        return {"insertados": insertados, "salteados": salteados, "errores": errores}
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
+# ==============================================================================
 # RUTAS WEB (HTML)
 # ==============================================================================
 def serve_html(filename: str):
