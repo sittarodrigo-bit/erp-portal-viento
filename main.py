@@ -266,6 +266,84 @@ def login(data: LoginData):
     finally:
         liberar_conexion(conn)
 
+# ── LOGIN DEL POS (separado del admin: solo empleados con acceso_pos) ──
+@app.post("/api/pos/login")
+def pos_login(data: LoginData):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("""
+            SELECT u.password_hash, u.activo, COALESCE(u.acceso_pos, false) AS acceso_pos,
+                   e.id as id_empleado, e.nombre, e.apellido, e.rol
+            FROM usuarios u JOIN empleados e ON u.id_empleado = e.id
+            WHERE u.username = %s
+        """, (data.username,))
+        usuario = cur.fetchone()
+        if not usuario or not usuario['activo']:
+            raise HTTPException(status_code=401, detail="Usuario o contraseña incorrectos")
+        if not bcrypt.checkpw(data.password.encode(), usuario['password_hash'].encode()):
+            raise HTTPException(status_code=401, detail="Usuario o contraseña incorrectos")
+        if not usuario['acceso_pos']:
+            raise HTTPException(status_code=403, detail="Este usuario no tiene acceso al POS")
+        return {"status": "ok", "id_empleado": usuario['id_empleado'],
+                "nombre": usuario['nombre'], "apellido": usuario['apellido'], "rol": usuario['rol']}
+    finally:
+        liberar_conexion(conn)
+
+# ── ASIGNAR / ACTUALIZAR ACCESO DE UN EMPLEADO (usuario + clave + acceso_pos) ──
+class AccesoEmpleado(BaseModel):
+    username: str
+    password: Optional[str] = None
+    acceso_pos: bool = True
+
+@app.get("/api/empleados/{id_emp}/acceso")
+def get_acceso_empleado(id_emp: int):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("SELECT username, COALESCE(acceso_pos,false) AS acceso_pos FROM usuarios WHERE id_empleado=%s", (id_emp,))
+        row = cur.fetchone()
+        if not row:
+            return {"tiene_usuario": False, "username": None, "acceso_pos": False}
+        return {"tiene_usuario": True, "username": row['username'], "acceso_pos": row['acceso_pos']}
+    finally:
+        liberar_conexion(conn)
+
+@app.put("/api/empleados/{id_emp}/acceso")
+def set_acceso_empleado(id_emp: int, data: AccesoEmpleado):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        # username único (que no lo tenga otro empleado)
+        cur.execute("SELECT id_empleado FROM usuarios WHERE username=%s AND id_empleado<>%s", (data.username, id_emp))
+        if cur.fetchone():
+            raise HTTPException(status_code=400, detail="Ese nombre de usuario ya está en uso")
+        cur.execute("SELECT id_empleado FROM usuarios WHERE id_empleado=%s", (id_emp,))
+        existe = cur.fetchone()
+        if existe:
+            if data.password:
+                hash_pw = bcrypt.hashpw(data.password.encode(), bcrypt.gensalt()).decode()
+                cur.execute("UPDATE usuarios SET username=%s, password_hash=%s, acceso_pos=%s, activo=true WHERE id_empleado=%s",
+                            (data.username, hash_pw, data.acceso_pos, id_emp))
+            else:
+                cur.execute("UPDATE usuarios SET username=%s, acceso_pos=%s WHERE id_empleado=%s",
+                            (data.username, data.acceso_pos, id_emp))
+        else:
+            if not data.password:
+                raise HTTPException(status_code=400, detail="Para crear el acceso hay que poner una contraseña")
+            hash_pw = bcrypt.hashpw(data.password.encode(), bcrypt.gensalt()).decode()
+            cur.execute("INSERT INTO usuarios (id_empleado, username, password_hash, acceso_pos, activo) VALUES (%s,%s,%s,%s,true)",
+                        (id_emp, data.username, hash_pw, data.acceso_pos))
+        conn.commit()
+        return {"status": "ok"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
 # ==============================================================================
 # EMPRESA
 # ==============================================================================
@@ -931,7 +1009,7 @@ def get_empleados():
         cur = conn.cursor(cursor_factory=RealDictCursor)
         cur.execute("""
             SELECT e.id, e.nombre, e.apellido, e.dni, e.rol, e.email, e.telefono,
-                   e.activo, u.username
+                   e.activo, u.username, COALESCE(u.acceso_pos, false) AS acceso_pos
             FROM empleados e LEFT JOIN usuarios u ON u.id_empleado = e.id
             ORDER BY e.apellido, e.nombre
         """)
@@ -2415,6 +2493,10 @@ def route_qr():
 @app.get("/pos")
 def route_pos():
     return serve_html("pos.html")
+
+@app.get("/pos-login")
+def route_pos_login():
+    return serve_html("pos_login.html")
 
 
 @app.get("/gastos")
