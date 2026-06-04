@@ -2726,8 +2726,29 @@ def pos_reposicion_crear(r: ReposicionCreate):
     finally:
         liberar_conexion(conn)
 
-@app.get("/api/locales/reposiciones")
-def locales_reposiciones(id_local: Optional[int] = None, estado: Optional[str] = None):
+# Reemplaza el detalle de una reposición (admin edita: cantidades, quita, agrega)
+class ReposicionEditar(BaseModel):
+    detalle: List[ReposicionItem]
+    notas: Optional[str] = None
+
+@app.put("/api/locales/reposiciones/{id}")
+def locales_reposicion_editar(id: int, data: ReposicionEditar):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM pos_reposiciones_detalle WHERE id_reposicion=%s", (id,))
+        for it in data.detalle:
+            cur.execute("INSERT INTO pos_reposiciones_detalle (id_reposicion, id_producto, nombre_producto, cantidad, sabor) VALUES (%s,%s,%s,%s,%s)",
+                        (id, it.id_producto, it.nombre_producto, it.cantidad, it.sabor))
+        if data.notas is not None:
+            cur.execute("UPDATE pos_reposiciones SET notas=%s WHERE id=%s", (data.notas, id))
+        conn.commit()
+        return {"status": "ok"}
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
     conn = obtener_conexion()
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
