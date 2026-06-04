@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <title>Locales | Portal del Viento</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
     <style>
         .text-neon { color: #e4fc74; }
         .bg-neon { background-color: #e4fc74; }
@@ -137,6 +139,42 @@
             <div class="flex justify-end gap-3 mt-2">
                 <button onclick="cerrarModales()" class="px-4 py-2 text-gray-400 hover:text-white font-bold">Cancelar</button>
                 <button onclick="guardarProducto()" class="bg-neon text-black px-6 py-2 rounded font-bold hover:bg-yellow-300">Guardar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL EDITAR REPOSICIÓN -->
+    <div id="modal-repo-edit" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
+        <div class="bg-gray-900 border border-gray-700 rounded-xl p-6 w-[520px] shadow-2xl max-h-[88vh] overflow-y-auto">
+            <div class="flex justify-between items-center mb-4">
+                <h3 id="repo-edit-titulo" class="text-lg font-bold text-white border-l-4 border-neon pl-2">Modificar pedido</h3>
+                <button onclick="cerrarModales()" class="text-gray-500 hover:text-white text-2xl leading-none">×</button>
+            </div>
+            <p class="text-gray-500 text-xs mb-3">Ajustá cantidades, quitá lo que no haya, o agregá productos. Al reponer se sumará al stock lo que quede acá.</p>
+            <div id="repo-edit-lista" class="space-y-2 mb-4"></div>
+            <div class="border border-dashed border-gray-700 rounded-lg p-3 mb-5">
+                <p class="text-xs text-gray-400 font-bold mb-2">+ Agregar producto</p>
+                <div class="grid grid-cols-12 gap-2 items-end">
+                    <div class="col-span-5">
+                        <label class="block text-xs text-gray-500 font-bold mb-1">Producto</label>
+                        <select id="repo-add-prod" class="w-full bg-black border border-gray-700 text-white rounded p-2 text-sm"></select>
+                    </div>
+                    <div class="col-span-3">
+                        <label class="block text-xs text-gray-500 font-bold mb-1">Sabor (opc.)</label>
+                        <input type="text" id="repo-add-sabor" class="w-full bg-black border border-gray-700 text-white rounded p-2 text-sm">
+                    </div>
+                    <div class="col-span-2">
+                        <label class="block text-xs text-gray-500 font-bold mb-1">Cant.</label>
+                        <input type="number" id="repo-add-cant" min="1" step="1" class="w-full bg-black border border-gray-700 text-white rounded p-2 text-sm text-center">
+                    </div>
+                    <div class="col-span-2">
+                        <button onclick="agregarProdARepo()" class="w-full bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 rounded text-sm">+</button>
+                    </div>
+                </div>
+            </div>
+            <div class="flex justify-end gap-3">
+                <button onclick="cerrarModales()" class="px-4 py-2 text-gray-400 hover:text-white font-bold">Cancelar</button>
+                <button onclick="guardarRepoEdit()" class="bg-neon text-black px-6 py-2 rounded font-bold hover:bg-yellow-300">Guardar cambios</button>
             </div>
         </div>
     </div>
@@ -459,6 +497,9 @@
         }
 
         // ── REPOSICIONES ──
+        let repoActual = null;       // pedido en edición
+        let repoProductos = [];      // productos del local (para agregar)
+
         async function cargarReposiciones() {
             const lista = await fetch(`${API_URL}/locales/reposiciones?id_local=${localActual.id}`).then(r=>r.json()).catch(()=>[]);
             const cont = document.getElementById('lista-reposiciones');
@@ -478,14 +519,18 @@
                             <p class="text-gray-500 text-xs">${dt} ${emp?'· '+emp:''}</p>
                         </div>
                         <div class="flex gap-1">
+                            <button class="text-xs border border-gray-600 text-gray-300 hover:text-white px-3 py-1.5 rounded btn-print">🖨️ Imprimir</button>
+                            ${repuesto?'':'<button class="text-xs border border-yellow-700 text-yellow-300 hover:bg-yellow-900/30 px-3 py-1.5 rounded font-bold btn-edit">✏️ Modificar</button>'}
                             ${repuesto?'':'<button class="text-xs bg-green-800 hover:bg-green-700 text-white px-3 py-1.5 rounded font-bold btn-rep">Reponer (sumar stock)</button>'}
                             <button class="text-xs bg-red-900/50 hover:bg-red-700 text-red-400 hover:text-white px-2 py-1.5 rounded btn-del">✕</button>
                         </div>
                     </div>
                     <p class="text-gray-400 text-sm mt-2">${items}</p>`;
+                div.querySelector('.btn-print').onclick = () => imprimirRemito(r);
+                const ed = div.querySelector('.btn-edit'); if (ed) ed.onclick = () => abrirEditarRepo(r);
                 const rep = div.querySelector('.btn-rep');
                 if (rep) rep.onclick = async () => {
-                    if (confirm('¿Marcar como repuesto? Se sumará el stock pedido a cada producto del local.')) {
+                    if (confirm('¿Marcar como repuesto? Se sumará al stock lo que figura en este pedido (ya con tus modificaciones).')) {
                         await fetch(`${API_URL}/locales/reposiciones/${r.id}/reponer`, {method:'PUT'});
                         cargarReposiciones();
                     }
@@ -498,6 +543,105 @@
                 };
                 cont.appendChild(div);
             });
+        }
+
+        // ── EDITAR REPOSICIÓN ──
+        async function abrirEditarRepo(r) {
+            repoActual = JSON.parse(JSON.stringify(r));  // copia editable
+            if (!repoActual.detalle) repoActual.detalle = [];
+            document.getElementById('repo-edit-titulo').textContent = 'Modificar pedido #' + String(r.id).padStart(3,'0');
+            // cargar productos del local para el selector de "agregar"
+            repoProductos = await fetch(`${API_URL}/pos/productos?id_local=${localActual.id}`).then(r=>r.json()).catch(()=>[]);
+            const sel = document.getElementById('repo-add-prod');
+            sel.innerHTML = repoProductos.map(p=>`<option value="${p.id}">${p.nombre}</option>`).join('');
+            renderRepoEdit();
+            document.getElementById('modal-repo-edit').classList.replace('modal-oculto','modal-visible');
+        }
+
+        function renderRepoEdit() {
+            const cont = document.getElementById('repo-edit-lista');
+            cont.innerHTML = '';
+            if (!repoActual.detalle.length) { cont.innerHTML = '<p class="text-gray-600 text-sm text-center py-4">Sin productos. Agregá abajo.</p>'; return; }
+            repoActual.detalle.forEach((d, idx) => {
+                const row = document.createElement('div');
+                row.className = 'flex items-center gap-2 bg-black border border-gray-800 rounded-lg px-3 py-2';
+                row.innerHTML = `
+                    <div class="flex-1 min-w-0">
+                        <p class="text-white text-sm font-bold truncate">${d.nombre_producto}${d.sabor?` <span class="text-blue-300 text-xs">(${d.sabor})</span>`:''}</p>
+                    </div>
+                    <input type="number" min="0" step="1" value="${d.cantidad}" class="w-20 bg-gray-900 border border-gray-700 text-white rounded p-1.5 text-sm text-center repo-edit-cant">
+                    <button class="text-red-500 hover:text-red-400 text-lg repo-edit-del">×</button>`;
+                row.querySelector('.repo-edit-cant').oninput = function(){ repoActual.detalle[idx].cantidad = parseFloat(this.value)||0; };
+                row.querySelector('.repo-edit-del').onclick = function(){ repoActual.detalle.splice(idx,1); renderRepoEdit(); };
+                cont.appendChild(row);
+            });
+        }
+
+        function agregarProdARepo() {
+            const sel = document.getElementById('repo-add-prod');
+            const cant = parseFloat(document.getElementById('repo-add-cant').value)||0;
+            const sabor = document.getElementById('repo-add-sabor').value.trim() || null;
+            if (!sel.value || cant<=0) { alert('Elegí producto y cantidad.'); return; }
+            const prod = repoProductos.find(p=>String(p.id)===sel.value);
+            repoActual.detalle.push({ id_producto: parseInt(sel.value), nombre_producto: prod?prod.nombre:'', cantidad: cant, sabor: sabor });
+            document.getElementById('repo-add-cant').value = '';
+            document.getElementById('repo-add-sabor').value = '';
+            renderRepoEdit();
+        }
+
+        async function guardarRepoEdit() {
+            const detalle = repoActual.detalle.filter(d=>d.cantidad>0);
+            if (!detalle.length) { alert('El pedido quedó vacío. Agregá al menos un producto o borralo desde la lista.'); return; }
+            await fetch(`${API_URL}/locales/reposiciones/${repoActual.id}`, {
+                method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ detalle: detalle })
+            });
+            cerrarModales();
+            cargarReposiciones();
+        }
+
+        // ── IMPRIMIR REMITO ──
+        async function imprimirRemito(r) {
+            let empresa = {};
+            try { empresa = await fetch(`${API_URL}/empresa`).then(x=>x.json()); } catch(e){ empresa = {}; }
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+            const dt = r.fecha ? new Date(r.fecha.replace(' ','T')).toLocaleString('es-AR',{dateStyle:'short',timeStyle:'short'}) : '';
+            const emp = r.empleado_apellido ? `${r.empleado_apellido}, ${r.empleado_nombre}` : '—';
+            // Membrete
+            doc.setFontSize(16); doc.setTextColor(20,20,20);
+            doc.text(empresa.nombre || 'Portal del Viento — Alfajores', 14, 18);
+            doc.setDrawColor(0); doc.setLineWidth(0.4); doc.line(14, 22, 196, 22);
+            doc.setFontSize(13); doc.setTextColor(40,40,40);
+            doc.text('REMITO DE PREPARACIÓN', 14, 31);
+            doc.setFontSize(10); doc.setTextColor(80,80,80);
+            doc.text(`Pedido #${String(r.id).padStart(3,'0')}`, 196, 31, {align:'right'});
+            doc.text(`Local: ${localActual.nombre}`, 14, 39);
+            doc.text(`Fecha pedido: ${dt}`, 14, 45);
+            doc.text(`Solicitó: ${emp}`, 14, 51);
+            doc.text(`Impreso: ${new Date().toLocaleString('es-AR')}`, 196, 39, {align:'right'});
+            // Tabla
+            const filas = (r.detalle||[]).map(d => [
+                d.sabor ? (d.nombre_producto + ' — ' + d.sabor) : d.nombre_producto,
+                String(d.cantidad),
+                ''  // columna "preparado" para tildar a mano
+            ]);
+            doc.autoTable({
+                startY: 58,
+                head: [['Producto', 'Cant.', 'Preparado ✓']],
+                body: filas,
+                headStyles: { fillColor:[255,255,255], textColor:[0,0,0], fontStyle:'bold', lineWidth:0.3, lineColor:[0,0,0] },
+                styles: { fontSize:11, cellPadding:4, lineWidth:0.1, lineColor:[120,120,120] },
+                columnStyles: { 0:{cellWidth:120}, 1:{cellWidth:25, halign:'center'}, 2:{cellWidth:37, halign:'center'} }
+            });
+            let y = doc.lastAutoTable.finalY + 25;
+            if (y > 250) { doc.addPage(); y = 40; }
+            // Firmas
+            doc.setDrawColor(120); doc.setLineWidth(0.3);
+            doc.line(20, y, 90, y); doc.line(120, y, 190, y);
+            doc.setFontSize(9); doc.setTextColor(80,80,80);
+            doc.text('Preparado por', 38, y+6);
+            doc.text('Recibido por', 142, y+6);
+            doc.save(`remito_pedido_${String(r.id).padStart(3,'0')}.pdf`);
         }
 
         // ── GASTOS DEL LOCAL ──
