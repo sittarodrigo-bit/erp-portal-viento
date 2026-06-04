@@ -2749,6 +2749,10 @@ def locales_reposicion_editar(id: int, data: ReposicionEditar):
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         liberar_conexion(conn)
+
+# LISTAR las reposiciones (esto es lo que usa el panel admin)
+@app.get("/api/locales/reposiciones")
+def locales_reposiciones(id_local: Optional[int] = None, estado: Optional[str] = None):
     conn = obtener_conexion()
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
