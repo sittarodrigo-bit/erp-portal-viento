@@ -31,7 +31,6 @@
                 <select id="sel-local" onchange="cambiarLocal()" class="bg-gray-900 border border-gray-700 text-white rounded-lg px-3 py-1.5 text-sm font-bold">
                     <option value="">— Elegí un local —</option>
                 </select>
-                <button id="btn-gestion-locales" onclick="abrirGestionLocales()" class="text-gray-500 hover:text-white text-xs border border-gray-700 rounded px-2 py-1.5" title="Administrar locales">⚙️</button>
             </div>
         </div>
         <div class="flex items-center gap-3">
@@ -47,7 +46,7 @@
             <p class="text-6xl mb-4">🏪</p>
             <p class="text-gray-400 text-lg mb-2">Elegí un local para empezar</p>
             <p class="text-gray-600 text-sm">Cada local tiene su propia caja, productos y ventas.</p>
-            <button id="btn-admin-locales-inicial" onclick="abrirGestionLocales()" class="mt-6 bg-neon text-black font-bold px-6 py-2 rounded-lg hover:bg-yellow-300">+ Administrar locales</button>
+            <p class="text-gray-700 text-xs mt-6">Los locales y productos se administran desde el panel (sección Locales).</p>
         </div>
     </div>
 
@@ -72,7 +71,6 @@
             <div class="p-4 border-b border-gray-800 flex items-center gap-3 shrink-0">
                 <input type="text" id="buscar-prod-pos" placeholder="🔍 Buscar producto..." oninput="renderProductos()"
                        class="flex-1 bg-black border border-gray-700 focus:border-neon text-white rounded-lg p-3 text-sm outline-none">
-                <button id="btn-gestion-productos" onclick="abrirGestionProductos()" class="bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white font-bold px-4 py-3 rounded-lg text-sm border border-gray-700">📦 Productos</button>
                 <button onclick="abrirModalReposicion()" class="bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white font-bold px-4 py-3 rounded-lg text-sm border border-gray-700">🛒 Pedir reposición</button>
                 <button onclick="abrirModalFaltante()" class="bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white font-bold px-4 py-3 rounded-lg text-sm border border-gray-700">⚠️ Falta algo</button>
                 <button onclick="abrirModalGastoPos()" class="bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white font-bold px-4 py-3 rounded-lg text-sm border border-gray-700">💸 Gasto</button>
@@ -313,14 +311,6 @@
         async function init() {
             if (posUsuario) {
                 document.getElementById('pos-cajero').textContent = '👤 ' + posUsuario.nombre + ' ' + posUsuario.apellido;
-            }
-            // Solo el admin gestiona locales/productos desde el POS; el cajero no.
-            var esAdmin = posUsuario && String(posUsuario.rol || '').toLowerCase() === 'admin';
-            if (!esAdmin) {
-                ['btn-gestion-locales','btn-admin-locales-inicial','btn-gestion-productos'].forEach(function(id){
-                    var el = document.getElementById(id);
-                    if (el) el.style.display = 'none';
-                });
             }
             try { empresa = await fetch(API_URL + '/empresa').then(function(r){return r.json();}); } catch(e){ empresa = {}; }
             await cargarLocales();
