@@ -3161,6 +3161,96 @@ def crear_producto_global(p: ProductoGlobal):
         liberar_conexion(conn)
 
 # ==============================================================================
+# FACTURACIÓN ELECTRÓNICA AFIP / ARCA
+# ==============================================================================
+try:
+    import afip_service
+except Exception:
+    afip_service = None
+
+class FacturaAfip(BaseModel):
+    id_venta: Optional[int] = None
+    id_local: Optional[int] = None
+    tipo_comprobante: int = 6      # 6=Factura B (consumidor final), 1=Factura A, 11=Factura C
+    doc_tipo: int = 99             # 99=consumidor final, 80=CUIT, 96=DNI
+    doc_nro: Optional[str] = None
+    total: float = 0.0
+    # Si no mandan neto/iva, se calculan asumiendo IVA 21% incluido en el total
+    neto: Optional[float] = None
+    iva: Optional[float] = None
+
+@app.get("/api/afip/estado")
+def afip_estado():
+    if not afip_service:
+        return {"disponible": False, "error": "El módulo afip_service no está cargado en el servidor."}
+    try:
+        return {"disponible": True, **afip_service.estado_servidores()}
+    except Exception as e:
+        return {"disponible": False, "error": str(e)}
+
+@app.post("/api/afip/facturar")
+def afip_facturar(f: FacturaAfip):
+    if not afip_service:
+        raise HTTPException(status_code=500, detail="Módulo AFIP no disponible en el servidor.")
+    # Calcular neto/iva si no vinieron (IVA 21% incluido en el total)
+    total = round(float(f.total or 0), 2)
+    if f.neto is not None and f.iva is not None:
+        neto = round(float(f.neto), 2); iva = round(float(f.iva), 2)
+    elif f.tipo_comprobante == 11:  # Factura C no discrimina IVA
+        neto = total; iva = 0.0
+    else:
+        neto = round(total / 1.21, 2); iva = round(total - neto, 2)
+
+    try:
+        r = afip_service.emitir_factura(
+            tipo_cbte=f.tipo_comprobante, doc_tipo=f.doc_tipo, doc_nro=f.doc_nro or "",
+            neto=neto, iva=iva, total=total
+        )
+    except Exception as e:
+        # Guardar el intento fallido
+        try:
+            conn = obtener_conexion(); cur = conn.cursor()
+            cur.execute("""INSERT INTO afip_facturas (id_venta, id_local, punto_venta, tipo_comprobante, numero, doc_tipo, doc_nro, neto, iva, total, estado, error_detalle)
+                           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'error',%s)""",
+                        (f.id_venta, f.id_local, 0, f.tipo_comprobante, 0, f.doc_tipo, f.doc_nro, neto, iva, total, str(e)))
+            conn.commit(); liberar_conexion(conn)
+        except Exception:
+            pass
+        raise HTTPException(status_code=400, detail=f"AFIP rechazó o falló: {e}")
+
+    # Guardar la factura emitida
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        cur.execute("""INSERT INTO afip_facturas (id_venta, id_local, punto_venta, tipo_comprobante, numero, doc_tipo, doc_nro, neto, iva, total, cae, cae_vto, estado, entorno)
+                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'emitida',%s) RETURNING id""",
+                    (f.id_venta, f.id_local, r["punto_venta"], r["tipo_comprobante"], r["numero"],
+                     f.doc_tipo, f.doc_nro, neto, iva, total, r["cae"], r["cae_vto"], r["entorno"]))
+        fid = cur.fetchone()[0]
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=f"Factura emitida en AFIP pero error al guardar: {e}")
+    finally:
+        liberar_conexion(conn)
+
+    return {"status": "ok", "id": fid, **r, "neto": neto, "iva": iva, "total": total}
+
+@app.get("/api/afip/facturas")
+def afip_listar_facturas(id_local: Optional[int] = None):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        q = "SELECT * FROM afip_facturas WHERE 1=1"
+        params = []
+        if id_local: q += " AND id_local=%s"; params.append(id_local)
+        q += " ORDER BY fecha DESC LIMIT 200"
+        cur.execute(q, tuple(params))
+        return fetchall_dict(cur)
+    finally:
+        liberar_conexion(conn)
+
+# ==============================================================================
 # RUTAS WEB (HTML)
 # ==============================================================================
 def serve_html(filename: str):
