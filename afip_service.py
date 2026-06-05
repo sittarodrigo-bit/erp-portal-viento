@@ -1,0 +1,199 @@
+"""
+Módulo de facturación electrónica AFIP/ARCA (WSAA + WSFEv1).
+Usa zeep (SOAP) + cryptography para firmar el login (CMS/PKCS7).
+El certificado y la clave se leen de variables de entorno (no del repo).
+
+Variables de entorno necesarias en Railway:
+  AFIP_CUIT            -> 30717499014
+  AFIP_PUNTO_VENTA     -> 5
+  AFIP_ENTORNO         -> homologacion  (o produccion)
+  AFIP_CERT            -> contenido del .crt (texto completo, con BEGIN/END)
+  AFIP_KEY             -> contenido del .key (texto completo, con BEGIN/END)
+
+Si falta alguna variable, el módulo informa el error pero no rompe el resto de la app.
+"""
+import os
+import base64
+import datetime
+from typing import Optional
+
+# URLs de los web services
+WSAA_URLS = {
+    "homologacion": "https://wsaahomo.afip.gov.ar/ws/services/LoginCms?wsdl",
+    "produccion":   "https://wsaa.afip.gov.ar/ws/services/LoginCms?wsdl",
+}
+WSFE_URLS = {
+    "homologacion": "https://wswhomo.afip.gov.ar/wsfev1/service.asmx?WSDL",
+    "produccion":   "https://servicios1.afip.gov.ar/wsfev1/service.asmx?WSDL",
+}
+
+def _config():
+    return {
+        "cuit": os.environ.get("AFIP_CUIT", "").strip(),
+        "punto_venta": int(os.environ.get("AFIP_PUNTO_VENTA", "5") or "5"),
+        "entorno": (os.environ.get("AFIP_ENTORNO", "homologacion") or "homologacion").strip(),
+        "cert": os.environ.get("AFIP_CERT", ""),
+        "key": os.environ.get("AFIP_KEY", ""),
+    }
+
+class AfipError(Exception):
+    pass
+
+# ---- WSAA: crear el TRA, firmarlo (CMS) y obtener el Token+Sign ----
+def _crear_tra(servicio="wsfe"):
+    ahora = datetime.datetime.now()
+    desde = ahora - datetime.timedelta(minutes=10)
+    hasta = ahora + datetime.timedelta(minutes=10)
+    unique_id = int(ahora.timestamp())
+    tra = f"""<?xml version="1.0" encoding="UTF-8"?>
+<loginTicketRequest version="1.0">
+<header>
+<uniqueId>{unique_id}</uniqueId>
+<generationTime>{desde.strftime('%Y-%m-%dT%H:%M:%S')}</generationTime>
+<expirationTime>{hasta.strftime('%Y-%m-%dT%H:%M:%S')}</expirationTime>
+</header>
+<service>{servicio}</service>
+</loginTicketRequest>"""
+    return tra
+
+def _firmar_tra(tra: str, cert_pem: str, key_pem: str) -> str:
+    """Firma el TRA en formato CMS/PKCS7 (lo que pide WSAA)."""
+    from cryptography import x509
+    from cryptography.hazmat.primitives.serialization import load_pem_private_key, pkcs7, Encoding
+    from cryptography.hazmat.primitives import hashes
+
+    cert = x509.load_pem_x509_certificate(cert_pem.encode())
+    key = load_pem_private_key(key_pem.encode(), password=None)
+
+    builder = pkcs7.PKCS7SignatureBuilder().set_data(tra.encode())
+    builder = builder.add_signer(cert, key, hashes.SHA256())
+    # DER, sin envoltura S/MIME; AFIP acepta el CMS en base64
+    cms = builder.sign(Encoding.DER, [pkcs7.PKCS7Options.Binary])
+    return base64.b64encode(cms).decode()
+
+def _obtener_ta(cfg):
+    """Devuelve (token, sign) autenticando contra WSAA."""
+    from zeep import Client
+    if not cfg["cert"] or not cfg["key"]:
+        raise AfipError("Faltan AFIP_CERT y/o AFIP_KEY en las variables de entorno.")
+    tra = _crear_tra("wsfe")
+    cms = _firmar_tra(tra, cfg["cert"], cfg["key"])
+    client = Client(WSAA_URLS[cfg["entorno"]])
+    try:
+        resp = client.service.loginCms(cms)
+    except Exception as e:
+        raise AfipError(f"Error en WSAA (login): {e}")
+    # resp es un XML con <token> y <sign>
+    import xml.etree.ElementTree as ET
+    root = ET.fromstring(resp)
+    token = root.findtext(".//token")
+    sign = root.findtext(".//sign")
+    return token, sign
+
+# ---- WSFEv1: pedir el próximo número y autorizar el comprobante (CAE) ----
+def emitir_factura(tipo_cbte: int, doc_tipo: int, doc_nro: str,
+                   neto: float, iva: float, total: float):
+    """
+    Emite un comprobante y devuelve dict con cae, vencimiento, numero.
+    tipo_cbte: 6=Factura B, 1=Factura A, 11=Factura C
+    doc_tipo: 80=CUIT, 96=DNI, 99=Consumidor Final
+    """
+    cfg = _config()
+    if not cfg["cuit"]:
+        raise AfipError("Falta AFIP_CUIT en las variables de entorno.")
+    from zeep import Client
+
+    token, sign = _obtener_ta(cfg)
+    cuit = int(cfg["cuit"])
+    pv = cfg["punto_venta"]
+
+    client = Client(WSFE_URLS[cfg["entorno"]])
+    auth = {"Token": token, "Sign": sign, "Cuit": cuit}
+
+    # Último número autorizado para ese punto de venta y tipo
+    ult = client.service.FECompUltimoAutorizado(Auth=auth, PtoVta=pv, CbteTipo=tipo_cbte)
+    proximo = int(ult.CbteNro) + 1
+
+    hoy = datetime.datetime.now().strftime("%Y%m%d")
+    # Si es consumidor final sin identificar, doc_tipo=99 y doc_nro=0
+    if not doc_nro:
+        doc_tipo = 99; doc_nro = "0"
+
+    detalle = {
+        "Concepto": 1,            # productos
+        "DocTipo": doc_tipo,
+        "DocNro": int(doc_nro),
+        "CbteDesde": proximo,
+        "CbteHasta": proximo,
+        "CbteFch": hoy,
+        "ImpTotal": round(total, 2),
+        "ImpTotConc": 0,
+        "ImpNeto": round(neto, 2),
+        "ImpOpEx": 0,
+        "ImpIVA": round(iva, 2),
+        "ImpTrib": 0,
+        "MonId": "PES",
+        "MonCotiz": 1,
+    }
+    # Para Factura A/B se informa el IVA; para C no.
+    if tipo_cbte in (1, 6) and iva > 0:
+        detalle["Iva"] = {"AlicIva": [{"Id": 5, "BaseImp": round(neto, 2), "Importe": round(iva, 2)}]}  # Id 5 = 21%
+
+    req = {
+        "FeCabReq": {"CantReg": 1, "PtoVta": pv, "CbteTipo": tipo_cbte},
+        "FeDetReq": {"FECAEDetRequest": [detalle]},
+    }
+    resp = client.service.FECAESolicitar(Auth=auth, FeCAEReq=req)
+
+    # Procesar respuesta
+    try:
+        det = resp.FeDetResp.FECAEDetResponse[0]
+        resultado = det.Resultado
+        cae = det.CAE
+        cae_vto = det.CAEFchVto
+    except Exception:
+        resultado = None; cae = None; cae_vto = None
+
+    if resultado != "A" or not cae:
+        # Buscar mensaje de error
+        msg = "Rechazado por AFIP"
+        try:
+            obs = resp.FeDetResp.FECAEDetResponse[0].Observaciones.Obs[0]
+            msg = f"{obs.Code}: {obs.Msg}"
+        except Exception:
+            try:
+                err = resp.Errors.Err[0]
+                msg = f"{err.Code}: {err.Msg}"
+            except Exception:
+                pass
+        raise AfipError(msg)
+
+    return {
+        "cae": str(cae),
+        "cae_vto": str(cae_vto),
+        "numero": proximo,
+        "punto_venta": pv,
+        "tipo_comprobante": tipo_cbte,
+        "entorno": cfg["entorno"],
+    }
+
+def estado_servidores():
+    """Chequeo simple: devuelve si las variables están y si responde el dummy de AFIP."""
+    cfg = _config()
+    info = {
+        "cuit_cargado": bool(cfg["cuit"]),
+        "cert_cargado": bool(cfg["cert"]),
+        "key_cargada": bool(cfg["key"]),
+        "punto_venta": cfg["punto_venta"],
+        "entorno": cfg["entorno"],
+    }
+    try:
+        from zeep import Client
+        client = Client(WSFE_URLS[cfg["entorno"]])
+        dummy = client.service.FEDummy()
+        info["afip_app"] = dummy.AppServer
+        info["afip_db"] = dummy.DbServer
+        info["afip_auth"] = dummy.AuthServer
+    except Exception as e:
+        info["error"] = str(e)
+    return info
