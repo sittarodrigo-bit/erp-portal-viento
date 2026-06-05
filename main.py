@@ -773,6 +773,28 @@ def cobros_distribuidor(id_dist: int):
     finally:
         liberar_conexion(conn)
 
+# Ranking de productos más pedidos por un distribuidor (solo pedidos despachados)
+@app.get("/api/distribuidores/{id_dist}/ranking_productos")
+def ranking_productos_distribuidor(id_dist: int):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("""
+            SELECT pr.nombre AS producto, pr.sku,
+                   SUM(dp.cantidad) AS unidades,
+                   SUM(dp.cantidad * dp.precio_unitario) AS total
+            FROM detalle_pedidos_b2b dp
+            JOIN pedidos_b2b p ON dp.id_pedido = p.id
+            JOIN productos pr ON dp.id_producto = pr.id
+            WHERE p.id_distribuidor = %s AND p.estado = 'Despachado'
+            GROUP BY pr.nombre, pr.sku
+            ORDER BY unidades DESC
+            LIMIT 50
+        """, (id_dist,))
+        return fetchall_dict(cur)
+    finally:
+        liberar_conexion(conn)
+
 @app.get("/api/distribuidores/{id_dist}/estado_cuenta")
 def estado_cuenta_distribuidor(id_dist: int):
     conn = obtener_conexion()
