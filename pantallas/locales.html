@@ -47,13 +47,67 @@
 
         <!-- VISTA GENERAL -->
         <div id="vista-general" class="flex-1 overflow-y-auto p-8">
-            <div id="cards-locales" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
-                <p class="text-gray-500 col-span-full text-center py-12">Cargando locales...</p>
+            <!-- Sub-pestañas de la vista general -->
+            <div class="flex gap-6 border-b border-gray-800 mb-6">
+                <button onclick="cambiarTabGeneral('resumen')" id="tg-resumen" class="pb-3 text-sm font-bold tab-activa">🏬 Resumen</button>
+                <button onclick="cambiarTabGeneral('stock')" id="tg-stock" class="pb-3 text-sm font-bold text-gray-400 hover:text-white">📊 Comparativa de stock</button>
+                <button onclick="cambiarTabGeneral('crear')" id="tg-crear" class="pb-3 text-sm font-bold text-gray-400 hover:text-white">➕ Crear producto</button>
             </div>
 
-            <div id="comparativa" class="mt-8 hidden">
-                <h3 class="text-white font-bold mb-3">📊 Comparativa de ventas del mes</h3>
-                <div class="bg-black border border-gray-800 rounded-xl p-5 space-y-3" id="comparativa-cont"></div>
+            <!-- TAB RESUMEN -->
+            <div id="tab-general-resumen">
+                <div id="cards-locales" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+                    <p class="text-gray-500 col-span-full text-center py-12">Cargando locales...</p>
+                </div>
+
+                <div id="comparativa" class="mt-8 hidden">
+                    <h3 class="text-white font-bold mb-3">📊 Comparativa de ventas del mes</h3>
+                    <div class="bg-black border border-gray-800 rounded-xl p-5 space-y-3" id="comparativa-cont"></div>
+                </div>
+            </div>
+
+            <!-- TAB COMPARATIVA DE STOCK -->
+            <div id="tab-general-stock" class="hidden">
+                <div class="flex items-center justify-between mb-4">
+                    <input type="text" id="stock-buscar" placeholder="🔍 Buscar producto..." oninput="renderStockComparativo()"
+                           class="bg-gray-900 border border-gray-700 focus:border-neon text-white rounded-lg p-3 text-sm outline-none w-72">
+                    <button onclick="exportarStockComparativo()" class="border border-gray-600 text-gray-300 hover:text-white font-bold px-3 py-2 rounded-lg text-sm">📤 Exportar</button>
+                </div>
+                <div class="bg-black rounded-xl border border-gray-800 overflow-x-auto">
+                    <table class="w-full text-left">
+                        <thead class="bg-gray-950 text-xs text-gray-400 uppercase" id="stock-thead"></thead>
+                        <tbody id="stock-tbody" class="divide-y divide-gray-800 text-sm"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- TAB CREAR PRODUCTO -->
+            <div id="tab-general-crear" class="hidden">
+                <div class="max-w-lg bg-black border border-gray-800 rounded-2xl p-6">
+                    <h3 class="text-white font-bold mb-1">➕ Crear producto en todos los locales</h3>
+                    <p class="text-gray-500 text-xs mb-5">El producto se agrega automáticamente a todos los locales activos. Si ya existe en alguno (por nombre), ese se saltea.</p>
+                    <label class="block text-xs text-gray-500 font-bold mb-1">Nombre</label>
+                    <input type="text" id="cg-nombre" class="w-full bg-gray-900 border border-gray-700 text-white rounded-lg p-3 mb-3 text-sm">
+                    <div class="grid grid-cols-2 gap-3 mb-3">
+                        <div>
+                            <label class="block text-xs text-neon font-bold mb-1">Precio ($)</label>
+                            <input type="number" id="cg-precio" step="0.01" class="w-full bg-gray-900 border border-neon text-white rounded-lg p-2 font-bold">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-500 font-bold mb-1">Categoría</label>
+                            <input type="text" id="cg-categoria" class="w-full bg-gray-900 border border-gray-700 text-white rounded-lg p-2 text-sm">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-500 font-bold mb-1">Stock inicial</label>
+                            <input type="number" id="cg-stock" step="0.01" value="0" class="w-full bg-gray-900 border border-gray-700 text-white rounded-lg p-2 text-sm">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-500 font-bold mb-1">Alerta stock</label>
+                            <input type="number" id="cg-alerta" step="0.01" value="0" class="w-full bg-gray-900 border border-gray-700 text-white rounded-lg p-2 text-sm">
+                        </div>
+                    </div>
+                    <button onclick="crearProductoGlobal()" id="cg-btn" class="w-full bg-neon text-black font-bold py-3 rounded-xl hover:bg-yellow-300">Crear en todos los locales</button>
+                </div>
             </div>
         </div>
 
@@ -336,6 +390,7 @@
             document.getElementById('vista-detalle').classList.add('hidden');
             document.getElementById('btn-volver').classList.add('hidden');
             document.getElementById('titulo').textContent = 'Locales';
+            cambiarTabGeneral('resumen');
             cargarGeneral();
         }
 
@@ -839,6 +894,97 @@
             const wb = XLSX.utils.book_new();
             XLSX.utils.book_append_sheet(wb, ws, 'Productos');
             XLSX.writeFile(wb, 'productos_' + (localActual.nombre||'local').replace(/[^a-zA-Z0-9]/g,'_') + '.xlsx');
+        }
+
+        // ── SUB-PESTAÑAS DE LA VISTA GENERAL ──
+        let stockComparativoData = null;
+
+        function cambiarTabGeneral(tab) {
+            ['resumen','stock','crear'].forEach(t => {
+                document.getElementById('tab-general-' + t).classList.toggle('hidden', t !== tab);
+                document.getElementById('tg-' + t).className = t === tab
+                    ? 'pb-3 text-sm font-bold tab-activa'
+                    : 'pb-3 text-sm font-bold text-gray-400 hover:text-white';
+            });
+            if (tab === 'stock') cargarStockComparativo();
+        }
+
+        async function cargarStockComparativo() {
+            const tbody = document.getElementById('stock-tbody');
+            tbody.innerHTML = '<tr><td class="p-4 text-gray-500">Cargando...</td></tr>';
+            try {
+                stockComparativoData = await fetch(`${API_URL}/locales/stock_comparativo`).then(r=>r.json());
+                renderStockComparativo();
+            } catch(e) { tbody.innerHTML = '<tr><td class="p-4 text-red-400">No se pudo cargar.</td></tr>'; }
+        }
+
+        function renderStockComparativo() {
+            if (!stockComparativoData) return;
+            const { locales, productos } = stockComparativoData;
+            // Cabecera
+            const thead = document.getElementById('stock-thead');
+            thead.innerHTML = '<tr><th class="p-4">Producto</th>' +
+                locales.map(l => `<th class="p-4 text-right">${l.nombre}</th>`).join('') +
+                '<th class="p-4 text-right text-neon">Total</th></tr>';
+            // Filtro
+            const q = (document.getElementById('stock-buscar').value || '').toLowerCase().trim();
+            const lista = productos.filter(p => !q || p.nombre.toLowerCase().indexOf(q) !== -1);
+            const tbody = document.getElementById('stock-tbody');
+            if (!lista.length) { tbody.innerHTML = `<tr><td class="p-4 text-gray-500" colspan="${locales.length+2}">Sin productos.</td></tr>`; return; }
+            tbody.innerHTML = lista.map(p => {
+                const celdas = p.stock_por_local.map(s => {
+                    if (s.stock === null) return '<td class="p-4 text-right text-gray-700">—</td>';
+                    const bajo = s.stock <= 0;
+                    return `<td class="p-4 text-right ${bajo?'text-red-400 font-bold':'text-white'}">${s.stock}</td>`;
+                }).join('');
+                return `<tr class="hover:bg-gray-900">
+                    <td class="p-4 font-bold text-white">${p.nombre}</td>
+                    ${celdas}
+                    <td class="p-4 text-right text-neon font-bold">${p.total}</td>
+                </tr>`;
+            }).join('');
+        }
+
+        function exportarStockComparativo() {
+            if (!stockComparativoData) { alert('Esperá a que cargue la tabla.'); return; }
+            const { locales, productos } = stockComparativoData;
+            const aoa = [['Producto', ...locales.map(l=>l.nombre), 'Total']];
+            productos.forEach(p => {
+                aoa.push([p.nombre, ...p.stock_por_local.map(s => s.stock===null ? '' : s.stock), p.total]);
+            });
+            const ws = XLSX.utils.aoa_to_sheet(aoa);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'Stock');
+            XLSX.writeFile(wb, 'stock_comparativo.xlsx');
+        }
+
+        async function crearProductoGlobal() {
+            const nombre = document.getElementById('cg-nombre').value.trim();
+            if (!nombre) { alert('Poné un nombre.'); return; }
+            const body = {
+                nombre,
+                precio: parseFloat(document.getElementById('cg-precio').value)||0,
+                categoria: document.getElementById('cg-categoria').value.trim()||null,
+                stock: parseFloat(document.getElementById('cg-stock').value)||0,
+                stock_alerta: parseFloat(document.getElementById('cg-alerta').value)||0
+            };
+            const btn = document.getElementById('cg-btn');
+            btn.disabled = true; btn.textContent = 'Creando...';
+            try {
+                const res = await fetch(`${API_URL}/locales/productos_global`, {
+                    method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)
+                });
+                const r = await res.json();
+                if (res.ok) {
+                    alert(`✅ Producto creado.\nLocales nuevos: ${r.creados}\nYa lo tenían: ${r.salteados}\nTotal locales: ${r.total_locales}`);
+                    document.getElementById('cg-nombre').value = '';
+                    document.getElementById('cg-precio').value = '';
+                    document.getElementById('cg-categoria').value = '';
+                    document.getElementById('cg-stock').value = '0';
+                    document.getElementById('cg-alerta').value = '0';
+                } else { alert('Error: ' + (r.detail || 'no se pudo crear')); }
+            } catch(e) { alert('Error de conexión.'); }
+            finally { btn.disabled = false; btn.textContent = 'Crear en todos los locales'; }
         }
 
         function cerrarModales() {
