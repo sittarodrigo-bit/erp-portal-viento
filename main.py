@@ -39,6 +39,35 @@ def liberar_conexion(conn):
 def fetchall_dict(cursor):
     return [dict(row) for row in cursor.fetchall()]
 
+def registrar_movimiento_stock(cur, id_producto, cantidad, tipo, origen, motivo=None, id_local=None):
+    """Registra un movimiento de stock. cantidad positiva=entrada, negativa=salida.
+    No rompe si la tabla no existe todavía (queda silencioso)."""
+    try:
+        if id_local is None:
+            cur.execute("SELECT id_local, COALESCE(stock,0) AS stock FROM pos_productos WHERE id=%s", (id_producto,))
+            row = cur.fetchone()
+            if row:
+                # row puede ser dict o tupla según el cursor
+                try:
+                    id_local = row['id_local']; stock_res = row['stock']
+                except Exception:
+                    id_local = row[0]; stock_res = row[1]
+            else:
+                stock_res = None
+        else:
+            cur.execute("SELECT COALESCE(stock,0) AS stock FROM pos_productos WHERE id=%s", (id_producto,))
+            row = cur.fetchone()
+            try:
+                stock_res = row['stock'] if row else None
+            except Exception:
+                stock_res = row[0] if row else None
+        cur.execute("""
+            INSERT INTO pos_movimientos_stock (id_producto, id_local, tipo, cantidad, stock_resultante, motivo, origen)
+            VALUES (%s,%s,%s,%s,%s,%s,%s)
+        """, (id_producto, id_local, tipo, cantidad, stock_res, motivo, origen))
+    except Exception:
+        pass  # si la tabla no existe aún, no rompe la operación principal
+
 # ==============================================================================
 # MODELOS
 # ==============================================================================
@@ -1727,6 +1756,7 @@ def pos_actualizar_producto(id: int, p: PosProducto):
 # Sumar stock a un producto del local (reposición)
 class PosSumarStock(BaseModel):
     cantidad: float
+    motivo: Optional[str] = None
 
 @app.post("/api/pos/productos/{id}/sumar_stock")
 def pos_sumar_stock(id: int, data: PosSumarStock):
@@ -1734,6 +1764,9 @@ def pos_sumar_stock(id: int, data: PosSumarStock):
     try:
         cur = conn.cursor()
         cur.execute("UPDATE pos_productos SET stock = COALESCE(stock,0) + %s WHERE id=%s", (data.cantidad, id))
+        tipo = 'entrada' if data.cantidad >= 0 else 'salida'
+        registrar_movimiento_stock(cur, id, data.cantidad, tipo, 'manual',
+                                   motivo=getattr(data, 'motivo', None) or 'Carga manual de stock')
         conn.commit()
         return {"status": "ok"}
     except Exception as e:
@@ -1845,6 +1878,8 @@ def pos_registrar_venta(venta: PosVenta):
             if it.id_producto:
                 baja = it.unidades_stock if it.unidades_stock is not None else it.cantidad
                 cur.execute("UPDATE pos_productos SET stock = COALESCE(stock,0) - %s WHERE id=%s", (baja, it.id_producto))
+                registrar_movimiento_stock(cur, it.id_producto, -baja, 'salida', 'venta',
+                                           motivo='Venta', id_local=venta.id_local)
         conn.commit()
         return {"id_venta": vid}
     except Exception as e:
@@ -2816,6 +2851,8 @@ def locales_reposicion_reponer(id: int):
         for it in items:
             if it['id_producto']:
                 cur.execute("UPDATE pos_productos SET stock = COALESCE(stock,0) + %s WHERE id=%s", (it['cantidad'], it['id_producto']))
+                registrar_movimiento_stock(cur, it['id_producto'], it['cantidad'], 'entrada', 'reposicion',
+                                           motivo='Reposición #' + str(id))
         cur.execute("UPDATE pos_reposiciones SET estado='repuesto' WHERE id=%s", (id,))
         conn.commit()
         return {"status": "ok"}
@@ -2938,6 +2975,107 @@ def pos_sabor_eliminar(id: int):
         cur.execute("UPDATE pos_producto_sabores SET activo=false WHERE id=%s", (id,))
         conn.commit()
         return {"status": "ok"}
+    finally:
+        liberar_conexion(conn)
+
+# ==============================================================================
+# HISTORIAL DE STOCK + AJUSTE MANUAL + IMPORTAR PRODUCTOS (locales POS)
+# ==============================================================================
+@app.get("/api/pos/productos/{id_producto}/movimientos")
+def pos_movimientos_producto(id_producto: int):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("""
+            SELECT id, tipo, cantidad, stock_resultante, motivo, origen, fecha::text
+            FROM pos_movimientos_stock
+            WHERE id_producto=%s ORDER BY fecha DESC, id DESC LIMIT 200
+        """, (id_producto,))
+        return fetchall_dict(cur)
+    finally:
+        liberar_conexion(conn)
+
+@app.get("/api/locales/{id_local}/movimientos")
+def pos_movimientos_local(id_local: int):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("""
+            SELECT m.id, m.id_producto, p.nombre AS producto, m.tipo, m.cantidad,
+                   m.stock_resultante, m.motivo, m.origen, m.fecha::text
+            FROM pos_movimientos_stock m
+            LEFT JOIN pos_productos p ON m.id_producto = p.id
+            WHERE m.id_local=%s ORDER BY m.fecha DESC, m.id DESC LIMIT 300
+        """, (id_local,))
+        return fetchall_dict(cur)
+    finally:
+        liberar_conexion(conn)
+
+# Ajuste manual de stock (fija un valor o suma/resta) con motivo obligatorio
+class AjusteStock(BaseModel):
+    cantidad: float          # positiva suma, negativa resta
+    motivo: str
+
+@app.post("/api/pos/productos/{id}/ajustar_stock")
+def pos_ajustar_stock(id: int, data: AjusteStock):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        cur.execute("UPDATE pos_productos SET stock = COALESCE(stock,0) + %s WHERE id=%s", (data.cantidad, id))
+        tipo = 'entrada' if data.cantidad >= 0 else 'salida'
+        registrar_movimiento_stock(cur, id, data.cantidad, 'ajuste', 'ajuste', motivo=data.motivo)
+        conn.commit()
+        return {"status": "ok"}
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
+# Importar productos en lote a UN local
+class PosProductoImportar(BaseModel):
+    nombre: str
+    precio: float = 0.0
+    categoria: Optional[str] = None
+    stock: float = 0.0
+    stock_alerta: float = 0.0
+
+class ImportarPosProductos(BaseModel):
+    id_local: int
+    productos: List[PosProductoImportar]
+
+@app.post("/api/pos/productos/importar")
+def pos_importar_productos(data: ImportarPosProductos):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        # nombres ya existentes en ese local (para no duplicar)
+        cur.execute("SELECT LOWER(TRIM(nombre)) FROM pos_productos WHERE id_local=%s AND COALESCE(activo,true)=true", (data.id_local,))
+        existentes = set(r[0] for r in cur.fetchall())
+        insertados = 0; salteados = 0; errores = []
+        for idx, p in enumerate(data.productos, start=1):
+            nombre = (p.nombre or '').strip()
+            if not nombre:
+                salteados += 1; continue
+            if nombre.lower() in existentes:
+                salteados += 1; continue
+            try:
+                cur.execute("INSERT INTO pos_productos (id_local, nombre, precio, categoria, stock, stock_alerta) VALUES (%s,%s,%s,%s,%s,%s) RETURNING id",
+                            (data.id_local, nombre, p.precio or 0, p.categoria, p.stock or 0, p.stock_alerta or 0))
+                pid = cur.fetchone()[0]
+                if (p.stock or 0) > 0:
+                    registrar_movimiento_stock(cur, pid, p.stock, 'entrada', 'importacion', motivo='Carga inicial por importación', id_local=data.id_local)
+                existentes.add(nombre.lower())
+                insertados += 1
+            except Exception as e:
+                conn.rollback()
+                errores.append({"fila": idx, "nombre": nombre, "error": str(e)})
+                continue
+        conn.commit()
+        return {"insertados": insertados, "salteados": salteados, "errores": errores}
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
     finally:
         liberar_conexion(conn)
 
