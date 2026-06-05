@@ -3080,6 +3080,87 @@ def pos_importar_productos(data: ImportarPosProductos):
         liberar_conexion(conn)
 
 # ==============================================================================
+# STOCK CONSOLIDADO + CREAR PRODUCTO EN TODOS LOS LOCALES
+# ==============================================================================
+# Tabla comparativa: una fila por nombre de producto, stock por local + total
+@app.get("/api/locales/stock_comparativo")
+def locales_stock_comparativo():
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("SELECT id, nombre FROM pos_locales WHERE COALESCE(activo,true)=true ORDER BY nombre")
+        locales = fetchall_dict(cur)
+        cur.execute("""
+            SELECT LOWER(TRIM(nombre)) AS clave, MAX(nombre) AS nombre, id_local, COALESCE(SUM(stock),0) AS stock
+            FROM pos_productos
+            WHERE COALESCE(activo,true)=true
+            GROUP BY LOWER(TRIM(nombre)), id_local
+        """)
+        filas = fetchall_dict(cur)
+        # Armar mapa producto -> {id_local: stock}
+        productos = {}
+        for f in filas:
+            clave = f['clave']
+            if clave not in productos:
+                productos[clave] = {"nombre": f['nombre'], "por_local": {}, "total": 0}
+            productos[clave]["por_local"][f['id_local']] = float(f['stock'] or 0)
+            productos[clave]["total"] += float(f['stock'] or 0)
+        salida = []
+        for clave in sorted(productos.keys()):
+            p = productos[clave]
+            salida.append({
+                "nombre": p["nombre"],
+                "stock_por_local": [{"id_local": l['id'], "local": l['nombre'], "stock": p["por_local"].get(l['id'], None)} for l in locales],
+                "total": p["total"]
+            })
+        return {"locales": locales, "productos": salida}
+    finally:
+        liberar_conexion(conn)
+
+# Crear un producto en TODOS los locales activos de una sola vez
+class ProductoGlobal(BaseModel):
+    nombre: str
+    precio: float = 0.0
+    categoria: Optional[str] = None
+    stock: float = 0.0
+    stock_alerta: float = 0.0
+
+@app.post("/api/locales/productos_global")
+def crear_producto_global(p: ProductoGlobal):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT id FROM pos_locales WHERE COALESCE(activo,true)=true")
+        locales = [r[0] for r in cur.fetchall()]
+        if not locales:
+            raise HTTPException(status_code=400, detail="No hay locales activos")
+        creados = 0; salteados = 0
+        nombre = (p.nombre or '').strip()
+        if not nombre:
+            raise HTTPException(status_code=400, detail="El nombre es obligatorio")
+        for lid in locales:
+            # no duplicar por nombre en el mismo local
+            cur.execute("SELECT id FROM pos_productos WHERE id_local=%s AND LOWER(TRIM(nombre))=LOWER(TRIM(%s)) AND COALESCE(activo,true)=true", (lid, nombre))
+            if cur.fetchone():
+                salteados += 1
+                continue
+            cur.execute("INSERT INTO pos_productos (id_local, nombre, precio, categoria, stock, stock_alerta) VALUES (%s,%s,%s,%s,%s,%s) RETURNING id",
+                        (lid, nombre, p.precio or 0, p.categoria, p.stock or 0, p.stock_alerta or 0))
+            pid = cur.fetchone()[0]
+            if (p.stock or 0) > 0:
+                registrar_movimiento_stock(cur, pid, p.stock, 'entrada', 'manual', motivo='Alta de producto', id_local=lid)
+            creados += 1
+        conn.commit()
+        return {"creados": creados, "salteados": salteados, "total_locales": len(locales)}
+    except HTTPException:
+        raise
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
+# ==============================================================================
 # RUTAS WEB (HTML)
 # ==============================================================================
 def serve_html(filename: str):
