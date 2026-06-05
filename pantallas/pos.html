@@ -283,6 +283,52 @@
         </div>
     </div>
 
+    <!-- MODAL FACTURAR AFIP -->
+    <div id="modal-afip" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
+        <div class="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-[440px] shadow-2xl max-h-[92vh] overflow-y-auto">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-lg font-bold text-white">🧾 Facturar AFIP</h3>
+                <button onclick="cerrarModales()" class="text-gray-500 hover:text-white text-2xl leading-none">×</button>
+            </div>
+
+            <!-- Paso 1: datos -->
+            <div id="afip-form">
+                <div class="bg-black rounded-xl p-4 mb-4 text-center">
+                    <p class="text-gray-500 text-xs font-bold uppercase mb-1">Total a facturar</p>
+                    <p id="afip-total" class="text-neon font-bold text-3xl">$ 0</p>
+                </div>
+                <label class="block text-xs text-gray-500 font-bold mb-2">Tipo de comprobante</label>
+                <div class="grid grid-cols-3 gap-2 mb-4">
+                    <button onclick="afipTipoDoc('final', this)" class="afip-doc-btn bg-black border-2 border-neon text-white rounded-xl py-2.5 font-bold text-xs">Consumidor final</button>
+                    <button onclick="afipTipoDoc('dni', this)" class="afip-doc-btn bg-black border-2 border-gray-700 text-white rounded-xl py-2.5 font-bold text-xs">Con DNI</button>
+                    <button onclick="afipTipoDoc('cuit', this)" class="afip-doc-btn bg-black border-2 border-gray-700 text-white rounded-xl py-2.5 font-bold text-xs">Con CUIT (Fact. A)</button>
+                </div>
+                <div id="afip-doc-extra" class="hidden mb-4">
+                    <label id="afip-doc-label" class="block text-xs text-gray-500 font-bold mb-1">Número</label>
+                    <input type="text" id="afip-doc-nro" inputmode="numeric" placeholder="Sin puntos ni guiones" class="w-full bg-black border border-gray-700 text-white rounded-lg p-3 text-sm">
+                </div>
+                <button onclick="emitirFacturaAfip()" id="btn-emitir-afip" class="w-full bg-neon text-black font-bold py-4 rounded-xl hover:bg-yellow-300 text-lg">Emitir factura</button>
+                <button onclick="cerrarModales()" class="w-full text-gray-500 hover:text-white text-sm py-3 mt-1">No facturar ahora</button>
+            </div>
+
+            <!-- Paso 2: resultado -->
+            <div id="afip-resultado" class="hidden">
+                <div class="bg-green-900/20 border border-green-700 rounded-xl p-4 mb-4 text-center">
+                    <p class="text-green-400 font-bold text-lg mb-1">✅ Factura emitida</p>
+                    <p id="afip-res-tipo" class="text-white text-sm"></p>
+                    <p class="text-gray-400 text-xs mt-2">CAE</p>
+                    <p id="afip-res-cae" class="text-neon font-bold text-xl tracking-wider"></p>
+                    <p id="afip-res-vto" class="text-gray-500 text-xs mt-1"></p>
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                    <button onclick="imprimirFacturaAfip()" class="bg-gray-800 hover:bg-gray-700 border border-gray-600 text-white font-bold py-3 rounded-xl text-sm">🖨️ Imprimir</button>
+                    <button onclick="enviarFacturaWhatsapp()" class="bg-green-700 hover:bg-green-600 text-white font-bold py-3 rounded-xl text-sm">📱 WhatsApp</button>
+                </div>
+                <button onclick="cerrarModales()" class="w-full text-gray-500 hover:text-white text-sm py-3 mt-2">Cerrar</button>
+            </div>
+        </div>
+    </div>
+
     <!-- TICKET (oculto, para imprimir) -->
     <div id="ticket-area" style="display:none"></div>
 
@@ -542,10 +588,12 @@
                 if (res.ok) {
                     var r = await res.json();
                     imprimirTicket(r.id_venta, total, metodoSel, detalle);
+                    ventaParaFacturar = { id_venta: r.id_venta, total: total, detalle: detalle };
                     carrito = [];
                     renderCarrito();
                     cerrarModales();
                     await verificarCaja();
+                    abrirModalAfip(total);
                 } else {
                     var e = await res.json(); alert('❌ ' + (e.detail || 'Error al registrar'));
                     btn.disabled = false; btn.textContent = '✓ Confirmar e imprimir ticket';
@@ -914,6 +962,164 @@
                 if (res.ok) { cerrarModales(); alert('✅ Gasto enviado. Queda pendiente de aprobación del admin.'); }
                 else { alert('No se pudo enviar.'); }
             } catch(e) { alert('Error de conexión.'); }
+        }
+
+        // ── FACTURACIÓN AFIP ──
+        var ventaParaFacturar = null;   // {id_venta, total, detalle}
+        var afipTipoSel = 'final';
+        var afipFacturaEmitida = null;  // datos del CAE para imprimir/whatsapp
+
+        function abrirModalAfip(total) {
+            afipTipoSel = 'final';
+            afipFacturaEmitida = null;
+            document.getElementById('afip-total').textContent = '$ ' + parseFloat(total||0).toLocaleString('es-AR');
+            document.getElementById('afip-form').classList.remove('hidden');
+            document.getElementById('afip-resultado').classList.add('hidden');
+            document.getElementById('afip-doc-extra').classList.add('hidden');
+            document.getElementById('afip-doc-nro').value = '';
+            document.querySelectorAll('.afip-doc-btn').forEach(function(b,i){
+                b.classList.toggle('border-neon', i === 0);
+                b.classList.toggle('border-gray-700', i !== 0);
+            });
+            var btn = document.getElementById('btn-emitir-afip');
+            btn.disabled = false; btn.textContent = 'Emitir factura';
+            document.getElementById('modal-afip').classList.replace('modal-oculto','modal-visible');
+        }
+
+        function afipTipoDoc(tipo, btn) {
+            afipTipoSel = tipo;
+            document.querySelectorAll('.afip-doc-btn').forEach(function(b){ b.classList.remove('border-neon'); b.classList.add('border-gray-700'); });
+            btn.classList.add('border-neon'); btn.classList.remove('border-gray-700');
+            var extra = document.getElementById('afip-doc-extra');
+            var label = document.getElementById('afip-doc-label');
+            if (tipo === 'final') {
+                extra.classList.add('hidden');
+            } else {
+                extra.classList.remove('hidden');
+                label.textContent = tipo === 'cuit' ? 'CUIT del cliente (11 dígitos)' : 'DNI del cliente';
+            }
+        }
+
+        async function emitirFacturaAfip() {
+            if (!ventaParaFacturar) { alert('No hay venta para facturar.'); return; }
+            var tipo_comprobante, doc_tipo, doc_nro = null;
+            if (afipTipoSel === 'cuit') {
+                doc_nro = (document.getElementById('afip-doc-nro').value || '').replace(/\D/g,'');
+                if (doc_nro.length !== 11) { alert('El CUIT debe tener 11 dígitos.'); return; }
+                tipo_comprobante = 1;   // Factura A
+                doc_tipo = 80;          // CUIT
+            } else if (afipTipoSel === 'dni') {
+                doc_nro = (document.getElementById('afip-doc-nro').value || '').replace(/\D/g,'');
+                if (doc_nro.length < 7) { alert('Poné un DNI válido.'); return; }
+                tipo_comprobante = 6;   // Factura B
+                doc_tipo = 96;          // DNI
+            } else {
+                tipo_comprobante = 6;   // Factura B
+                doc_tipo = 99;          // consumidor final
+                doc_nro = null;
+            }
+            var btn = document.getElementById('btn-emitir-afip');
+            btn.disabled = true; btn.textContent = 'Emitiendo... (puede tardar unos segundos)';
+            try {
+                var res = await fetch(API_URL + '/afip/facturar', {
+                    method:'POST', headers:{'Content-Type':'application/json'},
+                    body: JSON.stringify({
+                        id_venta: ventaParaFacturar.id_venta,
+                        id_local: localActual.id,
+                        tipo_comprobante: tipo_comprobante,
+                        doc_tipo: doc_tipo,
+                        doc_nro: doc_nro,
+                        total: ventaParaFacturar.total
+                    })
+                });
+                var r = await res.json();
+                if (!res.ok) { alert('❌ ' + (r.detail || 'AFIP rechazó la factura.')); btn.disabled = false; btn.textContent = 'Emitir factura'; return; }
+                afipFacturaEmitida = r;
+                mostrarResultadoAfip(r, tipo_comprobante, doc_nro);
+            } catch(e) {
+                alert('❌ Error de conexión con AFIP.');
+                btn.disabled = false; btn.textContent = 'Emitir factura';
+            }
+        }
+
+        function nombreTipoCbte(t) {
+            return t === 1 ? 'Factura A' : t === 11 ? 'Factura C' : 'Factura B';
+        }
+
+        function mostrarResultadoAfip(r, tipo, docNro) {
+            document.getElementById('afip-form').classList.add('hidden');
+            document.getElementById('afip-resultado').classList.remove('hidden');
+            var nro = String(r.punto_venta).padStart(4,'0') + '-' + String(r.numero).padStart(8,'0');
+            document.getElementById('afip-res-tipo').textContent = nombreTipoCbte(r.tipo_comprobante) + '  N° ' + nro;
+            document.getElementById('afip-res-cae').textContent = r.cae;
+            document.getElementById('afip-res-vto').textContent = 'Vence: ' + (r.cae_vto ? formatearFechaAfip(r.cae_vto) : '—');
+        }
+
+        function formatearFechaAfip(yyyymmdd) {
+            var s = String(yyyymmdd);
+            if (s.length === 8) return s.substring(6,8) + '/' + s.substring(4,6) + '/' + s.substring(0,4);
+            return s;
+        }
+
+        function imprimirFacturaAfip() {
+            if (!afipFacturaEmitida) return;
+            var r = afipFacturaEmitida;
+            var jsPDF = window.jspdf.jsPDF;
+            var det = (ventaParaFacturar && ventaParaFacturar.detalle) ? ventaParaFacturar.detalle : [];
+            var alto = 80 + det.length * 6 + 40;
+            var doc = new jsPDF({ unit:'mm', format:[80, alto] });
+            var y = 8;
+            doc.setFont('helvetica','bold'); doc.setFontSize(12);
+            doc.text((empresa.nombre || 'Portal del Viento'), 40, y, {align:'center'}); y += 5;
+            doc.setFont('helvetica','normal'); doc.setFontSize(7);
+            if (empresa.cuit) { doc.text('CUIT: ' + empresa.cuit, 40, y, {align:'center'}); y += 3.5; }
+            if (empresa.direccion) { doc.text(empresa.direccion, 40, y, {align:'center'}); y += 3.5; }
+            doc.text('Responsable Inscripto', 40, y, {align:'center'}); y += 4;
+            doc.setLineWidth(0.2); doc.line(4, y, 76, y); y += 4;
+            doc.setFont('helvetica','bold'); doc.setFontSize(9);
+            doc.text(nombreTipoCbte(r.tipo_comprobante), 40, y, {align:'center'}); y += 4;
+            doc.setFont('helvetica','normal'); doc.setFontSize(7);
+            var nro = String(r.punto_venta).padStart(4,'0') + '-' + String(r.numero).padStart(8,'0');
+            doc.text('Comprobante N° ' + nro, 40, y, {align:'center'}); y += 3.5;
+            doc.text(new Date().toLocaleString('es-AR'), 40, y, {align:'center'}); y += 5;
+            doc.line(4, y, 76, y); y += 4;
+            doc.setFont('helvetica','normal'); doc.setFontSize(7);
+            det.forEach(function(it){
+                var sub = it.cantidad * it.precio_unitario;
+                var nombre = it.nombre_producto.length > 22 ? it.nombre_producto.substring(0,21) + '…' : it.nombre_producto;
+                doc.text(String(it.cantidad) + 'x ' + nombre, 4, y);
+                doc.text('$' + sub.toLocaleString('es-AR'), 76, y, {align:'right'}); y += 5;
+            });
+            doc.line(4, y, 76, y); y += 5;
+            doc.setFont('helvetica','bold'); doc.setFontSize(11);
+            doc.text('TOTAL', 4, y); doc.text('$ ' + parseFloat(r.total).toLocaleString('es-AR'), 76, y, {align:'right'}); y += 5;
+            doc.setFont('helvetica','normal'); doc.setFontSize(6.5);
+            doc.text('Neto: $' + parseFloat(r.neto).toLocaleString('es-AR') + '   IVA: $' + parseFloat(r.iva).toLocaleString('es-AR'), 4, y); y += 5;
+            doc.setFontSize(8); doc.setFont('helvetica','bold');
+            doc.text('CAE: ' + r.cae, 4, y); y += 4;
+            doc.setFont('helvetica','normal'); doc.setFontSize(7);
+            doc.text('Vto CAE: ' + formatearFechaAfip(r.cae_vto), 4, y); y += 5;
+            if (r.entorno === 'homologacion') { doc.setFontSize(6); doc.text('** COMPROBANTE DE PRUEBA - SIN VALOR FISCAL **', 40, y, {align:'center'}); y += 4; }
+            doc.setFontSize(7);
+            doc.text('¡Gracias por su compra!', 40, y, {align:'center'});
+            var blob = doc.output('blob');
+            var url = URL.createObjectURL(blob);
+            var w = window.open(url);
+            if (w) { w.onload = function(){ try { w.print(); } catch(e){} }; }
+        }
+
+        function enviarFacturaWhatsapp() {
+            if (!afipFacturaEmitida) return;
+            var r = afipFacturaEmitida;
+            var nro = String(r.punto_venta).padStart(4,'0') + '-' + String(r.numero).padStart(8,'0');
+            var msg = '*' + (empresa.nombre || 'Portal del Viento') + '*%0A' +
+                nombreTipoCbte(r.tipo_comprobante) + ' N° ' + nro + '%0A' +
+                'Total: $' + parseFloat(r.total).toLocaleString('es-AR') + '%0A' +
+                'CAE: ' + r.cae + '%0A' +
+                'Vto CAE: ' + formatearFechaAfip(r.cae_vto) + '%0A' +
+                (r.entorno === 'homologacion' ? '%0A(Comprobante de prueba)' : '') +
+                '%0A¡Gracias por su compra!';
+            window.open('https://wa.me/?text=' + msg, '_blank');
         }
 
         function cerrarModales() {
