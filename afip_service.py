@@ -77,7 +77,20 @@ def _firmar_tra(tra: str, cert_pem: str, key_pem: str) -> str:
     return base64.b64encode(cms).decode()
 
 def _obtener_ta(cfg):
-    """Devuelve (token, sign) autenticando contra WSAA."""
+    """Devuelve (token, sign) autenticando contra WSAA.
+    Cachea el TA en memoria y lo reutiliza hasta poco antes de que expire,
+    porque AFIP no permite pedir uno nuevo si todavía hay uno válido."""
+    import time
+    global _TA_CACHE
+    try:
+        _TA_CACHE
+    except NameError:
+        _TA_CACHE = None
+
+    ahora = time.time()
+    if _TA_CACHE and _TA_CACHE.get("exp", 0) > ahora + 60:
+        return _TA_CACHE["token"], _TA_CACHE["sign"]
+
     from zeep import Client
     if not cfg["cert"] or not cfg["key"]:
         raise AfipError("Faltan AFIP_CERT y/o AFIP_KEY en las variables de entorno.")
@@ -87,13 +100,30 @@ def _obtener_ta(cfg):
     try:
         resp = client.service.loginCms(cms)
     except Exception as e:
-        raise AfipError(f"Error en WSAA (login): {e}")
-    # resp es un XML con <token> y <sign>
+        msg = str(e)
+        if "ya posee un TA valido" in msg or "TA valido" in msg:
+            # AFIP todavía tiene vigente el TA anterior. Esperamos y reintentamos.
+            import time as _t
+            _t.sleep(8)
+            try:
+                tra2 = _crear_tra("wsfe")
+                cms2 = _firmar_tra(tra2, cfg["cert"], cfg["key"])
+                resp = client.service.loginCms(cms2)
+            except Exception as e2:
+                raise AfipError("AFIP todavía tiene un Token de Acceso anterior vigente. "
+                                "Esperá unos minutos y volvé a intentar (esto pasa al pedir logins seguidos).")
+        else:
+            raise AfipError(f"Error en WSAA (login): {msg}")
     import xml.etree.ElementTree as ET
     root = ET.fromstring(resp)
     token = root.findtext(".//token")
     sign = root.findtext(".//sign")
+    # El TA dura 12hs; lo guardamos por 11hs para reutilizarlo.
+    _TA_CACHE = {"token": token, "sign": sign, "exp": ahora + 11 * 3600}
     return token, sign
+
+# Caché global del Ticket de Acceso
+_TA_CACHE = None
 
 # ---- WSFEv1: pedir el próximo número y autorizar el comprobante (CAE) ----
 def emitir_factura(tipo_cbte: int, doc_tipo: int, doc_nro: str,
