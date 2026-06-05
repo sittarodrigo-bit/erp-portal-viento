@@ -41,16 +41,21 @@ class AfipError(Exception):
 
 # ---- WSAA: crear el TRA, firmarlo (CMS) y obtener el Token+Sign ----
 def _crear_tra(servicio="wsfe"):
-    ahora = datetime.datetime.now()
+    # Usamos hora UTC con offset explícito para que AFIP no la interprete mal.
+    ahora = datetime.datetime.now(datetime.timezone.utc)
     desde = ahora - datetime.timedelta(minutes=10)
     hasta = ahora + datetime.timedelta(minutes=10)
     unique_id = int(ahora.timestamp())
+    def fmt(dt):
+        # Ej: 2026-06-05T12:00:00+00:00
+        s = dt.strftime('%Y-%m-%dT%H:%M:%S%z')   # ...+0000
+        return s[:-2] + ':' + s[-2:]              # ...+00:00
     tra = f"""<?xml version="1.0" encoding="UTF-8"?>
 <loginTicketRequest version="1.0">
 <header>
 <uniqueId>{unique_id}</uniqueId>
-<generationTime>{desde.strftime('%Y-%m-%dT%H:%M:%S')}</generationTime>
-<expirationTime>{hasta.strftime('%Y-%m-%dT%H:%M:%S')}</expirationTime>
+<generationTime>{fmt(desde)}</generationTime>
+<expirationTime>{fmt(hasta)}</expirationTime>
 </header>
 <service>{servicio}</service>
 </loginTicketRequest>"""
