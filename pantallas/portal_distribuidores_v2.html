@@ -138,9 +138,10 @@
             </div>
 
             <!-- Tabs -->
-            <div class="grid grid-cols-3 gap-2 mb-2">
+            <div class="grid grid-cols-2 gap-2 mb-2">
                 <button type="button" onclick="cambiarTabDist('pedido')"    id="dt-pedido"    class="tab-btn activo rounded-xl py-2.5 text-sm border border-gray-700">🛒 Pedido</button>
                 <button type="button" onclick="cambiarTabDist('historial')" id="dt-historial" class="tab-btn bg-gray-900 rounded-xl py-2.5 text-sm text-gray-400 border border-gray-700">📦 Pedidos</button>
+                <button type="button" onclick="cambiarTabDist('ranking')"   id="dt-ranking"   class="tab-btn bg-gray-900 rounded-xl py-2.5 text-sm text-gray-400 border border-gray-700">🏆 Ranking</button>
                 <button type="button" onclick="cambiarTabDist('cuenta')"    id="dt-cuenta"    class="tab-btn bg-gray-900 rounded-xl py-2.5 text-sm text-gray-400 border border-gray-700">💳 Cuenta</button>
             </div>
         </div>
@@ -166,6 +167,12 @@
         <!-- Panel Historial -->
         <div id="dp-historial" class="hidden flex-1 overflow-y-auto px-4 py-3">
             <div id="lista-pedidos-dist" class="space-y-3"></div>
+        </div>
+
+        <!-- Panel Ranking -->
+        <div id="dp-ranking" class="hidden flex-1 overflow-y-auto px-4 py-3">
+            <p class="text-gray-400 text-sm mb-3">Tus productos más pedidos (sobre pedidos despachados).</p>
+            <div id="lista-ranking" class="space-y-2"></div>
         </div>
 
         <!-- Panel Cuenta -->
@@ -270,7 +277,7 @@
         }
 
         function cambiarTabDist(tab) {
-            ['pedido','historial','cuenta'].forEach(function(t) {
+            ['pedido','historial','ranking','cuenta'].forEach(function(t) {
                 document.getElementById('dp-' + t).classList.toggle('hidden', t !== tab);
                 var btn = document.getElementById('dt-' + t);
                 btn.classList.toggle('activo', t === tab);
@@ -278,6 +285,7 @@
                 btn.classList.toggle('text-gray-400', t !== tab);
             });
             if (tab === 'historial') cargarHistorialDist();
+            if (tab === 'ranking')   cargarRankingDist();
             if (tab === 'cuenta')    cargarCuentaDist();
         }
 
@@ -420,17 +428,63 @@
             cont.innerHTML = lista.map(function(p) {
                 var fecha = new Date(p.fecha).toLocaleDateString('es-AR', {day:'2-digit', month:'2-digit', year:'numeric'});
                 var col   = COLS[p.estado] || 'text-gray-400 bg-gray-800';
-                return '<div class="bg-gray-900 border border-gray-800 rounded-2xl p-4 flex justify-between items-center">' +
-                    '<div>' +
-                        '<p class="font-bold text-white text-lg">#' + String(p.id).padStart(4,'0') + '</p>' +
-                        '<p class="text-gray-500 text-xs mt-0.5">' + fecha + '</p>' +
-                    '</div>' +
-                    '<div class="text-right">' +
-                        '<p class="font-bold text-neon text-lg">$ ' + parseFloat(p.total).toLocaleString('es-AR') + '</p>' +
-                        '<span class="text-xs font-bold px-2 py-0.5 rounded-full ' + col + '">' + p.estado + '</span>' +
-                    '</div>' +
+                return '<div class="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">' +
+                    '<button type="button" onclick="toggleDetallePedido(' + p.id + ', this)" class="w-full p-4 flex justify-between items-center text-left">' +
+                        '<div>' +
+                            '<p class="font-bold text-white text-lg">#' + String(p.id).padStart(4,'0') + '</p>' +
+                            '<p class="text-gray-500 text-xs mt-0.5">' + fecha + ' · toca para ver detalle ▾</p>' +
+                        '</div>' +
+                        '<div class="text-right">' +
+                            '<p class="font-bold text-neon text-lg">$ ' + parseFloat(p.total).toLocaleString('es-AR') + '</p>' +
+                            '<span class="text-xs font-bold px-2 py-0.5 rounded-full ' + col + '">' + p.estado + '</span>' +
+                        '</div>' +
+                    '</button>' +
+                    '<div id="detalle-ped-' + p.id + '" class="hidden border-t border-gray-800 px-4 py-3 bg-black/30"></div>' +
                 '</div>';
             }).join('');
+        }
+
+        async function toggleDetallePedido(idPedido, btn) {
+            var cont = document.getElementById('detalle-ped-' + idPedido);
+            if (!cont.classList.contains('hidden')) { cont.classList.add('hidden'); return; }
+            cont.classList.remove('hidden');
+            cont.innerHTML = '<p class="text-gray-500 text-xs">Cargando...</p>';
+            try {
+                var det = await fetch(API_URL + '/pedidos_b2b/' + idPedido + '/detalle').then(function(r){ return r.json(); });
+                if (!det.length) { cont.innerHTML = '<p class="text-gray-500 text-xs">Sin detalle.</p>'; return; }
+                var filas = det.map(function(d) {
+                    var sub = parseFloat(d.subtotal != null ? d.subtotal : (d.cantidad * d.precio_unitario)) || 0;
+                    return '<div class="flex justify-between py-1.5 border-b border-gray-800/60 text-sm">' +
+                        '<span class="text-gray-300">' + d.cantidad + '× ' + d.producto + '</span>' +
+                        '<span class="text-gray-400">$ ' + parseFloat(d.precio_unitario).toLocaleString('es-AR') + ' · <span class="text-white font-bold">$ ' + sub.toLocaleString('es-AR') + '</span></span>' +
+                    '</div>';
+                }).join('');
+                cont.innerHTML = filas;
+            } catch(e) { cont.innerHTML = '<p class="text-red-400 text-xs">No se pudo cargar el detalle.</p>'; }
+        }
+
+        // ── RANKING ──────────────────────────────────────────────
+        async function cargarRankingDist() {
+            var cont = document.getElementById('lista-ranking');
+            cont.innerHTML = '<p class="text-gray-500 text-sm">Cargando...</p>';
+            try {
+                var lista = await fetch(API_URL + '/distribuidores/' + distActual.id + '/ranking_productos').then(function(r){ return r.json(); });
+                if (!lista.length) { cont.innerHTML = '<p class="text-center text-gray-500 py-12">Todavía no hay pedidos despachados para armar el ranking.</p>'; return; }
+                var maxu = parseFloat(lista[0].unidades) || 1;
+                cont.innerHTML = lista.map(function(p, i) {
+                    var u = parseFloat(p.unidades) || 0;
+                    var pct = Math.max(4, Math.round(u / maxu * 100));
+                    var medalla = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : '<span class="text-gray-600 font-bold">' + (i+1) + '</span>';
+                    return '<div class="bg-gray-900 border border-gray-800 rounded-xl px-4 py-3">' +
+                        '<div class="flex justify-between items-center mb-1.5">' +
+                            '<span class="text-white font-bold text-sm">' + medalla + ' ' + p.producto + '</span>' +
+                            '<span class="text-neon font-bold text-sm">' + u + ' u</span>' +
+                        '</div>' +
+                        '<div class="w-full bg-gray-800 rounded-full h-2 mb-1"><div class="bg-neon h-2 rounded-full" style="width:' + pct + '%"></div></div>' +
+                        '<p class="text-gray-500 text-xs text-right">$ ' + parseFloat(p.total).toLocaleString('es-AR') + ' en compras</p>' +
+                    '</div>';
+                }).join('');
+            } catch(e) { cont.innerHTML = '<p class="text-red-400 text-sm">No se pudo cargar el ranking.</p>'; }
         }
 
         // ── CUENTA ───────────────────────────────────────────────
