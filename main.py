@@ -1647,6 +1647,8 @@ class PosVenta(BaseModel):
     metodo_pago: str
     total: float
     detalle: List[PosItemVenta]
+    id_empleado: Optional[int] = None
+    nombre_cajero: Optional[str] = None
 
 # ---- LOCALES ----
 @app.get("/api/pos/locales")
@@ -1867,8 +1869,13 @@ def pos_registrar_venta(venta: PosVenta):
     conn = obtener_conexion()
     try:
         cur = conn.cursor()
-        cur.execute("INSERT INTO pos_ventas (id_caja, id_local, metodo_pago, total) VALUES (%s,%s,%s,%s) RETURNING id",
-                    (venta.id_caja, venta.id_local, venta.metodo_pago, venta.total))
+        try:
+            cur.execute("INSERT INTO pos_ventas (id_caja, id_local, metodo_pago, total, id_empleado, nombre_cajero) VALUES (%s,%s,%s,%s,%s,%s) RETURNING id",
+                        (venta.id_caja, venta.id_local, venta.metodo_pago, venta.total, venta.id_empleado, venta.nombre_cajero))
+        except Exception:
+            conn.rollback()
+            cur.execute("INSERT INTO pos_ventas (id_caja, id_local, metodo_pago, total) VALUES (%s,%s,%s,%s) RETURNING id",
+                        (venta.id_caja, venta.id_local, venta.metodo_pago, venta.total))
         vid = cur.fetchone()[0]
         for it in venta.detalle:
             cur.execute("INSERT INTO pos_detalle_ventas (id_venta, nombre_producto, cantidad, precio_unitario) VALUES (%s,%s,%s,%s)",
@@ -3247,6 +3254,70 @@ def afip_listar_facturas(id_local: Optional[int] = None):
         q += " ORDER BY fecha DESC LIMIT 200"
         cur.execute(q, tuple(params))
         return fetchall_dict(cur)
+    finally:
+        liberar_conexion(conn)
+
+# ==============================================================================
+# LISTADO DE VENTAS CON COMPROBANTE (para reporte al contador)
+# ==============================================================================
+@app.get("/api/ventas/listado")
+def ventas_listado(desde: Optional[str] = None, hasta: Optional[str] = None,
+                   id_local: Optional[int] = None, metodo_pago: Optional[str] = None,
+                   comprobante: Optional[str] = None):
+    """
+    Lista ventas del POS con su comprobante.
+    comprobante: 'afip' (solo facturadas), 'ticket' (sin factura AFIP), o None (todas).
+    """
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        # Detectar si pos_ventas tiene columna de cajero (para no romper si no se corrió el SQL)
+        cur.execute("""SELECT column_name FROM information_schema.columns
+                       WHERE table_name='pos_ventas' AND column_name='nombre_cajero'""")
+        tiene_cajero = bool(cur.fetchone())
+        cajero_sel = "v.nombre_cajero" if tiene_cajero else "NULL AS nombre_cajero"
+
+        q = f"""
+            SELECT v.id, v.fecha::text AS fecha, v.metodo_pago, v.total,
+                   v.id_local, l.nombre AS local,
+                   {cajero_sel},
+                   f.id AS id_factura, f.cae, f.tipo_comprobante, f.numero AS nro_factura,
+                   f.punto_venta, f.estado AS estado_factura
+            FROM pos_ventas v
+            LEFT JOIN pos_locales l ON v.id_local = l.id
+            LEFT JOIN afip_facturas f ON f.id_venta = v.id AND f.estado='emitida'
+            WHERE 1=1
+        """
+        params = []
+        if desde: q += " AND v.fecha::date >= %s"; params.append(desde)
+        if hasta: q += " AND v.fecha::date <= %s"; params.append(hasta)
+        if id_local: q += " AND v.id_local = %s"; params.append(id_local)
+        if metodo_pago: q += " AND v.metodo_pago = %s"; params.append(metodo_pago)
+        if comprobante == 'afip': q += " AND f.id IS NOT NULL"
+        elif comprobante == 'ticket': q += " AND f.id IS NULL"
+        q += " ORDER BY v.fecha DESC LIMIT 1000"
+        cur.execute(q, tuple(params))
+        ventas = fetchall_dict(cur)
+
+        # Totales del listado
+        total_general = sum(float(v['total'] or 0) for v in ventas)
+        total_afip = sum(float(v['total'] or 0) for v in ventas if v.get('id_factura'))
+        total_ticket = total_general - total_afip
+        por_metodo = {}
+        for v in ventas:
+            m = v['metodo_pago'] or 'Otro'
+            por_metodo[m] = por_metodo.get(m, 0) + float(v['total'] or 0)
+
+        return {
+            "ventas": ventas,
+            "resumen": {
+                "cantidad": len(ventas),
+                "total_general": total_general,
+                "total_afip": total_afip,
+                "total_ticket": total_ticket,
+                "por_metodo": por_metodo
+            }
+        }
     finally:
         liberar_conexion(conn)
 
