@@ -387,6 +387,11 @@
                     <p id="afip-res-cae" class="text-neon font-bold text-xl tracking-wider"></p>
                     <p id="afip-res-vto" class="text-gray-500 text-xs mt-1"></p>
                 </div>
+                <div class="mb-3">
+                    <label class="block text-xs text-gray-500 font-bold mb-1">📱 WhatsApp del cliente (opcional)</label>
+                    <input type="tel" id="afip-tel-cliente" inputmode="numeric" placeholder="Ej: 2615123456 (sin 0 ni 15)" class="w-full bg-black border border-gray-700 text-white rounded-lg p-3 text-sm">
+                    <p class="text-gray-600 text-xs mt-1">Si lo dejás vacío, WhatsApp te deja elegir el contacto.</p>
+                </div>
                 <div class="grid grid-cols-2 gap-2">
                     <button onclick="imprimirFacturaAfip()" class="bg-gray-800 hover:bg-gray-700 border border-gray-600 text-white font-bold py-3 rounded-xl text-sm">🖨️ Imprimir</button>
                     <button onclick="enviarFacturaWhatsapp()" class="bg-green-700 hover:bg-green-600 text-white font-bold py-3 rounded-xl text-sm">📱 WhatsApp</button>
@@ -1062,6 +1067,7 @@
             document.getElementById('afip-resultado').classList.add('hidden');
             document.getElementById('afip-doc-extra').classList.add('hidden');
             document.getElementById('afip-doc-nro').value = '';
+            var telEl = document.getElementById('afip-tel-cliente'); if (telEl) telEl.value = '';
             document.querySelectorAll('.afip-doc-btn').forEach(function(b,i){
                 b.classList.toggle('border-neon', i === 0);
                 b.classList.toggle('border-gray-700', i !== 0);
@@ -1264,7 +1270,23 @@
                 'Vto CAE: ' + formatearFechaAfip(r.cae_vto) + '%0A' +
                 (r.entorno === 'homologacion' ? '%0A(Comprobante de prueba)' : '') +
                 '%0A¡Gracias por su compra!';
-            window.open('https://wa.me/?text=' + msg, '_blank');
+            var tel = normalizarTelArg(document.getElementById('afip-tel-cliente').value);
+            var base = tel ? ('https://wa.me/' + tel) : 'https://wa.me/';
+            window.open(base + '?text=' + msg, '_blank');
+        }
+
+        // Convierte un número argentino al formato que pide wa.me: 549 + área + número
+        function normalizarTelArg(valor) {
+            var n = (valor || '').replace(/\D/g, '');   // solo dígitos
+            if (!n) return '';
+            // Quitar prefijos comunes que la gente escribe
+            if (n.indexOf('0054') === 0) n = n.substring(4);
+            else if (n.indexOf('54') === 0) n = n.substring(2);
+            if (n.charAt(0) === '0') n = n.substring(1);   // saca el 0 de larga distancia
+            // Sacar el 15 al inicio del abonado es difícil sin saber el área; asumimos que ya viene sin 15
+            // Anteponer 9 (celular Argentina) si no está
+            if (n.charAt(0) !== '9') n = '9' + n;
+            return '54' + n;
         }
 
         // ── LISTADO DE VENTAS ──
