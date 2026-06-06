@@ -32,12 +32,28 @@ def _config():
         "cuit": os.environ.get("AFIP_CUIT", "").strip(),
         "punto_venta": int(os.environ.get("AFIP_PUNTO_VENTA", "5") or "5"),
         "entorno": (os.environ.get("AFIP_ENTORNO", "homologacion") or "homologacion").strip(),
-        "cert": os.environ.get("AFIP_CERT", ""),
-        "key": os.environ.get("AFIP_KEY", ""),
+        # Corrección para evitar errores de parseo por saltos de línea inyectados
+        "cert": os.environ.get("AFIP_CERT", "").replace('\\n', '\n'),
+        "key": os.environ.get("AFIP_KEY", "").replace('\\n', '\n'),
     }
 
 class AfipError(Exception):
     pass
+
+# Caché global del Ticket de Acceso
+_TA_CACHE = None
+
+# Caché de clientes zeep (para no descargar el WSDL en cada factura)
+_CLIENTES = {}
+def _get_client(url):
+    from zeep import Client
+    from zeep.transports import Transport
+    import requests
+    if url not in _CLIENTES:
+        session = requests.Session()
+        transport = Transport(session=session, timeout=30, operation_timeout=30)
+        _CLIENTES[url] = Client(url, transport=transport)
+    return _CLIENTES[url]
 
 # ---- WSAA: crear el TRA, firmarlo (CMS) y obtener el Token+Sign ----
 def _crear_tra(servicio="wsfe"):
@@ -82,21 +98,16 @@ def _obtener_ta(cfg):
     porque AFIP no permite pedir uno nuevo si todavía hay uno válido."""
     import time
     global _TA_CACHE
-    try:
-        _TA_CACHE
-    except NameError:
-        _TA_CACHE = None
 
     ahora = time.time()
     if _TA_CACHE and _TA_CACHE.get("exp", 0) > ahora + 60:
         return _TA_CACHE["token"], _TA_CACHE["sign"]
 
-    from zeep import Client
     if not cfg["cert"] or not cfg["key"]:
         raise AfipError("Faltan AFIP_CERT y/o AFIP_KEY en las variables de entorno.")
     tra = _crear_tra("wsfe")
     cms = _firmar_tra(tra, cfg["cert"], cfg["key"])
-    client = Client(WSAA_URLS[cfg["entorno"]])
+    client = _get_client(WSAA_URLS[cfg["entorno"]])
     try:
         resp = client.service.loginCms(cms)
     except Exception as e:
@@ -122,12 +133,10 @@ def _obtener_ta(cfg):
     _TA_CACHE = {"token": token, "sign": sign, "exp": ahora + 11 * 3600}
     return token, sign
 
-# Caché global del Ticket de Acceso
-_TA_CACHE = None
-
 # ---- WSFEv1: pedir el próximo número y autorizar el comprobante (CAE) ----
 def emitir_factura(tipo_cbte: int, doc_tipo: int, doc_nro: str,
-                   neto: float, iva: float, total: float):
+                   neto: float, iva: float, total: float,
+                   cond_iva_receptor: int = 5):
     """
     Emite un comprobante y devuelve dict con cae, vencimiento, numero.
     tipo_cbte: 6=Factura B, 1=Factura A, 11=Factura C
@@ -136,13 +145,12 @@ def emitir_factura(tipo_cbte: int, doc_tipo: int, doc_nro: str,
     cfg = _config()
     if not cfg["cuit"]:
         raise AfipError("Falta AFIP_CUIT en las variables de entorno.")
-    from zeep import Client
 
     token, sign = _obtener_ta(cfg)
     cuit = int(cfg["cuit"])
     pv = cfg["punto_venta"]
 
-    client = Client(WSFE_URLS[cfg["entorno"]])
+    client = _get_client(WSFE_URLS[cfg["entorno"]])
     auth = {"Token": token, "Sign": sign, "Cuit": cuit}
 
     # Último número autorizado para ese punto de venta y tipo
@@ -169,6 +177,7 @@ def emitir_factura(tipo_cbte: int, doc_tipo: int, doc_nro: str,
         "ImpTrib": 0,
         "MonId": "PES",
         "MonCotiz": 1,
+        "CondicionIVAReceptorId": cond_iva_receptor, # <-- Campo obligatorio RG 5616
     }
     # Para Factura A/B se informa el IVA; para C no.
     if tipo_cbte in (1, 6) and iva > 0:
@@ -210,10 +219,10 @@ def emitir_factura(tipo_cbte: int, doc_tipo: int, doc_nro: str,
         "punto_venta": pv,
         "tipo_comprobante": tipo_cbte,
         "entorno": cfg["entorno"],
-        "fecha_cbte": hoy,            # YYYYMMDD del comprobante
-        "cuit_emisor": cuit,          # CUIT de la empresa
-        "doc_tipo": doc_tipo,
-        "doc_nro": doc_nro,
+        "fecha_cbte": hoy,            # YYYYMMDD del comprobante (para el QR)
+        "cuit_emisor": cuit,          # CUIT de la empresa (para el QR)
+        "doc_tipo": doc_tipo,         # tipo doc receptor (para el QR)
+        "doc_nro": doc_nro,           # nro doc receptor (para el QR)
     }
 
 def estado_servidores():
@@ -227,8 +236,7 @@ def estado_servidores():
         "entorno": cfg["entorno"],
     }
     try:
-        from zeep import Client
-        client = Client(WSFE_URLS[cfg["entorno"]])
+        client = _get_client(WSFE_URLS[cfg["entorno"]])
         dummy = client.service.FEDummy()
         info["afip_app"] = dummy.AppServer
         info["afip_db"] = dummy.DbServer
@@ -236,3 +244,34 @@ def estado_servidores():
     except Exception as e:
         info["error"] = str(e)
     return info
+
+if __name__ == "__main__":
+    print("Iniciando test de conexión con AFIP/ARCA...")
+    try:
+        status = estado_servidores()
+        print("\n--- Estado de Servidores ---")
+        for clave, valor in status.items():
+            print(f"{clave}: {valor}")
+
+        # --- Ejemplo de uso sugerido ---
+        # Descomentar el bloque inferior para probar generar un comprobante.
+        # (Ej: Venta de caja x12 a $15.200 a un Consumidor Final)
+
+        # print("\nEmitiendo comprobante de prueba...")
+        # total_venta = 15200.00
+        # neto_venta = round(total_venta / 1.21, 2)
+        # iva_venta = round(total_venta - neto_venta, 2)
+        #
+        # resultado = emitir_factura(
+        #     tipo_cbte=6,         # 6 = Factura B
+        #     doc_tipo=99,         # 99 = Consumidor Final
+        #     doc_nro="0",         # 0 = Sin documentar
+        #     neto=neto_venta,
+        #     iva=iva_venta,
+        #     total=total_venta,
+        #     cond_iva_receptor=5  # 5 = Consumidor Final
+        # )
+        # print(f"¡Factura generada con éxito! N° {resultado['numero']} | CAE: {resultado['cae']}")
+
+    except Exception as e:
+        print(f"\n❌ Error: {str(e)}")
