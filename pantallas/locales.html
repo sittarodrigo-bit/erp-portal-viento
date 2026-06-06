@@ -123,6 +123,26 @@
             <div class="flex-1 overflow-y-auto p-8">
                 <!-- VENTAS -->
                 <div id="panel-ventas">
+                    <div class="bg-black border border-gray-800 rounded-xl p-4 mb-5">
+                        <div class="flex items-center justify-between mb-3">
+                            <h3 class="text-white font-bold">🧾 Reporte de ventas (para el contador)</h3>
+                            <button onclick="exportarReporteVentas()" class="border border-gray-600 text-gray-300 hover:text-white font-bold px-3 py-1.5 rounded-lg text-xs">📤 Exportar Excel</button>
+                        </div>
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3">
+                            <div><label class="block text-xs text-gray-500 font-bold mb-1">Desde</label><input type="date" id="rv-desde" class="w-full bg-gray-900 border border-gray-700 text-white rounded-lg p-2 text-sm"></div>
+                            <div><label class="block text-xs text-gray-500 font-bold mb-1">Hasta</label><input type="date" id="rv-hasta" class="w-full bg-gray-900 border border-gray-700 text-white rounded-lg p-2 text-sm"></div>
+                            <div><label class="block text-xs text-gray-500 font-bold mb-1">Medio</label><select id="rv-metodo" class="w-full bg-gray-900 border border-gray-700 text-white rounded-lg p-2 text-sm"><option value="">Todos</option><option>Efectivo</option><option>Tarjeta</option><option>Transferencia</option><option>QR</option></select></div>
+                            <div><label class="block text-xs text-gray-500 font-bold mb-1">Comprobante</label><select id="rv-comprobante" class="w-full bg-gray-900 border border-gray-700 text-white rounded-lg p-2 text-sm"><option value="">Todos</option><option value="afip">Factura AFIP</option><option value="ticket">Ticket interno</option></select></div>
+                        </div>
+                        <button onclick="cargarReporteVentas()" class="bg-neon text-black font-bold px-4 py-2 rounded-lg text-sm hover:bg-yellow-300 mb-3">Buscar</button>
+                        <div id="rv-resumen" class="grid grid-cols-3 gap-2 mb-3"></div>
+                        <div class="rounded-xl border border-gray-800 overflow-x-auto max-h-80 overflow-y-auto">
+                            <table class="w-full text-left text-sm">
+                                <thead class="bg-gray-950 text-xs text-gray-400 uppercase sticky top-0"><tr><th class="p-2">Fecha</th><th class="p-2">Hora</th><th class="p-2">Medio</th><th class="p-2">Cajero</th><th class="p-2">Comprobante</th><th class="p-2 text-right">Total</th></tr></thead>
+                                <tbody id="rv-tbody" class="divide-y divide-gray-800"></tbody>
+                            </table>
+                        </div>
+                    </div>
                     <div class="grid grid-cols-3 gap-4 mb-5" id="ventas-kpis"></div>
                     <h3 class="text-white font-bold mb-3">🏆 Más vendidos</h3>
                     <div id="mas-vendidos" class="space-y-1 mb-6"></div>
@@ -422,6 +442,13 @@
 
         // ── VENTAS ──
         async function cargarVentas() {
+            // Inicializa el reporte para el contador con fecha de hoy
+            const hoyR = new Date().toISOString().slice(0,10);
+            if (document.getElementById('rv-desde') && !document.getElementById('rv-desde').value) {
+                document.getElementById('rv-desde').value = hoyR;
+                document.getElementById('rv-hasta').value = hoyR;
+                cargarReporteVentas();
+            }
             const id = localActual.id;
             const [ventas, top] = await Promise.all([
                 fetch(`${API_URL}/locales/${id}/ventas`).then(r=>r.json()).catch(()=>[]),
@@ -460,6 +487,79 @@
                     </div>
                     <p class="text-gray-500 text-xs mt-1">${items}</p></div>`;
             });
+        }
+
+        // ── REPORTE DE VENTAS (contador) ──
+        let reporteVentasCache = [];
+
+        async function cargarReporteVentas() {
+            const p = new URLSearchParams();
+            const desde = document.getElementById('rv-desde').value;
+            const hasta = document.getElementById('rv-hasta').value;
+            const metodo = document.getElementById('rv-metodo').value;
+            const comp = document.getElementById('rv-comprobante').value;
+            if (desde) p.append('desde', desde);
+            if (hasta) p.append('hasta', hasta);
+            if (metodo) p.append('metodo_pago', metodo);
+            if (comp) p.append('comprobante', comp);
+            if (localActual) p.append('id_local', localActual.id);
+            const tbody = document.getElementById('rv-tbody');
+            tbody.innerHTML = '<tr><td class="p-3 text-gray-500" colspan="6">Cargando...</td></tr>';
+            try {
+                const data = await fetch(`${API_URL}/ventas/listado?${p.toString()}`).then(r=>r.json());
+                reporteVentasCache = data.ventas || [];
+                renderReporteVentas(data);
+            } catch(e) { tbody.innerHTML = '<tr><td class="p-3 text-red-400" colspan="6">No se pudo cargar.</td></tr>'; }
+        }
+
+        function renderReporteVentas(data) {
+            const tbody = document.getElementById('rv-tbody');
+            const ventas = data.ventas || [];
+            if (!ventas.length) { tbody.innerHTML = '<tr><td class="p-4 text-gray-500 text-center" colspan="6">Sin ventas en ese período.</td></tr>'; }
+            else {
+                tbody.innerHTML = ventas.map(v => {
+                    const f = v.fecha ? new Date(v.fecha.replace(' ','T')) : null;
+                    const fecha = f ? f.toLocaleDateString('es-AR') : '';
+                    const hora = f ? f.toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'}) : '';
+                    let comp;
+                    if (v.id_factura) {
+                        const tipo = v.tipo_comprobante === 1 ? 'Fact. A' : v.tipo_comprobante === 11 ? 'Fact. C' : 'Fact. B';
+                        const nro = String(v.punto_venta).padStart(4,'0') + '-' + String(v.nro_factura).padStart(8,'0');
+                        comp = `<span class="text-green-400 font-bold">🧾 ${tipo}</span> <span class="text-gray-500 text-xs">${nro}</span>`;
+                    } else { comp = '<span class="text-gray-500">🎫 Ticket interno</span>'; }
+                    return `<tr class="hover:bg-gray-900">
+                        <td class="p-2 text-gray-300">${fecha}</td><td class="p-2 text-gray-400">${hora}</td>
+                        <td class="p-2 text-gray-300">${v.metodo_pago||''}</td><td class="p-2 text-gray-400">${v.nombre_cajero||'—'}</td>
+                        <td class="p-2">${comp}</td><td class="p-2 text-right text-neon font-bold">${fmt(v.total)}</td></tr>`;
+                }).join('');
+            }
+            const r = data.resumen || {};
+            document.getElementById('rv-resumen').innerHTML =
+                `<div class="bg-gray-900 border border-gray-800 rounded-xl p-3 text-center"><p class="text-gray-500 text-xs font-bold mb-1">TOTAL (${r.cantidad||0})</p><p class="text-neon font-bold">${fmt(r.total_general||0)}</p></div>
+                 <div class="bg-gray-900 border border-gray-800 rounded-xl p-3 text-center"><p class="text-gray-500 text-xs font-bold mb-1">🧾 AFIP</p><p class="text-green-400 font-bold">${fmt(r.total_afip||0)}</p></div>
+                 <div class="bg-gray-900 border border-gray-800 rounded-xl p-3 text-center"><p class="text-gray-500 text-xs font-bold mb-1">🎫 Ticket</p><p class="text-gray-300 font-bold">${fmt(r.total_ticket||0)}</p></div>`;
+        }
+
+        function exportarReporteVentas() {
+            if (!reporteVentasCache.length) { alert('No hay ventas para exportar. Hacé una búsqueda primero.'); return; }
+            const aoa = [['Fecha','Hora','Local','Medio de pago','Cajero','Comprobante','Numero','CAE','Total']];
+            reporteVentasCache.forEach(v => {
+                const f = v.fecha ? new Date(v.fecha.replace(' ','T')) : null;
+                const fecha = f ? f.toLocaleDateString('es-AR') : '';
+                const hora = f ? f.toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'}) : '';
+                let tipo, nro, cae;
+                if (v.id_factura) {
+                    tipo = v.tipo_comprobante === 1 ? 'Factura A' : v.tipo_comprobante === 11 ? 'Factura C' : 'Factura B';
+                    nro = String(v.punto_venta).padStart(4,'0') + '-' + String(v.nro_factura).padStart(8,'0');
+                    cae = v.cae || '';
+                } else { tipo = 'Ticket interno'; nro=''; cae=''; }
+                aoa.push([fecha, hora, v.local||'', v.metodo_pago||'', v.nombre_cajero||'', tipo, nro, cae, parseFloat(v.total||0)]);
+            });
+            const ws = XLSX.utils.aoa_to_sheet(aoa);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'Ventas');
+            const d = document.getElementById('rv-desde').value || 'ventas';
+            XLSX.writeFile(wb, 'reporte_ventas_' + (localActual.nombre||'local').replace(/[^a-zA-Z0-9]/g,'_') + '_' + d + '.xlsx');
         }
 
         // ── PRODUCTOS Y STOCK ──
