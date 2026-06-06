@@ -658,8 +658,10 @@
                     carrito = [];
                     renderCarrito();
                     cerrarModales();
-                    await verificarCaja();
+                    // Mostramos la pregunta de inmediato (no esperamos a recargar la caja)
                     abrirModalComprobante(total);
+                    // Refrescamos caja y productos en segundo plano, sin bloquear
+                    verificarCaja();
                 } else {
                     var e = await res.json(); alert('❌ ' + (e.detail || 'Error al registrar'));
                     btn.disabled = false; btn.textContent = '✓ Confirmar e imprimir ticket';
