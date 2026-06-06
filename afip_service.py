@@ -32,9 +32,8 @@ def _config():
         "cuit": os.environ.get("AFIP_CUIT", "").strip(),
         "punto_venta": int(os.environ.get("AFIP_PUNTO_VENTA", "5") or "5"),
         "entorno": (os.environ.get("AFIP_ENTORNO", "homologacion") or "homologacion").strip(),
-        # Corrección para evitar errores de parseo por saltos de línea inyectados
-        "cert": os.environ.get("AFIP_CERT", "").replace('\\n', '\n'),
-        "key": os.environ.get("AFIP_KEY", "").replace('\\n', '\n'),
+        "cert": os.environ.get("AFIP_CERT", ""),
+        "key": os.environ.get("AFIP_KEY", ""),
     }
 
 class AfipError(Exception):
@@ -128,8 +127,7 @@ _TA_CACHE = None
 
 # ---- WSFEv1: pedir el próximo número y autorizar el comprobante (CAE) ----
 def emitir_factura(tipo_cbte: int, doc_tipo: int, doc_nro: str,
-                   neto: float, iva: float, total: float,
-                   cond_iva_receptor: int = 5):
+                   neto: float, iva: float, total: float):
     """
     Emite un comprobante y devuelve dict con cae, vencimiento, numero.
     tipo_cbte: 6=Factura B, 1=Factura A, 11=Factura C
@@ -171,7 +169,6 @@ def emitir_factura(tipo_cbte: int, doc_tipo: int, doc_nro: str,
         "ImpTrib": 0,
         "MonId": "PES",
         "MonCotiz": 1,
-        "CondicionIVAReceptorId": cond_iva_receptor, # <-- Campo obligatorio RG 5616
     }
     # Para Factura A/B se informa el IVA; para C no.
     if tipo_cbte in (1, 6) and iva > 0:
@@ -213,6 +210,10 @@ def emitir_factura(tipo_cbte: int, doc_tipo: int, doc_nro: str,
         "punto_venta": pv,
         "tipo_comprobante": tipo_cbte,
         "entorno": cfg["entorno"],
+        "fecha_cbte": hoy,            # YYYYMMDD del comprobante
+        "cuit_emisor": cuit,          # CUIT de la empresa
+        "doc_tipo": doc_tipo,
+        "doc_nro": doc_nro,
     }
 
 def estado_servidores():
@@ -235,34 +236,3 @@ def estado_servidores():
     except Exception as e:
         info["error"] = str(e)
     return info
-
-if __name__ == "__main__":
-    print("Iniciando test de conexión con AFIP/ARCA...")
-    try:
-        status = estado_servidores()
-        print("\n--- Estado de Servidores ---")
-        for clave, valor in status.items():
-            print(f"{clave}: {valor}")
-        
-        # --- Ejemplo de uso sugerido ---
-        # Descomentar el bloque inferior para probar generar un comprobante. 
-        # (Ej: Venta de caja x12 a $15.200 a un Consumidor Final)
-        
-        # print("\nEmitiendo comprobante de prueba...")
-        # total_venta = 15200.00
-        # neto_venta = round(total_venta / 1.21, 2)
-        # iva_venta = round(total_venta - neto_venta, 2)
-        # 
-        # resultado = emitir_factura(
-        #     tipo_cbte=6,         # 6 = Factura B
-        #     doc_tipo=99,         # 99 = Consumidor Final
-        #     doc_nro="0",         # 0 = Sin documentar
-        #     neto=neto_venta,
-        #     iva=iva_venta,
-        #     total=total_venta,
-        #     cond_iva_receptor=5  # 5 = Consumidor Final
-        # )
-        # print(f"¡Factura generada con éxito! N° {resultado['numero']} | CAE: {resultado['cae']}")
-        
-    except Exception as e:
-        print(f"\n❌ Error: {str(e)}")
