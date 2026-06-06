@@ -6,6 +6,8 @@
     <title>POS | Portal del Viento</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <style>
         .text-neon { color: #e4fc74; }
         .bg-neon { background-color: #e4fc74; }
@@ -106,6 +108,7 @@
             <span class="text-gray-500">Tickets: <span id="caja-tickets" class="text-white font-bold">0</span></span>
         </div>
         <div class="flex gap-2">
+            <button onclick="abrirListadoVentas()" class="border border-gray-700 text-gray-300 hover:text-white px-4 py-1.5 rounded-lg text-xs">🧾 Ventas</button>
             <button onclick="abrirReporte()" class="border border-gray-700 text-gray-300 hover:text-white px-4 py-1.5 rounded-lg text-xs">📊 Reporte del día</button>
             <button onclick="abrirModalCierre()" class="bg-red-800 hover:bg-red-700 text-white font-bold px-4 py-1.5 rounded-lg text-xs">🔒 Cerrar Caja</button>
         </div>
@@ -280,6 +283,70 @@
                 </div>
             </div>
             <button onclick="guardarGastoPos()" class="w-full bg-neon text-black font-bold py-3 rounded-xl hover:bg-yellow-300">Enviar al admin</button>
+        </div>
+    </div>
+
+    <!-- MODAL LISTADO DE VENTAS -->
+    <div id="modal-ventas-listado" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
+        <div class="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-[720px] max-w-[95vw] shadow-2xl max-h-[92vh] overflow-y-auto">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-lg font-bold text-white">🧾 Listado de ventas</h3>
+                <button onclick="cerrarModales()" class="text-gray-500 hover:text-white text-2xl leading-none">×</button>
+            </div>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3">
+                <div>
+                    <label class="block text-xs text-gray-500 font-bold mb-1">Desde</label>
+                    <input type="date" id="vl-desde" class="w-full bg-black border border-gray-700 text-white rounded-lg p-2 text-sm">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 font-bold mb-1">Hasta</label>
+                    <input type="date" id="vl-hasta" class="w-full bg-black border border-gray-700 text-white rounded-lg p-2 text-sm">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 font-bold mb-1">Medio de pago</label>
+                    <select id="vl-metodo" class="w-full bg-black border border-gray-700 text-white rounded-lg p-2 text-sm">
+                        <option value="">Todos</option>
+                        <option>Efectivo</option><option>Tarjeta</option><option>Transferencia</option><option>QR</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 font-bold mb-1">Comprobante</label>
+                    <select id="vl-comprobante" class="w-full bg-black border border-gray-700 text-white rounded-lg p-2 text-sm">
+                        <option value="">Todos</option>
+                        <option value="afip">Factura AFIP</option>
+                        <option value="ticket">Ticket interno</option>
+                    </select>
+                </div>
+            </div>
+            <div class="flex gap-2 mb-4">
+                <button onclick="cargarListadoVentas()" class="bg-neon text-black font-bold px-4 py-2 rounded-lg text-sm hover:bg-yellow-300">Buscar</button>
+                <button onclick="exportarListadoVentas()" class="border border-gray-600 text-gray-300 hover:text-white font-bold px-4 py-2 rounded-lg text-sm">📤 Exportar Excel</button>
+            </div>
+            <div id="vl-resumen" class="grid grid-cols-3 gap-2 mb-3"></div>
+            <div class="bg-black rounded-xl border border-gray-800 overflow-x-auto">
+                <table class="w-full text-left text-sm">
+                    <thead class="bg-gray-950 text-xs text-gray-400 uppercase">
+                        <tr><th class="p-2">Fecha</th><th class="p-2">Hora</th><th class="p-2">Medio</th><th class="p-2">Cajero</th><th class="p-2">Comprobante</th><th class="p-2 text-right">Total</th></tr>
+                    </thead>
+                    <tbody id="vl-tbody" class="divide-y divide-gray-800"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL ELEGIR COMPROBANTE -->
+    <div id="modal-comprobante" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
+        <div class="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-[420px] shadow-2xl">
+            <div class="text-center mb-5">
+                <p class="text-5xl mb-2">✅</p>
+                <h3 class="text-lg font-bold text-white">Venta registrada</h3>
+                <p class="text-gray-500 text-sm mt-1">¿Qué comprobante querés emitir?</p>
+            </div>
+            <div class="grid grid-cols-1 gap-3">
+                <button onclick="elegirFacturaAfip()" class="bg-neon text-black font-bold py-4 rounded-xl hover:bg-yellow-300 text-base">🧾 Factura AFIP</button>
+                <button onclick="elegirTicketInterno()" class="bg-gray-800 hover:bg-gray-700 border border-gray-600 text-white font-bold py-4 rounded-xl text-base">🎫 Ticket interno</button>
+                <button onclick="cerrarModales()" class="text-gray-500 hover:text-white text-sm py-2">Ninguno / cerrar</button>
+            </div>
         </div>
     </div>
 
@@ -583,17 +650,16 @@
             try {
                 var res = await fetch(API_URL + '/pos/ventas', {
                     method:'POST', headers:{'Content-Type':'application/json'},
-                    body: JSON.stringify({ id_caja: cajaActual.id, id_local: localActual.id, metodo_pago: metodoSel, total: total, detalle: detalle })
+                    body: JSON.stringify({ id_caja: cajaActual.id, id_local: localActual.id, metodo_pago: metodoSel, total: total, detalle: detalle, id_empleado: (posUsuario ? posUsuario.id_empleado : null), nombre_cajero: (posUsuario ? (posUsuario.nombre + ' ' + posUsuario.apellido) : null) })
                 });
                 if (res.ok) {
                     var r = await res.json();
-                    imprimirTicket(r.id_venta, total, metodoSel, detalle);
-                    ventaParaFacturar = { id_venta: r.id_venta, total: total, detalle: detalle };
+                    ventaParaFacturar = { id_venta: r.id_venta, total: total, metodo: metodoSel, detalle: detalle };
                     carrito = [];
                     renderCarrito();
                     cerrarModales();
                     await verificarCaja();
-                    abrirModalAfip(total);
+                    abrirModalComprobante(total);
                 } else {
                     var e = await res.json(); alert('❌ ' + (e.detail || 'Error al registrar'));
                     btn.disabled = false; btn.textContent = '✓ Confirmar e imprimir ticket';
@@ -964,6 +1030,23 @@
             } catch(e) { alert('Error de conexión.'); }
         }
 
+        // ── ELECCIÓN DE COMPROBANTE (factura AFIP o ticket interno) ──
+        function abrirModalComprobante(total) {
+            document.getElementById('modal-comprobante').classList.replace('modal-oculto','modal-visible');
+        }
+
+        function elegirTicketInterno() {
+            cerrarModales();
+            if (ventaParaFacturar) {
+                imprimirTicket(ventaParaFacturar.id_venta, ventaParaFacturar.total, ventaParaFacturar.metodo, ventaParaFacturar.detalle);
+            }
+        }
+
+        function elegirFacturaAfip() {
+            cerrarModales();
+            abrirModalAfip(ventaParaFacturar ? ventaParaFacturar.total : 0);
+        }
+
         // ── FACTURACIÓN AFIP ──
         var ventaParaFacturar = null;   // {id_venta, total, detalle}
         var afipTipoSel = 'final';
@@ -1061,12 +1144,12 @@
             return s;
         }
 
-        function imprimirFacturaAfip() {
+        async function imprimirFacturaAfip() {
             if (!afipFacturaEmitida) return;
             var r = afipFacturaEmitida;
             var jsPDF = window.jspdf.jsPDF;
             var det = (ventaParaFacturar && ventaParaFacturar.detalle) ? ventaParaFacturar.detalle : [];
-            var alto = 80 + det.length * 6 + 40;
+            var alto = 80 + det.length * 6 + 70;
             var doc = new jsPDF({ unit:'mm', format:[80, alto] });
             var y = 8;
             doc.setFont('helvetica','bold'); doc.setFontSize(12);
@@ -1099,6 +1182,19 @@
             doc.text('CAE: ' + r.cae, 4, y); y += 4;
             doc.setFont('helvetica','normal'); doc.setFontSize(7);
             doc.text('Vto CAE: ' + formatearFechaAfip(r.cae_vto), 4, y); y += 5;
+
+            // ── QR oficial de AFIP ──
+            try {
+                var qrData = construirQrAfip(r);
+                if (qrData) {
+                    var qrImg = await generarQrDataURL(qrData);
+                    if (qrImg) {
+                        doc.addImage(qrImg, 'PNG', 28, y, 24, 24);  // centrado, 24x24mm
+                        y += 26;
+                    }
+                }
+            } catch(e) { /* si falla el QR, el comprobante igual se imprime */ }
+
             if (r.entorno === 'homologacion') { doc.setFontSize(6); doc.text('** COMPROBANTE DE PRUEBA - SIN VALOR FISCAL **', 40, y, {align:'center'}); y += 4; }
             doc.setFontSize(7);
             doc.text('¡Gracias por su compra!', 40, y, {align:'center'});
@@ -1106,6 +1202,53 @@
             var url = URL.createObjectURL(blob);
             var w = window.open(url);
             if (w) { w.onload = function(){ try { w.print(); } catch(e){} }; }
+        }
+
+        // Construye la URL del QR según especificación de AFIP
+        function construirQrAfip(r) {
+            try {
+                var fecha = String(r.fecha_cbte || '');  // YYYYMMDD
+                var fechaIso = fecha.length === 8 ? (fecha.substring(0,4) + '-' + fecha.substring(4,6) + '-' + fecha.substring(6,8)) : '';
+                var datos = {
+                    ver: 1,
+                    fecha: fechaIso,
+                    cuit: parseInt(r.cuit_emisor),
+                    ptoVta: r.punto_venta,
+                    tipoCmp: r.tipo_comprobante,
+                    nroCmp: r.numero,
+                    importe: parseFloat(r.total),
+                    moneda: "PES",
+                    ctz: 1,
+                    tipoDocRec: r.doc_tipo || 99,
+                    nroDocRec: parseInt(r.doc_nro || 0) || 0,
+                    tipoCodAut: "E",
+                    codAut: parseInt(r.cae)
+                };
+                var json = JSON.stringify(datos);
+                var b64 = btoa(unescape(encodeURIComponent(json)));
+                return 'https://www.afip.gob.ar/fe/qr/?p=' + b64;
+            } catch(e) { return null; }
+        }
+
+        // Genera el QR y devuelve un dataURL PNG (usa qrcodejs en un div temporal)
+        function generarQrDataURL(texto) {
+            return new Promise(function(resolve) {
+                try {
+                    var cont = document.createElement('div');
+                    cont.style.display = 'none';
+                    document.body.appendChild(cont);
+                    new QRCode(cont, { text: texto, width: 240, height: 240, correctLevel: QRCode.CorrectLevel.M });
+                    setTimeout(function() {
+                        var img = cont.querySelector('img');
+                        var canvas = cont.querySelector('canvas');
+                        var dataUrl = null;
+                        if (img && img.src) dataUrl = img.src;
+                        else if (canvas) dataUrl = canvas.toDataURL('image/png');
+                        document.body.removeChild(cont);
+                        resolve(dataUrl);
+                    }, 150);
+                } catch(e) { resolve(null); }
+            });
         }
 
         function enviarFacturaWhatsapp() {
@@ -1120,6 +1263,98 @@
                 (r.entorno === 'homologacion' ? '%0A(Comprobante de prueba)' : '') +
                 '%0A¡Gracias por su compra!';
             window.open('https://wa.me/?text=' + msg, '_blank');
+        }
+
+        // ── LISTADO DE VENTAS ──
+        var ventasListadoCache = [];
+
+        function abrirListadoVentas() {
+            var hoy = new Date().toISOString().slice(0,10);
+            document.getElementById('vl-desde').value = hoy;
+            document.getElementById('vl-hasta').value = hoy;
+            document.getElementById('vl-metodo').value = '';
+            document.getElementById('vl-comprobante').value = '';
+            document.getElementById('vl-tbody').innerHTML = '';
+            document.getElementById('vl-resumen').innerHTML = '';
+            document.getElementById('modal-ventas-listado').classList.replace('modal-oculto','modal-visible');
+            cargarListadoVentas();
+        }
+
+        async function cargarListadoVentas() {
+            var p = new URLSearchParams();
+            var desde = document.getElementById('vl-desde').value;
+            var hasta = document.getElementById('vl-hasta').value;
+            var metodo = document.getElementById('vl-metodo').value;
+            var comp = document.getElementById('vl-comprobante').value;
+            if (desde) p.append('desde', desde);
+            if (hasta) p.append('hasta', hasta);
+            if (metodo) p.append('metodo_pago', metodo);
+            if (comp) p.append('comprobante', comp);
+            if (localActual) p.append('id_local', localActual.id);
+            var tbody = document.getElementById('vl-tbody');
+            tbody.innerHTML = '<tr><td class="p-3 text-gray-500" colspan="6">Cargando...</td></tr>';
+            try {
+                var data = await fetch(API_URL + '/ventas/listado?' + p.toString()).then(function(r){return r.json();});
+                ventasListadoCache = data.ventas || [];
+                renderListadoVentas(data);
+            } catch(e) { tbody.innerHTML = '<tr><td class="p-3 text-red-400" colspan="6">No se pudo cargar.</td></tr>'; }
+        }
+
+        function renderListadoVentas(data) {
+            var tbody = document.getElementById('vl-tbody');
+            var ventas = data.ventas || [];
+            if (!ventas.length) { tbody.innerHTML = '<tr><td class="p-4 text-gray-500 text-center" colspan="6">Sin ventas en ese período.</td></tr>'; }
+            else {
+                tbody.innerHTML = ventas.map(function(v){
+                    var f = v.fecha ? new Date(v.fecha.replace(' ','T')) : null;
+                    var fecha = f ? f.toLocaleDateString('es-AR') : '';
+                    var hora = f ? f.toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'}) : '';
+                    var comp;
+                    if (v.id_factura) {
+                        var tipo = v.tipo_comprobante === 1 ? 'Fact. A' : v.tipo_comprobante === 11 ? 'Fact. C' : 'Fact. B';
+                        var nro = String(v.punto_venta).padStart(4,'0') + '-' + String(v.nro_factura).padStart(8,'0');
+                        comp = '<span class="text-green-400 font-bold">🧾 ' + tipo + '</span> <span class="text-gray-500 text-xs">' + nro + '</span>';
+                    } else {
+                        comp = '<span class="text-gray-500">🎫 Ticket interno</span>';
+                    }
+                    return '<tr class="hover:bg-gray-900">' +
+                        '<td class="p-2 text-gray-300">' + fecha + '</td>' +
+                        '<td class="p-2 text-gray-400">' + hora + '</td>' +
+                        '<td class="p-2 text-gray-300">' + (v.metodo_pago||'') + '</td>' +
+                        '<td class="p-2 text-gray-400">' + (v.nombre_cajero||'—') + '</td>' +
+                        '<td class="p-2">' + comp + '</td>' +
+                        '<td class="p-2 text-right text-neon font-bold">$ ' + parseFloat(v.total||0).toLocaleString('es-AR') + '</td>' +
+                    '</tr>';
+                }).join('');
+            }
+            var r = data.resumen || {};
+            document.getElementById('vl-resumen').innerHTML =
+                '<div class="bg-black border border-gray-800 rounded-xl p-3 text-center"><p class="text-gray-500 text-xs font-bold mb-1">TOTAL (' + (r.cantidad||0) + ')</p><p class="text-neon font-bold">$ ' + parseFloat(r.total_general||0).toLocaleString('es-AR') + '</p></div>' +
+                '<div class="bg-black border border-gray-800 rounded-xl p-3 text-center"><p class="text-gray-500 text-xs font-bold mb-1">🧾 Facturado AFIP</p><p class="text-green-400 font-bold">$ ' + parseFloat(r.total_afip||0).toLocaleString('es-AR') + '</p></div>' +
+                '<div class="bg-black border border-gray-800 rounded-xl p-3 text-center"><p class="text-gray-500 text-xs font-bold mb-1">🎫 Ticket interno</p><p class="text-gray-300 font-bold">$ ' + parseFloat(r.total_ticket||0).toLocaleString('es-AR') + '</p></div>';
+        }
+
+        function exportarListadoVentas() {
+            if (!ventasListadoCache.length) { alert('No hay ventas para exportar. Hacé una búsqueda primero.'); return; }
+            var aoa = [['Fecha','Hora','Local','Medio de pago','Cajero','Comprobante','Numero','CAE','Total']];
+            ventasListadoCache.forEach(function(v){
+                var f = v.fecha ? new Date(v.fecha.replace(' ','T')) : null;
+                var fecha = f ? f.toLocaleDateString('es-AR') : '';
+                var hora = f ? f.toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'}) : '';
+                var tipo, nro, cae;
+                if (v.id_factura) {
+                    tipo = v.tipo_comprobante === 1 ? 'Factura A' : v.tipo_comprobante === 11 ? 'Factura C' : 'Factura B';
+                    nro = String(v.punto_venta).padStart(4,'0') + '-' + String(v.nro_factura).padStart(8,'0');
+                    cae = v.cae || '';
+                } else { tipo = 'Ticket interno'; nro = ''; cae = ''; }
+                aoa.push([fecha, hora, v.local||'', v.metodo_pago||'', v.nombre_cajero||'', tipo, nro, cae, parseFloat(v.total||0)]);
+            });
+            var ws = XLSX.utils.aoa_to_sheet(aoa);
+            var wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'Ventas');
+            var d = document.getElementById('vl-desde').value || 'ventas';
+            var h = document.getElementById('vl-hasta').value || '';
+            XLSX.writeFile(wb, 'ventas_' + d + (h && h!==d ? '_a_' + h : '') + '.xlsx');
         }
 
         function cerrarModales() {
