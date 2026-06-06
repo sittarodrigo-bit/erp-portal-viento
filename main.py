@@ -3209,9 +3209,11 @@ def afip_facturar(f: FacturaAfip):
         neto = round(total / 1.21, 2); iva = round(total - neto, 2)
 
     try:
+        # Condición IVA del receptor: Factura A -> Responsable Inscripto (1); resto -> Consumidor Final (5)
+        cond_iva = 1 if f.tipo_comprobante == 1 else 5
         r = afip_service.emitir_factura(
             tipo_cbte=f.tipo_comprobante, doc_tipo=f.doc_tipo, doc_nro=f.doc_nro or "",
-            neto=neto, iva=iva, total=total
+            neto=neto, iva=iva, total=total, cond_iva_receptor=cond_iva
         )
     except Exception as e:
         # Guardar el intento fallido
