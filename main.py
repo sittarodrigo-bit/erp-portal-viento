@@ -2727,12 +2727,20 @@ def locales_ventas(id_local: int, desde: Optional[str] = None, hasta: Optional[s
         params = [id_local]
         if desde: q += " AND fecha::date >= %s"; params.append(desde)
         if hasta: q += " AND fecha::date <= %s"; params.append(hasta)
-        q += " ORDER BY fecha DESC LIMIT 300"
+        q += " ORDER BY fecha DESC LIMIT 100"
         cur.execute(q, tuple(params))
         ventas = fetchall_dict(cur)
-        for v in ventas:
-            cur.execute("SELECT nombre_producto, cantidad, precio_unitario FROM pos_detalle_ventas WHERE id_venta=%s", (v['id'],))
-            v['detalle'] = fetchall_dict(cur)
+        if ventas:
+            ids = [v['id'] for v in ventas]
+            # Traer TODO el detalle en una sola consulta (mucho más rápido que una por venta)
+            cur.execute("""SELECT id_venta, nombre_producto, cantidad, precio_unitario
+                           FROM pos_detalle_ventas WHERE id_venta = ANY(%s)""", (ids,))
+            detalles = fetchall_dict(cur)
+            por_venta = {}
+            for d in detalles:
+                por_venta.setdefault(d['id_venta'], []).append(d)
+            for v in ventas:
+                v['detalle'] = por_venta.get(v['id'], [])
         return ventas
     finally:
         liberar_conexion(conn)
