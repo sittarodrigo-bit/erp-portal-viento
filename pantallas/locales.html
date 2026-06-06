@@ -420,6 +420,11 @@
             document.getElementById('vista-detalle').classList.remove('hidden');
             document.getElementById('btn-volver').classList.remove('hidden');
             document.getElementById('titulo').textContent = '🏬 ' + l.nombre;
+            // Placeholder inmediato para que no quede en blanco mientras carga
+            var lv = document.getElementById('lista-ventas');
+            if (lv) lv.innerHTML = '<p class="text-gray-500 text-sm">Cargando ventas...</p>';
+            var kp = document.getElementById('ventas-kpis');
+            if (kp) kp.innerHTML = '';
             cambiarTab('ventas');
         }
 
