@@ -579,6 +579,29 @@ def actualizar_stock_directo(id: int, stock: StockUpdate):
     finally:
         liberar_conexion(conn)
 
+# Sumar stock de producto terminado (carga desde producción) — suma del lado del servidor
+class IngresoStock(BaseModel):
+    cantidad: float
+
+@app.post("/api/productos/{id}/ingresar_stock")
+def ingresar_stock_producto(id: int, data: IngresoStock):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("UPDATE productos SET stock_actual = COALESCE(stock_actual,0) + %s WHERE id=%s RETURNING stock_actual", (data.cantidad, id))
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Producto no encontrado")
+        conn.commit()
+        return {"status": "ok", "stock_actual": float(row['stock_actual'])}
+    except HTTPException:
+        raise
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
 # Presentaciones: las dejamos como "puente" hacia el precio del producto,
 # para no romper los HTML viejos que todavía las llaman.
 @app.get("/api/productos/{id}/presentaciones")
@@ -3551,6 +3574,10 @@ def route_gastos():
 @app.get("/locales")
 def route_locales():
     return serve_html("locales.html")
+
+@app.get("/carga-stock")
+def route_carga_stock():
+    return serve_html("carga_stock_pos.html")
 
 if __name__ == "__main__":
     import uvicorn
