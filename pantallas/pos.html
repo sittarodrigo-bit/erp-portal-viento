@@ -706,7 +706,7 @@
         }
 
         // ── TICKET 80mm ──
-        function imprimirTicket(idVenta, total, metodo, detalle) {
+        function construirDocTicket(idVenta, total, metodo, detalle) {
             var jsPDF = window.jspdf.jsPDF;
             // ancho 80mm, alto dinámico
             var alto = 60 + detalle.length * 6 + 40;
@@ -739,9 +739,12 @@
             doc.text('Pago: ' + metodo, 4, y); y += 6;
             doc.setFontSize(7);
             doc.text('¡Gracias por su compra!', 40, y, {align:'center'});
-            // abrir para imprimir
-            var blob = doc.output('blob');
-            var url = URL.createObjectURL(blob);
+            return doc;
+        }
+
+        function imprimirTicket(idVenta, total, metodo, detalle) {
+            var doc = construirDocTicket(idVenta, total, metodo, detalle);
+            var url = URL.createObjectURL(doc.output('blob'));
             var w = window.open(url);
             if (w) { w.onload = function(){ try { w.print(); } catch(e){} }; }
         }
@@ -1085,21 +1088,22 @@
             }
         }
 
-        function enviarTicketWhatsapp() {
+        async function enviarTicketWhatsapp() {
             if (!ventaParaFacturar) return;
             var v = ventaParaFacturar;
             var lineas = (v.detalle || []).map(function(it){
                 return it.cantidad + 'x ' + it.nombre_producto + ' - $' + (it.cantidad*it.precio_unitario).toLocaleString('es-AR');
-            }).join('%0A');
-            var msg = '*' + (empresa.nombre || 'Portal del Viento') + '*%0A' +
-                'Ticket #' + String(v.id_venta).padStart(5,'0') + '%0A' +
-                (lineas ? lineas + '%0A' : '') +
-                'Total: $' + parseFloat(v.total).toLocaleString('es-AR') + '%0A' +
-                'Pago: ' + (v.metodo || '') + '%0A' +
+            }).join('\n');
+            var msg = (empresa.nombre || 'Portal del Viento') + '\n' +
+                'Ticket #' + String(v.id_venta).padStart(5,'0') + '\n' +
+                (lineas ? lineas + '\n' : '') +
+                'Total: $' + parseFloat(v.total).toLocaleString('es-AR') + '\n' +
+                'Pago: ' + (v.metodo || '') + '\n' +
                 '¡Gracias por su compra!';
             var tel = normalizarTelArg(document.getElementById('ticket-tel-cliente').value);
-            var base = tel ? ('https://wa.me/' + tel) : 'https://wa.me/';
-            window.open(base + '?text=' + msg, '_blank');
+            var doc = construirDocTicket(v.id_venta, v.total, v.metodo, v.detalle || []);
+            var blob = doc ? doc.output('blob') : null;
+            await compartirPdfWhatsapp(blob, 'ticket_' + String(v.id_venta).padStart(5,'0') + '.pdf', msg, tel);
         }
 
         function elegirFacturaAfip() {
@@ -1205,8 +1209,8 @@
             return s;
         }
 
-        async function imprimirFacturaAfip() {
-            if (!afipFacturaEmitida) return;
+        async function construirDocFactura() {
+            if (!afipFacturaEmitida) return null;
             var r = afipFacturaEmitida;
             var jsPDF = window.jspdf.jsPDF;
             var det = (ventaParaFacturar && ventaParaFacturar.detalle) ? ventaParaFacturar.detalle : [];
@@ -1259,8 +1263,19 @@
             if (r.entorno === 'homologacion') { doc.setFontSize(6); doc.text('** COMPROBANTE DE PRUEBA - SIN VALOR FISCAL **', 40, y, {align:'center'}); y += 4; }
             doc.setFontSize(7);
             doc.text('¡Gracias por su compra!', 40, y, {align:'center'});
-            var blob = doc.output('blob');
-            var url = URL.createObjectURL(blob);
+            return doc;
+        }
+
+        function nombreArchivoFactura() {
+            var r = afipFacturaEmitida || {};
+            var nro = String(r.punto_venta||0).padStart(4,'0') + '-' + String(r.numero||0).padStart(8,'0');
+            return 'factura_' + nro + '.pdf';
+        }
+
+        async function imprimirFacturaAfip() {
+            var doc = await construirDocFactura();
+            if (!doc) return;
+            var url = URL.createObjectURL(doc.output('blob'));
             var w = window.open(url);
             if (w) { w.onload = function(){ try { w.print(); } catch(e){} }; }
         }
@@ -1312,20 +1327,49 @@
             });
         }
 
-        function enviarFacturaWhatsapp() {
+        async function enviarFacturaWhatsapp() {
             if (!afipFacturaEmitida) return;
             var r = afipFacturaEmitida;
             var nro = String(r.punto_venta).padStart(4,'0') + '-' + String(r.numero).padStart(8,'0');
-            var msg = '*' + (empresa.nombre || 'Portal del Viento') + '*%0A' +
-                nombreTipoCbte(r.tipo_comprobante) + ' N° ' + nro + '%0A' +
-                'Total: $' + parseFloat(r.total).toLocaleString('es-AR') + '%0A' +
-                'CAE: ' + r.cae + '%0A' +
-                'Vto CAE: ' + formatearFechaAfip(r.cae_vto) + '%0A' +
-                (r.entorno === 'homologacion' ? '%0A(Comprobante de prueba)' : '') +
-                '%0A¡Gracias por su compra!';
+            var msgPlano = (empresa.nombre || 'Portal del Viento') + '\n' +
+                nombreTipoCbte(r.tipo_comprobante) + ' N° ' + nro + '\n' +
+                'Total: $' + parseFloat(r.total).toLocaleString('es-AR') + '\n' +
+                'CAE: ' + r.cae + '\n' +
+                'Vto CAE: ' + formatearFechaAfip(r.cae_vto) +
+                (r.entorno === 'homologacion' ? '\n(Comprobante de prueba)' : '') +
+                '\n¡Gracias por su compra!';
             var tel = normalizarTelArg(document.getElementById('afip-tel-cliente').value);
+            var doc = await construirDocFactura();
+            var blob = doc ? doc.output('blob') : null;
+            await compartirPdfWhatsapp(blob, nombreArchivoFactura(), msgPlano, tel);
+        }
+
+        // Comparte el PDF por WhatsApp (nativo si se puede) o lo descarga + abre WhatsApp con texto
+        async function compartirPdfWhatsapp(blob, nombreArchivo, mensaje, tel) {
+            // 1) Intento de compartir nativo con archivo (celular/tablet)
+            if (blob && navigator.canShare) {
+                try {
+                    var file = new File([blob], nombreArchivo, { type: 'application/pdf' });
+                    if (navigator.canShare({ files: [file] })) {
+                        await navigator.share({ files: [file], text: mensaje });
+                        return;
+                    }
+                } catch(e) { /* si el usuario cancela o falla, seguimos al plan B */ }
+            }
+            // 2) Plan B: descargar el PDF y abrir WhatsApp con el texto
+            if (blob) {
+                var urlPdf = URL.createObjectURL(blob);
+                var a = document.createElement('a');
+                a.href = urlPdf; a.download = nombreArchivo;
+                document.body.appendChild(a); a.click(); document.body.removeChild(a);
+                setTimeout(function(){ URL.revokeObjectURL(urlPdf); }, 5000);
+            }
             var base = tel ? ('https://wa.me/' + tel) : 'https://wa.me/';
-            window.open(base + '?text=' + msg, '_blank');
+            var url = base + '?text=' + encodeURIComponent(mensaje);
+            setTimeout(function(){
+                window.open(url, '_blank');
+                if (blob) alert('📎 El PDF se descargó. En WhatsApp, tocá el clip y elegí el archivo "' + nombreArchivo + '" para adjuntarlo.');
+            }, 400);
         }
 
         // Convierte un número argentino al formato que pide wa.me: 549 + área + número
