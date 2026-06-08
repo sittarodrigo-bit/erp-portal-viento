@@ -3508,6 +3508,68 @@ def reiniciar_datos_local(id_local: int, confirmar: Optional[str] = None):
         liberar_conexion(conn)
 
 # ==============================================================================
+# HISTORIAL DE CIERRES DE CAJA (por local)
+# ==============================================================================
+@app.get("/api/locales/{id_local}/cierres")
+def locales_cierres_caja(id_local: int, desde: Optional[str] = None, hasta: Optional[str] = None):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cols_control = """, COALESCE(controlado,false) AS controlado, controlado_por, fecha_control::text AS fecha_control"""
+        base = """
+            SELECT id, nombre_responsable, fecha_apertura::text, fecha_cierre::text,
+                   COALESCE(monto_apertura,0) AS monto_apertura,
+                   COALESCE(monto_cierre,0) AS monto_cierre,
+                   COALESCE(total_efectivo,0) AS total_efectivo,
+                   COALESCE(total_tarjeta,0) AS total_tarjeta,
+                   COALESCE(total_transferencia,0) AS total_transferencia,
+                   COALESCE(total_qr,0) AS total_qr,
+                   observaciones{control}
+            FROM pos_cajas
+            WHERE id_local=%s AND estado='cerrada'
+        """
+        params = [id_local]
+        cond = ""
+        if desde: cond += " AND fecha_cierre::date >= %s"; params.append(desde)
+        if hasta: cond += " AND fecha_cierre::date <= %s"; params.append(hasta)
+        cond += " ORDER BY fecha_cierre DESC LIMIT 200"
+        try:
+            cur.execute(base.format(control=cols_control) + cond, tuple(params))
+            cierres = fetchall_dict(cur)
+        except Exception:
+            conn.rollback()
+            cur.execute(base.format(control="") + cond, tuple(params))
+            cierres = fetchall_dict(cur)
+            for c in cierres:
+                c['controlado'] = False; c['controlado_por'] = None; c['fecha_control'] = None
+        for c in cierres:
+            ef = float(c['total_efectivo'] or 0)
+            ap = float(c['monto_apertura'] or 0)
+            contado = float(c['monto_cierre'] or 0)
+            esperado_efectivo = ap + ef
+            c['esperado_efectivo'] = esperado_efectivo
+            c['diferencia'] = round(contado - esperado_efectivo, 2)  # + sobra / - falta
+            c['total_vendido'] = round(ef + float(c['total_tarjeta'] or 0) + float(c['total_transferencia'] or 0) + float(c['total_qr'] or 0), 2)
+        return cierres
+    finally:
+        liberar_conexion(conn)
+
+@app.put("/api/locales/cierres/{id_caja}/controlar")
+def controlar_cierre_caja(id_caja: int, controlado_por: str = ""):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        cur.execute("UPDATE pos_cajas SET controlado=true, controlado_por=%s, fecha_control=NOW() WHERE id=%s",
+                    (controlado_por or None, id_caja))
+        conn.commit()
+        return {"status": "ok"}
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
+# ==============================================================================
 # RUTAS WEB (HTML)
 # ==============================================================================
 def serve_html(filename: str):
