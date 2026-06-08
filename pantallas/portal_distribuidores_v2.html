@@ -451,13 +451,14 @@
             btn.textContent = 'Generando pago...';
             try {
                 var res = await fetch(API_URL + '/mp/crear_pago/' + idPedido, { method:'POST' });
+                var data;
+                try { data = await res.json(); }
+                catch(parseErr) { data = { detail: 'El servidor devolvió un error (' + res.status + '). Revisá los logs de Railway.' }; }
                 if (!res.ok) {
-                    var e = await res.json();
-                    alert('No se pudo generar el pago: ' + (e.detail || 'error'));
+                    alert('No se pudo generar el pago: ' + (data.detail || 'error'));
                     btn.disabled = false; btn.textContent = txt;
                     return;
                 }
-                var data = await res.json();
                 if (data.link) {
                     // Abrir el checkout de Mercado Pago
                     window.location.href = data.link;
