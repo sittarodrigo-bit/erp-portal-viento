@@ -64,7 +64,7 @@ def crear_preferencia(titulo, monto, referencia_externa, base_url,
     r = requests.post(MP_API + "/checkout/preferences",
                       json=pref,
                       headers={"Authorization": "Bearer " + _token()},
-                      timeout=20)
+                      timeout=45)
     if r.status_code not in (200, 201):
         raise MPError("Error creando preferencia: " + r.text[:300])
     data = r.json()
@@ -80,7 +80,7 @@ def consultar_pago(payment_id):
         raise MPError("Falta MP_ACCESS_TOKEN.")
     r = requests.get(MP_API + "/v1/payments/" + str(payment_id),
                      headers={"Authorization": "Bearer " + _token()},
-                     timeout=20)
+                     timeout=45)
     if r.status_code != 200:
         raise MPError("Error consultando pago: " + r.text[:300])
     d = r.json()
