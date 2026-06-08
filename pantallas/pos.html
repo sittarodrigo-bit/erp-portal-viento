@@ -462,8 +462,10 @@
             await cargarLocales();
         }
 
+        var localesCache = [];
         async function cargarLocales() {
             var locales = await fetch(API_URL + '/pos/locales').then(function(r){return r.json();}).catch(function(){return [];});
+            localesCache = locales;
             var sel = document.getElementById('sel-local');
             var actual = sel.value;
             sel.innerHTML = '<option value="">— Elegí un local —</option>';
@@ -482,7 +484,8 @@
                 mostrarVista('inicial');
                 return;
             }
-            localActual = { id: parseInt(id), nombre: sel.options[sel.selectedIndex].textContent };
+            var datos = localesCache.find(function(l){ return l.id === parseInt(id); }) || {};
+            localActual = { id: parseInt(id), nombre: sel.options[sel.selectedIndex].textContent, direccion: datos.direccion || '' };
             await verificarCaja();
         }
 
@@ -716,7 +719,11 @@
             doc.text((empresa.nombre || 'Portal del Viento'), 40, y, {align:'center'}); y += 5;
             doc.setFont('helvetica','normal'); doc.setFontSize(7);
             if (empresa.cuit) { doc.text('CUIT: ' + empresa.cuit, 40, y, {align:'center'}); y += 3.5; }
-            doc.text((localActual.nombre || ''), 40, y, {align:'center'}); y += 4;
+            doc.setFont('helvetica','bold');
+            doc.text((localActual.nombre || ''), 40, y, {align:'center'}); y += 3.5;
+            doc.setFont('helvetica','normal');
+            if (localActual.direccion) { doc.text(localActual.direccion, 40, y, {align:'center'}); y += 3.5; }
+            y += 1;
             doc.setLineWidth(0.2); doc.line(4, y, 76, y); y += 4;
             doc.setFontSize(7);
             doc.text('Ticket #' + String(idVenta).padStart(5,'0'), 4, y);
@@ -1223,6 +1230,13 @@
             if (empresa.cuit) { doc.text('CUIT: ' + empresa.cuit, 40, y, {align:'center'}); y += 3.5; }
             if (empresa.direccion) { doc.text(empresa.direccion, 40, y, {align:'center'}); y += 3.5; }
             doc.text('Responsable Inscripto', 40, y, {align:'center'}); y += 4;
+            // Datos del local que emite
+            if (localActual && localActual.nombre) {
+                doc.setFont('helvetica','bold'); doc.setFontSize(7.5);
+                doc.text('Local: ' + localActual.nombre, 40, y, {align:'center'}); y += 3.5;
+                doc.setFont('helvetica','normal');
+                if (localActual.direccion) { doc.setFontSize(7); doc.text(localActual.direccion, 40, y, {align:'center'}); y += 3.5; }
+            }
             doc.setLineWidth(0.2); doc.line(4, y, 76, y); y += 4;
             doc.setFont('helvetica','bold'); doc.setFontSize(9);
             doc.text(nombreTipoCbte(r.tipo_comprobante), 40, y, {align:'center'}); y += 4;
