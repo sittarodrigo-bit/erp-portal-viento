@@ -2032,7 +2032,7 @@ def pos_cerrar_caja(id_caja: int, data: PosCerrarCaja):
         liberar_conexion(conn)
 
 # ---- VENTAS ----
-@app.post("/api/pos/ventas")
+
 def _totales_por_metodo_caja(cur, id_caja):
     """Devuelve dict con efectivo/tarjeta/transferencia/qr de una caja.
     Usa el desglose de pos_pagos_venta si existe; si no, cae al metodo_pago de la venta."""
@@ -2063,7 +2063,7 @@ def _totales_por_metodo_caja(cur, id_caja):
         if isinstance(r, dict):
             return r
         return {"efectivo": r[0], "tarjeta": r[1], "transferencia": r[2], "qr": r[3]}
-
+@app.post("/api/pos/ventas")
 def pos_registrar_venta(venta: PosVenta):
     conn = obtener_conexion()
     try:
