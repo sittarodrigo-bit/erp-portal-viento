@@ -1709,17 +1709,28 @@ def pos_listar_productos(id_local: int):
         cur = conn.cursor(cursor_factory=RealDictCursor)
         cur.execute("SELECT id, nombre, precio, categoria, COALESCE(stock,0) AS stock, COALESCE(stock_alerta,0) AS stock_alerta FROM pos_productos WHERE id_local=%s AND COALESCE(activo,true)=true ORDER BY categoria NULLS LAST, nombre", (id_local,))
         productos = fetchall_dict(cur)
+        if not productos:
+            return []
+        ids = [p['id'] for p in productos]
+        # Variantes de todos los productos en UNA consulta
+        variantes_por_prod = {}
+        try:
+            cur.execute("SELECT id, id_producto, nombre, precio, factor FROM pos_producto_variantes WHERE id_producto = ANY(%s) AND COALESCE(activo,true)=true ORDER BY factor", (ids,))
+            for v in fetchall_dict(cur):
+                variantes_por_prod.setdefault(v['id_producto'], []).append(v)
+        except Exception:
+            conn.rollback()
+        # Sabores de todos los productos en UNA consulta
+        sabores_por_prod = {}
+        try:
+            cur.execute("SELECT id, id_producto, nombre FROM pos_producto_sabores WHERE id_producto = ANY(%s) AND COALESCE(activo,true)=true ORDER BY nombre", (ids,))
+            for s in fetchall_dict(cur):
+                sabores_por_prod.setdefault(s['id_producto'], []).append(s)
+        except Exception:
+            conn.rollback()
         for p in productos:
-            try:
-                cur.execute("SELECT id, nombre, precio, factor FROM pos_producto_variantes WHERE id_producto=%s AND COALESCE(activo,true)=true ORDER BY factor", (p['id'],))
-                p['variantes'] = fetchall_dict(cur)
-            except Exception:
-                conn.rollback(); p['variantes'] = []
-            try:
-                cur.execute("SELECT id, nombre FROM pos_producto_sabores WHERE id_producto=%s AND COALESCE(activo,true)=true ORDER BY nombre", (p['id'],))
-                p['sabores'] = fetchall_dict(cur)
-            except Exception:
-                conn.rollback(); p['sabores'] = []
+            p['variantes'] = variantes_por_prod.get(p['id'], [])
+            p['sabores'] = sabores_por_prod.get(p['id'], [])
         return productos
     finally:
         liberar_conexion(conn)
@@ -3328,6 +3339,60 @@ def ventas_listado(desde: Optional[str] = None, hasta: Optional[str] = None,
                 "por_metodo": por_metodo
             }
         }
+    finally:
+        liberar_conexion(conn)
+
+# ==============================================================================
+# REINICIAR DATOS DE UN LOCAL (poner en marcha desde cero)
+# ==============================================================================
+@app.delete("/api/locales/{id_local}/reiniciar")
+def reiniciar_datos_local(id_local: int, confirmar: Optional[str] = None):
+    """Borra ventas, reposiciones, faltantes y gastos del local para arrancar de cero.
+    NO borra productos ni el local. Requiere confirmar='SI'."""
+    if confirmar != "SI":
+        raise HTTPException(status_code=400, detail="Falta confirmación")
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        # Ventas: borrar detalle, luego ventas
+        cur.execute("DELETE FROM pos_detalle_ventas WHERE id_venta IN (SELECT id FROM pos_ventas WHERE id_local=%s)", (id_local,))
+        cur.execute("DELETE FROM pos_ventas WHERE id_local=%s", (id_local,))
+        # Cajas del local
+        try:
+            cur.execute("DELETE FROM pos_cajas WHERE id_local=%s", (id_local,))
+        except Exception:
+            conn.rollback()
+        # Movimientos de stock del local
+        try:
+            cur.execute("DELETE FROM pos_movimientos_stock WHERE id_local=%s", (id_local,))
+        except Exception:
+            conn.rollback()
+        # Reposiciones (detalle y cabecera)
+        try:
+            cur.execute("DELETE FROM pos_reposiciones_detalle WHERE id_reposicion IN (SELECT id FROM pos_reposiciones WHERE id_local=%s)", (id_local,))
+            cur.execute("DELETE FROM pos_reposiciones WHERE id_local=%s", (id_local,))
+        except Exception:
+            conn.rollback()
+        # Faltantes
+        try:
+            cur.execute("DELETE FROM pos_faltantes WHERE id_local=%s", (id_local,))
+        except Exception:
+            conn.rollback()
+        # Gastos del local
+        try:
+            cur.execute("DELETE FROM gastos WHERE id_local=%s", (id_local,))
+        except Exception:
+            conn.rollback()
+        # Facturas AFIP del local (opcional, solo registros internos; AFIP ya las tiene)
+        try:
+            cur.execute("DELETE FROM afip_facturas WHERE id_local=%s", (id_local,))
+        except Exception:
+            conn.rollback()
+        conn.commit()
+        return {"status": "ok"}
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
     finally:
         liberar_conexion(conn)
 
