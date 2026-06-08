@@ -41,12 +41,17 @@ def crear_preferencia(titulo, monto, referencia_externa, base_url,
     base = (os.environ.get("MP_BASE_URL", "") or base_url or "").rstrip("/")
     pref = {
         "items": [{
+            "id": str(referencia_externa),
             "title": str(titulo)[:250],
+            "description": str(titulo)[:250],
+            "category_id": "food",
             "quantity": 1,
             "currency_id": "ARS",
             "unit_price": round(float(monto), 2),
         }],
         "external_reference": str(referencia_externa),
+        "statement_descriptor": "PORTALVIENTO",
+        "binary_mode": False,
     }
     # back_urls + auto_return solo si tenemos una URL pública https válida
     if base and base.startswith("https://"):
