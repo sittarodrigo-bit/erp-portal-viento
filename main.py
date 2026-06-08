@@ -2032,6 +2032,7 @@ def pos_cerrar_caja(id_caja: int, data: PosCerrarCaja):
         liberar_conexion(conn)
 
 # ---- VENTAS ----
+@app.post("/api/pos/ventas")
 def _totales_por_metodo_caja(cur, id_caja):
     """Devuelve dict con efectivo/tarjeta/transferencia/qr de una caja.
     Usa el desglose de pos_pagos_venta si existe; si no, cae al metodo_pago de la venta."""
@@ -2062,7 +2063,7 @@ def _totales_por_metodo_caja(cur, id_caja):
         if isinstance(r, dict):
             return r
         return {"efectivo": r[0], "tarjeta": r[1], "transferencia": r[2], "qr": r[3]}
-@app.post("/api/pos/ventas")
+
 def pos_registrar_venta(venta: PosVenta):
     conn = obtener_conexion()
     try:
@@ -3395,6 +3396,103 @@ def crear_producto_global(p: ProductoGlobal):
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         liberar_conexion(conn)
+
+# ==============================================================================
+# MERCADO PAGO (pago online de pedidos B2B por distribuidores)
+# ==============================================================================
+try:
+    import mp_service
+except Exception:
+    mp_service = None
+
+@app.get("/api/mp/estado")
+def mp_estado():
+    return {"configurado": bool(mp_service and mp_service.configurado())}
+
+@app.post("/api/mp/crear_pago/{id_pedido}")
+def mp_crear_pago(id_pedido: int, request: Request):
+    if not mp_service or not mp_service.configurado():
+        raise HTTPException(status_code=400, detail="Mercado Pago no está configurado (falta MP_ACCESS_TOKEN).")
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("""SELECT p.id, p.total, p.estado, p.id_distribuidor, d.nombre AS dist_nombre, d.email AS dist_email
+                       FROM pedidos_b2b p LEFT JOIN distribuidores d ON p.id_distribuidor=d.id
+                       WHERE p.id=%s""", (id_pedido,))
+        pedido = cur.fetchone()
+        if not pedido:
+            raise HTTPException(status_code=404, detail="Pedido no encontrado")
+        # Evitar cobrar dos veces: ¿ya tiene cobro registrado?
+        cur.execute("SELECT COUNT(*) AS c FROM cobros_distribuidores WHERE id_pedido=%s", (id_pedido,))
+        if cur.fetchone()['c'] > 0:
+            raise HTTPException(status_code=400, detail="Este pedido ya tiene un cobro registrado.")
+        total = float(pedido['total'] or 0)
+        if total <= 0:
+            raise HTTPException(status_code=400, detail="El pedido no tiene un total válido.")
+        # base_url a partir del request
+        base_url = str(request.base_url).rstrip("/")
+        try:
+            pref = mp_service.crear_preferencia(
+                titulo="Pedido #" + str(id_pedido) + " - Portal del Viento",
+                monto=total,
+                referencia_externa="pedido-" + str(id_pedido),
+                base_url=base_url,
+                payer_email=pedido.get('dist_email')
+            )
+        except Exception as e:
+            raise HTTPException(status_code=502, detail="Error con Mercado Pago: " + str(e))
+        # Link: en producción init_point; si usás credenciales de prueba, sandbox_init_point
+        link = pref.get("init_point") or pref.get("sandbox_init_point")
+        return {"link": link, "preference_id": pref.get("id")}
+    finally:
+        liberar_conexion(conn)
+
+@app.post("/api/mp/webhook")
+async def mp_webhook(request: Request):
+    """Mercado Pago llama acá cuando cambia el estado de un pago.
+    Si el pago está aprobado, registramos el cobro del pedido (si no existía)."""
+    if not mp_service:
+        return {"status": "sin_mp"}
+    try:
+        # MP manda el id del pago por query (?id=...&topic=payment) o en el body
+        payment_id = request.query_params.get("id") or request.query_params.get("data.id")
+        if not payment_id:
+            try:
+                body = await request.json()
+                payment_id = (body.get("data") or {}).get("id") or body.get("id")
+            except Exception:
+                payment_id = None
+        if not payment_id:
+            return {"status": "sin_id"}
+        info = mp_service.consultar_pago(payment_id)
+        if info.get("estado") != "approved":
+            return {"status": "no_aprobado"}
+        ext = info.get("external_reference") or ""
+        if not ext.startswith("pedido-"):
+            return {"status": "ref_desconocida"}
+        id_pedido = int(ext.split("-")[1])
+        monto = float(info.get("monto") or 0)
+        conn = obtener_conexion()
+        try:
+            cur = conn.cursor(cursor_factory=RealDictCursor)
+            # Datos del pedido
+            cur.execute("SELECT id_distribuidor FROM pedidos_b2b WHERE id=%s", (id_pedido,))
+            ped = cur.fetchone()
+            if not ped:
+                return {"status": "pedido_inexistente"}
+            # Evitar duplicar el cobro
+            cur.execute("SELECT COUNT(*) AS c FROM cobros_distribuidores WHERE id_pedido=%s", (id_pedido,))
+            if cur.fetchone()['c'] == 0:
+                cur.execute("""INSERT INTO cobros_distribuidores (id_distribuidor, id_pedido, monto, metodo, referencia, notas)
+                               VALUES (%s,%s,%s,%s,%s,%s)""",
+                            (ped['id_distribuidor'], id_pedido, monto, 'Mercado Pago', str(payment_id), 'Pago online aprobado'))
+                conn.commit()
+            return {"status": "ok"}
+        finally:
+            liberar_conexion(conn)
+    except Exception as e:
+        # Nunca devolvemos error a MP para que no reintente infinito por un bug nuestro
+        return {"status": "error", "detail": str(e)[:200]}
 
 # ==============================================================================
 # FACTURACIÓN ELECTRÓNICA AFIP / ARCA
