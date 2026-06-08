@@ -297,13 +297,18 @@ def login(data: LoginData):
         liberar_conexion(conn)
 
 # ── LOGIN DEL POS (separado del admin: solo empleados con acceso_pos) ──
+class LoginPosData(BaseModel):
+    username: str
+    password: str
+    dispositivo: Optional[str] = None
+
 @app.post("/api/pos/login")
-def pos_login(data: LoginData):
+def pos_login(data: LoginPosData):
     conn = obtener_conexion()
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
         cur.execute("""
-            SELECT u.password_hash, u.activo, COALESCE(u.acceso_pos, false) AS acceso_pos,
+            SELECT u.id AS id_usuario, u.password_hash, u.activo, COALESCE(u.acceso_pos, false) AS acceso_pos,
                    e.id as id_empleado, e.nombre, e.apellido, e.rol
             FROM usuarios u JOIN empleados e ON u.id_empleado = e.id
             WHERE u.username = %s
@@ -315,8 +320,69 @@ def pos_login(data: LoginData):
             raise HTTPException(status_code=401, detail="Usuario o contraseña incorrectos")
         if not usuario['acceso_pos']:
             raise HTTPException(status_code=403, detail="Este usuario no tiene acceso al POS")
-        return {"status": "ok", "id_empleado": usuario['id_empleado'],
-                "nombre": usuario['nombre'], "apellido": usuario['apellido'], "rol": usuario['rol']}
+
+        # ── Control de sesión única ──
+        import uuid as _uuid
+        token = _uuid.uuid4().hex
+        id_usuario = usuario['id_usuario']
+        try:
+            # ¿Hay una sesión activa todavía viva? (señal en los últimos 3 minutos)
+            cur.execute("""SELECT username, dispositivo, ultima_senal,
+                                  EXTRACT(EPOCH FROM (NOW() - ultima_senal)) AS seg
+                           FROM pos_sesiones WHERE id_usuario=%s""", (id_usuario,))
+            ses = cur.fetchone()
+            if ses and ses['seg'] is not None and ses['seg'] < 180:
+                # Sesión viva en otro lado → bloquear
+                disp = ses['dispositivo'] or 'otro dispositivo'
+                raise HTTPException(status_code=409, detail="Este usuario ya tiene una sesión activa en " + disp + ". Cerrá sesión ahí antes de entrar acá.")
+            # Crear/actualizar la sesión
+            cur.execute("""
+                INSERT INTO pos_sesiones (id_usuario, username, token, dispositivo, inicio, ultima_senal)
+                VALUES (%s,%s,%s,%s,NOW(),NOW())
+                ON CONFLICT (id_usuario) DO UPDATE SET username=EXCLUDED.username, token=EXCLUDED.token,
+                    dispositivo=EXCLUDED.dispositivo, inicio=NOW(), ultima_senal=NOW()
+            """, (id_usuario, data.username, token, data.dispositivo or 'POS'))
+            conn.commit()
+        except HTTPException:
+            raise
+        except Exception:
+            # Si la tabla no existe (no corrieron el SQL), no bloqueamos: login normal
+            conn.rollback()
+            token = ""
+
+        return {"status": "ok", "id_empleado": usuario['id_empleado'], "id_usuario": id_usuario,
+                "nombre": usuario['nombre'], "apellido": usuario['apellido'], "rol": usuario['rol'],
+                "token": token}
+    finally:
+        liberar_conexion(conn)
+
+# Mantener viva la sesión (el POS la llama cada tanto)
+@app.post("/api/pos/sesion/latido")
+def pos_sesion_latido(id_usuario: int, token: str = ""):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        try:
+            cur.execute("UPDATE pos_sesiones SET ultima_senal=NOW() WHERE id_usuario=%s AND token=%s", (id_usuario, token))
+            conn.commit()
+        except Exception:
+            conn.rollback()
+        return {"status": "ok"}
+    finally:
+        liberar_conexion(conn)
+
+# Cerrar la sesión (al salir del POS)
+@app.post("/api/pos/sesion/cerrar")
+def pos_sesion_cerrar(id_usuario: int):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        try:
+            cur.execute("DELETE FROM pos_sesiones WHERE id_usuario=%s", (id_usuario,))
+            conn.commit()
+        except Exception:
+            conn.rollback()
+        return {"status": "ok"}
     finally:
         liberar_conexion(conn)
 
