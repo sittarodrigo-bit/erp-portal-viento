@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Carga de Stock | Portal del Viento</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .text-neon { color: #e4fc74; }
+        .bg-neon { background-color: #e4fc74; }
+        .border-neon { border-color: #e4fc74; }
+        body { -webkit-tap-highlight-color: transparent; }
+        .prod-card { transition: transform 0.1s; }
+        .prod-card:active { transform: scale(0.96); }
+        .prod-card.sel { outline: 3px solid #e4fc74; }
+        ::-webkit-scrollbar { width: 10px; }
+        ::-webkit-scrollbar-thumb { background: #333; border-radius: 5px; }
+        input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; }
+    </style>
+</head>
+<body class="bg-gray-950 text-gray-200 font-sans min-h-screen flex flex-col">
+
+    <!-- ENCABEZADO -->
+    <header class="bg-black border-b border-gray-800 px-5 py-4 flex items-center justify-between shrink-0">
+        <div>
+            <h1 class="text-neon font-bold text-lg tracking-widest uppercase leading-none">Portal del Viento</h1>
+            <p class="text-gray-500 text-xs mt-1">📦 Carga de stock — Producción</p>
+        </div>
+        <button onclick="cargarProductos()" class="border border-gray-700 text-gray-300 hover:text-white px-4 py-2 rounded-lg text-sm">🔄 Actualizar</button>
+    </header>
+
+    <!-- BUSCADOR -->
+    <div class="px-5 py-3 shrink-0">
+        <input type="text" id="buscar" placeholder="🔍 Buscar alfajor..." oninput="render()"
+               class="w-full bg-black border border-gray-700 focus:border-neon text-white rounded-xl p-4 text-lg outline-none">
+    </div>
+
+    <!-- GRILLA DE PRODUCTOS -->
+    <div id="grilla" class="flex-1 overflow-y-auto px-5 pb-40 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 content-start">
+        <p class="col-span-full text-center text-gray-500 py-20 text-lg">Cargando productos...</p>
+    </div>
+
+    <!-- PANEL INFERIOR DE CANTIDAD (aparece al seleccionar) -->
+    <div id="panel" class="hidden fixed bottom-0 left-0 right-0 bg-black border-t-2 border-neon p-5 z-40 shadow-2xl">
+        <div class="max-w-2xl mx-auto">
+            <div class="flex justify-between items-center mb-1">
+                <div>
+                    <p id="panel-nombre" class="text-white font-bold text-xl leading-tight"></p>
+                    <p class="text-gray-500 text-sm">Stock actual: <span id="panel-stock" class="text-neon font-bold"></span></p>
+                </div>
+                <button onclick="cerrarPanel()" class="text-gray-500 hover:text-white text-3xl leading-none">×</button>
+            </div>
+
+            <div class="flex items-center justify-center gap-4 my-4">
+                <button onclick="cambiarCant(-1)" class="bg-gray-800 active:bg-gray-700 text-white w-20 h-20 rounded-2xl text-5xl font-bold flex items-center justify-center">−</button>
+                <input type="number" id="cantidad" value="0" min="0" inputmode="numeric"
+                       class="w-36 h-24 bg-gray-900 border-2 border-neon text-white text-center text-6xl font-bold rounded-2xl outline-none">
+                <button onclick="cambiarCant(1)" class="bg-neon active:bg-yellow-300 text-black w-20 h-20 rounded-2xl text-5xl font-bold flex items-center justify-center">+</button>
+            </div>
+
+            <!-- Atajos rápidos -->
+            <div class="flex justify-center gap-2 mb-4">
+                <button onclick="sumarRapido(6)" class="bg-gray-800 active:bg-gray-700 text-gray-300 px-4 py-2 rounded-lg font-bold">+6</button>
+                <button onclick="sumarRapido(12)" class="bg-gray-800 active:bg-gray-700 text-gray-300 px-4 py-2 rounded-lg font-bold">+12</button>
+                <button onclick="sumarRapido(24)" class="bg-gray-800 active:bg-gray-700 text-gray-300 px-4 py-2 rounded-lg font-bold">+24</button>
+                <button onclick="sumarRapido(50)" class="bg-gray-800 active:bg-gray-700 text-gray-300 px-4 py-2 rounded-lg font-bold">+50</button>
+                <button onclick="document.getElementById('cantidad').value=0" class="bg-gray-800 active:bg-gray-700 text-gray-400 px-4 py-2 rounded-lg font-bold">Borrar</button>
+            </div>
+
+            <button onclick="confirmarIngreso()" id="btn-confirmar"
+                    class="w-full bg-neon active:bg-yellow-300 text-black font-bold py-5 rounded-2xl text-2xl">
+                ✓ Confirmar Ingreso
+            </button>
+        </div>
+    </div>
+
+    <!-- CARTEL DE ÉXITO -->
+    <div id="cartel-ok" class="hidden fixed top-5 left-1/2 -translate-x-1/2 bg-green-600 text-white font-bold px-8 py-4 rounded-2xl text-lg z-50 shadow-2xl">
+        ✅ <span id="cartel-texto">Stock guardado</span>
+    </div>
+
+    <script>
+        var API_URL = window.location.origin + "/api";
+        var productos = [];
+        var seleccionado = null;
+
+        async function cargarProductos() {
+            var grilla = document.getElementById('grilla');
+            grilla.innerHTML = '<p class="col-span-full text-center text-gray-500 py-20 text-lg">Cargando productos...</p>';
+            try {
+                var todos = await fetch(API_URL + '/productos').then(function(r){ return r.json(); });
+                // Solo productos propios (producto terminado de fábrica)
+                productos = todos.filter(function(p){ return p.tipo === 'propio'; });
+                render();
+            } catch(e) {
+                grilla.innerHTML = '<p class="col-span-full text-center text-red-400 py-20 text-lg">No se pudo cargar. Tocá 🔄 Actualizar.</p>';
+            }
+        }
+
+        function render() {
+            var q = (document.getElementById('buscar').value || '').toLowerCase().trim();
+            var grilla = document.getElementById('grilla');
+            var lista = productos.filter(function(p){ return !q || (p.nombre||'').toLowerCase().indexOf(q) !== -1; });
+            grilla.innerHTML = '';
+            if (!lista.length) {
+                grilla.innerHTML = '<p class="col-span-full text-center text-gray-500 py-20 text-lg">' + (productos.length ? 'Sin resultados.' : 'No hay productos propios cargados.') + '</p>';
+                return;
+            }
+            lista.forEach(function(p){
+                var stock = parseFloat(p.stock_actual != null ? p.stock_actual : p.stock) || 0;
+                var card = document.createElement('button');
+                card.className = 'prod-card bg-black border border-gray-800 rounded-2xl p-4 text-left flex flex-col justify-between min-h-[120px]' + (seleccionado && seleccionado.id === p.id ? ' sel' : '');
+                card.onclick = function(){ seleccionar(p); };
+                card.innerHTML =
+                    '<p class="text-white font-bold text-base leading-tight mb-2">' + p.nombre + '</p>' +
+                    '<div><p class="text-gray-500 text-xs">Stock</p>' +
+                    '<p class="text-neon font-bold text-2xl">' + stock + '</p></div>';
+                grilla.appendChild(card);
+            });
+        }
+
+        function seleccionar(p) {
+            seleccionado = p;
+            var stock = parseFloat(p.stock_actual != null ? p.stock_actual : p.stock) || 0;
+            document.getElementById('panel-nombre').textContent = p.nombre;
+            document.getElementById('panel-stock').textContent = stock;
+            document.getElementById('cantidad').value = 0;
+            document.getElementById('panel').classList.remove('hidden');
+            render();
+            window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+        }
+
+        function cerrarPanel() {
+            seleccionado = null;
+            document.getElementById('panel').classList.add('hidden');
+            render();
+        }
+
+        function cambiarCant(v) {
+            var inp = document.getElementById('cantidad');
+            inp.value = Math.max(0, (parseInt(inp.value) || 0) + v);
+        }
+
+        function sumarRapido(v) {
+            var inp = document.getElementById('cantidad');
+            inp.value = Math.max(0, (parseInt(inp.value) || 0) + v);
+        }
+
+        async function confirmarIngreso() {
+            if (!seleccionado) return;
+            var cant = parseInt(document.getElementById('cantidad').value) || 0;
+            if (cant <= 0) { alert('Poné una cantidad mayor a 0.'); return; }
+            var btn = document.getElementById('btn-confirmar');
+            btn.disabled = true; btn.textContent = 'Guardando...';
+            try {
+                // Suma del lado del servidor (seguro si cargan varios a la vez)
+                var res = await fetch(API_URL + '/productos/' + seleccionado.id + '/ingresar_stock', {
+                    method: 'POST', headers: {'Content-Type':'application/json'},
+                    body: JSON.stringify({ cantidad: cant })
+                });
+                if (!res.ok) { var e = await res.json(); alert('Error: ' + (e.detail || 'no se pudo guardar')); return; }
+                var r = await res.json();
+                // Actualizar el stock en memoria y la grilla
+                var prod = productos.find(function(x){ return x.id === seleccionado.id; });
+                if (prod) { prod.stock_actual = r.stock_actual; prod.stock = r.stock_actual; }
+                mostrarOk('+' + cant + ' a ' + seleccionado.nombre + ' (queda ' + r.stock_actual + ')');
+                cerrarPanel();
+            } catch(e) {
+                alert('Error de conexión.');
+            } finally {
+                btn.disabled = false; btn.textContent = '✓ Confirmar Ingreso';
+            }
+        }
+
+        var cartelTimer = null;
+        function mostrarOk(texto) {
+            document.getElementById('cartel-texto').textContent = texto;
+            var c = document.getElementById('cartel-ok');
+            c.classList.remove('hidden');
+            if (cartelTimer) clearTimeout(cartelTimer);
+            cartelTimer = setTimeout(function(){ c.classList.add('hidden'); }, 3000);
+        }
+
+        window.onload = cargarProductos;
+    </script>
+</body>
+</html>
