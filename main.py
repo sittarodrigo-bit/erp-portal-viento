@@ -2765,8 +2765,13 @@ def locales_resumen():
     conn = obtener_conexion()
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
-        cur.execute("SELECT id, nombre, direccion FROM pos_locales WHERE COALESCE(activo,true)=true ORDER BY nombre")
-        locales = fetchall_dict(cur)
+        try:
+            cur.execute("SELECT id, nombre, direccion, punto_venta_afip FROM pos_locales WHERE COALESCE(activo,true)=true ORDER BY nombre")
+            locales = fetchall_dict(cur)
+        except Exception:
+            conn.rollback()
+            cur.execute("SELECT id, nombre, direccion FROM pos_locales WHERE COALESCE(activo,true)=true ORDER BY nombre")
+            locales = fetchall_dict(cur)
         salida = []
         for loc in locales:
             lid = loc['id']
@@ -2810,6 +2815,7 @@ def locales_resumen():
                 conn.rollback()
             salida.append({
                 "id": lid, "nombre": loc['nombre'], "direccion": loc['direccion'],
+                "punto_venta_afip": loc.get('punto_venta_afip'),
                 "caja_abierta": caja_abierta, "id_caja": id_caja, "responsable": responsable,
                 "efectivo_en_caja": efectivo_en_caja,
                 "ventas_hoy": float(hoy['total'] or 0), "tickets_hoy": hoy['tickets'],
