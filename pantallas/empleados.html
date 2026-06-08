@@ -27,6 +27,7 @@
             <a href="/proveedores" class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">🏪 Proveedores</a>
             <a href="/distribuidores" class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">🚚 Distribuidores</a>
             <a href="/historial-b2b" class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">📋 Pedidos B2B</a>
+            <a href="/locales"        class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">🏬 Locales</a>
             <a href="/gastos" class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">💸 Gastos</a>
             <a href="/empleados" class="block bg-gray-900 text-white py-2 px-4 rounded-lg border-l-4 border-neon font-medium">👥 Empleados</a>
             <a href="/reportes" class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">📈 Reportes</a>
@@ -116,11 +117,16 @@
                     <thead class="bg-gray-950 text-xs text-gray-400 uppercase border-b border-gray-800">
                         <tr>
                             <th class="p-4">Empleado</th>
-                            <th class="p-4 text-right">Horas Totales Trabajadas</th>
+                            <th class="p-4 text-right">Horas</th>
+                            <th class="p-4 text-right">Valor hora</th>
+                            <th class="p-4 text-right">Pago x horas</th>
+                            <th class="p-4 text-right">Incentivo / ajuste</th>
+                            <th class="p-4 text-right">Total a pagar</th>
+                            <th class="p-4 text-right">Recibo</th>
                         </tr>
                     </thead>
                     <tbody id="tabla-horas" class="divide-y divide-gray-800 text-sm">
-                        <tr><td colspan="2" class="p-4 text-center text-gray-500 py-12">Seleccioná un período y hacé click en Calcular Horas.</td></tr>
+                        <tr><td colspan="7" class="p-4 text-center text-gray-500 py-12">Seleccioná un período y hacé click en Calcular Horas.</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -150,10 +156,11 @@
                             <th class="p-4">Empleado</th>
                             <th class="p-4">Observación / Detalle</th>
                             <th class="p-4 text-right">Monto Adelantado</th>
+                            <th class="p-4 text-center">Estado</th>
                         </tr>
                     </thead>
                     <tbody id="tabla-anticipos" class="divide-y divide-gray-800 text-sm">
-                        <tr><td colspan="4" class="p-4 text-center text-gray-500">Cargando anticipos...</td></tr>
+                        <tr><td colspan="5" class="p-4 text-center text-gray-500">Cargando anticipos...</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -258,6 +265,10 @@
                 <div>
                     <label class="block text-xs text-gray-500 font-bold mb-1">Email</label>
                     <input type="email" id="edit-emp-email" class="w-full bg-black border border-gray-700 text-white rounded p-2">
+                </div>
+                <div>
+                    <label class="block text-xs text-neon font-bold mb-1">Valor por hora ($)</label>
+                    <input type="number" id="edit-emp-valorhora" step="0.01" min="0" class="w-full bg-black border border-neon text-white rounded p-2 font-bold">
                 </div>
             </div>
             <div class="flex justify-end gap-3">
@@ -513,39 +524,99 @@
         }
 
         // ── HORAS TRABAJADAS ─────────────────────────────────────
+        let datosHoras = [];
+
         async function cargarHoras() {
             const desde = document.getElementById('horas-desde').value;
             const hasta = document.getElementById('horas-hasta').value;
-            
             if (!desde || !hasta) { alert('Seleccioná el período.'); return; }
-
             const url = `${API_URL}/reportes/horas_trabajadas?fecha_desde=${desde}&fecha_hasta=${hasta}`;
             try {
                 const res = await fetch(url);
-                const datos = await res.json();
-                
+                datosHoras = await res.json();
                 const tabla = document.getElementById('tabla-horas');
                 tabla.innerHTML = '';
-                
-                if (datos.length === 0) {
-                    tabla.innerHTML = '<tr><td colspan="2" class="p-4 text-center text-gray-500 py-12">No hay horas calculadas en este período. Asegurate de que los empleados tengan su Entrada y Salida marcadas.</td></tr>';
+                if (!datosHoras.length) {
+                    tabla.innerHTML = '<tr><td colspan="7" class="p-4 text-center text-gray-500 py-12">No hay horas calculadas en este período. Asegurate de que los empleados tengan su Entrada y Salida marcadas.</td></tr>';
                     return;
                 }
-                
-                datos.forEach(d => {
-                    const hs = parseFloat(d.horas_totales).toFixed(2);
+                datosHoras.forEach((d, i) => {
+                    const hs = parseFloat(d.horas_totales || 0);
+                    const vh = parseFloat(d.valor_hora || 0);
+                    const pago = parseFloat(d.pago_calculado || (hs * vh));
                     const color = hs >= 40 ? 'text-green-400' : hs >= 20 ? 'text-yellow-400' : 'text-gray-300';
                     tabla.innerHTML += `
                         <tr class="hover:bg-gray-900 transition border-b border-gray-800">
-                            <td class="p-4 font-bold text-white text-lg">${d.apellido}, ${d.nombre}</td>
-                            <td class="p-4 text-right font-bold text-2xl ${color}">${hs} hs</td>
-                        </tr>
-                    `;
+                            <td class="p-4 font-bold text-white">${d.apellido}, ${d.nombre}</td>
+                            <td class="p-4 text-right font-bold ${color}">${hs.toFixed(2)} hs</td>
+                            <td class="p-4 text-right text-gray-400">$ ${vh.toLocaleString('es-AR')}</td>
+                            <td class="p-4 text-right text-gray-300">$ ${pago.toLocaleString('es-AR')}</td>
+                            <td class="p-4 text-right">
+                                <input type="number" step="0.01" value="0" data-idx="${i}" oninput="recalcularPago(${i})"
+                                       class="inc-input w-24 bg-black border border-gray-700 text-white rounded p-1.5 text-right text-sm">
+                            </td>
+                            <td class="p-4 text-right font-bold text-neon text-lg" id="total-pago-${i}">$ ${pago.toLocaleString('es-AR')}</td>
+                            <td class="p-4 text-right">
+                                <button onclick="imprimirRecibo(${i})" class="text-xs border border-gray-700 bg-gray-800 hover:border-neon hover:text-white px-3 py-1.5 rounded text-gray-300">🧾 Recibo</button>
+                            </td>
+                        </tr>`;
                 });
             } catch (error) {
                 console.error(error);
-                document.getElementById('tabla-horas').innerHTML = '<tr><td colspan="2" class="p-4 text-center text-red-500">Error al calcular las horas. Revisá la conexión.</td></tr>';
+                document.getElementById('tabla-horas').innerHTML = '<tr><td colspan="7" class="p-4 text-center text-red-500">Error al calcular las horas. Revisá la conexión.</td></tr>';
             }
+        }
+
+        function recalcularPago(i) {
+            const d = datosHoras[i];
+            const hs = parseFloat(d.horas_totales || 0);
+            const vh = parseFloat(d.valor_hora || 0);
+            const base = hs * vh;
+            const inc = parseFloat(document.querySelector(`.inc-input[data-idx="${i}"]`).value) || 0;
+            const total = base + inc;
+            document.getElementById('total-pago-' + i).textContent = '$ ' + total.toLocaleString('es-AR');
+        }
+
+        function imprimirRecibo(i) {
+            const d = datosHoras[i];
+            const hs = parseFloat(d.horas_totales || 0);
+            const vh = parseFloat(d.valor_hora || 0);
+            const base = hs * vh;
+            const inc = parseFloat(document.querySelector(`.inc-input[data-idx="${i}"]`).value) || 0;
+            const total = base + inc;
+            const desde = document.getElementById('horas-desde').value;
+            const hasta = document.getElementById('horas-hasta').value;
+            const fmtFecha = (s) => { const p = s.split('-'); return p[2]+'/'+p[1]+'/'+p[0]; };
+            const empresaNom = (window.empresaCache && empresaCache.nombre) ? empresaCache.nombre : 'Portal del Viento';
+            const html = `
+                <html><head><title>Recibo</title><style>
+                    body{font-family:Arial,sans-serif;max-width:480px;margin:30px auto;color:#000;padding:0 20px}
+                    h1{font-size:18px;text-align:center;margin-bottom:2px}
+                    .sub{text-align:center;color:#555;font-size:12px;margin-bottom:20px}
+                    table{width:100%;border-collapse:collapse;margin:16px 0}
+                    td{padding:7px 0;border-bottom:1px solid #ddd;font-size:14px}
+                    td.r{text-align:right;font-weight:bold}
+                    .total{font-size:20px;font-weight:bold}
+                    .firma{margin-top:60px;border-top:1px solid #000;width:60%;text-align:center;padding-top:6px;font-size:12px}
+                </style></head><body>
+                    <h1>${empresaNom}</h1>
+                    <div class="sub">Recibo de pago — Personal</div>
+                    <table>
+                        <tr><td>Empleado</td><td class="r">${d.apellido}, ${d.nombre}</td></tr>
+                        <tr><td>Período</td><td class="r">${fmtFecha(desde)} al ${fmtFecha(hasta)}</td></tr>
+                        <tr><td>Horas trabajadas</td><td class="r">${hs.toFixed(2)} hs</td></tr>
+                        <tr><td>Valor por hora</td><td class="r">$ ${vh.toLocaleString('es-AR')}</td></tr>
+                        <tr><td>Pago por horas</td><td class="r">$ ${base.toLocaleString('es-AR')}</td></tr>
+                        <tr><td>Incentivo / ajuste</td><td class="r">$ ${inc.toLocaleString('es-AR')}</td></tr>
+                        <tr><td class="total">TOTAL</td><td class="r total">$ ${total.toLocaleString('es-AR')}</td></tr>
+                    </table>
+                    <p style="font-size:12px;color:#555;margin-top:30px">Fecha de emisión: ${new Date().toLocaleDateString('es-AR')}</p>
+                    <div class="firma">Firma del empleado</div>
+                </body></html>`;
+            const w = window.open('', '_blank');
+            w.document.write(html);
+            w.document.close();
+            w.onload = function(){ try { w.print(); } catch(e){} };
         }
 
         // ── ANTICIPOS / VALES ────────────────────────────────────
@@ -603,18 +674,25 @@
                 tabla.innerHTML = '';
                 
                 if (lista.length === 0) {
-                    tabla.innerHTML = '<tr><td colspan="4" class="p-4 text-center text-gray-500 py-12">No hay anticipos registrados en este período.</td></tr>';
+                    tabla.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-gray-500 py-12">No hay anticipos registrados en este período.</td></tr>';
                     return;
                 }
                 
                 lista.forEach(a => {
                     const dt = new Date(a.fecha).toLocaleDateString('es-AR', {day: '2-digit', month:'short', year:'numeric'});
+                    const estado = a.pagado
+                        ? '<span class="text-xs bg-green-900/40 text-green-400 px-2 py-1 rounded font-bold">✓ Pagado</span>'
+                        : `<button onclick="marcarAnticipoPagado(${a.id}, true)" class="text-xs border border-neon bg-neon/10 text-neon hover:bg-neon hover:text-black px-3 py-1.5 rounded font-bold transition">Marcar pagado</button>`;
+                    const accionRevertir = a.pagado
+                        ? `<button onclick="marcarAnticipoPagado(${a.id}, false)" class="text-xs text-gray-600 hover:text-gray-300 ml-2">↺</button>`
+                        : '';
                     tabla.innerHTML += `
-                        <tr class="hover:bg-gray-900 transition border-b border-gray-800">
+                        <tr class="hover:bg-gray-900 transition border-b border-gray-800 ${a.pagado ? 'opacity-60' : ''}">
                             <td class="p-4 text-gray-400 text-xs">${dt}</td>
                             <td class="p-4 font-bold text-white">${a.apellido}, ${a.nombre}</td>
                             <td class="p-4 text-gray-400 text-xs italic">${a.observaciones || 'Sin detalle'}</td>
                             <td class="p-4 text-right font-bold text-red-400 text-lg">-$ ${parseFloat(a.monto).toLocaleString('es-AR')}</td>
+                            <td class="p-4 text-center">${estado}${accionRevertir}</td>
                         </tr>
                     `;
                 });
@@ -623,6 +701,14 @@
             }
         }
 
+
+        async function marcarAnticipoPagado(id, pagado) {
+            try {
+                const res = await fetch(`${API_URL}/anticipos/${id}/pagar?pagado=${pagado}`, { method:'PUT' });
+                if (res.ok) cargarAnticipos();
+                else alert('No se pudo actualizar.');
+            } catch(e) { alert('Error de conexión.'); }
+        }
 
         // ── ABM EMPLEADOS ────────────────────────────────────────
 
@@ -670,6 +756,7 @@
             document.getElementById('edit-emp-rol').value     = e.rol || 'produccion';
             document.getElementById('edit-emp-tel').value     = e.telefono || '';
             document.getElementById('edit-emp-email').value   = e.email || '';
+            document.getElementById('edit-emp-valorhora').value = e.valor_hora || 0;
             document.getElementById('modal-editar-emp').classList.replace('modal-oculto','modal-visible');
         }
 
@@ -681,7 +768,8 @@
                 dni:      document.getElementById('edit-emp-dni').value,
                 rol:      document.getElementById('edit-emp-rol').value,
                 telefono: document.getElementById('edit-emp-tel').value || null,
-                email:    document.getElementById('edit-emp-email').value || null
+                email:    document.getElementById('edit-emp-email').value || null,
+                valor_hora: parseFloat(document.getElementById('edit-emp-valorhora').value) || 0
             };
             const res = await fetch(API_URL + '/empleados/' + id, {
                 method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(data)
@@ -699,7 +787,12 @@
             document.querySelectorAll('.modal-visible').forEach(m => m.classList.replace('modal-visible', 'modal-oculto'));
         }
 
-        window.onload = cargarEmpleados;
+        window.empresaCache = {};
+        async function cargarEmpresaRecibo() {
+            try { window.empresaCache = await fetch(`${API_URL}/empresa`).then(r=>r.json()); } catch(e) {}
+        }
+
+        window.onload = function(){ cargarEmpleados(); cargarEmpresaRecibo(); };
 
     </script>
 </body>
