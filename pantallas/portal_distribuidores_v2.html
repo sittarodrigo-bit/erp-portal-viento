@@ -466,7 +466,7 @@
                     btn.disabled = false; btn.textContent = txt;
                 }
             } catch(e) {
-                alert('Error de conexión.');
+                alert('Error al conectar con el servidor: ' + (e && e.message ? e.message : e));
                 btn.disabled = false; btn.textContent = txt;
             }
         }
