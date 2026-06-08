@@ -176,6 +176,7 @@ class ActualizarEmpleado(BaseModel):
     rol: str
     telefono: Optional[str] = None
     email: Optional[str] = None
+    valor_hora: float = 0.0
 
 class FichajeData(BaseModel):
     id_empleado: int
@@ -1058,13 +1059,25 @@ def get_empleados():
     conn = obtener_conexion()
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
-        cur.execute("""
-            SELECT e.id, e.nombre, e.apellido, e.dni, e.rol, e.email, e.telefono,
-                   e.activo, u.username, COALESCE(u.acceso_pos, false) AS acceso_pos
-            FROM empleados e LEFT JOIN usuarios u ON u.id_empleado = e.id
-            ORDER BY e.apellido, e.nombre
-        """)
-        return fetchall_dict(cur)
+        try:
+            cur.execute("""
+                SELECT e.id, e.nombre, e.apellido, e.dni, e.rol, e.email, e.telefono,
+                       e.activo, COALESCE(e.valor_hora,0) AS valor_hora,
+                       u.username, COALESCE(u.acceso_pos, false) AS acceso_pos
+                FROM empleados e LEFT JOIN usuarios u ON u.id_empleado = e.id
+                ORDER BY e.apellido, e.nombre
+            """)
+            return fetchall_dict(cur)
+        except Exception:
+            conn.rollback()
+            cur.execute("""
+                SELECT e.id, e.nombre, e.apellido, e.dni, e.rol, e.email, e.telefono,
+                       e.activo, 0 AS valor_hora,
+                       u.username, COALESCE(u.acceso_pos, false) AS acceso_pos
+                FROM empleados e LEFT JOIN usuarios u ON u.id_empleado = e.id
+                ORDER BY e.apellido, e.nombre
+            """)
+            return fetchall_dict(cur)
     finally:
         liberar_conexion(conn)
 
@@ -1093,9 +1106,15 @@ def actualizar_empleado(id_emp: int, emp: ActualizarEmpleado):
     conn = obtener_conexion()
     try:
         cur = conn.cursor()
-        cur.execute("""
-            UPDATE empleados SET nombre=%s, apellido=%s, dni=%s, rol=%s, telefono=%s, email=%s WHERE id=%s
-        """, (emp.nombre, emp.apellido, emp.dni, emp.rol, emp.telefono, emp.email, id_emp))
+        try:
+            cur.execute("""
+                UPDATE empleados SET nombre=%s, apellido=%s, dni=%s, rol=%s, telefono=%s, email=%s, valor_hora=%s WHERE id=%s
+            """, (emp.nombre, emp.apellido, emp.dni, emp.rol, emp.telefono, emp.email, emp.valor_hora, id_emp))
+        except Exception:
+            conn.rollback()
+            cur.execute("""
+                UPDATE empleados SET nombre=%s, apellido=%s, dni=%s, rol=%s, telefono=%s, email=%s WHERE id=%s
+            """, (emp.nombre, emp.apellido, emp.dni, emp.rol, emp.telefono, emp.email, id_emp))
         conn.commit()
         return {"status": "ok"}
     except Exception as e:
@@ -1156,23 +1175,32 @@ def reporte_horas_trabajadas(fecha_desde: str, fecha_hasta: str):
     conn = obtener_conexion()
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
-        cur.execute("""
+        # Detectar si existe la columna valor_hora
+        cur.execute("SELECT column_name FROM information_schema.columns WHERE table_name='empleados' AND column_name='valor_hora'")
+        tiene_vh = bool(cur.fetchone())
+        vh_sel = "COALESCE(e.valor_hora,0)" if tiene_vh else "0"
+        cur.execute(f"""
             WITH pares AS (
-                SELECT e.id as id_empleado, e.nombre, e.apellido,
+                SELECT e.id as id_empleado, e.nombre, e.apellido, {vh_sel} AS valor_hora,
                        r.fecha_hora as entrada,
                        LEAD(r.fecha_hora) OVER (PARTITION BY r.id_empleado ORDER BY r.fecha_hora) as salida,
                        r.tipo
                 FROM registros_horarios r JOIN empleados e ON r.id_empleado = e.id
                 WHERE DATE(r.fecha_hora) >= %s AND DATE(r.fecha_hora) <= %s
             )
-            SELECT id_empleado, nombre, apellido,
+            SELECT id_empleado, nombre, apellido, MAX(valor_hora) AS valor_hora,
                    ROUND(CAST(SUM(EXTRACT(EPOCH FROM (salida - entrada))/3600.0) AS numeric), 2) as horas_totales
             FROM pares
             WHERE LOWER(tipo) = 'entrada' AND salida IS NOT NULL
             GROUP BY id_empleado, nombre, apellido
             ORDER BY horas_totales DESC
         """, (fecha_desde, fecha_hasta))
-        return fetchall_dict(cur)
+        filas = fetchall_dict(cur)
+        for f in filas:
+            horas = float(f['horas_totales'] or 0)
+            vh = float(f['valor_hora'] or 0)
+            f['pago_calculado'] = round(horas * vh, 2)
+        return filas
     finally:
         liberar_conexion(conn)
 
@@ -1199,12 +1227,40 @@ def listar_anticipos(fecha_desde: str, fecha_hasta: str):
     conn = obtener_conexion()
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
-        cur.execute("""
-            SELECT a.id, a.fecha::text, a.monto, a.observaciones, e.nombre, e.apellido
-            FROM anticipos_empleados a JOIN empleados e ON a.id_empleado = e.id
-            WHERE DATE(a.fecha) >= %s AND DATE(a.fecha) <= %s ORDER BY a.fecha DESC
-        """, (fecha_desde, fecha_hasta))
-        return fetchall_dict(cur)
+        try:
+            cur.execute("""
+                SELECT a.id, a.fecha::text, a.monto, a.observaciones, e.nombre, e.apellido,
+                       COALESCE(a.pagado,false) AS pagado, a.fecha_pago::text AS fecha_pago
+                FROM anticipos_empleados a JOIN empleados e ON a.id_empleado = e.id
+                WHERE DATE(a.fecha) >= %s AND DATE(a.fecha) <= %s ORDER BY a.fecha DESC
+            """, (fecha_desde, fecha_hasta))
+            return fetchall_dict(cur)
+        except Exception:
+            conn.rollback()
+            cur.execute("""
+                SELECT a.id, a.fecha::text, a.monto, a.observaciones, e.nombre, e.apellido,
+                       false AS pagado, NULL AS fecha_pago
+                FROM anticipos_empleados a JOIN empleados e ON a.id_empleado = e.id
+                WHERE DATE(a.fecha) >= %s AND DATE(a.fecha) <= %s ORDER BY a.fecha DESC
+            """, (fecha_desde, fecha_hasta))
+            return fetchall_dict(cur)
+    finally:
+        liberar_conexion(conn)
+
+@app.put("/api/anticipos/{id_anticipo}/pagar")
+def marcar_anticipo_pagado(id_anticipo: int, pagado: bool = True):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        if pagado:
+            cur.execute("UPDATE anticipos_empleados SET pagado=true, fecha_pago=NOW() WHERE id=%s", (id_anticipo,))
+        else:
+            cur.execute("UPDATE anticipos_empleados SET pagado=false, fecha_pago=NULL WHERE id=%s", (id_anticipo,))
+        conn.commit()
+        return {"status": "ok"}
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
     finally:
         liberar_conexion(conn)
 
