@@ -56,6 +56,9 @@
 
             <!-- TAB RESUMEN -->
             <div id="tab-general-resumen">
+                <div class="flex justify-end mb-4">
+                    <button onclick="abrirModalLocal()" class="bg-neon text-black font-bold px-4 py-2 rounded-lg text-sm hover:bg-yellow-300">+ Nuevo local</button>
+                </div>
                 <div id="cards-locales" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
                     <p class="text-gray-500 col-span-full text-center py-12">Cargando locales...</p>
                 </div>
@@ -274,6 +277,28 @@
     </div>
 
     <!-- MODAL HISTORIAL DE STOCK -->
+    <!-- MODAL CREAR/EDITAR LOCAL -->
+    <div id="modal-local" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
+        <div class="bg-gray-900 border border-gray-700 rounded-xl p-6 w-[440px] shadow-2xl">
+            <div class="flex justify-between items-center mb-4">
+                <h3 id="modal-local-titulo" class="text-lg font-bold text-white border-l-4 border-neon pl-2">Nuevo local</h3>
+                <button onclick="cerrarModales()" class="text-gray-500 hover:text-white text-2xl leading-none">×</button>
+            </div>
+            <input type="hidden" id="local-edit-id">
+            <label class="block text-xs text-gray-500 font-bold mb-1">Nombre del local</label>
+            <input type="text" id="local-form-nombre" class="w-full bg-black border border-gray-700 text-white rounded-lg p-3 mb-3 text-sm">
+            <label class="block text-xs text-gray-500 font-bold mb-1">Dirección</label>
+            <input type="text" id="local-form-dir" placeholder="Calle y número" class="w-full bg-black border border-gray-700 text-white rounded-lg p-3 mb-3 text-sm">
+            <label class="block text-xs text-neon font-bold mb-1">Punto de venta AFIP</label>
+            <input type="number" id="local-form-pv" min="1" placeholder="Ej: 5" class="w-full bg-black border border-neon text-white rounded-lg p-3 mb-1 text-sm font-bold">
+            <p class="text-gray-600 text-xs mb-5">Debe estar dado de alta en AFIP para facturación electrónica.</p>
+            <div class="flex justify-end gap-3">
+                <button onclick="cerrarModales()" class="px-4 py-2 text-gray-400 hover:text-white font-bold">Cancelar</button>
+                <button onclick="guardarLocal()" id="btn-guardar-local" class="bg-neon text-black px-6 py-2 rounded font-bold hover:bg-yellow-300">Guardar</button>
+            </div>
+        </div>
+    </div>
+
     <div id="modal-historial" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
         <div class="bg-gray-900 border border-gray-700 rounded-xl p-6 w-[520px] shadow-2xl max-h-[88vh] overflow-y-auto">
             <div class="flex justify-between items-center mb-1">
@@ -355,12 +380,57 @@
 
         function fmt(n) { return '$ ' + (parseFloat(n)||0).toLocaleString('es-AR'); }
 
+        // ── CREAR / EDITAR LOCAL ──
+        function abrirModalLocal() {
+            document.getElementById('modal-local-titulo').textContent = 'Nuevo local';
+            document.getElementById('local-edit-id').value = '';
+            document.getElementById('local-form-nombre').value = '';
+            document.getElementById('local-form-dir').value = '';
+            document.getElementById('local-form-pv').value = '';
+            document.getElementById('modal-local').classList.replace('modal-oculto','modal-visible');
+        }
+
+        function editarLocal(id) {
+            const l = localesResumenCache.find(x => x.id === id);
+            if (!l) return;
+            document.getElementById('modal-local-titulo').textContent = 'Editar local';
+            document.getElementById('local-edit-id').value = l.id;
+            document.getElementById('local-form-nombre').value = l.nombre || '';
+            document.getElementById('local-form-dir').value = l.direccion || '';
+            document.getElementById('local-form-pv').value = (l.punto_venta_afip != null ? l.punto_venta_afip : '');
+            document.getElementById('modal-local').classList.replace('modal-oculto','modal-visible');
+        }
+
+        async function guardarLocal() {
+            const id = document.getElementById('local-edit-id').value;
+            const nombre = document.getElementById('local-form-nombre').value.trim();
+            const dir = document.getElementById('local-form-dir').value.trim();
+            const pv = document.getElementById('local-form-pv').value;
+            if (!nombre) { alert('Poné un nombre.'); return; }
+            const body = { nombre, direccion: dir || null, punto_venta_afip: pv ? parseInt(pv) : null };
+            const btn = document.getElementById('btn-guardar-local');
+            btn.disabled = true; btn.textContent = 'Guardando...';
+            try {
+                let res;
+                if (id) {
+                    res = await fetch(`${API_URL}/pos/locales/${id}`, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+                } else {
+                    res = await fetch(`${API_URL}/pos/locales`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+                }
+                if (res.ok) { cerrarModales(); cargarGeneral(); }
+                else { const e = await res.json(); alert('Error: ' + (e.detail || 'no se pudo guardar')); }
+            } catch(e) { alert('Error de conexión.'); }
+            finally { btn.disabled = false; btn.textContent = 'Guardar'; }
+        }
+
+        let localesResumenCache = [];
         async function cargarGeneral() {
             const data = await fetch(`${API_URL}/locales/resumen`).then(r=>r.json()).catch(()=>[]);
+            localesResumenCache = data;
             const cont = document.getElementById('cards-locales');
             cont.innerHTML = '';
             if (!data.length) {
-                cont.innerHTML = '<p class="text-gray-500 col-span-full text-center py-12">No hay locales cargados todavía. Se crean desde el POS (⚙️).</p>';
+                cont.innerHTML = '<p class="text-gray-500 col-span-full text-center py-12">No hay locales cargados todavía. Tocá "+ Nuevo local" para crear uno.</p>';
                 document.getElementById('comparativa').classList.add('hidden');
                 return;
             }
@@ -380,9 +450,13 @@
                     <div class="flex justify-between items-start mb-3">
                         <div>
                             <h3 class="text-white font-bold text-lg">${l.nombre}</h3>
-                            ${l.direccion ? `<p class="text-gray-500 text-xs">${l.direccion}</p>` : ''}
+                            ${l.direccion ? `<p class="text-gray-500 text-xs">${l.direccion}</p>` : '<p class="text-gray-600 text-xs italic">Sin dirección</p>'}
+                            ${l.punto_venta_afip ? `<p class="text-gray-600 text-xs">🧾 PV AFIP: ${l.punto_venta_afip}</p>` : ''}
                         </div>
-                        ${estadoCaja}
+                        <div class="flex flex-col items-end gap-1">
+                            ${estadoCaja}
+                            <button onclick="event.stopPropagation(); editarLocal(${l.id})" class="text-xs text-gray-500 hover:text-neon">✏️ Editar</button>
+                        </div>
                     </div>
                     <div class="grid grid-cols-2 gap-3 mb-3">
                         <div class="bg-gray-950 rounded-lg p-3">
