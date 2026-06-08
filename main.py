@@ -1695,6 +1695,7 @@ def cobros_pendientes():
 class PosLocal(BaseModel):
     nombre: str
     direccion: Optional[str] = None
+    punto_venta_afip: Optional[int] = None
 
 class PosProducto(BaseModel):
     id_local: int
@@ -1735,8 +1736,13 @@ def pos_listar_locales():
     conn = obtener_conexion()
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
-        cur.execute("SELECT id, nombre, direccion FROM pos_locales WHERE COALESCE(activo,true)=true ORDER BY nombre")
-        return fetchall_dict(cur)
+        try:
+            cur.execute("SELECT id, nombre, direccion, punto_venta_afip FROM pos_locales WHERE COALESCE(activo,true)=true ORDER BY nombre")
+            return fetchall_dict(cur)
+        except Exception:
+            conn.rollback()
+            cur.execute("SELECT id, nombre, direccion FROM pos_locales WHERE COALESCE(activo,true)=true ORDER BY nombre")
+            return fetchall_dict(cur)
     finally:
         liberar_conexion(conn)
 
@@ -1745,7 +1751,11 @@ def pos_crear_local(l: PosLocal):
     conn = obtener_conexion()
     try:
         cur = conn.cursor()
-        cur.execute("INSERT INTO pos_locales (nombre, direccion) VALUES (%s,%s) RETURNING id", (l.nombre, l.direccion))
+        try:
+            cur.execute("INSERT INTO pos_locales (nombre, direccion, punto_venta_afip) VALUES (%s,%s,%s) RETURNING id", (l.nombre, l.direccion, l.punto_venta_afip))
+        except Exception:
+            conn.rollback()
+            cur.execute("INSERT INTO pos_locales (nombre, direccion) VALUES (%s,%s) RETURNING id", (l.nombre, l.direccion))
         lid = cur.fetchone()[0]
         conn.commit()
         return {"id": lid}
@@ -1760,7 +1770,11 @@ def pos_actualizar_local(id: int, l: PosLocal):
     conn = obtener_conexion()
     try:
         cur = conn.cursor()
-        cur.execute("UPDATE pos_locales SET nombre=%s, direccion=%s WHERE id=%s", (l.nombre, l.direccion, id))
+        try:
+            cur.execute("UPDATE pos_locales SET nombre=%s, direccion=%s, punto_venta_afip=%s WHERE id=%s", (l.nombre, l.direccion, l.punto_venta_afip, id))
+        except Exception:
+            conn.rollback()
+            cur.execute("UPDATE pos_locales SET nombre=%s, direccion=%s WHERE id=%s", (l.nombre, l.direccion, id))
         conn.commit()
         return {"status": "ok"}
     except Exception as e:
@@ -3307,11 +3321,23 @@ def afip_facturar(f: FacturaAfip):
         neto = round(total / 1.21, 2); iva = round(total - neto, 2)
 
     try:
+        # Punto de venta del local (si está configurado); si no, usa el de la variable de entorno
+        pv_local = None
+        if f.id_local:
+            try:
+                conn0 = obtener_conexion(); cur0 = conn0.cursor(cursor_factory=RealDictCursor)
+                cur0.execute("SELECT punto_venta_afip FROM pos_locales WHERE id=%s", (f.id_local,))
+                row0 = cur0.fetchone()
+                if row0 and row0.get('punto_venta_afip'):
+                    pv_local = int(row0['punto_venta_afip'])
+                liberar_conexion(conn0)
+            except Exception:
+                pv_local = None
         # Condición IVA del receptor: Factura A -> Responsable Inscripto (1); resto -> Consumidor Final (5)
         cond_iva = 1 if f.tipo_comprobante == 1 else 5
         r = afip_service.emitir_factura(
             tipo_cbte=f.tipo_comprobante, doc_tipo=f.doc_tipo, doc_nro=f.doc_nro or "",
-            neto=neto, iva=iva, total=total, cond_iva_receptor=cond_iva
+            neto=neto, iva=iva, total=total, cond_iva_receptor=cond_iva, punto_venta=pv_local
         )
     except Exception as e:
         # Guardar el intento fallido
