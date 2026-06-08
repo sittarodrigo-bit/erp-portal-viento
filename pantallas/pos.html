@@ -463,6 +463,14 @@
             window.location.href = '/pos-login';
         }
 
+        // Mantener viva la sesión única: latido cada 60 segundos
+        function latidoSesion() {
+            if (posUsuario && posUsuario.id_usuario) {
+                fetch(API_URL + '/pos/sesion/latido?id_usuario=' + posUsuario.id_usuario + '&token=' + encodeURIComponent(posUsuario.token||''), { method:'POST' }).catch(function(){});
+            }
+        }
+        if (posUsuario) { latidoSesion(); setInterval(latidoSesion, 60000); }
+
         async function cerrarSesionPos() {
             // Registrar fichaje de salida antes de cerrar (no bloquea si falla)
             if (posUsuario && posUsuario.id_empleado) {
@@ -472,6 +480,10 @@
                         body: JSON.stringify({ id_empleado: posUsuario.id_empleado, tipo: 'salida', observacion: 'Salida POS' })
                     });
                 } catch(e) {}
+            }
+            // Liberar la sesión única en el servidor
+            if (posUsuario && posUsuario.id_usuario) {
+                try { await fetch(API_URL + '/pos/sesion/cerrar?id_usuario=' + posUsuario.id_usuario, { method:'POST' }); } catch(e) {}
             }
             sessionStorage.removeItem('pos_usuario');
             window.location.href = '/pos-login';
