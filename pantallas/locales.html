@@ -155,7 +155,7 @@
                         <div id="rv-resumen" class="grid grid-cols-3 gap-2 mb-3"></div>
                         <div class="rounded-xl border border-gray-800 overflow-x-auto max-h-80 overflow-y-auto">
                             <table class="w-full text-left text-sm">
-                                <thead class="bg-gray-950 text-xs text-gray-400 uppercase sticky top-0"><tr><th class="p-2">Fecha</th><th class="p-2">Hora</th><th class="p-2">Medio</th><th class="p-2">Cajero</th><th class="p-2">Comprobante</th><th class="p-2 text-right">Total</th></tr></thead>
+                                <thead class="bg-gray-950 text-xs text-gray-400 uppercase sticky top-0"><tr><th class="p-2">Fecha</th><th class="p-2">Hora</th><th class="p-2">Medio</th><th class="p-2">Cajero</th><th class="p-2">Comprobante</th><th class="p-2 text-right">Total</th><th class="p-2 text-right">Acción</th></tr></thead>
                                 <tbody id="rv-tbody" class="divide-y divide-gray-800"></tbody>
                             </table>
                         </div>
@@ -710,7 +710,7 @@
         function renderReporteVentas(data) {
             const tbody = document.getElementById('rv-tbody');
             const ventas = data.ventas || [];
-            if (!ventas.length) { tbody.innerHTML = '<tr><td class="p-4 text-gray-500 text-center" colspan="6">Sin ventas en ese período.</td></tr>'; }
+            if (!ventas.length) { tbody.innerHTML = '<tr><td class="p-4 text-gray-500 text-center" colspan="7">Sin ventas en ese período.</td></tr>'; }
             else {
                 tbody.innerHTML = ventas.map(v => {
                     const f = v.fecha ? new Date(v.fecha.replace(' ','T')) : null;
@@ -725,7 +725,8 @@
                     return `<tr class="hover:bg-gray-900">
                         <td class="p-2 text-gray-300">${fecha}</td><td class="p-2 text-gray-400">${hora}</td>
                         <td class="p-2 text-gray-300">${v.metodo_pago||''}</td><td class="p-2 text-gray-400">${v.nombre_cajero||'—'}</td>
-                        <td class="p-2">${comp}</td><td class="p-2 text-right text-neon font-bold">${fmt(v.total)}</td></tr>`;
+                        <td class="p-2">${comp}</td><td class="p-2 text-right text-neon font-bold">${fmt(v.total)}</td>
+                        <td class="p-2 text-right"><button onclick="verComprobanteVentaLocal(${v.id})" class="text-xs border border-gray-700 hover:border-neon text-gray-300 hover:text-white px-2 py-1 rounded">👁️ Ver</button></td></tr>`;
                 }).join('');
             }
             const r = data.resumen || {};
@@ -733,6 +734,51 @@
                 `<div class="bg-gray-900 border border-gray-800 rounded-xl p-3 text-center"><p class="text-gray-500 text-xs font-bold mb-1">TOTAL (${r.cantidad||0})</p><p class="text-neon font-bold">${fmt(r.total_general||0)}</p></div>
                  <div class="bg-gray-900 border border-gray-800 rounded-xl p-3 text-center"><p class="text-gray-500 text-xs font-bold mb-1">🧾 AFIP</p><p class="text-green-400 font-bold">${fmt(r.total_afip||0)}</p></div>
                  <div class="bg-gray-900 border border-gray-800 rounded-xl p-3 text-center"><p class="text-gray-500 text-xs font-bold mb-1">🎫 Ticket</p><p class="text-gray-300 font-bold">${fmt(r.total_ticket||0)}</p></div>`;
+        }
+
+        async function verComprobanteVentaLocal(idVenta) {
+            let v;
+            try { v = await fetch(`${API_URL}/ventas/${idVenta}/comprobante`).then(r=>r.json()); }
+            catch(e) { alert('No se pudo cargar el comprobante.'); return; }
+            const det = (v.detalle||[]).map(it =>
+                `<tr><td>${it.cantidad}x ${it.nombre_producto}</td><td style="text-align:right">$ ${(it.cantidad*it.precio_unitario).toLocaleString('es-AR')}</td></tr>`
+            ).join('');
+            let compTxt;
+            if (v.factura) {
+                const tipo = v.factura.tipo_comprobante === 1 ? 'FACTURA A' : v.factura.tipo_comprobante === 11 ? 'FACTURA C' : 'FACTURA B';
+                const nro = String(v.factura.punto_venta).padStart(4,'0') + '-' + String(v.factura.numero).padStart(8,'0');
+                compTxt = `<p style="font-weight:bold">${tipo} ${nro}</p><p style="font-size:11px">CAE: ${v.factura.cae} · Vto: ${v.factura.cae_vto||''}</p>` +
+                          (v.factura.entorno==='homologacion' ? '<p style="font-size:11px">** COMPROBANTE DE PRUEBA - SIN VALOR FISCAL **</p>' : '');
+            } else {
+                compTxt = `<p style="font-weight:bold">TICKET INTERNO #${String(v.id).padStart(5,'0')}</p>`;
+            }
+            const pagos = (v.pagos && v.pagos.length>1) ? '<p style="font-size:11px">Pagos: ' + v.pagos.map(p=>`${p.metodo_pago} $${parseFloat(p.monto).toLocaleString('es-AR')}`).join(' · ') + '</p>' : '';
+            const f = v.fecha ? new Date(v.fecha.replace(' ','T')) : null;
+            const empresaNom = (window.empresaCache && empresaCache.nombre) ? empresaCache.nombre : 'Portal del Viento';
+            const cuit = (window.empresaCache && empresaCache.cuit) ? empresaCache.cuit : '';
+            const html = `<html><head><title>Comprobante</title><style>
+                body{font-family:Arial,sans-serif;width:300px;margin:10px auto;color:#000;font-size:13px}
+                h2{text-align:center;margin:2px 0;font-size:16px}
+                .c{text-align:center;font-size:11px;color:#333}
+                table{width:100%;border-collapse:collapse;margin:8px 0}
+                td{padding:2px 0;border-bottom:1px dotted #ccc}
+                .tot{font-size:16px;font-weight:bold;border-top:1px solid #000;margin-top:6px;padding-top:6px;display:flex;justify-content:space-between}
+                </style></head><body>
+                <h2>${empresaNom}</h2>
+                ${cuit ? `<p class="c">CUIT: ${cuit}</p>` : ''}
+                ${v.local_nombre ? `<p class="c" style="font-weight:bold">${v.local_nombre}</p>` : ''}
+                ${v.local_direccion ? `<p class="c">${v.local_direccion}</p>` : ''}
+                <hr>
+                ${compTxt}
+                <p class="c" style="text-align:left">${f ? f.toLocaleString('es-AR') : ''}</p>
+                <table>${det}</table>
+                <div class="tot"><span>TOTAL</span><span>$ ${parseFloat(v.total||0).toLocaleString('es-AR')}</span></div>
+                ${pagos}
+                <p class="c" style="margin-top:14px">¡Gracias por su compra!</p>
+                </body></html>`;
+            const w = window.open('', '_blank');
+            w.document.write(html); w.document.close();
+            w.onload = function(){ try { w.print(); } catch(e){} };
         }
 
         async function guardarPvAfip() {
@@ -1323,7 +1369,11 @@
             document.querySelectorAll('.modal-visible').forEach(m => m.classList.replace('modal-visible','modal-oculto'));
         }
 
-        window.onload = cargarGeneral;
+        window.empresaCache = {};
+        async function cargarEmpresaLocal() {
+            try { window.empresaCache = await fetch(`${API_URL}/empresa`).then(r=>r.json()); } catch(e) {}
+        }
+        window.onload = function(){ cargarGeneral(); cargarEmpresaLocal(); };
     </script>
 </body>
 </html>
