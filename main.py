@@ -3416,10 +3416,26 @@ def mp_crear_pago(id_pedido: int, request: Request):
     conn = obtener_conexion()
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
-        cur.execute("""SELECT p.id, p.total, p.estado, p.id_distribuidor, d.nombre AS dist_nombre, d.email AS dist_email
-                       FROM pedidos_b2b p LEFT JOIN distribuidores d ON p.id_distribuidor=d.id
-                       WHERE p.id=%s""", (id_pedido,))
-        pedido = cur.fetchone()
+        try:
+            cur.execute("""SELECT p.id, p.total, p.estado, p.id_distribuidor,
+                                  d.razon_social AS dist_nombre, d.email AS dist_email
+                           FROM pedidos_b2b p LEFT JOIN distribuidores d ON p.id_distribuidor=d.id
+                           WHERE p.id=%s""", (id_pedido,))
+            pedido = cur.fetchone()
+        except Exception:
+            conn.rollback()
+            # Fallback: sin email (por si la columna no existe)
+            try:
+                cur.execute("""SELECT p.id, p.total, p.estado, p.id_distribuidor,
+                                      d.razon_social AS dist_nombre, NULL AS dist_email
+                               FROM pedidos_b2b p LEFT JOIN distribuidores d ON p.id_distribuidor=d.id
+                               WHERE p.id=%s""", (id_pedido,))
+                pedido = cur.fetchone()
+            except Exception:
+                conn.rollback()
+                # Último fallback: solo el pedido
+                cur.execute("SELECT id, total, estado, id_distribuidor, NULL AS dist_nombre, NULL AS dist_email FROM pedidos_b2b WHERE id=%s", (id_pedido,))
+                pedido = cur.fetchone()
         if not pedido:
             raise HTTPException(status_code=404, detail="Pedido no encontrado")
         # Evitar cobrar dos veces: ¿ya tiene cobro registrado?
