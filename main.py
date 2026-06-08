@@ -1721,6 +1721,10 @@ class PosItemVenta(BaseModel):
     id_producto: Optional[int] = None
     unidades_stock: Optional[float] = None
 
+class PosPago(BaseModel):
+    metodo_pago: str
+    monto: float
+
 class PosVenta(BaseModel):
     id_caja: int
     id_local: int
@@ -1729,6 +1733,7 @@ class PosVenta(BaseModel):
     detalle: List[PosItemVenta]
     id_empleado: Optional[int] = None
     nombre_cajero: Optional[str] = None
+    pagos: Optional[List[PosPago]] = None
 
 # ---- LOCALES ----
 @app.get("/api/pos/locales")
@@ -1946,14 +1951,7 @@ def pos_cerrar_caja(id_caja: int, data: PosCerrarCaja):
     conn = obtener_conexion()
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
-        cur.execute("""
-            SELECT COALESCE(SUM(CASE WHEN metodo_pago='Efectivo' THEN total ELSE 0 END),0) as efectivo,
-                   COALESCE(SUM(CASE WHEN metodo_pago='Tarjeta' THEN total ELSE 0 END),0) as tarjeta,
-                   COALESCE(SUM(CASE WHEN metodo_pago='Transferencia' THEN total ELSE 0 END),0) as transferencia,
-                   COALESCE(SUM(CASE WHEN metodo_pago='QR' THEN total ELSE 0 END),0) as qr
-            FROM pos_ventas WHERE id_caja=%s
-        """, (id_caja,))
-        t = cur.fetchone()
+        t = _totales_por_metodo_caja(cur, id_caja)
         cur.execute("""
             UPDATE pos_cajas SET estado='cerrada', fecha_cierre=NOW(), monto_cierre=%s,
                 total_efectivo=%s, total_tarjeta=%s, total_transferencia=%s, total_qr=%s, observaciones=%s
@@ -1969,18 +1967,70 @@ def pos_cerrar_caja(id_caja: int, data: PosCerrarCaja):
 
 # ---- VENTAS ----
 @app.post("/api/pos/ventas")
+def _totales_por_metodo_caja(cur, id_caja):
+    """Devuelve dict con efectivo/tarjeta/transferencia/qr de una caja.
+    Usa el desglose de pos_pagos_venta si existe; si no, cae al metodo_pago de la venta."""
+    try:
+        cur.execute("""
+            SELECT COALESCE(SUM(CASE WHEN p.metodo_pago='Efectivo' THEN p.monto ELSE 0 END),0) as efectivo,
+                   COALESCE(SUM(CASE WHEN p.metodo_pago='Tarjeta' THEN p.monto ELSE 0 END),0) as tarjeta,
+                   COALESCE(SUM(CASE WHEN p.metodo_pago='Transferencia' THEN p.monto ELSE 0 END),0) as transferencia,
+                   COALESCE(SUM(CASE WHEN p.metodo_pago='QR' THEN p.monto ELSE 0 END),0) as qr
+            FROM pos_pagos_venta p JOIN pos_ventas v ON p.id_venta = v.id
+            WHERE v.id_caja=%s
+        """, (id_caja,))
+        r = cur.fetchone()
+        # r puede ser RealDict o tupla según el cursor
+        if isinstance(r, dict):
+            return r
+        return {"efectivo": r[0], "tarjeta": r[1], "transferencia": r[2], "qr": r[3]}
+    except Exception:
+        # Fallback: tabla de pagos no existe, sumar por metodo_pago de la venta
+        cur.execute("""
+            SELECT COALESCE(SUM(CASE WHEN metodo_pago='Efectivo' THEN total ELSE 0 END),0) as efectivo,
+                   COALESCE(SUM(CASE WHEN metodo_pago='Tarjeta' THEN total ELSE 0 END),0) as tarjeta,
+                   COALESCE(SUM(CASE WHEN metodo_pago='Transferencia' THEN total ELSE 0 END),0) as transferencia,
+                   COALESCE(SUM(CASE WHEN metodo_pago='QR' THEN total ELSE 0 END),0) as qr
+            FROM pos_ventas WHERE id_caja=%s
+        """, (id_caja,))
+        r = cur.fetchone()
+        if isinstance(r, dict):
+            return r
+        return {"efectivo": r[0], "tarjeta": r[1], "transferencia": r[2], "qr": r[3]}
+
 def pos_registrar_venta(venta: PosVenta):
     conn = obtener_conexion()
     try:
         cur = conn.cursor()
+        # Determinar método a guardar en la venta: si hay varios pagos, "Mixto"
+        pagos = venta.pagos or []
+        pagos = [p for p in pagos if p.monto and p.monto > 0]
+        metodo_guardar = venta.metodo_pago
+        if len(pagos) > 1:
+            metodo_guardar = "Mixto"
+        elif len(pagos) == 1:
+            metodo_guardar = pagos[0].metodo_pago
         try:
             cur.execute("INSERT INTO pos_ventas (id_caja, id_local, metodo_pago, total, id_empleado, nombre_cajero) VALUES (%s,%s,%s,%s,%s,%s) RETURNING id",
-                        (venta.id_caja, venta.id_local, venta.metodo_pago, venta.total, venta.id_empleado, venta.nombre_cajero))
+                        (venta.id_caja, venta.id_local, metodo_guardar, venta.total, venta.id_empleado, venta.nombre_cajero))
         except Exception:
             conn.rollback()
             cur.execute("INSERT INTO pos_ventas (id_caja, id_local, metodo_pago, total) VALUES (%s,%s,%s,%s) RETURNING id",
-                        (venta.id_caja, venta.id_local, venta.metodo_pago, venta.total))
+                        (venta.id_caja, venta.id_local, metodo_guardar, venta.total))
         vid = cur.fetchone()[0]
+        # Guardar el desglose de pagos (si la tabla existe). Si no hay desglose, registrar el único método.
+        try:
+            if pagos:
+                for p in pagos:
+                    cur.execute("INSERT INTO pos_pagos_venta (id_venta, metodo_pago, monto) VALUES (%s,%s,%s)",
+                                (vid, p.metodo_pago, p.monto))
+            else:
+                cur.execute("INSERT INTO pos_pagos_venta (id_venta, metodo_pago, monto) VALUES (%s,%s,%s)",
+                            (vid, venta.metodo_pago, venta.total))
+        except Exception:
+            conn.rollback()
+            # Si la tabla no existe todavía, no rompemos: la venta ya quedó registrada en el reintento
+            cur.execute("SELECT 1")
         for it in venta.detalle:
             cur.execute("INSERT INTO pos_detalle_ventas (id_venta, nombre_producto, cantidad, precio_unitario) VALUES (%s,%s,%s,%s)",
                         (vid, it.nombre_producto, it.cantidad, it.precio_unitario))
@@ -2014,15 +2064,11 @@ def pos_reporte_caja(id_caja: int):
     conn = obtener_conexion()
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
-        cur.execute("""
-            SELECT COALESCE(SUM(CASE WHEN metodo_pago='Efectivo' THEN total ELSE 0 END),0) as efectivo,
-                   COALESCE(SUM(CASE WHEN metodo_pago='Tarjeta' THEN total ELSE 0 END),0) as tarjeta,
-                   COALESCE(SUM(CASE WHEN metodo_pago='Transferencia' THEN total ELSE 0 END),0) as transferencia,
-                   COALESCE(SUM(CASE WHEN metodo_pago='QR' THEN total ELSE 0 END),0) as qr,
-                   COALESCE(SUM(total),0) as total, COUNT(*) as tickets
-            FROM pos_ventas WHERE id_caja=%s
-        """, (id_caja,))
-        resumen = cur.fetchone()
+        t = _totales_por_metodo_caja(cur, id_caja)
+        cur.execute("SELECT COALESCE(SUM(total),0) as total, COUNT(*) as tickets FROM pos_ventas WHERE id_caja=%s", (id_caja,))
+        tot = cur.fetchone()
+        resumen = {"efectivo": t['efectivo'], "tarjeta": t['tarjeta'], "transferencia": t['transferencia'],
+                   "qr": t['qr'], "total": tot['total'], "tickets": tot['tickets']}
         cur.execute("""
             SELECT d.nombre_producto, SUM(d.cantidad) as unidades, SUM(d.cantidad*d.precio_unitario) as total
             FROM pos_detalle_ventas d JOIN pos_ventas v ON d.id_venta=v.id
