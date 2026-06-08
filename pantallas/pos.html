@@ -337,15 +337,34 @@
     <!-- MODAL ELEGIR COMPROBANTE -->
     <div id="modal-comprobante" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
         <div class="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-[420px] shadow-2xl">
-            <div class="text-center mb-5">
-                <p class="text-5xl mb-2">✅</p>
-                <h3 class="text-lg font-bold text-white">Venta registrada</h3>
-                <p class="text-gray-500 text-sm mt-1">¿Qué comprobante querés emitir?</p>
+            <!-- Paso 1: elegir -->
+            <div id="comp-elegir">
+                <div class="text-center mb-5">
+                    <p class="text-5xl mb-2">✅</p>
+                    <h3 class="text-lg font-bold text-white">Venta registrada</h3>
+                    <p class="text-gray-500 text-sm mt-1">¿Qué comprobante querés emitir?</p>
+                </div>
+                <div class="grid grid-cols-1 gap-3">
+                    <button onclick="elegirFacturaAfip()" class="bg-neon text-black font-bold py-4 rounded-xl hover:bg-yellow-300 text-base">🧾 Factura AFIP</button>
+                    <button onclick="elegirTicketInterno()" class="bg-gray-800 hover:bg-gray-700 border border-gray-600 text-white font-bold py-4 rounded-xl text-base">🎫 Ticket interno</button>
+                    <button onclick="cerrarModales()" class="text-gray-500 hover:text-white text-sm py-2">Ninguno / cerrar</button>
+                </div>
             </div>
-            <div class="grid grid-cols-1 gap-3">
-                <button onclick="elegirFacturaAfip()" class="bg-neon text-black font-bold py-4 rounded-xl hover:bg-yellow-300 text-base">🧾 Factura AFIP</button>
-                <button onclick="elegirTicketInterno()" class="bg-gray-800 hover:bg-gray-700 border border-gray-600 text-white font-bold py-4 rounded-xl text-base">🎫 Ticket interno</button>
-                <button onclick="cerrarModales()" class="text-gray-500 hover:text-white text-sm py-2">Ninguno / cerrar</button>
+            <!-- Paso 2: opciones del ticket interno -->
+            <div id="comp-ticket" class="hidden">
+                <div class="text-center mb-4">
+                    <p class="text-4xl mb-2">🎫</p>
+                    <h3 class="text-lg font-bold text-white">Ticket interno</h3>
+                </div>
+                <div class="mb-3">
+                    <label class="block text-xs text-gray-500 font-bold mb-1">📱 WhatsApp del cliente (opcional)</label>
+                    <input type="tel" id="ticket-tel-cliente" inputmode="numeric" placeholder="Ej: 2615123456 (sin 0 ni 15)" class="w-full bg-black border border-gray-700 text-white rounded-lg p-3 text-sm">
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                    <button onclick="imprimirTicketInterno()" class="bg-gray-800 hover:bg-gray-700 border border-gray-600 text-white font-bold py-3 rounded-xl text-sm">🖨️ Imprimir</button>
+                    <button onclick="enviarTicketWhatsapp()" class="bg-green-700 hover:bg-green-600 text-white font-bold py-3 rounded-xl text-sm">📱 WhatsApp</button>
+                </div>
+                <button onclick="cerrarModales()" class="w-full text-gray-500 hover:text-white text-sm py-3 mt-2">Cerrar</button>
             </div>
         </div>
     </div>
@@ -414,7 +433,16 @@
             window.location.href = '/pos-login';
         }
 
-        function cerrarSesionPos() {
+        async function cerrarSesionPos() {
+            // Registrar fichaje de salida antes de cerrar (no bloquea si falla)
+            if (posUsuario && posUsuario.id_empleado) {
+                try {
+                    await fetch(API_URL + '/fichaje', {
+                        method:'POST', headers:{'Content-Type':'application/json'},
+                        body: JSON.stringify({ id_empleado: posUsuario.id_empleado, tipo: 'salida', observacion: 'Salida POS' })
+                    });
+                } catch(e) {}
+            }
             sessionStorage.removeItem('pos_usuario');
             window.location.href = '/pos-login';
         }
@@ -1039,14 +1067,39 @@
 
         // ── ELECCIÓN DE COMPROBANTE (factura AFIP o ticket interno) ──
         function abrirModalComprobante(total) {
+            document.getElementById('comp-elegir').classList.remove('hidden');
+            document.getElementById('comp-ticket').classList.add('hidden');
+            var t = document.getElementById('ticket-tel-cliente'); if (t) t.value = '';
             document.getElementById('modal-comprobante').classList.replace('modal-oculto','modal-visible');
         }
 
         function elegirTicketInterno() {
-            cerrarModales();
+            // Muestra las opciones del ticket (imprimir / whatsapp)
+            document.getElementById('comp-elegir').classList.add('hidden');
+            document.getElementById('comp-ticket').classList.remove('hidden');
+        }
+
+        function imprimirTicketInterno() {
             if (ventaParaFacturar) {
                 imprimirTicket(ventaParaFacturar.id_venta, ventaParaFacturar.total, ventaParaFacturar.metodo, ventaParaFacturar.detalle);
             }
+        }
+
+        function enviarTicketWhatsapp() {
+            if (!ventaParaFacturar) return;
+            var v = ventaParaFacturar;
+            var lineas = (v.detalle || []).map(function(it){
+                return it.cantidad + 'x ' + it.nombre_producto + ' - $' + (it.cantidad*it.precio_unitario).toLocaleString('es-AR');
+            }).join('%0A');
+            var msg = '*' + (empresa.nombre || 'Portal del Viento') + '*%0A' +
+                'Ticket #' + String(v.id_venta).padStart(5,'0') + '%0A' +
+                (lineas ? lineas + '%0A' : '') +
+                'Total: $' + parseFloat(v.total).toLocaleString('es-AR') + '%0A' +
+                'Pago: ' + (v.metodo || '') + '%0A' +
+                '¡Gracias por su compra!';
+            var tel = normalizarTelArg(document.getElementById('ticket-tel-cliente').value);
+            var base = tel ? ('https://wa.me/' + tel) : 'https://wa.me/';
+            window.open(base + '?text=' + msg, '_blank');
         }
 
         function elegirFacturaAfip() {
