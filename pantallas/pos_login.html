@@ -70,6 +70,15 @@
                 if (res.ok) {
                     const u = await res.json();
                     sessionStorage.setItem('pos_usuario', JSON.stringify(u));
+                    // Registrar fichaje de entrada (no bloquea el ingreso si falla)
+                    if (u.id_empleado) {
+                        try {
+                            await fetch(`${API_URL}/fichaje`, {
+                                method:'POST', headers:{'Content-Type':'application/json'},
+                                body: JSON.stringify({ id_empleado: u.id_empleado, tipo: 'entrada', observacion: 'Login POS' })
+                            });
+                        } catch(e) {}
+                    }
                     window.location.href = '/pos';
                 } else {
                     const e = await res.json();
