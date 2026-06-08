@@ -65,7 +65,7 @@
             try {
                 const res = await fetch(`${API_URL}/pos/login`, {
                     method: 'POST', headers: {'Content-Type':'application/json'},
-                    body: JSON.stringify({ username, password })
+                    body: JSON.stringify({ username, password, dispositivo: (navigator.platform || 'POS') + ' · ' + (navigator.userAgent.indexOf('Mobile')>-1 ? 'celular/tablet' : 'PC') })
                 });
                 if (res.ok) {
                     const u = await res.json();
