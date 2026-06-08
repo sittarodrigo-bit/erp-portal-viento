@@ -343,11 +343,24 @@
             <div class="bg-black rounded-xl border border-gray-800 overflow-x-auto">
                 <table class="w-full text-left text-sm">
                     <thead class="bg-gray-950 text-xs text-gray-400 uppercase">
-                        <tr><th class="p-2">Fecha</th><th class="p-2">Hora</th><th class="p-2">Medio</th><th class="p-2">Cajero</th><th class="p-2">Comprobante</th><th class="p-2 text-right">Total</th></tr>
+                        <tr><th class="p-2">Fecha</th><th class="p-2">Hora</th><th class="p-2">Medio</th><th class="p-2">Cajero</th><th class="p-2">Comprobante</th><th class="p-2 text-right">Total</th><th class="p-2 text-right">Acción</th></tr>
                     </thead>
                     <tbody id="vl-tbody" class="divide-y divide-gray-800"></tbody>
                 </table>
             </div>
+        </div>
+    </div>
+
+    <!-- MODAL DETALLE / REIMPRIMIR VENTA -->
+    <div id="modal-detalle-venta" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
+        <div class="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-[420px] max-w-[95vw] shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-lg font-bold text-white">Detalle de la venta</h3>
+                <button onclick="cerrarModales()" class="text-gray-500 hover:text-white text-2xl leading-none">×</button>
+            </div>
+            <div id="detalle-venta-body" class="mb-5"></div>
+            <button onclick="reimprimirComprobante()" class="w-full bg-neon text-black font-bold py-3 rounded-xl hover:bg-yellow-300">🖨️ Reimprimir comprobante</button>
+            <button onclick="cerrarModales()" class="w-full text-gray-500 hover:text-white text-sm py-3 mt-1">Cerrar</button>
         </div>
     </div>
 
@@ -1514,18 +1527,18 @@
             if (comp) p.append('comprobante', comp);
             if (localActual) p.append('id_local', localActual.id);
             var tbody = document.getElementById('vl-tbody');
-            tbody.innerHTML = '<tr><td class="p-3 text-gray-500" colspan="6">Cargando...</td></tr>';
+            tbody.innerHTML = '<tr><td class="p-3 text-gray-500" colspan="7">Cargando...</td></tr>';
             try {
                 var data = await fetch(API_URL + '/ventas/listado?' + p.toString()).then(function(r){return r.json();});
                 ventasListadoCache = data.ventas || [];
                 renderListadoVentas(data);
-            } catch(e) { tbody.innerHTML = '<tr><td class="p-3 text-red-400" colspan="6">No se pudo cargar.</td></tr>'; }
+            } catch(e) { tbody.innerHTML = '<tr><td class="p-3 text-red-400" colspan="7">No se pudo cargar.</td></tr>'; }
         }
 
         function renderListadoVentas(data) {
             var tbody = document.getElementById('vl-tbody');
             var ventas = data.ventas || [];
-            if (!ventas.length) { tbody.innerHTML = '<tr><td class="p-4 text-gray-500 text-center" colspan="6">Sin ventas en ese período.</td></tr>'; }
+            if (!ventas.length) { tbody.innerHTML = '<tr><td class="p-4 text-gray-500 text-center" colspan="7">Sin ventas en ese período.</td></tr>'; }
             else {
                 tbody.innerHTML = ventas.map(function(v){
                     var f = v.fecha ? new Date(v.fecha.replace(' ','T')) : null;
@@ -1546,6 +1559,7 @@
                         '<td class="p-2 text-gray-400">' + (v.nombre_cajero||'—') + '</td>' +
                         '<td class="p-2">' + comp + '</td>' +
                         '<td class="p-2 text-right text-neon font-bold">$ ' + parseFloat(v.total||0).toLocaleString('es-AR') + '</td>' +
+                        '<td class="p-2 text-right"><button onclick="verComprobanteVenta(' + v.id + ')" class="text-xs border border-gray-700 hover:border-neon text-gray-300 hover:text-white px-2 py-1 rounded">👁️ Ver</button></td>' +
                     '</tr>';
                 }).join('');
             }
@@ -1554,6 +1568,60 @@
                 '<div class="bg-black border border-gray-800 rounded-xl p-3 text-center"><p class="text-gray-500 text-xs font-bold mb-1">TOTAL (' + (r.cantidad||0) + ')</p><p class="text-neon font-bold">$ ' + parseFloat(r.total_general||0).toLocaleString('es-AR') + '</p></div>' +
                 '<div class="bg-black border border-gray-800 rounded-xl p-3 text-center"><p class="text-gray-500 text-xs font-bold mb-1">🧾 Facturado AFIP</p><p class="text-green-400 font-bold">$ ' + parseFloat(r.total_afip||0).toLocaleString('es-AR') + '</p></div>' +
                 '<div class="bg-black border border-gray-800 rounded-xl p-3 text-center"><p class="text-gray-500 text-xs font-bold mb-1">🎫 Ticket interno</p><p class="text-gray-300 font-bold">$ ' + parseFloat(r.total_ticket||0).toLocaleString('es-AR') + '</p></div>';
+        }
+
+        // ── VER / REIMPRIMIR COMPROBANTE DE UNA VENTA ──
+        var comprobanteActual = null;
+        async function verComprobanteVenta(idVenta) {
+            try {
+                comprobanteActual = await fetch(API_URL + '/ventas/' + idVenta + '/comprobante').then(function(r){ return r.json(); });
+            } catch(e) { alert('No se pudo cargar el comprobante.'); return; }
+            var v = comprobanteActual;
+            var det = (v.detalle||[]).map(function(it){
+                return '<div class="flex justify-between text-sm py-1 border-b border-gray-800"><span class="text-gray-300">' + it.cantidad + 'x ' + it.nombre_producto + '</span><span class="text-gray-400">$ ' + (it.cantidad*it.precio_unitario).toLocaleString('es-AR') + '</span></div>';
+            }).join('');
+            var pagos = (v.pagos && v.pagos.length) ? '<p class="text-xs text-gray-500 mt-2">Pagos: ' + v.pagos.map(function(p){ return p.metodo_pago + ' $' + parseFloat(p.monto).toLocaleString('es-AR'); }).join(' · ') + '</p>' : '';
+            var compInfo;
+            if (v.factura) {
+                var tipo = v.factura.tipo_comprobante === 1 ? 'Factura A' : v.factura.tipo_comprobante === 11 ? 'Factura C' : 'Factura B';
+                var nro = String(v.factura.punto_venta).padStart(4,'0') + '-' + String(v.factura.numero).padStart(8,'0');
+                compInfo = '<p class="text-green-400 font-bold">🧾 ' + tipo + ' ' + nro + '</p><p class="text-gray-500 text-xs">CAE: ' + v.factura.cae + '</p>';
+            } else {
+                compInfo = '<p class="text-gray-400 font-bold">🎫 Ticket interno</p>';
+            }
+            var f = v.fecha ? new Date(v.fecha.replace(' ','T')) : null;
+            document.getElementById('detalle-venta-body').innerHTML =
+                '<div class="mb-3">' + compInfo +
+                '<p class="text-gray-500 text-xs">' + (f ? f.toLocaleString('es-AR') : '') + (v.local_nombre ? ' · ' + v.local_nombre : '') + '</p></div>' +
+                det +
+                '<div class="flex justify-between font-bold text-white mt-3 text-lg"><span>Total</span><span class="text-neon">$ ' + parseFloat(v.total||0).toLocaleString('es-AR') + '</span></div>' +
+                pagos;
+            document.getElementById('modal-detalle-venta').classList.replace('modal-oculto','modal-visible');
+        }
+
+        function reimprimirComprobante() {
+            var v = comprobanteActual;
+            if (!v) return;
+            if (v.factura) {
+                // Reconstruir el estado para usar el constructor de factura existente
+                afipFacturaEmitida = {
+                    cae: v.factura.cae, cae_vto: v.factura.cae_vto, numero: v.factura.numero,
+                    punto_venta: v.factura.punto_venta, tipo_comprobante: v.factura.tipo_comprobante,
+                    entorno: v.factura.entorno, total: v.total,
+                    fecha_cbte: (v.fecha||'').slice(0,10).replace(/-/g,''),
+                    cuit_emisor: (empresa.cuit||''), doc_tipo: v.factura.doc_tipo, doc_nro: v.factura.doc_nro
+                };
+                ventaParaFacturar = { id_venta: v.id, total: v.total, detalle: v.detalle };
+                // localActual puede no coincidir; usamos los datos del comprobante
+                var prevLocal = localActual;
+                localActual = { id: v.id_local, nombre: v.local_nombre || (localActual?localActual.nombre:''), direccion: v.local_direccion || '' };
+                imprimirFacturaAfip().finally(function(){ localActual = prevLocal; });
+            } else {
+                var prevLocal2 = localActual;
+                localActual = { id: v.id_local, nombre: v.local_nombre || (localActual?localActual.nombre:''), direccion: v.local_direccion || '' };
+                imprimirTicket(v.id, v.total, v.metodo_pago, v.detalle || []);
+                localActual = prevLocal2;
+            }
         }
 
         function exportarListadoVentas() {
