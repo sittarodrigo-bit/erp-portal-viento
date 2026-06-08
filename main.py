@@ -3456,16 +3456,15 @@ def mp_crear_pago(id_pedido: int, request: Request):
                 payer_email=pedido.get('dist_email')
             )
         except Exception as e:
-            import traceback
             msg = str(e)
-            # Diagnóstico más claro según el tipo de fallo
             low = msg.lower()
+            # Si viene el detalle crudo de MP (HTTP ...), lo mostramos tal cual para diagnosticar
+            if msg.startswith("HTTP "):
+                raise HTTPException(status_code=502, detail="Mercado Pago respondió: " + msg)
             if 'timeout' in low or 'timed out' in low:
-                detalle = "El servidor no pudo conectarse a Mercado Pago a tiempo (timeout). Puede ser un bloqueo de red en Railway hacia api.mercadopago.com."
-            elif 'connection' in low or 'resolve' in low or 'name or service' in low or 'failed to establish' in low:
-                detalle = "El servidor no logró alcanzar a Mercado Pago (conexión rechazada o dominio bloqueado). Revisá que Railway permita el dominio api.mercadopago.com."
-            elif '401' in msg or 'unauthorized' in low or 'invalid' in low:
-                detalle = "Mercado Pago rechazó la credencial (token inválido o de otro entorno). Revisá el MP_ACCESS_TOKEN."
+                detalle = "El servidor no pudo conectarse a Mercado Pago a tiempo (timeout)."
+            elif 'connection' in low or 'resolve' in low or 'failed to establish' in low:
+                detalle = "El servidor no logró alcanzar a Mercado Pago (conexión/dominio)."
             else:
                 detalle = msg
             raise HTTPException(status_code=502, detail="Mercado Pago: " + detalle)
