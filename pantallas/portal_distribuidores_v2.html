@@ -440,8 +440,35 @@
                         '</div>' +
                     '</button>' +
                     '<div id="detalle-ped-' + p.id + '" class="hidden border-t border-gray-800 px-4 py-3 bg-black/30"></div>' +
+                    (p.estado === 'Despachado' ? '<div class="border-t border-gray-800 p-3"><button type="button" onclick="pagarConMP(' + p.id + ', this)" class="w-full bg-[#009ee3] hover:bg-[#008fcc] text-white font-bold py-3 rounded-xl text-sm">💳 Pagar con Mercado Pago</button></div>' : '') +
                 '</div>';
             }).join('');
+        }
+
+        async function pagarConMP(idPedido, btn) {
+            btn.disabled = true;
+            var txt = btn.textContent;
+            btn.textContent = 'Generando pago...';
+            try {
+                var res = await fetch(API_URL + '/mp/crear_pago/' + idPedido, { method:'POST' });
+                if (!res.ok) {
+                    var e = await res.json();
+                    alert('No se pudo generar el pago: ' + (e.detail || 'error'));
+                    btn.disabled = false; btn.textContent = txt;
+                    return;
+                }
+                var data = await res.json();
+                if (data.link) {
+                    // Abrir el checkout de Mercado Pago
+                    window.location.href = data.link;
+                } else {
+                    alert('No se recibió el link de pago.');
+                    btn.disabled = false; btn.textContent = txt;
+                }
+            } catch(e) {
+                alert('Error de conexión.');
+                btn.disabled = false; btn.textContent = txt;
+            }
         }
 
         async function toggleDetallePedido(idPedido, btn) {
@@ -520,6 +547,19 @@
         window.onload = function() {
             var s = sessionStorage.getItem('dist_sesion');
             if (s) { distActual = JSON.parse(s); abrirPanel(); }
+            // Aviso al volver de Mercado Pago
+            var params = new URLSearchParams(window.location.search);
+            var pago = params.get('pago');
+            if (pago === 'ok') {
+                alert('✅ ¡Pago realizado! Puede tardar unos minutos en verse reflejado el saldo.');
+                history.replaceState(null, '', window.location.pathname);
+            } else if (pago === 'pendiente') {
+                alert('⏳ Tu pago quedó pendiente. Cuando se acredite, vas a ver el saldo actualizado.');
+                history.replaceState(null, '', window.location.pathname);
+            } else if (pago === 'error') {
+                alert('❌ El pago no se completó. Podés intentar de nuevo.');
+                history.replaceState(null, '', window.location.pathname);
+            }
         };
     </script>
 </body>
