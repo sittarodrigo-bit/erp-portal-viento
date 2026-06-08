@@ -3499,9 +3499,50 @@ def ventas_listado(desde: Optional[str] = None, hasta: Optional[str] = None,
     finally:
         liberar_conexion(conn)
 
-# ==============================================================================
-# REINICIAR DATOS DE UN LOCAL (poner en marcha desde cero)
-# ==============================================================================
+@app.get("/api/ventas/{id_venta}/comprobante")
+def venta_comprobante(id_venta: int):
+    """Devuelve todo lo necesario para reimprimir el comprobante de una venta:
+    detalle de productos, datos del local, pagos, y datos de factura AFIP si la tiene."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        # Venta + local
+        try:
+            cur.execute("""SELECT v.id, v.fecha::text AS fecha, v.metodo_pago, v.total, v.id_local,
+                                  l.nombre AS local_nombre, l.direccion AS local_direccion
+                           FROM pos_ventas v LEFT JOIN pos_locales l ON v.id_local=l.id
+                           WHERE v.id=%s""", (id_venta,))
+        except Exception:
+            conn.rollback()
+            cur.execute("""SELECT v.id, v.fecha::text AS fecha, v.metodo_pago, v.total, v.id_local
+                           FROM pos_ventas v WHERE v.id=%s""", (id_venta,))
+        venta = cur.fetchone()
+        if not venta:
+            raise HTTPException(status_code=404, detail="Venta no encontrada")
+        venta = dict(venta)
+        # Detalle
+        cur.execute("SELECT nombre_producto, cantidad, precio_unitario FROM pos_detalle_ventas WHERE id_venta=%s", (id_venta,))
+        venta['detalle'] = fetchall_dict(cur)
+        # Pagos (si existe la tabla)
+        try:
+            cur.execute("SELECT metodo_pago, monto FROM pos_pagos_venta WHERE id_venta=%s", (id_venta,))
+            venta['pagos'] = fetchall_dict(cur)
+        except Exception:
+            conn.rollback()
+            venta['pagos'] = []
+        # Factura AFIP (si fue facturada)
+        try:
+            cur.execute("""SELECT punto_venta, tipo_comprobante, numero, doc_tipo, doc_nro,
+                                  neto, iva, total, cae, cae_vto::text AS cae_vto, entorno
+                           FROM afip_facturas WHERE id_venta=%s AND estado='emitida' ORDER BY id DESC LIMIT 1""", (id_venta,))
+            f = cur.fetchone()
+            venta['factura'] = dict(f) if f else None
+        except Exception:
+            conn.rollback()
+            venta['factura'] = None
+        return venta
+    finally:
+        liberar_conexion(conn)
 @app.delete("/api/locales/{id_local}/reiniciar")
 def reiniciar_datos_local(id_local: int, confirmar: Optional[str] = None):
     """Borra ventas, reposiciones, faltantes y gastos del local para arrancar de cero.
