@@ -2032,7 +2032,7 @@ def pos_cerrar_caja(id_caja: int, data: PosCerrarCaja):
         liberar_conexion(conn)
 
 # ---- VENTAS ----
-
+@app.post("/api/pos/ventas")
 def _totales_por_metodo_caja(cur, id_caja):
     """Devuelve dict con efectivo/tarjeta/transferencia/qr de una caja.
     Usa el desglose de pos_pagos_venta si existe; si no, cae al metodo_pago de la venta."""
@@ -2063,7 +2063,7 @@ def _totales_por_metodo_caja(cur, id_caja):
         if isinstance(r, dict):
             return r
         return {"efectivo": r[0], "tarjeta": r[1], "transferencia": r[2], "qr": r[3]}
-@app.post("/api/pos/ventas")
+
 def pos_registrar_venta(venta: PosVenta):
     conn = obtener_conexion()
     try:
@@ -3440,7 +3440,19 @@ def mp_crear_pago(id_pedido: int, request: Request):
                 payer_email=pedido.get('dist_email')
             )
         except Exception as e:
-            raise HTTPException(status_code=502, detail="Error con Mercado Pago: " + str(e))
+            import traceback
+            msg = str(e)
+            # Diagnóstico más claro según el tipo de fallo
+            low = msg.lower()
+            if 'timeout' in low or 'timed out' in low:
+                detalle = "El servidor no pudo conectarse a Mercado Pago a tiempo (timeout). Puede ser un bloqueo de red en Railway hacia api.mercadopago.com."
+            elif 'connection' in low or 'resolve' in low or 'name or service' in low or 'failed to establish' in low:
+                detalle = "El servidor no logró alcanzar a Mercado Pago (conexión rechazada o dominio bloqueado). Revisá que Railway permita el dominio api.mercadopago.com."
+            elif '401' in msg or 'unauthorized' in low or 'invalid' in low:
+                detalle = "Mercado Pago rechazó la credencial (token inválido o de otro entorno). Revisá el MP_ACCESS_TOKEN."
+            else:
+                detalle = msg
+            raise HTTPException(status_code=502, detail="Mercado Pago: " + detalle)
         # Link: en producción init_point; si usás credenciales de prueba, sandbox_init_point
         link = pref.get("init_point") or pref.get("sandbox_init_point")
         return {"link": link, "preference_id": pref.get("id")}
