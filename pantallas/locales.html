@@ -122,6 +122,7 @@
                 <button onclick="cambiarTab('faltantes')" id="tab-faltantes" class="py-3 text-sm font-bold text-gray-400 hover:text-white">⚠️ Faltantes</button>
                 <button onclick="cambiarTab('reposiciones')" id="tab-reposiciones" class="py-3 text-sm font-bold text-gray-400 hover:text-white">🛒 Reposiciones</button>
                 <button onclick="cambiarTab('gastos')" id="tab-gastos" class="py-3 text-sm font-bold text-gray-400 hover:text-white">💸 Gastos</button>
+                <button onclick="cambiarTab('cierres')" id="tab-cierres" class="py-3 text-sm font-bold text-gray-400 hover:text-white">🔒 Cierres de caja</button>
             </div>
             <div class="flex-1 overflow-y-auto p-8">
                 <!-- VENTAS -->
@@ -198,6 +199,24 @@
                         <span class="text-gray-400">Pendientes de aprobar resaltados en amarillo.</span>
                     </div>
                     <div id="lista-gastos-local" class="space-y-2"></div>
+                </div>
+
+                <div id="panel-cierres" class="hidden">
+                    <div class="flex flex-wrap gap-3 mb-4 items-end bg-black p-4 rounded-xl border border-gray-800">
+                        <div>
+                            <label class="block text-xs text-gray-500 font-bold mb-1">Desde</label>
+                            <input type="date" id="cie-desde" class="bg-gray-900 border border-gray-700 text-white rounded p-2 text-sm">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-500 font-bold mb-1">Hasta</label>
+                            <input type="date" id="cie-hasta" class="bg-gray-900 border border-gray-700 text-white rounded p-2 text-sm">
+                        </div>
+                        <button onclick="cargarCierres()" class="bg-neon text-black font-bold px-4 py-2 rounded-lg text-sm hover:bg-yellow-300">Filtrar</button>
+                        <p class="text-gray-500 text-xs flex-1 text-right">La diferencia compara el efectivo contado al cierre contra lo esperado (apertura + ventas en efectivo).</p>
+                    </div>
+                    <div id="lista-cierres" class="space-y-3">
+                        <p class="text-gray-500 text-center py-8">Cargando cierres...</p>
+                    </div>
                 </div>
             </div>
         </div>
@@ -518,7 +537,7 @@
         }
 
         function cambiarTab(tab) {
-            ['ventas','productos','faltantes','reposiciones','gastos'].forEach(t => {
+            ['ventas','productos','faltantes','reposiciones','gastos','cierres'].forEach(t => {
                 const p = document.getElementById('panel-' + (t==='gastos'?'gastos-local':t));
                 if (p) p.classList.toggle('hidden', t!==tab);
             });
@@ -527,11 +546,93 @@
             document.getElementById('tab-faltantes').className = tab==='faltantes' ? 'py-3 text-sm font-bold tab-activa' : 'py-3 text-sm font-bold text-gray-400 hover:text-white';
             document.getElementById('tab-reposiciones').className = tab==='reposiciones' ? 'py-3 text-sm font-bold tab-activa' : 'py-3 text-sm font-bold text-gray-400 hover:text-white';
             document.getElementById('tab-gastos').className = tab==='gastos' ? 'py-3 text-sm font-bold tab-activa' : 'py-3 text-sm font-bold text-gray-400 hover:text-white';
+            document.getElementById('tab-cierres').className = tab==='cierres' ? 'py-3 text-sm font-bold tab-activa' : 'py-3 text-sm font-bold text-gray-400 hover:text-white';
             if (tab==='ventas') cargarVentas();
             if (tab==='productos') cargarProductos();
             if (tab==='faltantes') cargarFaltantes();
             if (tab==='reposiciones') cargarReposiciones();
             if (tab==='gastos') cargarGastosLocal();
+            if (tab==='cierres') cargarCierres();
+        }
+
+        // ── CIERRES DE CAJA ──
+        async function cargarCierres() {
+            if (!localActual) return;
+            // Inicializa fechas (último mes) si están vacías
+            if (document.getElementById('cie-desde') && !document.getElementById('cie-desde').value) {
+                const hoy = new Date();
+                const ini = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
+                document.getElementById('cie-desde').value = ini.toISOString().slice(0,10);
+                document.getElementById('cie-hasta').value = hoy.toISOString().slice(0,10);
+            }
+            const desde = document.getElementById('cie-desde').value;
+            const hasta = document.getElementById('cie-hasta').value;
+            const cont = document.getElementById('lista-cierres');
+            cont.innerHTML = '<p class="text-gray-500 text-center py-8">Cargando cierres...</p>';
+            let url = `${API_URL}/locales/${localActual.id}/cierres`;
+            const qs = [];
+            if (desde) qs.push('desde=' + desde);
+            if (hasta) qs.push('hasta=' + hasta);
+            if (qs.length) url += '?' + qs.join('&');
+            try {
+                const lista = await fetch(url).then(r=>r.json());
+                if (!lista.length) {
+                    cont.innerHTML = '<p class="text-gray-500 text-center py-8">No hay cierres de caja en este período.</p>';
+                    return;
+                }
+                cont.innerHTML = '';
+                lista.forEach(c => {
+                    const fCierre = c.fecha_cierre ? new Date(c.fecha_cierre).toLocaleString('es-AR', {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '—';
+                    const dif = parseFloat(c.diferencia || 0);
+                    let difHtml;
+                    if (Math.abs(dif) < 0.5) difHtml = '<span class="text-gray-400 font-bold">Sin diferencia</span>';
+                    else if (dif > 0) difHtml = `<span class="text-green-400 font-bold">Sobra $ ${dif.toLocaleString('es-AR')}</span>`;
+                    else difHtml = `<span class="text-red-400 font-bold">Falta $ ${Math.abs(dif).toLocaleString('es-AR')}</span>`;
+
+                    const control = c.controlado
+                        ? `<div class="text-xs text-green-400 font-bold mt-2">✓ Recibido y controlado por ${c.controlado_por || '—'}${c.fecha_control ? ' · ' + new Date(c.fecha_control).toLocaleDateString('es-AR') : ''}</div>`
+                        : `<button onclick="controlarCierre(${c.id})" class="mt-2 text-xs border border-neon bg-neon/10 text-neon hover:bg-neon hover:text-black px-3 py-1.5 rounded font-bold transition">Marcar recibido / controlado</button>`;
+
+                    cont.innerHTML += `
+                        <div class="bg-black border border-gray-800 rounded-xl p-4">
+                            <div class="flex justify-between items-start mb-3">
+                                <div>
+                                    <p class="text-white font-bold">${fCierre} hs</p>
+                                    <p class="text-gray-500 text-xs">Responsable: ${c.nombre_responsable || '—'}</p>
+                                </div>
+                                <div class="text-right">
+                                    <p class="text-gray-500 text-xs">Total vendido</p>
+                                    <p class="text-neon font-bold text-lg">$ ${parseFloat(c.total_vendido||0).toLocaleString('es-AR')}</p>
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-sm mb-3">
+                                <div class="bg-gray-900 rounded-lg p-2"><p class="text-gray-500 text-xs">💵 Efectivo</p><p class="text-white font-bold">$ ${parseFloat(c.total_efectivo||0).toLocaleString('es-AR')}</p></div>
+                                <div class="bg-gray-900 rounded-lg p-2"><p class="text-gray-500 text-xs">💳 Tarjeta</p><p class="text-white font-bold">$ ${parseFloat(c.total_tarjeta||0).toLocaleString('es-AR')}</p></div>
+                                <div class="bg-gray-900 rounded-lg p-2"><p class="text-gray-500 text-xs">🏦 Transfer.</p><p class="text-white font-bold">$ ${parseFloat(c.total_transferencia||0).toLocaleString('es-AR')}</p></div>
+                                <div class="bg-gray-900 rounded-lg p-2"><p class="text-gray-500 text-xs">📱 QR</p><p class="text-white font-bold">$ ${parseFloat(c.total_qr||0).toLocaleString('es-AR')}</p></div>
+                            </div>
+                            <div class="flex flex-wrap justify-between items-center gap-2 text-sm border-t border-gray-800 pt-3">
+                                <span class="text-gray-400">Apertura: $ ${parseFloat(c.monto_apertura||0).toLocaleString('es-AR')} · Contado al cierre: $ ${parseFloat(c.monto_cierre||0).toLocaleString('es-AR')}</span>
+                                ${difHtml}
+                            </div>
+                            ${c.observaciones ? `<p class="text-gray-500 text-xs italic mt-2">📝 ${c.observaciones}</p>` : ''}
+                            ${control}
+                        </div>`;
+                });
+            } catch(e) {
+                cont.innerHTML = '<p class="text-red-400 text-center py-8">Error al cargar los cierres.</p>';
+            }
+        }
+
+        async function controlarCierre(idCaja) {
+            const quien = prompt('¿Quién recibió y controló esta caja? (nombre)');
+            if (quien === null) return;
+            if (!quien.trim()) { alert('Poné un nombre.'); return; }
+            try {
+                const res = await fetch(`${API_URL}/locales/cierres/${idCaja}/controlar?controlado_por=${encodeURIComponent(quien.trim())}`, { method:'PUT' });
+                if (res.ok) cargarCierres();
+                else alert('No se pudo guardar.');
+            } catch(e) { alert('Error de conexión.'); }
         }
 
         // ── VENTAS ──
