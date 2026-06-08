@@ -136,11 +136,12 @@ def _obtener_ta(cfg):
 # ---- WSFEv1: pedir el próximo número y autorizar el comprobante (CAE) ----
 def emitir_factura(tipo_cbte: int, doc_tipo: int, doc_nro: str,
                    neto: float, iva: float, total: float,
-                   cond_iva_receptor: int = 5):
+                   cond_iva_receptor: int = 5, punto_venta: int = None):
     """
     Emite un comprobante y devuelve dict con cae, vencimiento, numero.
     tipo_cbte: 6=Factura B, 1=Factura A, 11=Factura C
     doc_tipo: 80=CUIT, 96=DNI, 99=Consumidor Final
+    punto_venta: si se pasa, usa ese (el del local); si no, el de la variable de entorno.
     """
     cfg = _config()
     if not cfg["cuit"]:
@@ -148,7 +149,7 @@ def emitir_factura(tipo_cbte: int, doc_tipo: int, doc_nro: str,
 
     token, sign = _obtener_ta(cfg)
     cuit = int(cfg["cuit"])
-    pv = cfg["punto_venta"]
+    pv = int(punto_venta) if punto_venta else cfg["punto_venta"]
 
     client = _get_client(WSFE_URLS[cfg["entorno"]])
     auth = {"Token": token, "Sign": sign, "Cuit": cuit}
