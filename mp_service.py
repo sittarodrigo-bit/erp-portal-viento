@@ -47,26 +47,28 @@ def crear_preferencia(titulo, monto, referencia_externa, base_url,
             "unit_price": round(float(monto), 2),
         }],
         "external_reference": str(referencia_externa),
-        "back_urls": {
+    }
+    # back_urls + auto_return solo si tenemos una URL pública https válida
+    if base and base.startswith("https://"):
+        pref["back_urls"] = {
             "success": base + "/portal-distribuidores?pago=ok",
             "pending": base + "/portal-distribuidores?pago=pendiente",
             "failure": base + "/portal-distribuidores?pago=error",
-        },
-        "auto_return": "approved",
-    }
+        }
+        pref["auto_return"] = "approved"
+        pref["notification_url"] = base + "/api/mp/webhook"
     if payer_email:
         pref["payer"] = {"email": payer_email}
     if notif_url:
         pref["notification_url"] = notif_url
-    elif base:
-        pref["notification_url"] = base + "/api/mp/webhook"
 
     r = requests.post(MP_API + "/checkout/preferences",
                       json=pref,
                       headers={"Authorization": "Bearer " + _token()},
                       timeout=45)
     if r.status_code not in (200, 201):
-        raise MPError("Error creando preferencia: " + r.text[:300])
+        # Devolvemos el cuerpo crudo de MP para poder diagnosticar (status + mensaje)
+        raise MPError("HTTP " + str(r.status_code) + " :: " + r.text[:500])
     data = r.json()
     return {
         "id": data.get("id"),
