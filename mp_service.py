@@ -81,6 +81,27 @@ def crear_preferencia(titulo, monto, referencia_externa, base_url,
         "sandbox_init_point": data.get("sandbox_init_point"),  # link de prueba
     }
 
+def buscar_pagos_por_preferencia(preference_id):
+    """Busca pagos aprobados asociados a una preferencia. Más confiable que external_reference."""
+    if not _token():
+        raise MPError("Falta MP_ACCESS_TOKEN.")
+    r = requests.get(MP_API + "/v1/payments/search",
+                     params={"preference_id": preference_id, "sort": "date_created", "criteria": "desc"},
+                     headers={"Authorization": "Bearer " + _token()},
+                     timeout=45)
+    if r.status_code != 200:
+        raise MPError("HTTP " + str(r.status_code) + " :: " + r.text[:400])
+    d = r.json()
+    out = []
+    for p in d.get("results", []):
+        out.append({
+            "id": p.get("id"),
+            "estado": p.get("status"),
+            "monto": p.get("transaction_amount"),
+            "external_reference": p.get("external_reference"),
+        })
+    return out
+
 def buscar_pagos(external_reference):
     """Busca pagos en MP por external_reference. Devuelve lista de pagos aprobados."""
     if not _token():
