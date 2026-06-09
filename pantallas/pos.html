@@ -59,7 +59,7 @@
             <h2 class="text-white font-bold text-xl mb-1">Caja cerrada</h2>
             <p id="cerrada-local-nombre" class="text-neon text-sm font-bold mb-6"></p>
             <label class="block text-xs text-gray-500 font-bold mb-1 text-left">Responsable de caja</label>
-            <input type="text" id="apertura-responsable" placeholder="Tu nombre" class="w-full bg-gray-900 border border-gray-700 text-white rounded-lg p-3 mb-3 text-sm">
+            <div id="apertura-responsable-fijo" class="w-full bg-gray-900 border border-gray-800 text-neon font-bold rounded-lg p-3 mb-3 text-sm text-left"></div>
             <label class="block text-xs text-gray-500 font-bold mb-1 text-left">Monto inicial en caja ($)</label>
             <input type="number" id="apertura-monto" value="0" step="0.01" class="w-full bg-gray-900 border border-neon text-white rounded-lg p-3 mb-6 font-bold text-xl text-center">
             <button onclick="abrirCaja()" id="btn-abrir-caja" class="w-full bg-neon text-black font-bold py-3 rounded-lg hover:bg-yellow-300 transition">🔓 Abrir Caja</button>
@@ -561,7 +561,7 @@
             } else {
                 cajaActual = null;
                 document.getElementById('cerrada-local-nombre').textContent = localActual.nombre;
-                document.getElementById('apertura-responsable').value = posUsuario ? (posUsuario.nombre + ' ' + posUsuario.apellido) : '';
+                document.getElementById('apertura-responsable-fijo').textContent = posUsuario ? (posUsuario.nombre + ' ' + posUsuario.apellido) : '—';
                 document.getElementById('apertura-monto').value = '0';
                 mostrarVista('cerrada');
                 document.getElementById('estado-caja-badge').textContent = '🔴 Caja cerrada';
@@ -580,7 +580,7 @@
         }
 
         async function abrirCaja() {
-            var resp = document.getElementById('apertura-responsable').value.trim();
+            var resp = posUsuario ? (posUsuario.nombre + ' ' + posUsuario.apellido) : '';
             var monto = parseFloat(document.getElementById('apertura-monto').value) || 0;
             var btn = document.getElementById('btn-abrir-caja');
             btn.disabled = true; btn.textContent = 'Abriendo...';
