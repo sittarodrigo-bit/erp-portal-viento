@@ -311,7 +311,8 @@
 
         // ── CATÁLOGO ─────────────────────────────────────────────
         async function cargarCatalogoDist() {
-            productosCache = await fetch(API_URL + '/productos/con_presentaciones').then(function(r) { return r.json(); });
+            // Usar el endpoint que aplica los descuentos por categoría del distribuidor logueado
+            productosCache = await fetch(API_URL + '/distribuidores/' + distActual.id + '/precios').then(function(r) { return r.json(); });
 
             var cats = await fetch(API_URL + '/categorias').then(function(r) { return r.json(); });
             var sinCat = productosCache.filter(function(p) { return !p.id_categoria; });
@@ -329,6 +330,8 @@
                     if (!p.presentaciones || !p.presentaciones.length) return;
                     var pres   = p.presentaciones[0];
                     var precio = parseFloat(pres.precio_mayorista) || 0;
+                    var pct    = parseFloat(p.descuento) || 0;
+                    var base   = parseFloat(p.precio_base) || precio;
                     var card   = document.createElement('div');
                     card.className = 'prod-card bg-gray-900 border border-gray-800 rounded-xl overflow-hidden';
                     card.innerHTML =
@@ -344,7 +347,9 @@
                                     p.presentaciones.map(function(pr) { return '<option value="' + pr.id + '" data-precio="' + pr.precio_mayorista + '">' + pr.nombre + '</option>'; }).join('') +
                                   '</select>'
                                 : '<input type="hidden" class="dist-pres" data-prod="' + p.id + '" value="' + pres.id + '" data-precio-fixed="' + precio + '">') +
-                            '<p class="text-neon font-bold text-sm mb-2">$ ' + precio.toLocaleString('es-AR') + '</p>' +
+                            '<p class="text-neon font-bold text-sm mb-2">$ ' + precio.toLocaleString('es-AR') +
+                                (pct > 0 ? ' <span class="text-gray-500 line-through text-xs">$' + base.toLocaleString('es-AR') + '</span> <span class="text-green-400 text-xs font-bold">-' + pct + '%</span>' : '') +
+                            '</p>' +
                             '<div class="flex items-center justify-between">' +
                                 '<button type="button" onclick="cambiarCantCard(this,-1)" class="cant-btn bg-gray-700 hover:bg-gray-600 text-white">−</button>' +
                                 '<input type="number" min="0" value="0" class="dist-cant w-10 bg-transparent text-white text-center font-bold text-lg outline-none" oninput="recalcDist()">' +
