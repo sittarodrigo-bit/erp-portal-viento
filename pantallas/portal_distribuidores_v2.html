@@ -136,6 +136,9 @@
                     <p id="stat-prep" class="text-yellow-400 font-bold text-sm">$ 0</p>
                 </div>
             </div>
+            <div id="bloque-pagar-deuda" class="hidden mb-4">
+                <button onclick="abrirPagoDeuda()" class="w-full bg-[#009ee3] hover:bg-[#008fcc] text-white font-bold py-3 rounded-xl text-sm">💳 Pagar mi deuda con Mercado Pago</button>
+            </div>
 
             <!-- Tabs -->
             <div class="grid grid-cols-2 gap-2 mb-2">
@@ -300,6 +303,9 @@
                 document.getElementById('stat-pagado').textContent = '$ ' + Math.max(0, totalPagado).toLocaleString('es-AR');
                 document.getElementById('stat-deuda').textContent  = '$ ' + Math.max(0, totalDeuda).toLocaleString('es-AR');
                 document.getElementById('stat-prep').textContent   = '$ ' + enPrep.toLocaleString('es-AR');
+                // Guardar deuda y mostrar botón de pago si corresponde
+                window.deudaActual = Math.max(0, totalDeuda);
+                document.getElementById('bloque-pagar-deuda').classList.toggle('hidden', window.deudaActual <= 0);
             } catch(e) {}
         }
 
@@ -445,6 +451,29 @@
             }).join('');
         }
 
+        async function abrirPagoDeuda() {
+            var deuda = window.deudaActual || 0;
+            if (deuda <= 0) { alert('No tenés deuda pendiente.'); return; }
+            var txt = prompt('Tu deuda actual es $ ' + deuda.toLocaleString('es-AR') + '\n\n¿Cuánto querés pagar? (podés pagar una parte)', deuda);
+            if (txt === null) return;
+            var monto = parseFloat(String(txt).replace(',', '.'));
+            if (!monto || monto <= 0) { alert('Ingresá un monto válido.'); return; }
+            if (monto > deuda + 0.5) { alert('El monto no puede superar tu deuda ($ ' + deuda.toLocaleString('es-AR') + ').'); return; }
+            try {
+                var res = await fetch(API_URL + '/mp/crear_pago_libre', {
+                    method:'POST', headers:{'Content-Type':'application/json'},
+                    body: JSON.stringify({ id_distribuidor: distActual.id, monto: monto })
+                });
+                var data;
+                try { data = await res.json(); } catch(e) { data = { detail: 'Error del servidor (' + res.status + ').' }; }
+                if (!res.ok) { alert('No se pudo generar el pago: ' + (data.detail || 'error')); return; }
+                if (data.link) { window.location.href = data.link; }
+                else { alert('No se recibió el link de pago.'); }
+            } catch(e) {
+                alert('Error al conectar con el servidor: ' + (e && e.message ? e.message : e));
+            }
+        }
+
         async function pagarConMP(idPedido, btn) {
             btn.disabled = true;
             var txt = btn.textContent;
@@ -552,7 +581,22 @@
             var params = new URLSearchParams(window.location.search);
             var pago = params.get('pago');
             if (pago === 'ok') {
-                alert('✅ ¡Pago realizado! Puede tardar unos minutos en verse reflejado el saldo.');
+                // Verificar con MP y registrar el pago (respaldo del webhook)
+                if (distActual && distActual.id) {
+                    var verificar = function(){
+                        return fetch(API_URL + '/mp/verificar_pagos/' + distActual.id, { method:'POST' })
+                            .then(function(r){ return r.json(); })
+                            .then(function(res){
+                                if (typeof cargarStats==='function') cargarStats();
+                                if (typeof cargarHistorialDist==='function') cargarHistorialDist();
+                                return res;
+                            }).catch(function(){});
+                    };
+                    verificar();
+                    // Reintento por si MP tarda en confirmar el pago
+                    setTimeout(verificar, 5000);
+                }
+                alert('✅ ¡Pago realizado! Tu saldo se va a actualizar en unos segundos.');
                 history.replaceState(null, '', window.location.pathname);
             } else if (pago === 'pendiente') {
                 alert('⏳ Tu pago quedó pendiente. Cuando se acredite, vas a ver el saldo actualizado.');
