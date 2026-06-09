@@ -2054,6 +2054,37 @@ def pos_cerrar_caja(id_caja: int, data: PosCerrarCaja):
     finally:
         liberar_conexion(conn)
 
+@app.put("/api/locales/caja/{id_caja}/cerrar_admin")
+def cerrar_caja_admin(id_caja: int):
+    """Cierre rápido de caja desde el panel admin. Usa lo registrado, sin conteo manual."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        t = _totales_por_metodo_caja(cur, id_caja)
+        # monto_cierre = apertura + efectivo registrado (cierre sin diferencia)
+        cur.execute("SELECT COALESCE(monto_apertura,0) AS ap, estado FROM pos_cajas WHERE id=%s", (id_caja,))
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Caja no encontrada")
+        if row['estado'] == 'cerrada':
+            raise HTTPException(status_code=400, detail="La caja ya está cerrada")
+        monto_cierre = float(row['ap'] or 0) + float(t['efectivo'] or 0)
+        cur.execute("""
+            UPDATE pos_cajas SET estado='cerrada', fecha_cierre=NOW(), monto_cierre=%s,
+                total_efectivo=%s, total_tarjeta=%s, total_transferencia=%s, total_qr=%s,
+                observaciones=COALESCE(observaciones,'') || ' [Cerrada desde panel admin]'
+            WHERE id=%s
+        """, (monto_cierre, t['efectivo'], t['tarjeta'], t['transferencia'], t['qr'], id_caja))
+        conn.commit()
+        return {"status": "ok"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
 # ---- VENTAS ----
 def _totales_por_metodo_caja(cur, id_caja):
     """Devuelve dict con efectivo/tarjeta/transferencia/qr de una caja.
@@ -4073,6 +4104,38 @@ def locales_cierres_caja(id_local: int, desde: Optional[str] = None, hasta: Opti
             c['diferencia'] = round(contado - esperado_efectivo, 2)  # + sobra / - falta
             c['total_vendido'] = round(ef + float(c['total_tarjeta'] or 0) + float(c['total_transferencia'] or 0) + float(c['total_qr'] or 0), 2)
         return cierres
+    finally:
+        liberar_conexion(conn)
+
+@app.put("/api/locales/caja/{id_caja}/cerrar_admin")
+def cerrar_caja_admin(id_caja: int):
+    """Cierre rápido de caja desde el panel admin: usa los totales registrados,
+    sin contar efectivo. Pensado para cuando el cajero se fue sin cerrar."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("SELECT id, estado, monto_apertura FROM pos_cajas WHERE id=%s", (id_caja,))
+        caja = cur.fetchone()
+        if not caja:
+            raise HTTPException(status_code=404, detail="Caja no encontrada")
+        if caja['estado'] == 'cerrada':
+            return {"status": "ya_cerrada"}
+        t = _totales_por_metodo_caja(cur, id_caja)
+        # Cierre rápido: el monto contado = apertura + efectivo registrado (sin diferencia)
+        esperado = float(caja['monto_apertura'] or 0) + float(t['efectivo'] or 0)
+        cur.execute("""
+            UPDATE pos_cajas SET estado='cerrada', fecha_cierre=NOW(), monto_cierre=%s,
+                total_efectivo=%s, total_tarjeta=%s, total_transferencia=%s, total_qr=%s,
+                observaciones=COALESCE(observaciones,'') || ' [Cerrada por administrador]'
+            WHERE id=%s
+        """, (esperado, t['efectivo'], t['tarjeta'], t['transferencia'], t['qr'], id_caja))
+        conn.commit()
+        return {"status": "ok", **dict(t)}
+    except HTTPException:
+        raise
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
     finally:
         liberar_conexion(conn)
 
