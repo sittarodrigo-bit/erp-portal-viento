@@ -2423,7 +2423,7 @@ def precios_para_distribuidor(id_dist: int):
         cur.execute("SELECT id_categoria, porcentaje FROM descuentos_distribuidor WHERE id_distribuidor=%s", (id_dist,))
         desc = {r['id_categoria']: float(r['porcentaje']) for r in fetchall_dict(cur)}
         cur.execute("""
-            SELECT id, sku, nombre, id_categoria,
+            SELECT id, sku, nombre, id_categoria, imagen_url,
                    COALESCE(precio_minorista,0) AS precio_minorista,
                    COALESCE(precio_mayorista,0) AS precio_mayorista
             FROM productos
