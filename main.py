@@ -3608,6 +3608,29 @@ async def mp_webhook(request: Request):
         # Nunca devolvemos error a MP para que no reintente infinito por un bug nuestro
         return {"status": "error", "detail": str(e)[:200]}
 
+@app.get("/api/mp/diagnostico_general")
+def mp_diagnostico_general():
+    """Muestra TODAS las preferencias guardadas (de cualquier distribuidor) y los cobros MP registrados."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        out = {}
+        try:
+            cur.execute("SELECT preference_id, id_distribuidor, monto, tipo, estado, creada::text FROM mp_preferencias ORDER BY creada DESC LIMIT 20")
+            out["preferencias_totales"] = fetchall_dict(cur)
+        except Exception as e:
+            conn.rollback()
+            out["error_tabla_preferencias"] = str(e)[:200]
+        try:
+            cur.execute("SELECT id, id_distribuidor, id_pedido, monto, metodo, referencia, fecha::text FROM cobros_distribuidores WHERE metodo='Mercado Pago' ORDER BY id DESC LIMIT 20")
+            out["cobros_mp"] = fetchall_dict(cur)
+        except Exception as e:
+            conn.rollback()
+            out["error_cobros"] = str(e)[:200]
+        return out
+    finally:
+        liberar_conexion(conn)
+
 @app.get("/api/mp/diagnostico/{id_distribuidor}")
 def mp_diagnostico(id_distribuidor: int):
     """Diagnóstico: muestra las preferencias del distribuidor y los pagos que MP asocia a cada una."""
