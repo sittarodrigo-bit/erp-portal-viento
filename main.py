@@ -3589,6 +3589,35 @@ async def mp_webhook(request: Request):
         # Nunca devolvemos error a MP para que no reintente infinito por un bug nuestro
         return {"status": "error", "detail": str(e)[:200]}
 
+@app.get("/api/mp/diagnostico/{id_distribuidor}")
+def mp_diagnostico(id_distribuidor: int):
+    """Diagnóstico: muestra qué pagos ve MP para este distribuidor y cuáles están registrados.
+    Se puede abrir directo en el navegador."""
+    if not mp_service or not mp_service.configurado():
+        return {"error": "Mercado Pago no configurado (falta MP_ACCESS_TOKEN)"}
+    out = {"id_distribuidor": id_distribuidor, "referencia_buscada": "distpago-" + str(id_distribuidor)}
+    try:
+        pagos = mp_service.buscar_pagos("distpago-" + str(id_distribuidor))
+        out["pagos_en_mp"] = pagos
+    except Exception as e:
+        out["error_busqueda"] = str(e)[:400]
+        return out
+    # Ver cuáles ya están registrados
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        registrados = []
+        for p in pagos:
+            try:
+                cur.execute("SELECT COUNT(*) AS c FROM cobros_distribuidores WHERE referencia=%s", (str(p.get("id")),))
+                registrados.append({"pago": p.get("id"), "estado": p.get("estado"), "ya_registrado": cur.fetchone()['c'] > 0})
+            except Exception:
+                conn.rollback()
+        out["registro"] = registrados
+        return out
+    finally:
+        liberar_conexion(conn)
+
 @app.post("/api/mp/verificar_pagos/{id_distribuidor}")
 def mp_verificar_pagos(id_distribuidor: int):
     """Consulta a MP los pagos del distribuidor (pago a cuenta) y registra los aprobados
