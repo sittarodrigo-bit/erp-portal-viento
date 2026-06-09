@@ -3409,6 +3409,57 @@ except Exception:
 def mp_estado():
     return {"configurado": bool(mp_service and mp_service.configurado())}
 
+class PagoLibre(BaseModel):
+    id_distribuidor: int
+    monto: float
+
+@app.post("/api/mp/crear_pago_libre")
+def mp_crear_pago_libre(data: PagoLibre, request: Request):
+    if not mp_service or not mp_service.configurado():
+        raise HTTPException(status_code=400, detail="Mercado Pago no está configurado (falta MP_ACCESS_TOKEN).")
+    if data.monto <= 0:
+        raise HTTPException(status_code=400, detail="El monto debe ser mayor a 0.")
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        # Datos del distribuidor
+        try:
+            cur.execute("SELECT id, razon_social, email FROM distribuidores WHERE id=%s", (data.id_distribuidor,))
+        except Exception:
+            conn.rollback()
+            cur.execute("SELECT id, razon_social, NULL AS email FROM distribuidores WHERE id=%s", (data.id_distribuidor,))
+        dist = cur.fetchone()
+        if not dist:
+            raise HTTPException(status_code=404, detail="Distribuidor no encontrado")
+        # Calcular deuda actual (pedidos despachados - cobros)
+        cur.execute("SELECT COALESCE(SUM(total),0) AS t FROM pedidos_b2b WHERE id_distribuidor=%s AND estado='Despachado'", (data.id_distribuidor,))
+        total_ped = float(cur.fetchone()['t'] or 0)
+        cur.execute("SELECT COALESCE(SUM(monto),0) AS t FROM cobros_distribuidores WHERE id_distribuidor=%s", (data.id_distribuidor,))
+        total_cob = float(cur.fetchone()['t'] or 0)
+        deuda = round(total_ped - total_cob, 2)
+        if deuda <= 0:
+            raise HTTPException(status_code=400, detail="No tenés deuda pendiente para pagar.")
+        if data.monto > deuda + 0.5:
+            raise HTTPException(status_code=400, detail="El monto supera tu deuda actual ($" + str(deuda) + ").")
+        base_url = str(request.base_url).rstrip("/")
+        try:
+            pref = mp_service.crear_preferencia(
+                titulo="Pago a cuenta - Portal del Viento",
+                monto=data.monto,
+                referencia_externa="distpago-" + str(data.id_distribuidor),
+                base_url=base_url,
+                payer_email=dist.get('email')
+            )
+        except Exception as e:
+            msg = str(e)
+            if msg.startswith("HTTP "):
+                raise HTTPException(status_code=502, detail="Mercado Pago respondió: " + msg)
+            raise HTTPException(status_code=502, detail="Mercado Pago: " + msg)
+        link = pref.get("init_point") or pref.get("sandbox_init_point")
+        return {"link": link, "preference_id": pref.get("id")}
+    finally:
+        liberar_conexion(conn)
+
 @app.post("/api/mp/crear_pago/{id_pedido}")
 def mp_crear_pago(id_pedido: int, request: Request):
     if not mp_service or not mp_service.configurado():
@@ -3495,31 +3546,81 @@ async def mp_webhook(request: Request):
         if info.get("estado") != "approved":
             return {"status": "no_aprobado"}
         ext = info.get("external_reference") or ""
-        if not ext.startswith("pedido-"):
-            return {"status": "ref_desconocida"}
-        id_pedido = int(ext.split("-")[1])
         monto = float(info.get("monto") or 0)
+        payment_id_str = str(payment_id)
         conn = obtener_conexion()
         try:
             cur = conn.cursor(cursor_factory=RealDictCursor)
-            # Datos del pedido
-            cur.execute("SELECT id_distribuidor FROM pedidos_b2b WHERE id=%s", (id_pedido,))
-            ped = cur.fetchone()
-            if not ped:
-                return {"status": "pedido_inexistente"}
-            # Evitar duplicar el cobro
-            cur.execute("SELECT COUNT(*) AS c FROM cobros_distribuidores WHERE id_pedido=%s", (id_pedido,))
-            if cur.fetchone()['c'] == 0:
+            # Evitar duplicar: ¿ya registramos este pago de MP?
+            try:
+                cur.execute("SELECT COUNT(*) AS c FROM cobros_distribuidores WHERE referencia=%s", (payment_id_str,))
+                if cur.fetchone()['c'] > 0:
+                    return {"status": "ya_registrado"}
+            except Exception:
+                conn.rollback()
+
+            if ext.startswith("pedido-"):
+                id_pedido = int(ext.split("-")[1])
+                cur.execute("SELECT id_distribuidor FROM pedidos_b2b WHERE id=%s", (id_pedido,))
+                ped = cur.fetchone()
+                if not ped:
+                    return {"status": "pedido_inexistente"}
+                cur.execute("SELECT COUNT(*) AS c FROM cobros_distribuidores WHERE id_pedido=%s", (id_pedido,))
+                if cur.fetchone()['c'] == 0:
+                    cur.execute("""INSERT INTO cobros_distribuidores (id_distribuidor, id_pedido, monto, metodo, referencia, notas)
+                                   VALUES (%s,%s,%s,%s,%s,%s)""",
+                                (ped['id_distribuidor'], id_pedido, monto, 'Mercado Pago', payment_id_str, 'Pago online aprobado'))
+                    conn.commit()
+                return {"status": "ok"}
+
+            elif ext.startswith("distpago-"):
+                id_dist = int(ext.split("-")[1])
+                # Pago a cuenta (sin pedido puntual)
                 cur.execute("""INSERT INTO cobros_distribuidores (id_distribuidor, id_pedido, monto, metodo, referencia, notas)
-                               VALUES (%s,%s,%s,%s,%s,%s)""",
-                            (ped['id_distribuidor'], id_pedido, monto, 'Mercado Pago', str(payment_id), 'Pago online aprobado'))
+                               VALUES (%s,NULL,%s,%s,%s,%s)""",
+                            (id_dist, monto, 'Mercado Pago', payment_id_str, 'Pago a cuenta online aprobado'))
                 conn.commit()
-            return {"status": "ok"}
+                return {"status": "ok"}
+            else:
+                return {"status": "ref_desconocida"}
         finally:
             liberar_conexion(conn)
     except Exception as e:
         # Nunca devolvemos error a MP para que no reintente infinito por un bug nuestro
         return {"status": "error", "detail": str(e)[:200]}
+
+@app.post("/api/mp/verificar_pagos/{id_distribuidor}")
+def mp_verificar_pagos(id_distribuidor: int):
+    """Consulta a MP los pagos del distribuidor (pago a cuenta) y registra los aprobados
+    que todavía no estén registrados. Sirve como respaldo del webhook."""
+    if not mp_service or not mp_service.configurado():
+        raise HTTPException(status_code=400, detail="Mercado Pago no está configurado.")
+    registrados = 0
+    try:
+        pagos = mp_service.buscar_pagos("distpago-" + str(id_distribuidor))
+    except Exception as e:
+        raise HTTPException(status_code=502, detail="No se pudo consultar Mercado Pago: " + str(e)[:200])
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        for p in pagos:
+            if p.get("estado") != "approved":
+                continue
+            pid = str(p.get("id"))
+            cur.execute("SELECT COUNT(*) AS c FROM cobros_distribuidores WHERE referencia=%s", (pid,))
+            if cur.fetchone()['c'] > 0:
+                continue
+            cur.execute("""INSERT INTO cobros_distribuidores (id_distribuidor, id_pedido, monto, metodo, referencia, notas)
+                           VALUES (%s,NULL,%s,%s,%s,%s)""",
+                        (id_distribuidor, float(p.get("monto") or 0), 'Mercado Pago', pid, 'Pago a cuenta online (verificado)'))
+            registrados += 1
+        conn.commit()
+        return {"status": "ok", "registrados": registrados}
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
 
 # ==============================================================================
 # FACTURACIÓN ELECTRÓNICA AFIP / ARCA
