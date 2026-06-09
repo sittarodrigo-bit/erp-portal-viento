@@ -1997,6 +1997,18 @@ def pos_abrir_caja(data: PosAbrirCaja):
         cur.execute("SELECT id FROM pos_cajas WHERE id_local=%s AND estado='abierta'", (data.id_local,))
         if cur.fetchone():
             raise HTTPException(status_code=400, detail="Ya hay una caja abierta en este local")
+        # Impedir que el mismo usuario tenga otra caja abierta en otro local
+        if data.id_usuario:
+            try:
+                cur.execute("SELECT pc.id, pl.nombre AS local FROM pos_cajas pc LEFT JOIN pos_locales pl ON pc.id_local=pl.id WHERE pc.id_usuario_apertura=%s AND pc.estado='abierta'", (data.id_usuario,))
+                otra = cur.fetchone()
+                if otra:
+                    nombre_otro = otra[1] if not isinstance(otra, dict) else otra.get('local')
+                    raise HTTPException(status_code=400, detail="Ya tenés una caja abierta en " + (nombre_otro or "otro local") + ". Cerrala antes de abrir otra.")
+            except HTTPException:
+                raise
+            except Exception:
+                conn.rollback()
         cur.execute("SELECT nombre FROM pos_locales WHERE id=%s", (data.id_local,))
         row = cur.fetchone()
         nombre_local = row[0] if row else None
