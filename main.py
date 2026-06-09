@@ -3456,16 +3456,26 @@ def mp_crear_pago_libre(data: PagoLibre, request: Request):
                 raise HTTPException(status_code=502, detail="Mercado Pago respondió: " + msg)
             raise HTTPException(status_code=502, detail="Mercado Pago: " + msg)
         link = pref.get("init_point") or pref.get("sandbox_init_point")
-        # Guardar la preferencia para poder reconciliar el pago después
+        # Guardar la preferencia para poder reconciliar el pago después.
+        # Usamos una conexión nueva para que un error previo no afecte el guardado.
+        guardado_ok = False
+        guardado_error = None
+        conn2 = obtener_conexion()
         try:
-            cur.execute("""INSERT INTO mp_preferencias (preference_id, id_distribuidor, id_pedido, monto, tipo)
+            cur2 = conn2.cursor()
+            cur2.execute("""INSERT INTO mp_preferencias (preference_id, id_distribuidor, id_pedido, monto, tipo)
                            VALUES (%s,%s,NULL,%s,'libre')
                            ON CONFLICT (preference_id) DO NOTHING""",
                         (str(pref.get("id")), data.id_distribuidor, data.monto))
-            conn.commit()
-        except Exception:
-            conn.rollback()
-        return {"link": link, "preference_id": pref.get("id")}
+            conn2.commit()
+            guardado_ok = True
+        except Exception as e2:
+            conn2.rollback()
+            guardado_error = str(e2)[:200]
+        finally:
+            liberar_conexion(conn2)
+        return {"link": link, "preference_id": pref.get("id"),
+                "preferencia_guardada": guardado_ok, "guardado_error": guardado_error}
     finally:
         liberar_conexion(conn)
 
