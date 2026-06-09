@@ -1775,9 +1775,12 @@ class PosAbrirCaja(BaseModel):
     id_local: int
     nombre_responsable: Optional[str] = None
     monto_apertura: float = 0.0
+    id_usuario: Optional[int] = None
 
 class PosCerrarCaja(BaseModel):
     monto_cierre: float = 0.0
+    id_usuario: Optional[int] = None
+    es_admin: Optional[bool] = False
     observaciones: Optional[str] = None
 
 class PosItemVenta(BaseModel):
@@ -1997,10 +2000,17 @@ def pos_abrir_caja(data: PosAbrirCaja):
         cur.execute("SELECT nombre FROM pos_locales WHERE id=%s", (data.id_local,))
         row = cur.fetchone()
         nombre_local = row[0] if row else None
-        cur.execute("""
-            INSERT INTO pos_cajas (id_local, nombre_local, nombre_responsable, monto_apertura)
-            VALUES (%s,%s,%s,%s) RETURNING id
-        """, (data.id_local, nombre_local, data.nombre_responsable, data.monto_apertura))
+        try:
+            cur.execute("""
+                INSERT INTO pos_cajas (id_local, nombre_local, nombre_responsable, monto_apertura, id_usuario_apertura)
+                VALUES (%s,%s,%s,%s,%s) RETURNING id
+            """, (data.id_local, nombre_local, data.nombre_responsable, data.monto_apertura, data.id_usuario))
+        except Exception:
+            conn.rollback()
+            cur.execute("""
+                INSERT INTO pos_cajas (id_local, nombre_local, nombre_responsable, monto_apertura)
+                VALUES (%s,%s,%s,%s) RETURNING id
+            """, (data.id_local, nombre_local, data.nombre_responsable, data.monto_apertura))
         cid = cur.fetchone()[0]
         conn.commit()
         return {"id_caja": cid}
@@ -2017,6 +2027,17 @@ def pos_cerrar_caja(id_caja: int, data: PosCerrarCaja):
     conn = obtener_conexion()
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
+        # Verificar quién abrió la caja
+        try:
+            cur.execute("SELECT id_usuario_apertura FROM pos_cajas WHERE id=%s", (id_caja,))
+            row = cur.fetchone()
+            id_abrio = row['id_usuario_apertura'] if row else None
+        except Exception:
+            conn.rollback()
+            id_abrio = None
+        # Solo puede cerrar quien la abrió, o un admin
+        if id_abrio is not None and not data.es_admin and data.id_usuario != id_abrio:
+            raise HTTPException(status_code=403, detail="Solo puede cerrar esta caja el usuario que la abrió o un administrador.")
         t = _totales_por_metodo_caja(cur, id_caja)
         cur.execute("""
             UPDATE pos_cajas SET estado='cerrada', fecha_cierre=NOW(), monto_cierre=%s,
@@ -2025,6 +2046,8 @@ def pos_cerrar_caja(id_caja: int, data: PosCerrarCaja):
         """, (data.monto_cierre, t['efectivo'], t['tarjeta'], t['transferencia'], t['qr'], data.observaciones, id_caja))
         conn.commit()
         return {"status": "ok", **dict(t)}
+    except HTTPException:
+        raise
     except Exception as e:
         conn.rollback()
         raise HTTPException(status_code=500, detail=str(e))
@@ -2062,8 +2085,8 @@ def _totales_por_metodo_caja(cur, id_caja):
         if isinstance(r, dict):
             return r
         return {"efectivo": r[0], "tarjeta": r[1], "transferencia": r[2], "qr": r[3]}
-@app.post("/api/pos/ventas")
 
+@app.post("/api/pos/ventas")
 def pos_registrar_venta(venta: PosVenta):
     conn = obtener_conexion()
     try:
