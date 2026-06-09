@@ -811,7 +811,15 @@
                     // Refrescamos caja y productos en segundo plano, sin bloquear
                     verificarCaja();
                 } else {
-                    var e = await res.json(); alert('❌ ' + (e.detail || 'Error al registrar'));
+                    var e = await res.json();
+                    var msg = e.detail;
+                    if (Array.isArray(msg)) {
+                        // Error de validación de FastAPI: extraer los mensajes legibles
+                        msg = msg.map(function(x){ return (x.loc ? x.loc.join('.') + ': ' : '') + (x.msg || JSON.stringify(x)); }).join(' | ');
+                    } else if (typeof msg === 'object' && msg !== null) {
+                        msg = JSON.stringify(msg);
+                    }
+                    alert('❌ ' + (msg || 'Error al registrar'));
                     btn.disabled = false; btn.textContent = '✓ Confirmar e imprimir ticket';
                 }
             } catch(err) {
