@@ -3658,6 +3658,7 @@ def mp_diagnostico(id_distribuidor: int):
             return out
         out["preferencias"] = prefs
         detalle = []
+        registrados_ahora = 0
         for pref in prefs:
             item = {"preference_id": pref['preference_id'], "estado_pref": pref['estado'], "referencia": pref.get('referencia')}
             ref = pref.get('referencia')
@@ -3665,12 +3666,30 @@ def mp_diagnostico(id_distribuidor: int):
                 try:
                     pagos = mp_service.buscar_pagos_por_referencia(ref)
                     item["pagos"] = pagos
+                    # Registrar los aprobados que falten
+                    for p in pagos:
+                        if p.get("estado") != "approved":
+                            continue
+                        pid = str(p.get("id"))
+                        cur.execute("SELECT COUNT(*) AS c FROM cobros_distribuidores WHERE referencia=%s", (pid,))
+                        if cur.fetchone()['c'] > 0:
+                            item["registro"] = "ya estaba registrado"
+                            continue
+                        cur.execute("""INSERT INTO cobros_distribuidores (id_distribuidor, id_pedido, monto, metodo, referencia, notas)
+                                       VALUES (%s,NULL,%s,%s,%s,%s)""",
+                                    (id_distribuidor, float(p.get("monto") or 0), 'Mercado Pago', pid, 'Pago a cuenta online'))
+                        cur.execute("UPDATE mp_preferencias SET estado='pagada' WHERE preference_id=%s", (pref['preference_id'],))
+                        conn.commit()
+                        registrados_ahora += 1
+                        item["registro"] = "REGISTRADO ahora"
                 except Exception as e:
+                    conn.rollback()
                     item["error"] = str(e)[:200]
             else:
                 item["nota"] = "preferencia vieja sin referencia (creada antes de la corrección)"
             detalle.append(item)
         out["detalle_pagos"] = detalle
+        out["registrados_ahora"] = registrados_ahora
         return out
     finally:
         liberar_conexion(conn)
