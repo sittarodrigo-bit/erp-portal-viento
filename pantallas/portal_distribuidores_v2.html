@@ -467,6 +467,10 @@
                 var data;
                 try { data = await res.json(); } catch(e) { data = { detail: 'Error del servidor (' + res.status + ').' }; }
                 if (!res.ok) { alert('No se pudo generar el pago: ' + (data.detail || 'error')); return; }
+                if (data.preferencia_guardada === false) {
+                    alert('⚠️ Atención: el pago se generó pero no se pudo guardar la referencia (' + (data.guardado_error || 'error desconocido') + '). Avisá al administrador antes de pagar.');
+                    return;
+                }
                 if (data.link) { window.location.href = data.link; }
                 else { alert('No se recibió el link de pago.'); }
             } catch(e) {
