@@ -98,7 +98,8 @@ class Producto(BaseModel):
 
 class StockUpdate(BaseModel):
     nuevo_stock: int
-
+class IngresoStock(BaseModel):
+    cantidad: float
 class Distribuidor(BaseModel):
     razon_social: str
     dni: Optional[str] = None
