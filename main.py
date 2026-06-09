@@ -1782,7 +1782,7 @@ class PosCerrarCaja(BaseModel):
 
 class PosItemVenta(BaseModel):
     nombre_producto: str
-    cantidad: int
+    cantidad: float
     precio_unitario: float
     id_producto: Optional[int] = None
     unidades_stock: Optional[float] = None
