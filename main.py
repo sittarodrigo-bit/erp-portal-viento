@@ -3442,11 +3442,13 @@ def mp_crear_pago_libre(data: PagoLibre, request: Request):
         if data.monto > deuda + 0.5:
             raise HTTPException(status_code=400, detail="El monto supera tu deuda actual ($" + str(deuda) + ").")
         base_url = str(request.base_url).rstrip("/")
+        import uuid as _uuid
+        ref_unica = "distpago-" + str(data.id_distribuidor) + "-" + _uuid.uuid4().hex[:12]
         try:
             pref = mp_service.crear_preferencia(
                 titulo="Pago a cuenta - Portal del Viento",
                 monto=data.monto,
-                referencia_externa="distpago-" + str(data.id_distribuidor),
+                referencia_externa=ref_unica,
                 base_url=base_url,
                 payer_email=dist.get('email')
             )
@@ -3456,17 +3458,24 @@ def mp_crear_pago_libre(data: PagoLibre, request: Request):
                 raise HTTPException(status_code=502, detail="Mercado Pago respondió: " + msg)
             raise HTTPException(status_code=502, detail="Mercado Pago: " + msg)
         link = pref.get("init_point") or pref.get("sandbox_init_point")
-        # Guardar la preferencia para poder reconciliar el pago después.
-        # Usamos una conexión nueva para que un error previo no afecte el guardado.
+        # Guardar la preferencia + su referencia única para reconciliar el pago después.
         guardado_ok = False
         guardado_error = None
         conn2 = obtener_conexion()
         try:
             cur2 = conn2.cursor()
-            cur2.execute("""INSERT INTO mp_preferencias (preference_id, id_distribuidor, id_pedido, monto, tipo)
-                           VALUES (%s,%s,NULL,%s,'libre')
-                           ON CONFLICT (preference_id) DO NOTHING""",
-                        (str(pref.get("id")), data.id_distribuidor, data.monto))
+            try:
+                cur2.execute("""INSERT INTO mp_preferencias (preference_id, id_distribuidor, id_pedido, monto, tipo, referencia)
+                               VALUES (%s,%s,NULL,%s,'libre',%s)
+                               ON CONFLICT (preference_id) DO NOTHING""",
+                            (str(pref.get("id")), data.id_distribuidor, data.monto, ref_unica))
+            except Exception:
+                conn2.rollback()
+                # Fallback si la columna referencia no existe todavía
+                cur2.execute("""INSERT INTO mp_preferencias (preference_id, id_distribuidor, id_pedido, monto, tipo)
+                               VALUES (%s,%s,NULL,%s,'libre')
+                               ON CONFLICT (preference_id) DO NOTHING""",
+                            (str(pref.get("id")), data.id_distribuidor, data.monto))
             conn2.commit()
             guardado_ok = True
         except Exception as e2:
@@ -3641,21 +3650,25 @@ def mp_diagnostico(id_distribuidor: int):
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
         try:
-            cur.execute("SELECT preference_id, monto, tipo, estado, creada::text FROM mp_preferencias WHERE id_distribuidor=%s ORDER BY creada DESC", (id_distribuidor,))
+            cur.execute("SELECT preference_id, monto, tipo, estado, referencia, creada::text FROM mp_preferencias WHERE id_distribuidor=%s ORDER BY creada DESC", (id_distribuidor,))
             prefs = fetchall_dict(cur)
         except Exception:
             conn.rollback()
-            out["error"] = "Falta crear la tabla mp_preferencias (corré CREAR_MP_PREFERENCIAS.sql)."
+            out["error"] = "Falta crear la tabla mp_preferencias o la columna referencia (corré CREAR_MP_PREFERENCIAS.sql)."
             return out
         out["preferencias"] = prefs
         detalle = []
         for pref in prefs:
-            item = {"preference_id": pref['preference_id'], "estado_pref": pref['estado']}
-            try:
-                pagos = mp_service.buscar_pagos_por_preferencia(pref['preference_id'])
-                item["pagos"] = pagos
-            except Exception as e:
-                item["error"] = str(e)[:200]
+            item = {"preference_id": pref['preference_id'], "estado_pref": pref['estado'], "referencia": pref.get('referencia')}
+            ref = pref.get('referencia')
+            if ref:
+                try:
+                    pagos = mp_service.buscar_pagos_por_referencia(ref)
+                    item["pagos"] = pagos
+                except Exception as e:
+                    item["error"] = str(e)[:200]
+            else:
+                item["nota"] = "preferencia vieja sin referencia (creada antes de la corrección)"
             detalle.append(item)
         out["detalle_pagos"] = detalle
         return out
@@ -3674,14 +3687,17 @@ def mp_verificar_pagos(id_distribuidor: int):
         cur = conn.cursor(cursor_factory=RealDictCursor)
         # Preferencias de este distribuidor que todavía no se confirmaron
         try:
-            cur.execute("SELECT preference_id, monto FROM mp_preferencias WHERE id_distribuidor=%s AND COALESCE(estado,'pendiente')<>'pagada'", (id_distribuidor,))
+            cur.execute("SELECT preference_id, monto, referencia FROM mp_preferencias WHERE id_distribuidor=%s AND COALESCE(estado,'pendiente')<>'pagada'", (id_distribuidor,))
             prefs = fetchall_dict(cur)
         except Exception:
             conn.rollback()
             prefs = []
         for pref in prefs:
+            ref = pref.get('referencia')
+            if not ref:
+                continue
             try:
-                pagos = mp_service.buscar_pagos_por_preferencia(pref['preference_id'])
+                pagos = mp_service.buscar_pagos_por_referencia(ref)
             except Exception:
                 continue
             for p in pagos:
