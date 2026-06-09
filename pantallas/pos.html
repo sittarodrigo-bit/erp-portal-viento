@@ -535,6 +535,23 @@
             if (!localActual) return;
             var est = await fetch(API_URL + '/pos/caja/estado?id_local=' + localActual.id).then(function(r){return r.json();});
             if (est.caja_abierta) {
+                // Control: una caja por local. Si la abrió otro usuario, bloquear (salvo admin).
+                var esAdmin = posUsuario && (posUsuario.rol === 'admin');
+                var idAbrio = est.id_usuario_apertura;
+                var idYo = posUsuario ? posUsuario.id_usuario : null;
+                if (idAbrio != null && idYo != null && idAbrio !== idYo && !esAdmin) {
+                    var quien = est.nombre_responsable || 'otro usuario';
+                    cajaActual = null;
+                    mostrarVista('cerrada');
+                    document.getElementById('cerrada-local-nombre').textContent = localActual.nombre;
+                    // Reemplazar el panel de apertura por un aviso de bloqueo
+                    var cont = document.getElementById('vista-caja-cerrada');
+                    alert('🔒 Este local ya tiene una caja abierta por ' + quien + '.\n\nNo podés operar hasta que esa caja se cierre. Si necesitás, un administrador puede cerrarla.');
+                    // Volver a la selección de local
+                    localActual = null;
+                    mostrarVista('inicial');
+                    return;
+                }
                 cajaActual = est;
                 await cargarProductos();
                 mostrarVista('pos');
@@ -570,7 +587,7 @@
             try {
                 var res = await fetch(API_URL + '/pos/caja/abrir', {
                     method:'POST', headers:{'Content-Type':'application/json'},
-                    body: JSON.stringify({ id_local: localActual.id, nombre_responsable: resp, monto_apertura: monto })
+                    body: JSON.stringify({ id_local: localActual.id, nombre_responsable: resp, monto_apertura: monto, id_usuario: (posUsuario ? posUsuario.id_usuario : null) })
                 });
                 if (res.ok) { carrito = []; await verificarCaja(); }
                 else { var e = await res.json(); alert('❌ ' + (e.detail || 'No se pudo abrir')); }
@@ -958,7 +975,7 @@
             try {
                 var res = await fetch(API_URL + '/pos/caja/' + cajaActual.id + '/cerrar', {
                     method:'PUT', headers:{'Content-Type':'application/json'},
-                    body: JSON.stringify({ monto_cierre: contado, observaciones: obs })
+                    body: JSON.stringify({ monto_cierre: contado, observaciones: obs, id_usuario: (posUsuario ? posUsuario.id_usuario : null), es_admin: (posUsuario && posUsuario.rol === 'admin') })
                 });
                 if (res.ok) { cerrarModales(); carrito = []; await verificarCaja(); }
                 else { var e = await res.json(); alert('❌ ' + (e.detail || 'Error al cerrar')); }
