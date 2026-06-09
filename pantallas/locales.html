@@ -490,6 +490,7 @@
                         </div>
                     </div>
                     ${l.caja_abierta ? `<p class="text-xs text-gray-400 mb-2">💵 En caja: <span class="text-white font-bold">${fmt(l.efectivo_en_caja)}</span> · ${l.responsable||'—'}</p>` : ''}
+                    ${l.caja_abierta && l.id_caja ? `<button onclick="event.stopPropagation(); cerrarCajaAdmin(${l.id_caja}, '${(l.nombre||'').replace(/'/g,'')}', '${(l.responsable||'').replace(/'/g,'')}')" class="mb-2 text-xs border border-red-800 text-red-400 hover:bg-red-900/40 px-3 py-1.5 rounded font-bold">🔒 Cerrar caja (admin)</button>` : ''}
                     <div class="flex flex-wrap gap-1">${alertas || '<span class="text-gray-700 text-xs">Sin alertas</span>'}</div>
                 `;
                 cont.appendChild(card);
@@ -779,6 +780,19 @@
             const w = window.open('', '_blank');
             w.document.write(html); w.document.close();
             w.onload = function(){ try { w.print(); } catch(e){} };
+        }
+
+        async function cerrarCajaAdmin(idCaja, nombreLocal, responsable) {
+            if (!confirm('¿Cerrar la caja de "' + nombreLocal + '"' + (responsable ? ' (abierta por ' + responsable + ')' : '') + '?\n\nSe cierra con los totales registrados, sin contar efectivo. Esta acción es para cuando el cajero se fue sin cerrar.')) return;
+            try {
+                var res = await fetch(`${API_URL}/locales/caja/${idCaja}/cerrar_admin`, { method:'PUT' });
+                if (res.ok) {
+                    alert('✅ Caja cerrada.');
+                    cargarGeneral();
+                } else {
+                    var e = await res.json(); alert('❌ ' + (e.detail || 'No se pudo cerrar.'));
+                }
+            } catch(e) { alert('❌ Error de conexión.'); }
         }
 
         async function guardarPvAfip() {
