@@ -3456,6 +3456,15 @@ def mp_crear_pago_libre(data: PagoLibre, request: Request):
                 raise HTTPException(status_code=502, detail="Mercado Pago respondió: " + msg)
             raise HTTPException(status_code=502, detail="Mercado Pago: " + msg)
         link = pref.get("init_point") or pref.get("sandbox_init_point")
+        # Guardar la preferencia para poder reconciliar el pago después
+        try:
+            cur.execute("""INSERT INTO mp_preferencias (preference_id, id_distribuidor, id_pedido, monto, tipo)
+                           VALUES (%s,%s,NULL,%s,'libre')
+                           ON CONFLICT (preference_id) DO NOTHING""",
+                        (str(pref.get("id")), data.id_distribuidor, data.monto))
+            conn.commit()
+        except Exception:
+            conn.rollback()
         return {"link": link, "preference_id": pref.get("id")}
     finally:
         liberar_conexion(conn)
@@ -3591,58 +3600,73 @@ async def mp_webhook(request: Request):
 
 @app.get("/api/mp/diagnostico/{id_distribuidor}")
 def mp_diagnostico(id_distribuidor: int):
-    """Diagnóstico: muestra qué pagos ve MP para este distribuidor y cuáles están registrados.
-    Se puede abrir directo en el navegador."""
+    """Diagnóstico: muestra las preferencias del distribuidor y los pagos que MP asocia a cada una."""
     if not mp_service or not mp_service.configurado():
         return {"error": "Mercado Pago no configurado (falta MP_ACCESS_TOKEN)"}
-    out = {"id_distribuidor": id_distribuidor, "referencia_buscada": "distpago-" + str(id_distribuidor)}
-    try:
-        pagos = mp_service.buscar_pagos("distpago-" + str(id_distribuidor))
-        out["pagos_en_mp"] = pagos
-    except Exception as e:
-        out["error_busqueda"] = str(e)[:400]
-        return out
-    # Ver cuáles ya están registrados
+    out = {"id_distribuidor": id_distribuidor}
     conn = obtener_conexion()
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
-        registrados = []
-        for p in pagos:
+        try:
+            cur.execute("SELECT preference_id, monto, tipo, estado, creada::text FROM mp_preferencias WHERE id_distribuidor=%s ORDER BY creada DESC", (id_distribuidor,))
+            prefs = fetchall_dict(cur)
+        except Exception:
+            conn.rollback()
+            out["error"] = "Falta crear la tabla mp_preferencias (corré CREAR_MP_PREFERENCIAS.sql)."
+            return out
+        out["preferencias"] = prefs
+        detalle = []
+        for pref in prefs:
+            item = {"preference_id": pref['preference_id'], "estado_pref": pref['estado']}
             try:
-                cur.execute("SELECT COUNT(*) AS c FROM cobros_distribuidores WHERE referencia=%s", (str(p.get("id")),))
-                registrados.append({"pago": p.get("id"), "estado": p.get("estado"), "ya_registrado": cur.fetchone()['c'] > 0})
-            except Exception:
-                conn.rollback()
-        out["registro"] = registrados
+                pagos = mp_service.buscar_pagos_por_preferencia(pref['preference_id'])
+                item["pagos"] = pagos
+            except Exception as e:
+                item["error"] = str(e)[:200]
+            detalle.append(item)
+        out["detalle_pagos"] = detalle
         return out
     finally:
         liberar_conexion(conn)
 
 @app.post("/api/mp/verificar_pagos/{id_distribuidor}")
 def mp_verificar_pagos(id_distribuidor: int):
-    """Consulta a MP los pagos del distribuidor (pago a cuenta) y registra los aprobados
-    que todavía no estén registrados. Sirve como respaldo del webhook."""
+    """Consulta a MP los pagos de las preferencias de este distribuidor y registra
+    los aprobados que falten. Respaldo confiable del webhook."""
     if not mp_service or not mp_service.configurado():
         raise HTTPException(status_code=400, detail="Mercado Pago no está configurado.")
     registrados = 0
-    try:
-        pagos = mp_service.buscar_pagos("distpago-" + str(id_distribuidor))
-    except Exception as e:
-        raise HTTPException(status_code=502, detail="No se pudo consultar Mercado Pago: " + str(e)[:200])
     conn = obtener_conexion()
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
-        for p in pagos:
-            if p.get("estado") != "approved":
+        # Preferencias de este distribuidor que todavía no se confirmaron
+        try:
+            cur.execute("SELECT preference_id, monto FROM mp_preferencias WHERE id_distribuidor=%s AND COALESCE(estado,'pendiente')<>'pagada'", (id_distribuidor,))
+            prefs = fetchall_dict(cur)
+        except Exception:
+            conn.rollback()
+            prefs = []
+        for pref in prefs:
+            try:
+                pagos = mp_service.buscar_pagos_por_preferencia(pref['preference_id'])
+            except Exception:
                 continue
-            pid = str(p.get("id"))
-            cur.execute("SELECT COUNT(*) AS c FROM cobros_distribuidores WHERE referencia=%s", (pid,))
-            if cur.fetchone()['c'] > 0:
-                continue
-            cur.execute("""INSERT INTO cobros_distribuidores (id_distribuidor, id_pedido, monto, metodo, referencia, notas)
-                           VALUES (%s,NULL,%s,%s,%s,%s)""",
-                        (id_distribuidor, float(p.get("monto") or 0), 'Mercado Pago', pid, 'Pago a cuenta online (verificado)'))
-            registrados += 1
+            for p in pagos:
+                if p.get("estado") != "approved":
+                    continue
+                pid = str(p.get("id"))
+                cur.execute("SELECT COUNT(*) AS c FROM cobros_distribuidores WHERE referencia=%s", (pid,))
+                if cur.fetchone()['c'] > 0:
+                    continue
+                cur.execute("""INSERT INTO cobros_distribuidores (id_distribuidor, id_pedido, monto, metodo, referencia, notas)
+                               VALUES (%s,NULL,%s,%s,%s,%s)""",
+                            (id_distribuidor, float(p.get("monto") or 0), 'Mercado Pago', pid, 'Pago a cuenta online (verificado)'))
+                registrados += 1
+                # Marcar la preferencia como pagada
+                try:
+                    cur.execute("UPDATE mp_preferencias SET estado='pagada' WHERE preference_id=%s", (pref['preference_id'],))
+                except Exception:
+                    conn.rollback()
         conn.commit()
         return {"status": "ok", "registrados": registrados}
     except Exception as e:
