@@ -451,6 +451,10 @@ class FacturaAfip(BaseModel):
 # ==============================================================================
 # ENDPOINTS DE AUTENTICACIÓN
 # ==============================================================================
+class AccesoEmpleado(BaseModel):
+    username: str
+    password: Optional[str] = None
+    acceso_pos: bool = True
 @app.get("/api/empleados/{id_emp}/acceso")
 def get_acceso_empleado(id_emp: int):
     conn = obtener_conexion()
