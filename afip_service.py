@@ -45,12 +45,50 @@ _TA_CACHE = None
 
 # Caché de clientes zeep (para no descargar el WSDL en cada factura)
 _CLIENTES = {}
+
+def _crear_session_afip():
+    import ssl
+    import requests
+    from requests.adapters import HTTPAdapter
+    try:
+        from urllib3.util.ssl_ import create_urllib3_context
+    except Exception:
+        create_urllib3_context = None
+
+    class DHAdapter(HTTPAdapter):
+        def init_poolmanager(self, *args, **kwargs):
+            ctx = create_urllib3_context() if create_urllib3_context else ssl.create_default_context()
+            # Bajar el nivel de seguridad para aceptar la DH key corta de AFIP
+            try:
+                ctx.set_ciphers('DEFAULT@SECLEVEL=1')
+            except Exception:
+                pass
+            try:
+                ctx.check_hostname = False
+                ctx.verify_mode = ssl.CERT_NONE
+            except Exception:
+                pass
+            kwargs['ssl_context'] = ctx
+            return super().init_poolmanager(*args, **kwargs)
+
+        def proxy_manager_for(self, *args, **kwargs):
+            ctx = create_urllib3_context() if create_urllib3_context else ssl.create_default_context()
+            try:
+                ctx.set_ciphers('DEFAULT@SECLEVEL=1')
+            except Exception:
+                pass
+            kwargs['ssl_context'] = ctx
+            return super().proxy_manager_for(*args, **kwargs)
+
+    session = requests.Session()
+    session.mount('https://', DHAdapter())
+    return session
+
 def _get_client(url):
     from zeep import Client
     from zeep.transports import Transport
-    import requests
     if url not in _CLIENTES:
-        session = requests.Session()
+        session = _crear_session_afip()
         transport = Transport(session=session, timeout=30, operation_timeout=30)
         _CLIENTES[url] = Client(url, transport=transport)
     return _CLIENTES[url]
