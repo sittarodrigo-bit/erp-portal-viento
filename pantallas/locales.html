@@ -175,6 +175,11 @@
                         <button onclick="exportarProductos()" class="border border-gray-600 text-gray-300 hover:text-white font-bold px-3 py-2 rounded-lg text-sm">📤 Exportar</button>
                         <button onclick="abrirModalProducto()" class="bg-neon text-black font-bold px-4 py-2 rounded-lg text-sm hover:bg-yellow-300">+ Nuevo producto</button>
                     </div>
+                    <div class="mb-4">
+                        <input type="text" id="buscar-prod-local" placeholder="🔍 Buscar por nombre, SKU o categoría..." oninput="filtrarProdLocal()"
+                               class="w-full bg-black border border-gray-700 focus:border-neon text-white rounded-lg p-3 text-sm outline-none">
+                        <p id="contador-prod-local" class="text-gray-600 text-xs mt-1"></p>
+                    </div>
                     <div class="bg-black rounded-xl border border-gray-800 overflow-hidden">
                         <table class="w-full text-left">
                             <thead class="bg-gray-950 text-xs text-gray-400 uppercase">
@@ -865,7 +870,8 @@
                 const alerta = parseFloat(p.stock_alerta)||0;
                 const bajo = alerta>0 && stock<=alerta;
                 const tr = document.createElement('tr');
-                tr.className = 'hover:bg-gray-900 transition';
+                tr.className = 'hover:bg-gray-900 transition fila-prod-local';
+                tr.setAttribute('data-buscar', ((p.nombre||'') + ' ' + (p.sku||'') + ' ' + (p.categoria||'')).toLowerCase());
                 tr.innerHTML = `
                     <td class="p-4 font-bold text-white">${p.nombre}</td>
                     <td class="p-4 text-gray-400 text-xs">${p.categoria||'—'}</td>
@@ -887,6 +893,27 @@
                 tr.querySelector('.btn-del').onclick = () => eliminarProducto(p.id, p.nombre);
                 tabla.appendChild(tr);
             });
+            // Resetear buscador y actualizar contador
+            var inp = document.getElementById('buscar-prod-local');
+            if (inp) { inp.value = ''; }
+            var cont = document.getElementById('contador-prod-local');
+            if (cont) cont.textContent = lista.length + ' productos';
+        }
+
+        function filtrarProdLocal() {
+            var inp = document.getElementById('buscar-prod-local');
+            if (!inp) return;
+            var q = inp.value.toLowerCase().trim();
+            var filas = document.querySelectorAll('#tabla-productos > .fila-prod-local');
+            var visibles = 0;
+            filas.forEach(function(f){
+                var txt = f.getAttribute('data-buscar') || '';
+                var match = !q || txt.indexOf(q) !== -1;
+                f.style.display = match ? '' : 'none';
+                if (match) visibles++;
+            });
+            var cont = document.getElementById('contador-prod-local');
+            if (cont) cont.textContent = q ? (visibles + ' de ' + filas.length + ' productos') : (filas.length + ' productos');
         }
 
         function abrirModalProducto(p) {
