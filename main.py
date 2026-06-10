@@ -91,6 +91,7 @@ class Producto(BaseModel):
     imagen_url: Optional[str] = None
     precio_minorista: float = 0.0
     precio_mayorista: float = 0.0
+    unidades_por_caja: Optional[int] = None
 
 class StockUpdate(BaseModel):
     nuevo_stock: int
@@ -539,16 +540,29 @@ def get_productos():
     conn = obtener_conexion()
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
-        cur.execute("""
-            SELECT id, sku, nombre, tipo, stock_actual AS stock, stock_actual,
-                   id_categoria, stock_alerta, imagen_url,
-                   COALESCE(precio_minorista,0) AS precio_minorista,
-                   COALESCE(precio_mayorista,0) AS precio_mayorista
-            FROM productos
-            WHERE COALESCE(activo, true) = true
-            ORDER BY nombre ASC
-        """)
-        return fetchall_dict(cur)
+        try:
+            cur.execute("""
+                SELECT id, sku, nombre, tipo, stock_actual AS stock, stock_actual,
+                       id_categoria, stock_alerta, imagen_url, unidades_por_caja,
+                       COALESCE(precio_minorista,0) AS precio_minorista,
+                       COALESCE(precio_mayorista,0) AS precio_mayorista
+                FROM productos
+                WHERE COALESCE(activo, true) = true
+                ORDER BY nombre ASC
+            """)
+            return fetchall_dict(cur)
+        except Exception:
+            conn.rollback()
+            cur.execute("""
+                SELECT id, sku, nombre, tipo, stock_actual AS stock, stock_actual,
+                       id_categoria, stock_alerta, imagen_url,
+                       COALESCE(precio_minorista,0) AS precio_minorista,
+                       COALESCE(precio_mayorista,0) AS precio_mayorista
+                FROM productos
+                WHERE COALESCE(activo, true) = true
+                ORDER BY nombre ASC
+            """)
+            return fetchall_dict(cur)
     finally:
         liberar_conexion(conn)
 
@@ -586,11 +600,19 @@ def crear_producto(prod: Producto):
     conn = obtener_conexion()
     try:
         cur = conn.cursor()
-        cur.execute("""
-            INSERT INTO productos (sku, nombre, tipo, stock_actual, id_categoria, stock_alerta, imagen_url, precio_minorista, precio_mayorista, activo)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s, true) RETURNING id
-        """, (prod.sku, prod.nombre, prod.tipo, prod.stock_inicial, prod.id_categoria,
-              prod.stock_alerta, prod.imagen_url, prod.precio_minorista, prod.precio_mayorista))
+        try:
+            cur.execute("""
+                INSERT INTO productos (sku, nombre, tipo, stock_actual, id_categoria, stock_alerta, imagen_url, precio_minorista, precio_mayorista, unidades_por_caja, activo)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s, true) RETURNING id
+            """, (prod.sku, prod.nombre, prod.tipo, prod.stock_inicial, prod.id_categoria,
+                  prod.stock_alerta, prod.imagen_url, prod.precio_minorista, prod.precio_mayorista, prod.unidades_por_caja))
+        except Exception:
+            conn.rollback()
+            cur.execute("""
+                INSERT INTO productos (sku, nombre, tipo, stock_actual, id_categoria, stock_alerta, imagen_url, precio_minorista, precio_mayorista, activo)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s, true) RETURNING id
+            """, (prod.sku, prod.nombre, prod.tipo, prod.stock_inicial, prod.id_categoria,
+                  prod.stock_alerta, prod.imagen_url, prod.precio_minorista, prod.precio_mayorista))
         id_prod = cur.fetchone()[0]
         conn.commit()
         return {"id": id_prod}
@@ -605,13 +627,23 @@ def actualizar_producto(id: int, prod: Producto):
     conn = obtener_conexion()
     try:
         cur = conn.cursor()
-        cur.execute("""
-            UPDATE productos
-            SET sku=%s, nombre=%s, tipo=%s, id_categoria=%s, stock_alerta=%s, imagen_url=%s,
-                precio_minorista=%s, precio_mayorista=%s
-            WHERE id=%s
-        """, (prod.sku, prod.nombre, prod.tipo, prod.id_categoria, prod.stock_alerta,
-              prod.imagen_url, prod.precio_minorista, prod.precio_mayorista, id))
+        try:
+            cur.execute("""
+                UPDATE productos
+                SET sku=%s, nombre=%s, tipo=%s, id_categoria=%s, stock_alerta=%s, imagen_url=%s,
+                    precio_minorista=%s, precio_mayorista=%s, unidades_por_caja=%s
+                WHERE id=%s
+            """, (prod.sku, prod.nombre, prod.tipo, prod.id_categoria, prod.stock_alerta,
+                  prod.imagen_url, prod.precio_minorista, prod.precio_mayorista, prod.unidades_por_caja, id))
+        except Exception:
+            conn.rollback()
+            cur.execute("""
+                UPDATE productos
+                SET sku=%s, nombre=%s, tipo=%s, id_categoria=%s, stock_alerta=%s, imagen_url=%s,
+                    precio_minorista=%s, precio_mayorista=%s
+                WHERE id=%s
+            """, (prod.sku, prod.nombre, prod.tipo, prod.id_categoria, prod.stock_alerta,
+                  prod.imagen_url, prod.precio_minorista, prod.precio_mayorista, id))
         conn.commit()
         return {"status": "ok"}
     except Exception as e:
