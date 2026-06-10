@@ -3683,6 +3683,52 @@ async def mp_webhook(request: Request):
         # Nunca devolvemos error a MP para que no reintente infinito por un bug nuestro
         return {"status": "error", "detail": str(e)[:200]}
 
+@app.post("/api/mp/sincronizar_todos")
+def mp_sincronizar_todos():
+    """Verifica TODAS las preferencias pendientes (de todos los distribuidores) y registra
+    los pagos aprobados que falten. Se llama al abrir el panel o con el botón Sincronizar."""
+    if not mp_service or not mp_service.configurado():
+        return {"status": "mp_no_configurado", "registrados": 0}
+    registrados = 0
+    detalle = []
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            cur.execute("SELECT preference_id, id_distribuidor, monto, referencia FROM mp_preferencias WHERE COALESCE(estado,'pendiente')<>'pagada' AND referencia IS NOT NULL")
+            prefs = fetchall_dict(cur)
+        except Exception:
+            conn.rollback()
+            return {"status": "sin_tabla", "registrados": 0}
+        for pref in prefs:
+            ref = pref.get('referencia')
+            if not ref:
+                continue
+            try:
+                pagos = mp_service.buscar_pagos_por_referencia(ref)
+            except Exception:
+                continue
+            for p in pagos:
+                if p.get("estado") != "approved":
+                    continue
+                pid = str(p.get("id"))
+                cur.execute("SELECT COUNT(*) AS c FROM cobros_distribuidores WHERE referencia=%s", (pid,))
+                if cur.fetchone()['c'] > 0:
+                    continue
+                cur.execute("""INSERT INTO cobros_distribuidores (id_distribuidor, id_pedido, monto, metodo, referencia, notas)
+                               VALUES (%s,NULL,%s,%s,%s,%s)""",
+                            (pref['id_distribuidor'], float(p.get("monto") or 0), 'Mercado Pago', pid, 'Pago a cuenta online'))
+                cur.execute("UPDATE mp_preferencias SET estado='pagada' WHERE preference_id=%s", (pref['preference_id'],))
+                conn.commit()
+                registrados += 1
+                detalle.append({"distribuidor": pref['id_distribuidor'], "monto": float(p.get("monto") or 0)})
+        return {"status": "ok", "registrados": registrados, "detalle": detalle}
+    except Exception as e:
+        conn.rollback()
+        return {"status": "error", "detail": str(e)[:200], "registrados": registrados}
+    finally:
+        liberar_conexion(conn)
+
 @app.get("/api/mp/diagnostico_general")
 def mp_diagnostico_general():
     """Muestra TODAS las preferencias guardadas (de cualquier distribuidor) y los cobros MP registrados."""
