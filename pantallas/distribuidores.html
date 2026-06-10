@@ -42,6 +42,7 @@
         <header class="bg-gray-900 border-b border-gray-800 py-4 px-8 flex justify-between items-center shrink-0">
             <h2 class="text-xl font-bold text-white">Gestión de Distribuidores</h2>
             <div class="flex gap-2">
+                <button onclick="sincronizarPagosMP(true)" id="btn-sync-mp" class="border border-[#009ee3] text-[#009ee3] hover:bg-[#009ee3] hover:text-white font-bold py-2 px-4 rounded-lg text-sm transition">🔄 Sincronizar pagos MP</button>
                 <button onclick="document.getElementById('input-importar').click()" class="border border-gray-600 text-gray-300 hover:text-white font-bold py-2 px-4 rounded-lg text-sm transition">📥 Importar</button>
                 <button onclick="exportarClientes()" class="border border-gray-600 text-gray-300 hover:text-white font-bold py-2 px-4 rounded-lg text-sm transition">📤 Exportar</button>
                 <button onclick="abrirModalNuevo()" class="bg-neon hover:bg-yellow-300 text-black font-bold py-2 px-6 rounded-lg transition">+ Nuevo Distribuidor</button>
@@ -717,7 +718,30 @@
             distribuidorEliminarActual = null;
         }
 
-        window.onload = cargarDistribuidores;
+        async function sincronizarPagosMP(manual) {
+            var btn = document.getElementById('btn-sync-mp');
+            if (manual && btn) { btn.disabled = true; var t = btn.textContent; btn.textContent = '⏳ Sincronizando...'; }
+            try {
+                var res = await fetch(API_URL + '/mp/sincronizar_todos', { method:'POST' });
+                var data = await res.json();
+                if (manual) {
+                    var n = (data && data.registrados) || 0;
+                    if (n > 0) alert('✅ Se registraron ' + n + ' pago(s) de Mercado Pago.');
+                    else alert('No había pagos nuevos para registrar.');
+                }
+                if ((data && data.registrados) > 0) { cargarDistribuidores(); }
+            } catch(e) {
+                if (manual) alert('No se pudo sincronizar: ' + (e && e.message ? e.message : e));
+            } finally {
+                if (manual && btn) { btn.disabled = false; btn.textContent = '🔄 Sincronizar pagos MP'; }
+            }
+        }
+
+        window.onload = function() {
+            cargarDistribuidores();
+            // Verificación automática de pagos MP en segundo plano al abrir el panel
+            sincronizarPagosMP(false);
+        };
 
         // ── IMPORTAR / EXPORTAR CLIENTES ──────────────────────────────────
         async function exportarClientes() {
