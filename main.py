@@ -1044,34 +1044,67 @@ def crear_pedido_b2b(pedido: PedidoB2B):
 @app.get("/api/produccion/necesidades")
 def produccion_necesidades():
     """Suma todo lo pedido en pedidos PENDIENTES y lo compara con el stock disponible.
-    Devuelve, por producto: pedido, stock y cuánto falta producir."""
+    Devuelve, por producto: pedido, stock, cuánto falta (en cajas) y la conversión a unidades."""
+    import re
+    def unidades_por_caja(nombre, factor_col):
+        # 1) Si el producto tiene un factor guardado, usarlo
+        try:
+            if factor_col and float(factor_col) > 0:
+                return int(float(factor_col))
+        except Exception:
+            pass
+        # 2) Si no, leer del nombre: busca patrones tipo x12, x 6, X24, etc.
+        if nombre:
+            m = re.search(r'[xX]\s*(\d{1,3})', nombre)
+            if m:
+                return int(m.group(1))
+        # 3) Por defecto, 1 unidad por caja (no convierte)
+        return 1
+
     conn = obtener_conexion()
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
-        cur.execute("""
-            SELECT d.id_producto, p.nombre, p.sku,
-                   COALESCE(SUM(d.cantidad),0) AS pedido,
-                   COALESCE(p.stock_actual,0) AS stock
-            FROM detalle_pedidos_b2b d
-            JOIN pedidos_b2b pb ON d.id_pedido = pb.id
-            LEFT JOIN productos p ON d.id_producto = p.id
-            WHERE pb.estado = 'Pendiente'
-            GROUP BY d.id_producto, p.nombre, p.sku, p.stock_actual
-            ORDER BY (COALESCE(SUM(d.cantidad),0) - COALESCE(p.stock_actual,0)) DESC
-        """)
-        filas = fetchall_dict(cur)
+        # Intentar traer un posible campo unidades_por_caja; si no existe, sin él
+        try:
+            cur.execute("""
+                SELECT d.id_producto, p.nombre, p.sku, p.unidades_por_caja AS factor,
+                       COALESCE(SUM(d.cantidad),0) AS pedido, COALESCE(p.stock_actual,0) AS stock
+                FROM detalle_pedidos_b2b d
+                JOIN pedidos_b2b pb ON d.id_pedido = pb.id
+                LEFT JOIN productos p ON d.id_producto = p.id
+                WHERE pb.estado = 'Pendiente'
+                GROUP BY d.id_producto, p.nombre, p.sku, p.unidades_por_caja, p.stock_actual
+                ORDER BY (COALESCE(SUM(d.cantidad),0) - COALESCE(p.stock_actual,0)) DESC
+            """)
+            filas = fetchall_dict(cur)
+        except Exception:
+            conn.rollback()
+            cur.execute("""
+                SELECT d.id_producto, p.nombre, p.sku, NULL AS factor,
+                       COALESCE(SUM(d.cantidad),0) AS pedido, COALESCE(p.stock_actual,0) AS stock
+                FROM detalle_pedidos_b2b d
+                JOIN pedidos_b2b pb ON d.id_pedido = pb.id
+                LEFT JOIN productos p ON d.id_producto = p.id
+                WHERE pb.estado = 'Pendiente'
+                GROUP BY d.id_producto, p.nombre, p.sku, p.stock_actual
+                ORDER BY (COALESCE(SUM(d.cantidad),0) - COALESCE(p.stock_actual,0)) DESC
+            """)
+            filas = fetchall_dict(cur)
         out = []
         for f in filas:
             pedido = float(f['pedido'] or 0)
             stock = float(f['stock'] or 0)
-            falta = max(0, pedido - stock)
+            falta_cajas = max(0, pedido - stock)
+            upc = unidades_por_caja(f.get('nombre'), f.get('factor'))
             out.append({
                 "id_producto": f['id_producto'],
                 "nombre": f['nombre'],
                 "sku": f['sku'],
                 "pedido": pedido,
                 "stock": stock,
-                "falta_producir": falta
+                "falta_producir": falta_cajas,
+                "unidades_por_caja": upc,
+                "falta_unidades": int(falta_cajas * upc)
             })
         return out
     finally:
@@ -1079,25 +1112,53 @@ def produccion_necesidades():
 
 @app.get("/api/pedidos_b2b/{id}/faltantes")
 def pedido_faltantes(id: int):
-    """Para un pedido puntual: por cada producto, cuánto se pidió, cuánto hay y cuánto falta."""
+    """Para un pedido puntual: por cada producto, cuánto se pidió, cuánto hay y cuánto falta (cajas y unidades)."""
+    import re
+    def upc(nombre, factor_col):
+        try:
+            if factor_col and float(factor_col) > 0:
+                return int(float(factor_col))
+        except Exception:
+            pass
+        if nombre:
+            m = re.search(r'[xX]\s*(\d{1,3})', nombre)
+            if m:
+                return int(m.group(1))
+        return 1
     conn = obtener_conexion()
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
-        cur.execute("""
-            SELECT d.id_producto, p.nombre, d.cantidad AS pedido, COALESCE(p.stock_actual,0) AS stock
-            FROM detalle_pedidos_b2b d
-            LEFT JOIN productos p ON d.id_producto = p.id
-            WHERE d.id_pedido = %s
-        """, (id,))
-        filas = fetchall_dict(cur)
+        try:
+            cur.execute("""
+                SELECT d.id_producto, p.nombre, p.unidades_por_caja AS factor,
+                       d.cantidad AS pedido, COALESCE(p.stock_actual,0) AS stock
+                FROM detalle_pedidos_b2b d
+                LEFT JOIN productos p ON d.id_producto = p.id
+                WHERE d.id_pedido = %s
+            """, (id,))
+            filas = fetchall_dict(cur)
+        except Exception:
+            conn.rollback()
+            cur.execute("""
+                SELECT d.id_producto, p.nombre, NULL AS factor,
+                       d.cantidad AS pedido, COALESCE(p.stock_actual,0) AS stock
+                FROM detalle_pedidos_b2b d
+                LEFT JOIN productos p ON d.id_producto = p.id
+                WHERE d.id_pedido = %s
+            """, (id,))
+            filas = fetchall_dict(cur)
         out = []
         for f in filas:
             pedido = float(f['pedido'] or 0)
             stock = float(f['stock'] or 0)
+            falta = max(0, pedido - stock)
+            factor = upc(f.get('nombre'), f.get('factor'))
             out.append({
                 "id_producto": f['id_producto'], "nombre": f['nombre'],
                 "pedido": pedido, "stock": stock,
-                "falta_producir": max(0, pedido - stock)
+                "falta_producir": falta,
+                "unidades_por_caja": factor,
+                "falta_unidades": int(falta * factor)
             })
         return out
     finally:
