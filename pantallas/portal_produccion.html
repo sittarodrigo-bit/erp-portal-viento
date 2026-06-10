@@ -62,6 +62,20 @@
 
         <main class="flex-1 p-4 pb-8">
 
+            <!-- Card: Qué hay que producir -->
+            <div class="bg-black border border-orange-800 rounded-2xl p-5 mb-4">
+                <div class="flex justify-between items-center mb-3">
+                    <h2 class="text-lg font-bold text-orange-400">📦 Qué hay que producir</h2>
+                    <div class="flex gap-2">
+                        <button onclick="cargarQueProducir()" class="text-xs border border-gray-700 text-gray-300 px-3 py-2 rounded-lg">↻</button>
+                        <button onclick="imprimirProduccion()" class="text-xs bg-orange-600 text-white font-bold px-3 py-2 rounded-lg">🖨️ Imprimir</button>
+                    </div>
+                </div>
+                <div id="cont-que-producir">
+                    <p class="text-gray-500 text-sm text-center py-4">Tocá ↻ para ver lo pendiente.</p>
+                </div>
+            </div>
+
             <!-- Card registrar -->
             <div class="bg-black border border-gray-800 rounded-2xl p-5 mb-4">
                 <h2 class="text-lg font-bold text-white mb-4">¿Qué produciste?</h2>
@@ -195,6 +209,63 @@
             actualizarVencimiento();
             await cargarDatos();
             await cargarRegistrosHoy();
+            cargarQueProducir();
+        }
+
+        var necesidadesCache = [];
+        async function cargarQueProducir() {
+            var cont = document.getElementById('cont-que-producir');
+            cont.innerHTML = '<p class="text-gray-500 text-sm text-center py-4">Calculando...</p>';
+            try {
+                var datos = await fetch(`${API_URL}/produccion/necesidades`).then(r => r.json());
+                necesidadesCache = datos;
+                var conFalta = datos.filter(function(d){ return d.falta_producir > 0; });
+                if (conFalta.length === 0) {
+                    cont.innerHTML = '<div class="bg-green-900/30 border border-green-800 rounded-xl p-4 text-center text-green-300 text-sm">✅ No hay nada pendiente. Hay stock para todos los pedidos.</div>';
+                    return;
+                }
+                var totalU = 0;
+                var filas = conFalta.map(function(d){
+                    totalU += (d.falta_unidades||0);
+                    return '<div class="bg-gray-900 border border-gray-800 rounded-xl p-3 mb-2">' +
+                        '<div class="flex justify-between items-center">' +
+                        '<span class="text-white font-bold">' + (d.nombre||'—') + '</span>' +
+                        '<span class="text-orange-400 font-bold text-lg">' + (d.falta_unidades||0).toLocaleString('es-AR') + ' u.</span>' +
+                        '</div>' +
+                        '<p class="text-gray-500 text-xs mt-1">Faltan ' + d.falta_producir + ' cajas (pedido ' + d.pedido + ' · stock ' + d.stock + ')</p>' +
+                        '</div>';
+                }).join('');
+                cont.innerHTML = '<div class="bg-orange-900/20 border border-orange-700 rounded-xl p-3 mb-3 text-center"><span class="text-white font-bold text-xl">Total: ' + totalU.toLocaleString('es-AR') + ' unidades</span></div>' + filas;
+            } catch(e) {
+                cont.innerHTML = '<p class="text-red-400 text-sm text-center py-4">No se pudo calcular.</p>';
+            }
+        }
+
+        function imprimirProduccion() {
+            var conFalta = (necesidadesCache||[]).filter(function(d){ return d.falta_producir > 0; });
+            if (conFalta.length === 0) { alert('No hay nada para imprimir.'); return; }
+            var fecha = new Date().toLocaleString('es-AR');
+            var totalU = 0;
+            var filas = conFalta.map(function(d){
+                totalU += (d.falta_unidades||0);
+                return '<tr><td>' + (d.nombre||'') + '</td><td style="text-align:center">' + d.pedido + '</td><td style="text-align:center">' + d.stock + '</td><td style="text-align:center">' + d.falta_producir + '</td><td style="text-align:center;font-weight:bold">' + (d.falta_unidades||0) + '</td></tr>';
+            }).join('');
+            var html = '<html><head><title>Orden de Produccion</title><style>' +
+                'body{font-family:Arial,sans-serif;padding:20px;color:#000}' +
+                'h1{font-size:20px;margin:0}p{color:#555;font-size:12px;margin:4px 0 16px}' +
+                'table{width:100%;border-collapse:collapse;font-size:13px}' +
+                'th,td{border:1px solid #999;padding:8px}th{background:#eee;text-align:left}' +
+                '.total{margin-top:16px;font-size:18px;font-weight:bold}' +
+                '</style></head><body>' +
+                '<h1>Orden de Produccion — Portal del Viento</h1>' +
+                '<p>Generado: ' + fecha + '</p>' +
+                '<table><thead><tr><th>Producto</th><th>Pedido (cajas)</th><th>Stock (cajas)</th><th>Faltan (cajas)</th><th>A FABRICAR (unidades)</th></tr></thead>' +
+                '<tbody>' + filas + '</tbody></table>' +
+                '<p class="total">TOTAL A FABRICAR: ' + totalU.toLocaleString('es-AR') + ' unidades</p>' +
+                '</body></html>';
+            var w = window.open('', '_blank');
+            w.document.write(html); w.document.close(); w.focus();
+            setTimeout(function(){ w.print(); }, 300);
         }
 
         async function cargarDatos() {
