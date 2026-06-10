@@ -1032,13 +1032,74 @@ def crear_pedido_b2b(pedido: PedidoB2B):
                 INSERT INTO detalle_pedidos_b2b (id_pedido, id_producto, cantidad, precio_unitario)
                 VALUES (%s,%s,%s,%s)
             """, (id_pedido, item.id_producto, item.cantidad, item.precio_unitario))
-            cur.execute("UPDATE productos SET stock_actual = stock_actual - %s WHERE id = %s",
-                        (item.cantidad, item.id_producto))
+        # NOTA: el stock NO se descuenta al crear el pedido. Se descuenta al despachar.
         conn.commit()
         return {"id_pedido": id_pedido}
     except Exception as e:
         conn.rollback()
         raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
+@app.get("/api/produccion/necesidades")
+def produccion_necesidades():
+    """Suma todo lo pedido en pedidos PENDIENTES y lo compara con el stock disponible.
+    Devuelve, por producto: pedido, stock y cuánto falta producir."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("""
+            SELECT d.id_producto, p.nombre, p.sku,
+                   COALESCE(SUM(d.cantidad),0) AS pedido,
+                   COALESCE(p.stock_actual,0) AS stock
+            FROM detalle_pedidos_b2b d
+            JOIN pedidos_b2b pb ON d.id_pedido = pb.id
+            LEFT JOIN productos p ON d.id_producto = p.id
+            WHERE pb.estado = 'Pendiente'
+            GROUP BY d.id_producto, p.nombre, p.sku, p.stock_actual
+            ORDER BY (COALESCE(SUM(d.cantidad),0) - COALESCE(p.stock_actual,0)) DESC
+        """)
+        filas = fetchall_dict(cur)
+        out = []
+        for f in filas:
+            pedido = float(f['pedido'] or 0)
+            stock = float(f['stock'] or 0)
+            falta = max(0, pedido - stock)
+            out.append({
+                "id_producto": f['id_producto'],
+                "nombre": f['nombre'],
+                "sku": f['sku'],
+                "pedido": pedido,
+                "stock": stock,
+                "falta_producir": falta
+            })
+        return out
+    finally:
+        liberar_conexion(conn)
+
+@app.get("/api/pedidos_b2b/{id}/faltantes")
+def pedido_faltantes(id: int):
+    """Para un pedido puntual: por cada producto, cuánto se pidió, cuánto hay y cuánto falta."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("""
+            SELECT d.id_producto, p.nombre, d.cantidad AS pedido, COALESCE(p.stock_actual,0) AS stock
+            FROM detalle_pedidos_b2b d
+            LEFT JOIN productos p ON d.id_producto = p.id
+            WHERE d.id_pedido = %s
+        """, (id,))
+        filas = fetchall_dict(cur)
+        out = []
+        for f in filas:
+            pedido = float(f['pedido'] or 0)
+            stock = float(f['stock'] or 0)
+            out.append({
+                "id_producto": f['id_producto'], "nombre": f['nombre'],
+                "pedido": pedido, "stock": stock,
+                "falta_producir": max(0, pedido - stock)
+            })
+        return out
     finally:
         liberar_conexion(conn)
 
@@ -1086,9 +1147,14 @@ def actualizar_pedido(id: int, payload: PedidoUpdate):
     conn = obtener_conexion()
     try:
         cur = conn.cursor()
-        cur.execute("SELECT id_producto, cantidad FROM detalle_pedidos_b2b WHERE id_pedido = %s", (id,))
-        for v in cur.fetchall():
-            cur.execute("UPDATE productos SET stock_actual = stock_actual + %s WHERE id = %s", (v[1], v[0]))
+        # Si el pedido ya fue despachado, devolver al stock lo que se había descontado
+        cur.execute("SELECT estado FROM pedidos_b2b WHERE id=%s", (id,))
+        er = cur.fetchone()
+        estado_actual = er[0] if er else None
+        if estado_actual == 'Despachado':
+            cur.execute("SELECT id_producto, cantidad FROM detalle_pedidos_b2b WHERE id_pedido = %s", (id,))
+            for v in cur.fetchall():
+                cur.execute("UPDATE productos SET stock_actual = COALESCE(stock_actual,0) + %s WHERE id = %s", (v[1], v[0]))
         cur.execute("DELETE FROM detalle_pedidos_b2b WHERE id_pedido = %s", (id,))
         cur.execute("UPDATE pedidos_b2b SET total = %s WHERE id = %s", (payload.total, id))
         for item in payload.detalle:
@@ -1097,8 +1163,12 @@ def actualizar_pedido(id: int, payload: PedidoUpdate):
                     INSERT INTO detalle_pedidos_b2b (id_pedido, id_producto, cantidad, precio_unitario)
                     VALUES (%s,%s,%s,%s)
                 """, (id, item.id_producto, item.cantidad, item.precio_unitario))
-                cur.execute("UPDATE productos SET stock_actual = stock_actual - %s WHERE id = %s",
-                            (item.cantidad, item.id_producto))
+        # Si seguía despachado, volver a descontar las nuevas cantidades (topado a 0)
+        if estado_actual == 'Despachado':
+            for item in payload.detalle:
+                if item.cantidad > 0:
+                    cur.execute("UPDATE productos SET stock_actual = GREATEST(COALESCE(stock_actual,0) - %s, 0) WHERE id = %s",
+                                (item.cantidad, item.id_producto))
         conn.commit()
         return {"status": "ok"}
     except Exception as e:
@@ -1112,11 +1182,21 @@ def cambiar_estado_pedido(id: int, estado: str):
     conn = obtener_conexion()
     try:
         cur = conn.cursor()
+        # Estado anterior para saber si hay que mover stock
+        cur.execute("SELECT estado FROM pedidos_b2b WHERE id=%s", (id,))
+        er = cur.fetchone()
+        estado_previo = er[0] if er else None
         cur.execute("UPDATE pedidos_b2b SET estado = %s WHERE id = %s", (estado, id))
-        if estado == 'Cancelado':
+        # Al DESPACHAR (desde un estado no despachado): descontar stock (sin quedar negativo)
+        if estado == 'Despachado' and estado_previo != 'Despachado':
             cur.execute("SELECT id_producto, cantidad FROM detalle_pedidos_b2b WHERE id_pedido = %s", (id,))
             for item in cur.fetchall():
-                cur.execute("UPDATE productos SET stock_actual = stock_actual + %s WHERE id = %s", (item[1], item[0]))
+                cur.execute("UPDATE productos SET stock_actual = GREATEST(COALESCE(stock_actual,0) - %s, 0) WHERE id = %s", (item[1], item[0]))
+        # Al CANCELAR un pedido que estaba despachado: devolver stock
+        if estado == 'Cancelado' and estado_previo == 'Despachado':
+            cur.execute("SELECT id_producto, cantidad FROM detalle_pedidos_b2b WHERE id_pedido = %s", (id,))
+            for item in cur.fetchall():
+                cur.execute("UPDATE productos SET stock_actual = COALESCE(stock_actual,0) + %s WHERE id = %s", (item[1], item[0]))
         conn.commit()
         return {"status": "ok"}
     except Exception as e:
@@ -1130,9 +1210,13 @@ def eliminar_pedido(id: int):
     conn = obtener_conexion()
     try:
         cur = conn.cursor()
-        cur.execute("SELECT id_producto, cantidad FROM detalle_pedidos_b2b WHERE id_pedido = %s", (id,))
-        for item in cur.fetchall():
-            cur.execute("UPDATE productos SET stock_actual = stock_actual + %s WHERE id = %s", (item[1], item[0]))
+        # Solo devolver stock si el pedido estaba despachado (es lo único que descontó)
+        cur.execute("SELECT estado FROM pedidos_b2b WHERE id=%s", (id,))
+        er = cur.fetchone()
+        if er and er[0] == 'Despachado':
+            cur.execute("SELECT id_producto, cantidad FROM detalle_pedidos_b2b WHERE id_pedido = %s", (id,))
+            for item in cur.fetchall():
+                cur.execute("UPDATE productos SET stock_actual = COALESCE(stock_actual,0) + %s WHERE id = %s", (item[1], item[0]))
         cur.execute("DELETE FROM detalle_pedidos_b2b WHERE id_pedido = %s", (id,))
         cur.execute("DELETE FROM pedidos_b2b WHERE id = %s", (id,))
         conn.commit()
