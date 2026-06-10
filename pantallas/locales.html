@@ -47,6 +47,7 @@
 
         <!-- VISTA GENERAL -->
         <div id="vista-general" class="flex-1 overflow-y-auto p-8">
+            <div id="aviso-cierres-pend" class="hidden mb-5"></div>
             <!-- Sub-pestañas de la vista general -->
             <div class="flex gap-6 border-b border-gray-800 mb-6">
                 <button onclick="cambiarTabGeneral('resumen')" id="tg-resumen" class="pb-3 text-sm font-bold tab-activa">🏬 Resumen</button>
@@ -623,6 +624,9 @@
                             </div>
                             ${c.observaciones ? `<p class="text-gray-500 text-xs italic mt-2">📝 ${c.observaciones}</p>` : ''}
                             ${control}
+                            ${c.retirado
+                                ? `<div class="text-xs text-blue-400 font-bold mt-2">💵 Dinero retirado por ${c.retirado_por || '—'}${c.fecha_retiro ? ' · ' + new Date(c.fecha_retiro).toLocaleDateString('es-AR') : ''}</div>`
+                                : `<div class="text-xs text-orange-400 font-bold mt-2">💵 Pendiente de retiro</div>`}
                         </div>`;
                 });
             } catch(e) {
@@ -1414,7 +1418,24 @@
         async function cargarEmpresaLocal() {
             try { window.empresaCache = await fetch(`${API_URL}/empresa`).then(r=>r.json()); } catch(e) {}
         }
-        window.onload = function(){ cargarGeneral(); cargarEmpresaLocal(); };
+        window.onload = function(){ cargarGeneral(); cargarEmpresaLocal(); cargarCierresPendientesGeneral(); };
+
+        async function cargarCierresPendientesGeneral() {
+            try {
+                var r = await fetch(`${API_URL}/pos/cierres_pendientes`).then(x=>x.json());
+                var n = (r && r.cantidad) || 0;
+                var cont = document.getElementById('aviso-cierres-pend');
+                if (n === 0) { cont.classList.add('hidden'); return; }
+                var items = (r.cierres||[]).map(function(c){
+                    return '<div class="flex justify-between items-center bg-black border border-orange-900/50 rounded-lg px-3 py-2 mb-1 text-sm"><span class="text-white">Caja #' + c.id + ' · ' + (c.nombre_local||'') + ' · ' + (c.nombre_responsable||'') + '</span><span class="text-orange-400 font-bold">$ ' + (parseFloat(c.total_efectivo)||0).toLocaleString('es-AR') + '</span></div>';
+                }).join('');
+                cont.classList.remove('hidden');
+                cont.innerHTML = '<div class="bg-orange-900/20 border border-orange-700 rounded-xl p-4">' +
+                    '<p class="text-orange-300 font-bold text-sm mb-2">💵 Hay ' + n + ' cierre(s) de caja pendientes de retiro de dinero</p>' +
+                    items +
+                    '<p class="text-gray-500 text-xs mt-2">El retiro se registra desde el POS al momento de entregar el efectivo.</p></div>';
+            } catch(e) {}
+        }
     </script>
 </body>
 </html>
