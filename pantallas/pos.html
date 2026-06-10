@@ -37,6 +37,7 @@
         </div>
         <div class="flex items-center gap-3">
             <div id="estado-caja-badge" class="text-xs font-bold px-3 py-1.5 rounded-full bg-gray-800 text-gray-500">Sin caja</div>
+            <button onclick="abrirCierresPendientes()" id="btn-cierres-pend" class="hidden text-xs font-bold px-3 py-1.5 rounded-full bg-orange-900/40 text-orange-400 border border-orange-800">💵 Cierres pendientes: <span id="cont-cierres-pend">0</span></button>
             <span id="pos-cajero" class="text-gray-400 text-sm"></span>
             <button onclick="cerrarSesionPos()" class="text-gray-500 hover:text-white text-sm border border-gray-700 rounded px-3 py-1.5">Salir</button>
         </div>
@@ -159,6 +160,16 @@
     </div>
 
     <!-- MODAL CIERRE DE CAJA -->
+    <div id="modal-cierres-pend" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
+        <div class="bg-gray-950 border border-gray-800 rounded-2xl w-full max-w-lg mx-4 max-h-[80vh] flex flex-col">
+            <div class="flex justify-between items-center p-5 border-b border-gray-800">
+                <h3 class="text-white font-bold">💵 Cierres pendientes de retiro</h3>
+                <button onclick="document.getElementById('modal-cierres-pend').classList.replace('modal-visible','modal-oculto')" class="text-gray-500 hover:text-white text-2xl leading-none">×</button>
+            </div>
+            <div id="lista-cierres-pend" class="p-5 overflow-y-auto"></div>
+        </div>
+    </div>
+
     <div id="modal-cierre" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
         <div class="bg-gray-900 border border-red-700 rounded-2xl p-6 w-[440px] shadow-2xl max-h-[90vh] overflow-y-auto">
             <div class="flex justify-between items-center mb-4">
@@ -531,6 +542,51 @@
             await verificarCaja();
         }
 
+        async function actualizarContadorCierres() {
+            try {
+                var r = await fetch(API_URL + '/pos/cierres_pendientes' + (localActual ? ('?id_local=' + localActual.id) : '')).then(function(x){ return x.json(); });
+                var n = (r && r.cantidad) || 0;
+                var btn = document.getElementById('btn-cierres-pend');
+                document.getElementById('cont-cierres-pend').textContent = n;
+                btn.classList.toggle('hidden', n === 0);
+                window._cierresPend = (r && r.cierres) || [];
+            } catch(e) {}
+        }
+
+        function abrirCierresPendientes() {
+            var lista = window._cierresPend || [];
+            if (!lista.length) { alert('No hay cierres pendientes de retiro.'); return; }
+            var cont = document.getElementById('lista-cierres-pend');
+            cont.innerHTML = lista.map(function(c){
+                return '<div class="bg-black border border-gray-800 rounded-lg p-3 mb-2">' +
+                    '<div class="flex justify-between"><span class="text-white font-bold text-sm">Caja #' + c.id + ' · ' + (c.nombre_local||'') + '</span><span class="text-neon font-bold">$ ' + (parseFloat(c.total_efectivo)||0).toLocaleString('es-AR') + '</span></div>' +
+                    '<p class="text-gray-500 text-xs">' + (c.nombre_responsable||'') + ' · ' + (c.fecha_cierre||'').replace('T',' ').substring(0,16) + '</p>' +
+                    '<div class="flex gap-2 mt-2">' +
+                    '<input type="text" id="retira-' + c.id + '" placeholder="Nombre de quien retira" class="flex-1 bg-gray-900 border border-gray-700 text-white rounded p-2 text-sm">' +
+                    '<button onclick="marcarRetirado(' + c.id + ')" class="bg-neon text-black font-bold px-3 py-2 rounded text-sm">✓ Retirado</button>' +
+                    '</div></div>';
+            }).join('');
+            document.getElementById('modal-cierres-pend').classList.replace('modal-oculto','modal-visible');
+        }
+
+        async function marcarRetirado(idCaja) {
+            var nombre = (document.getElementById('retira-' + idCaja).value || '').trim();
+            if (!nombre) { alert('Escribí el nombre de quien retira el dinero.'); return; }
+            try {
+                var res = await fetch(API_URL + '/pos/cierres/' + idCaja + '/retirar', {
+                    method:'PUT', headers:{'Content-Type':'application/json'},
+                    body: JSON.stringify({ retirado_por: nombre })
+                });
+                if (res.ok) {
+                    document.getElementById('modal-cierres-pend').classList.replace('modal-visible','modal-oculto');
+                    await actualizarContadorCierres();
+                    alert('✅ Registrado. Retiró: ' + nombre);
+                } else {
+                    var e = await res.json(); alert('❌ ' + (e.detail || 'No se pudo registrar'));
+                }
+            } catch(err) { alert('❌ Error de conexión.'); }
+        }
+
         async function verificarCaja() {
             if (!localActual) return;
             var est = await fetch(API_URL + '/pos/caja/estado?id_local=' + localActual.id).then(function(r){return r.json();});
@@ -567,6 +623,7 @@
                 document.getElementById('estado-caja-badge').textContent = '🔴 Caja cerrada';
                 document.getElementById('estado-caja-badge').className = 'text-xs font-bold px-3 py-1.5 rounded-full bg-red-900/40 text-red-400';
             }
+            actualizarContadorCierres();
         }
 
         function mostrarVista(v) {
@@ -972,14 +1029,71 @@
         async function confirmarCierre() {
             var contado = parseFloat(document.getElementById('cierre-contado').value) || 0;
             var obs = document.getElementById('cierre-obs').value || null;
+            // Guardar datos para el ticket antes de cerrar
+            var datosCaja = {
+                local: (localActual ? localActual.nombre : ''),
+                responsable: (posUsuario ? (posUsuario.nombre + ' ' + posUsuario.apellido) : ''),
+                apertura: (cajaActual ? cajaActual.monto_apertura : 0),
+                id_caja: cajaActual.id
+            };
             try {
                 var res = await fetch(API_URL + '/pos/caja/' + cajaActual.id + '/cerrar', {
                     method:'PUT', headers:{'Content-Type':'application/json'},
                     body: JSON.stringify({ monto_cierre: contado, observaciones: obs, id_usuario: (posUsuario ? posUsuario.id_usuario : null), es_admin: (posUsuario && posUsuario.rol === 'admin') })
                 });
-                if (res.ok) { cerrarModales(); carrito = []; await verificarCaja(); }
+                if (res.ok) {
+                    var totales = await res.json().catch(function(){ return {}; });
+                    imprimirTicketCierre(datosCaja, totales, contado, obs);
+                    cerrarModales(); carrito = []; await verificarCaja();
+                }
                 else { var e = await res.json(); alert('❌ ' + (e.detail || 'Error al cerrar')); }
             } catch(err){ alert('❌ Error de conexión.'); }
+        }
+
+        function imprimirTicketCierre(caja, t, contado, obs) {
+            var f = new Date().toLocaleString('es-AR');
+            var ef = parseFloat(t.efectivo||0), ta = parseFloat(t.tarjeta||0), tr = parseFloat(t.transferencia||0), qr = parseFloat(t.qr||0);
+            var totalVendido = ef + ta + tr + qr;
+            var ap = parseFloat(caja.apertura||0);
+            var esperadoEfectivo = ap + ef;
+            var dif = contado - esperadoEfectivo;
+            function $(n){ return '$ ' + (parseFloat(n)||0).toLocaleString('es-AR'); }
+            var html = '<html><head><title>Cierre de Caja</title><style>' +
+                '@media print{@page{size:80mm auto;margin:0}}' +
+                'body{font-family:monospace;width:80mm;padding:6px 10px;color:#000;font-size:12px}' +
+                'h2{text-align:center;font-size:14px;margin:4px 0}' +
+                '.c{text-align:center}.r{display:flex;justify-content:space-between;margin:2px 0}' +
+                'hr{border:none;border-top:1px dashed #000;margin:6px 0}' +
+                '.tot{font-weight:bold;font-size:13px}' +
+                '.firma{margin-top:30px;border-top:1px solid #000;text-align:center;padding-top:4px;font-size:11px}' +
+                '</style></head><body>' +
+                '<h2>CIERRE DE CAJA</h2>' +
+                '<div class="c">Portal del Viento</div>' +
+                '<div class="c">' + (caja.local||'') + '</div>' +
+                '<hr>' +
+                '<div class="r"><span>Fecha:</span><span>' + f + '</span></div>' +
+                '<div class="r"><span>Cajero:</span><span>' + (caja.responsable||'') + '</span></div>' +
+                '<div class="r"><span>Caja N°:</span><span>' + (caja.id_caja||'') + '</span></div>' +
+                '<hr>' +
+                '<div class="r"><span>Apertura:</span><span>' + $(ap) + '</span></div>' +
+                '<div class="r"><span>Efectivo ventas:</span><span>' + $(ef) + '</span></div>' +
+                '<div class="r"><span>Tarjeta:</span><span>' + $(ta) + '</span></div>' +
+                '<div class="r"><span>Transferencia:</span><span>' + $(tr) + '</span></div>' +
+                '<div class="r"><span>QR:</span><span>' + $(qr) + '</span></div>' +
+                '<hr>' +
+                '<div class="r tot"><span>Total vendido:</span><span>' + $(totalVendido) + '</span></div>' +
+                '<div class="r"><span>Efectivo esperado:</span><span>' + $(esperadoEfectivo) + '</span></div>' +
+                '<div class="r"><span>Efectivo contado:</span><span>' + $(contado) + '</span></div>' +
+                '<div class="r tot"><span>Diferencia:</span><span>' + (dif>=0?'+':'') + $(dif) + '</span></div>' +
+                (obs ? '<hr><div>Obs: ' + obs + '</div>' : '') +
+                '<hr>' +
+                '<div class="firma">Firma del cajero</div>' +
+                '<div class="firma">Recibí conforme / Quién retira</div>' +
+                '</body></html>';
+            var w = window.open('', '_blank');
+            if (!w) return;
+            w.document.write(html); w.document.close(); w.focus();
+            setTimeout(function(){ w.print(); }, 300);
         }
 
         // ── GESTIÓN LOCALES ──
