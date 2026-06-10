@@ -2245,27 +2245,27 @@ def pos_cerrar_caja(id_caja: int, data: PosCerrarCaja):
 
 @app.put("/api/locales/caja/{id_caja}/cerrar_admin")
 def cerrar_caja_admin(id_caja: int):
-    """Cierre rápido de caja desde el panel admin. Usa lo registrado, sin conteo manual."""
+    """Cierre rápido de caja desde el panel admin: usa los totales registrados,
+    sin contar efectivo. Pensado para cuando el cajero se fue sin cerrar."""
     conn = obtener_conexion()
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
-        t = _totales_por_metodo_caja(cur, id_caja)
-        # monto_cierre = apertura + efectivo registrado (cierre sin diferencia)
-        cur.execute("SELECT COALESCE(monto_apertura,0) AS ap, estado FROM pos_cajas WHERE id=%s", (id_caja,))
-        row = cur.fetchone()
-        if not row:
+        cur.execute("SELECT id, estado, monto_apertura FROM pos_cajas WHERE id=%s", (id_caja,))
+        caja = cur.fetchone()
+        if not caja:
             raise HTTPException(status_code=404, detail="Caja no encontrada")
-        if row['estado'] == 'cerrada':
-            raise HTTPException(status_code=400, detail="La caja ya está cerrada")
-        monto_cierre = float(row['ap'] or 0) + float(t['efectivo'] or 0)
+        if caja['estado'] == 'cerrada':
+            return {"status": "ya_cerrada"}
+        t = _totales_por_metodo_caja(cur, id_caja)
+        esperado = float(caja['monto_apertura'] or 0) + float(t['efectivo'] or 0)
         cur.execute("""
             UPDATE pos_cajas SET estado='cerrada', fecha_cierre=NOW(), monto_cierre=%s,
                 total_efectivo=%s, total_tarjeta=%s, total_transferencia=%s, total_qr=%s,
-                observaciones=COALESCE(observaciones,'') || ' [Cerrada desde panel admin]'
+                observaciones=COALESCE(observaciones,'') || ' [Cerrada por administrador]'
             WHERE id=%s
-        """, (monto_cierre, t['efectivo'], t['tarjeta'], t['transferencia'], t['qr'], id_caja))
+        """, (esperado, t['efectivo'], t['tarjeta'], t['transferencia'], t['qr'], id_caja))
         conn.commit()
-        return {"status": "ok"}
+        return {"status": "ok", **dict(t)}
     except HTTPException:
         raise
     except Exception as e:
@@ -4303,7 +4303,8 @@ def locales_cierres_caja(id_local: int, desde: Optional[str] = None, hasta: Opti
     conn = obtener_conexion()
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
-        cols_control = """, COALESCE(controlado,false) AS controlado, controlado_por, fecha_control::text AS fecha_control"""
+        cols_control = """, COALESCE(controlado,false) AS controlado, controlado_por, fecha_control::text AS fecha_control,
+                          COALESCE(retirado,false) AS retirado, retirado_por, fecha_retiro::text AS fecha_retiro"""
         base = """
             SELECT id, nombre_responsable, fecha_apertura::text, fecha_cierre::text,
                    COALESCE(monto_apertura,0) AS monto_apertura,
@@ -4330,6 +4331,7 @@ def locales_cierres_caja(id_local: int, desde: Optional[str] = None, hasta: Opti
             cierres = fetchall_dict(cur)
             for c in cierres:
                 c['controlado'] = False; c['controlado_por'] = None; c['fecha_control'] = None
+                c['retirado'] = False; c['retirado_por'] = None; c['fecha_retiro'] = None
         for c in cierres:
             ef = float(c['total_efectivo'] or 0)
             ap = float(c['monto_apertura'] or 0)
@@ -4342,37 +4344,6 @@ def locales_cierres_caja(id_local: int, desde: Optional[str] = None, hasta: Opti
     finally:
         liberar_conexion(conn)
 
-@app.put("/api/locales/caja/{id_caja}/cerrar_admin")
-def cerrar_caja_admin(id_caja: int):
-    """Cierre rápido de caja desde el panel admin: usa los totales registrados,
-    sin contar efectivo. Pensado para cuando el cajero se fue sin cerrar."""
-    conn = obtener_conexion()
-    try:
-        cur = conn.cursor(cursor_factory=RealDictCursor)
-        cur.execute("SELECT id, estado, monto_apertura FROM pos_cajas WHERE id=%s", (id_caja,))
-        caja = cur.fetchone()
-        if not caja:
-            raise HTTPException(status_code=404, detail="Caja no encontrada")
-        if caja['estado'] == 'cerrada':
-            return {"status": "ya_cerrada"}
-        t = _totales_por_metodo_caja(cur, id_caja)
-        # Cierre rápido: el monto contado = apertura + efectivo registrado (sin diferencia)
-        esperado = float(caja['monto_apertura'] or 0) + float(t['efectivo'] or 0)
-        cur.execute("""
-            UPDATE pos_cajas SET estado='cerrada', fecha_cierre=NOW(), monto_cierre=%s,
-                total_efectivo=%s, total_tarjeta=%s, total_transferencia=%s, total_qr=%s,
-                observaciones=COALESCE(observaciones,'') || ' [Cerrada por administrador]'
-            WHERE id=%s
-        """, (esperado, t['efectivo'], t['tarjeta'], t['transferencia'], t['qr'], id_caja))
-        conn.commit()
-        return {"status": "ok", **dict(t)}
-    except HTTPException:
-        raise
-    except Exception as e:
-        conn.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        liberar_conexion(conn)
 
 @app.put("/api/locales/cierres/{id_caja}/controlar")
 def controlar_cierre_caja(id_caja: int, controlado_por: str = ""):
@@ -4386,6 +4357,55 @@ def controlar_cierre_caja(id_caja: int, controlado_por: str = ""):
     except Exception as e:
         conn.rollback()
         raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
+class RetiroCierre(BaseModel):
+    retirado_por: str
+
+@app.put("/api/pos/cierres/{id_caja}/retirar")
+def marcar_cierre_retirado(id_caja: int, data: RetiroCierre):
+    """Marca un cierre de caja como retirado (registra quién se llevó la plata)."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        try:
+            cur.execute("UPDATE pos_cajas SET retirado=true, retirado_por=%s, fecha_retiro=NOW() WHERE id=%s",
+                        (data.retirado_por or None, id_caja))
+            conn.commit()
+            return {"status": "ok"}
+        except Exception:
+            conn.rollback()
+            raise HTTPException(status_code=400, detail="Falta correr CREAR_RETIRO_CIERRES.sql en la base.")
+    finally:
+        liberar_conexion(conn)
+
+@app.get("/api/pos/cierres_pendientes")
+def cierres_pendientes_retiro(id_local: Optional[int] = None):
+    """Devuelve la cantidad y lista de cierres cerrados que aún no fueron retirados.
+    Si se pasa id_local, filtra por ese local."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            if id_local:
+                cur.execute("""SELECT id, nombre_local, nombre_responsable, fecha_cierre::text,
+                                      COALESCE(monto_cierre,0) AS monto_cierre, COALESCE(total_efectivo,0) AS total_efectivo
+                               FROM pos_cajas
+                               WHERE estado='cerrada' AND COALESCE(retirado,false)=false AND id_local=%s
+                               ORDER BY fecha_cierre DESC""", (id_local,))
+            else:
+                cur.execute("""SELECT id, nombre_local, nombre_responsable, fecha_cierre::text,
+                                      COALESCE(monto_cierre,0) AS monto_cierre, COALESCE(total_efectivo,0) AS total_efectivo
+                               FROM pos_cajas
+                               WHERE estado='cerrada' AND COALESCE(retirado,false)=false
+                               ORDER BY fecha_cierre DESC""")
+            lista = fetchall_dict(cur)
+            return {"cantidad": len(lista), "cierres": lista}
+        except Exception:
+            conn.rollback()
+            # Si la columna retirado no existe todavía, no hay pendientes
+            return {"cantidad": 0, "cierres": []}
     finally:
         liberar_conexion(conn)
 
