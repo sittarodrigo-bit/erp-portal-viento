@@ -97,6 +97,7 @@
                 <button onclick="cerrarModales()" class="text-gray-500 hover:text-white text-2xl">×</button>
             </div>
             <div id="tabla-det" class="mb-3"></div>
+            <div id="aviso-faltantes" class="hidden mb-4"></div>
 
             <!-- Agregar producto -->
             <div class="border border-dashed border-gray-700 rounded-lg p-3 mb-4">
@@ -368,7 +369,28 @@
 
             renderDetalle();
             await cargarProductosAgregar();
+            await cargarFaltantesPedido(id);
             document.getElementById('modal-detalle').classList.replace('modal-oculto','modal-visible');
+        }
+
+        async function cargarFaltantesPedido(id) {
+            var cont = document.getElementById('aviso-faltantes');
+            cont.classList.add('hidden');
+            cont.innerHTML = '';
+            try {
+                var faltantes = await fetch(API_URL + '/pedidos_b2b/' + id + '/faltantes').then(function(r){ return r.json(); });
+                var conFalta = faltantes.filter(function(f){ return f.falta_producir > 0; });
+                if (conFalta.length === 0) {
+                    cont.classList.remove('hidden');
+                    cont.innerHTML = '<div class="bg-green-900/30 border border-green-800 rounded-lg p-3 text-sm text-green-300">✅ Hay stock suficiente para despachar este pedido completo.</div>';
+                    return;
+                }
+                var filas = conFalta.map(function(f){
+                    return '<div class="flex justify-between py-1 border-b border-yellow-900/40 text-xs"><span class="text-white">' + f.nombre + '</span><span class="text-gray-400">pedido ' + f.pedido + ' · stock ' + f.stock + ' · <span class="text-yellow-400 font-bold">faltan ' + f.falta_producir + '</span></span></div>';
+                }).join('');
+                cont.classList.remove('hidden');
+                cont.innerHTML = '<div class="bg-yellow-900/20 border border-yellow-800 rounded-lg p-3"><p class="text-sm font-bold text-yellow-400 mb-2">⚠️ Faltan producir para completar este pedido:</p>' + filas + '</div>';
+            } catch(e) {}
         }
 
         function renderDetalle() {
