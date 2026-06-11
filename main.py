@@ -1301,12 +1301,12 @@ def armado_detalle_pedido(id: int):
         cab = cur.fetchone()
         if not cab:
             raise HTTPException(status_code=404, detail="Pedido no encontrado")
-        # Tildados
-        tildados = {}
+        # Cantidad ya preparada de cada producto
+        preparados = {}
         try:
             cur.execute("SELECT id_producto, cantidad FROM preparacion_items WHERE id_pedido=%s", (id,))
             for r in cur.fetchall():
-                tildados[r['id_producto']] = float(r['cantidad'] or 0)
+                preparados[r['id_producto']] = float(r['cantidad'] or 0)
         except Exception:
             conn.rollback()
         cur.execute("""
@@ -1316,10 +1316,12 @@ def armado_detalle_pedido(id: int):
         """, (id,))
         items = []
         for r in fetchall_dict(cur):
+            prep = preparados.get(r['id_producto'], 0)
             items.append({
                 "id_producto": r['id_producto'], "nombre": r['nombre'], "sku": r['sku'],
                 "cantidad": float(r['cantidad'] or 0), "stock": float(r['stock'] or 0),
-                "tildado": r['id_producto'] in tildados
+                "preparado": prep,
+                "completo": prep >= float(r['cantidad'] or 0)
             })
         return {"id": cab['id'], "estado": cab['estado'], "distribuidor": cab['distribuidor'], "items": items}
     finally:
@@ -1337,41 +1339,56 @@ def armado_iniciar(id: int):
     finally:
         liberar_conexion(conn)
 
-class TildeItem(BaseModel):
+class AjusteCantidad(BaseModel):
     id_producto: int
-    cantidad: float
-    tildar: bool
+    delta: float          # +1 o -1 (o el paso que se cargue)
     preparado_por: Optional[str] = None
 
-@app.post("/api/armado/pedidos/{id}/tilde")
-def armado_tilde(id: int, data: TildeItem):
-    """Tilda (saca del stock) o destilda (devuelve al stock) un ítem del pedido."""
+@app.post("/api/armado/pedidos/{id}/cantidad")
+def armado_ajustar_cantidad(id: int, data: AjusteCantidad):
+    """Sube o baja la cantidad preparada de un ítem. Cada unidad cargada descuenta
+    del stock al instante; al bajar, devuelve al stock. No permite pasar lo pedido."""
     conn = obtener_conexion()
     try:
         cur = conn.cursor()
+        # Cantidad pedida (tope)
+        cur.execute("SELECT cantidad FROM detalle_pedidos_b2b WHERE id_pedido=%s AND id_producto=%s", (id, data.id_producto))
+        ped = cur.fetchone()
+        if not ped:
+            raise HTTPException(status_code=404, detail="Producto no está en el pedido")
+        pedido_cant = float(ped[0] or 0)
+        # Cantidad ya preparada
         try:
             cur.execute("SELECT cantidad FROM preparacion_items WHERE id_pedido=%s AND id_producto=%s", (id, data.id_producto))
-            ya = cur.fetchone()
+            row = cur.fetchone()
         except Exception:
             conn.rollback()
             raise HTTPException(status_code=400, detail="Falta correr CREAR_PREPARACION.sql en la base.")
-        if data.tildar:
-            if ya:
-                return {"status": "ok", "ya_estaba": True}
-            # Descontar del stock (sin quedar negativo) y registrar
-            cur.execute("UPDATE productos SET stock_actual = GREATEST(COALESCE(stock_actual,0) - %s, 0) WHERE id=%s", (data.cantidad, data.id_producto))
-            cur.execute("INSERT INTO preparacion_items (id_pedido, id_producto, cantidad, preparado_por) VALUES (%s,%s,%s,%s)",
-                        (id, data.id_producto, data.cantidad, data.preparado_por))
-            conn.commit()
-            return {"status": "ok", "tildado": True}
+        actual = float(row[0]) if row else 0.0
+        nueva = actual + data.delta
+        if nueva < 0: nueva = 0
+        if nueva > pedido_cant: nueva = pedido_cant
+        cambio = nueva - actual  # lo que realmente se mueve
+        if cambio == 0:
+            return {"status": "ok", "cantidad": actual, "sin_cambio": True}
+        # Mover stock: si cambio>0 descuenta; si <0 devuelve
+        if cambio > 0:
+            cur.execute("UPDATE productos SET stock_actual = GREATEST(COALESCE(stock_actual,0) - %s, 0) WHERE id=%s", (cambio, data.id_producto))
         else:
-            if not ya:
-                return {"status": "ok", "ya_estaba": False}
-            # Devolver al stock y borrar el registro
-            cur.execute("UPDATE productos SET stock_actual = COALESCE(stock_actual,0) + %s WHERE id=%s", (float(ya[0] or 0), data.id_producto))
-            cur.execute("DELETE FROM preparacion_items WHERE id_pedido=%s AND id_producto=%s", (id, data.id_producto))
-            conn.commit()
-            return {"status": "ok", "tildado": False}
+            cur.execute("UPDATE productos SET stock_actual = COALESCE(stock_actual,0) + %s WHERE id=%s", (abs(cambio), data.id_producto))
+        # Guardar la nueva cantidad
+        if row:
+            if nueva <= 0:
+                cur.execute("DELETE FROM preparacion_items WHERE id_pedido=%s AND id_producto=%s", (id, data.id_producto))
+            else:
+                cur.execute("UPDATE preparacion_items SET cantidad=%s, preparado_por=%s WHERE id_pedido=%s AND id_producto=%s",
+                            (nueva, data.preparado_por, id, data.id_producto))
+        else:
+            if nueva > 0:
+                cur.execute("INSERT INTO preparacion_items (id_pedido, id_producto, cantidad, preparado_por) VALUES (%s,%s,%s,%s)",
+                            (id, data.id_producto, nueva, data.preparado_por))
+        conn.commit()
+        return {"status": "ok", "cantidad": nueva}
     except HTTPException:
         raise
     except Exception as e:
@@ -1403,22 +1420,27 @@ def armado_despacho_parcial(id: int):
     conn = obtener_conexion()
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
-        # Ítems del pedido y cuáles están tildados
-        tildados = set()
+        # Cantidades preparadas por producto
+        prep = {}
         try:
-            cur.execute("SELECT id_producto FROM preparacion_items WHERE id_pedido=%s", (id,))
+            cur.execute("SELECT id_producto, cantidad FROM preparacion_items WHERE id_pedido=%s", (id,))
             for r in cur.fetchall():
-                tildados.add(r['id_producto'])
+                prep[r['id_producto']] = float(r['cantidad'] or 0)
         except Exception:
             conn.rollback()
         cur.execute("""SELECT d.id_producto, p.nombre, d.cantidad
                        FROM detalle_pedidos_b2b d LEFT JOIN productos p ON d.id_producto=p.id
                        WHERE d.id_pedido=%s""", (id,))
         items = fetchall_dict(cur)
-        faltantes = [i for i in items if i['id_producto'] not in tildados]
+        faltantes = []
+        for i in items:
+            pedido_c = float(i['cantidad'] or 0)
+            armado_c = prep.get(i['id_producto'], 0)
+            if armado_c < pedido_c:
+                faltantes.append({"nombre": i['nombre'], "falta": pedido_c - armado_c})
         nota = ""
         if faltantes:
-            nota = "Faltó entregar: " + ", ".join([(i['nombre'] or '?') + " x" + str(int(i['cantidad'])) for i in faltantes])
+            nota = "Faltó entregar: " + ", ".join([(f['nombre'] or '?') + " x" + str(int(f['falta'])) for f in faltantes])
         cur.execute("UPDATE pedidos_b2b SET estado='Despachado parcial' WHERE id=%s", (id,))
         conn.commit()
         try:
