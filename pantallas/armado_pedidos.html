@@ -130,16 +130,15 @@ function renderArmado(){
   $('arm-titulo').textContent = 'Pedido #' + d.id;
   $('arm-distribuidor').textContent = d.distribuidor || 'Sin distribuidor';
   $('arm-estado').textContent = d.estado === 'Despachado parcial' ? '📦 Parcial — completar' : '🛠️ En preparación';
-  // Ordenar: primero los que faltan (no tildados), luego los hechos
-  const faltan = d.items.filter(i=>!i.tildado);
-  const hechos = d.items.filter(i=>i.tildado);
+  const faltan = d.items.filter(i=>!i.completo);
+  const hechos = d.items.filter(i=>i.completo);
   let html = '';
   if(faltan.length){
-    html += '<p class="text-orange-400 text-xs font-bold uppercase mb-2 mt-1">⬜ Falta sacar (' + faltan.length + ')</p>';
+    html += '<p class="text-orange-400 text-xs font-bold uppercase mb-2 mt-1">⬜ Falta completar (' + faltan.length + ')</p>';
     html += faltan.map(renderItem).join('');
   }
   if(hechos.length){
-    html += '<p class="text-neon text-xs font-bold uppercase mb-2 mt-5">✓ Ya sacado (' + hechos.length + ')</p>';
+    html += '<p class="text-neon text-xs font-bold uppercase mb-2 mt-5">✓ Completos (' + hechos.length + ')</p>';
     html += hechos.map(renderItem).join('');
   }
   $('arm-items').innerHTML = html;
@@ -147,65 +146,76 @@ function renderArmado(){
 }
 
 function renderItem(it){
-  const sinStock = it.stock <= 0 && !it.tildado;
-  return `<div class="flex items-center gap-3 bg-gray-900 border ${it.tildado?'border-neon/50 bg-neon/5':'border-gray-800'} rounded-xl p-4 mb-2 ${sinStock?'opacity-60':''}">
-    <button onclick="toggleTilde(${it.id_producto})" class="w-12 h-12 rounded-lg border-2 ${it.tildado?'bg-neon border-neon':'border-gray-600'} flex items-center justify-center text-2xl flex-shrink-0 transition">
-      ${it.tildado?'<span class="text-black font-bold">✓</span>':''}
-    </button>
-    <div class="flex-1 min-w-0">
-      <p class="text-white font-bold ${it.tildado?'line-through opacity-60':''}">${it.nombre}</p>
-      <p class="text-gray-500 text-xs">Stock disponible: ${it.stock}${sinStock?' · <span class="text-red-400 font-bold">SIN STOCK</span>':''}</p>
+  const prep = it.preparado || 0;
+  const completo = it.completo;
+  const pctItem = it.cantidad ? Math.round(prep/it.cantidad*100) : 0;
+  return `<div class="bg-gray-900 border ${completo?'border-neon/50 bg-neon/5':'border-gray-800'} rounded-xl p-4 mb-2">
+    <div class="flex items-center justify-between gap-3">
+      <div class="flex-1 min-w-0">
+        <p class="text-white font-bold">${it.nombre} ${completo?'<span class="text-neon">✓</span>':''}</p>
+        <p class="text-gray-500 text-xs">Stock disponible: ${it.stock}</p>
+      </div>
+      <div class="flex items-center gap-2 flex-shrink-0">
+        <button onclick="ajustar(${it.id_producto},-1)" class="w-11 h-11 rounded-lg bg-gray-800 text-white text-2xl flex items-center justify-center active:bg-gray-700">−</button>
+        <div class="text-center min-w-[64px]">
+          <p class="text-2xl font-bold ${completo?'text-neon':'text-white'}">${prep}<span class="text-gray-600 text-base">/${it.cantidad}</span></p>
+        </div>
+        <button onclick="ajustar(${it.id_producto},1)" class="w-11 h-11 rounded-lg bg-neon text-black text-2xl font-bold flex items-center justify-center active:scale-90">+</button>
+      </div>
     </div>
-    <div class="text-right flex-shrink-0">
-      <p class="text-2xl font-bold text-neon">${it.cantidad}</p>
-      <p class="text-gray-600 text-xs">a sacar</p>
-    </div>
+    <div class="w-full bg-gray-800 rounded-full h-1.5 mt-3 overflow-hidden"><div class="bg-neon h-1.5 transition-all" style="width:${pctItem}%"></div></div>
   </div>`;
 }
 
 function actualizarProgreso(){
   const d = pedidoActual;
   const total = d.items.length;
-  const hechos = d.items.filter(i=>i.tildado).length;
-  const pct = total ? Math.round(hechos/total*100) : 0;
+  const completos = d.items.filter(i=>i.completo).length;
+  const pct = total ? Math.round(completos/total*100) : 0;
   $('arm-progreso').style.width = pct + '%';
-  $('arm-progreso-txt').textContent = hechos + ' de ' + total + ' productos preparados';
-  $('btn-listo').disabled = hechos < total;
-  const faltan = total - hechos;
+  $('arm-progreso-txt').textContent = completos + ' de ' + total + ' productos completos';
+  $('btn-listo').disabled = completos < total;
+  const algoArmado = d.items.some(i=>(i.preparado||0) > 0);
   const aviso = $('aviso-faltan');
   const btnParcial = $('btn-parcial');
-  if(faltan > 0 && hechos > 0){
+  if(completos < total && algoArmado){
     aviso.classList.remove('hidden');
-    aviso.textContent = '⚠️ Faltan ' + faltan + ' producto(s) sin sacar';
+    aviso.textContent = '⚠️ Hay productos incompletos';
     btnParcial.classList.remove('hidden');
-  } else if(faltan > 0 && hechos === 0){
-    aviso.classList.add('hidden');
-    btnParcial.classList.add('hidden');
   } else {
     aviso.classList.add('hidden');
     btnParcial.classList.add('hidden');
   }
 }
 
-async function toggleTilde(idProd){
+async function ajustar(idProd, delta){
   const it = pedidoActual.items.find(i=>i.id_producto===idProd);
   if(!it) return;
-  const nuevoTilde = !it.tildado;
-  if(nuevoTilde && it.stock <= 0){
-    if(!confirm('Este producto no tiene stock. ¿Igual lo marcás como sacado? (el stock puede quedar en 0)')) return;
+  const prep = it.preparado || 0;
+  if(delta > 0 && prep >= it.cantidad) return; // ya está completo
+  if(delta > 0 && it.stock <= 0){
+    if(!confirm('Este producto no tiene stock disponible. ¿Igual lo cargás?')) return;
   }
+  if(delta < 0 && prep <= 0) return;
   // Optimista
-  it.tildado = nuevoTilde;
+  const nuevoPrep = Math.max(0, Math.min(it.cantidad, prep + delta));
+  const movimiento = nuevoPrep - prep;
+  it.preparado = nuevoPrep;
+  it.completo = nuevoPrep >= it.cantidad;
+  if(movimiento > 0) it.stock = Math.max(0, it.stock - movimiento);
+  else it.stock = it.stock + Math.abs(movimiento);
   renderArmado();
   try{
-    await fetch(`${API_URL}/armado/pedidos/${pedidoActual.id}/tilde`, {
+    const r = await fetch(`${API_URL}/armado/pedidos/${pedidoActual.id}/cantidad`, {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ id_producto: idProd, cantidad: it.cantidad, tildar: nuevoTilde, preparado_por: armadoPor })
-    });
+      body: JSON.stringify({ id_producto: idProd, delta: delta, preparado_por: armadoPor })
+    }).then(x=>x.json());
+    // sincronizar con el valor real del server
+    if(r && typeof r.cantidad === 'number'){ it.preparado = r.cantidad; it.completo = r.cantidad >= it.cantidad; renderArmado(); }
   }catch(e){
-    // revertir si falla
-    it.tildado = !nuevoTilde; renderArmado();
-    alert('No se pudo actualizar el stock. ¿Corriste el SQL?');
+    // revertir
+    it.preparado = prep; it.completo = prep >= it.cantidad; renderArmado();
+    alert('No se pudo actualizar. ¿Corriste el SQL?');
   }
 }
 
@@ -225,12 +235,11 @@ function guardarYSeguir(){
 }
 
 async function despacharParcial(){
-  const faltan = pedidoActual.items.filter(i=>!i.tildado);
-  const txt = faltan.map(i=>'• ' + i.nombre + ' x' + i.cantidad).join('\n');
-  if(!confirm('Vas a despachar SOLO lo que sacaste.\n\nQueda pendiente de entregar:\n' + txt + '\n\n¿Confirmás el despacho parcial?')) return;
+  const faltan = pedidoActual.items.filter(i=>!i.completo).map(i=>'• ' + i.nombre + ': faltan ' + (i.cantidad-(i.preparado||0)) + ' de ' + i.cantidad);
+  if(!confirm('Vas a despachar lo que cargaste.\n\nQueda pendiente:\n' + faltan.join('\n') + '\n\n¿Confirmás el despacho parcial?')) return;
   try{
     await fetch(`${API_URL}/armado/pedidos/${pedidoActual.id}/despacho_parcial`, {method:'PUT'});
-    alert('📦 Despachado lo armado. Lo que faltó quedó registrado en el pedido.');
+    alert('📦 Despachado lo armado. Lo que faltó quedó registrado.');
     volverLista(); cargarPedidos();
   }catch(e){ alert('No se pudo despachar parcial.'); }
 }
