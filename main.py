@@ -1284,8 +1284,8 @@ def armado_listar_pedidos():
                    d.razon_social AS distribuidor
             FROM pedidos_b2b p
             LEFT JOIN distribuidores d ON p.id_distribuidor = d.id
-            WHERE p.estado IN ('Pendiente','En preparación')
-            ORDER BY CASE WHEN p.estado='En preparación' THEN 0 ELSE 1 END, p.id ASC
+            WHERE p.estado IN ('Pendiente','En preparación','Despachado parcial')
+            ORDER BY CASE WHEN p.estado='En preparación' THEN 0 WHEN p.estado='Despachado parcial' THEN 1 ELSE 2 END, p.id ASC
         """)
         return fetchall_dict(cur)
     finally:
@@ -1393,6 +1393,42 @@ def armado_listo(id: int):
         except Exception:
             pass
         return {"status": "ok"}
+    finally:
+        liberar_conexion(conn)
+
+@app.put("/api/armado/pedidos/{id}/despacho_parcial")
+def armado_despacho_parcial(id: int):
+    """Despacha lo que ya está tildado y deja constancia de lo que faltó.
+    El pedido queda como 'Despachado parcial'."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        # Ítems del pedido y cuáles están tildados
+        tildados = set()
+        try:
+            cur.execute("SELECT id_producto FROM preparacion_items WHERE id_pedido=%s", (id,))
+            for r in cur.fetchall():
+                tildados.add(r['id_producto'])
+        except Exception:
+            conn.rollback()
+        cur.execute("""SELECT d.id_producto, p.nombre, d.cantidad
+                       FROM detalle_pedidos_b2b d LEFT JOIN productos p ON d.id_producto=p.id
+                       WHERE d.id_pedido=%s""", (id,))
+        items = fetchall_dict(cur)
+        faltantes = [i for i in items if i['id_producto'] not in tildados]
+        nota = ""
+        if faltantes:
+            nota = "Faltó entregar: " + ", ".join([(i['nombre'] or '?') + " x" + str(int(i['cantidad'])) for i in faltantes])
+        cur.execute("UPDATE pedidos_b2b SET estado='Despachado parcial' WHERE id=%s", (id,))
+        conn.commit()
+        try:
+            crear_notificacion("pedido", "Pedido despachado PARCIAL", "Pedido #" + str(id) + ". " + nota)
+        except Exception:
+            pass
+        return {"status": "ok", "faltantes": faltantes, "nota": nota}
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
     finally:
         liberar_conexion(conn)
 
