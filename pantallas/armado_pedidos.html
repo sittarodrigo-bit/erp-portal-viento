@@ -50,8 +50,13 @@
 
     <!-- Barra inferior fija -->
     <div class="fixed bottom-0 left-0 right-0 bg-black border-t border-gray-800 p-4">
-      <div class="max-w-3xl mx-auto flex gap-3">
-        <button id="btn-listo" onclick="marcarListo()" class="flex-1 bg-neon text-black font-bold py-4 rounded-xl text-lg disabled:bg-gray-700 disabled:text-gray-500">✓ Pedido listo (despachar)</button>
+      <div class="max-w-3xl mx-auto space-y-2">
+        <div id="aviso-faltan" class="hidden text-center text-orange-400 text-sm font-bold"></div>
+        <div class="flex gap-2">
+          <button onclick="guardarYSeguir()" class="flex-1 border border-gray-700 text-gray-300 hover:text-white font-bold py-3 rounded-xl text-sm">💾 Guardar y seguir después</button>
+          <button id="btn-parcial" onclick="despacharParcial()" class="flex-1 bg-orange-600 hover:bg-orange-500 text-white font-bold py-3 rounded-xl text-sm">📦 Despachar lo armado</button>
+        </div>
+        <button id="btn-listo" onclick="marcarListo()" class="w-full bg-neon text-black font-bold py-4 rounded-xl text-lg disabled:bg-gray-700 disabled:text-gray-500">✓ Pedido completo (despachar todo)</button>
       </div>
     </div>
   </main>
@@ -80,7 +85,13 @@ async function cargarPedidos(){
     }
     cont.innerHTML = pedidos.map(p => {
       const enPrep = p.estado === 'En preparación';
-      return `<button onclick="abrirPedido(${p.id})" class="w-full text-left bg-gray-900 border ${enPrep?'border-neon':'border-gray-800'} rounded-xl p-4 hover:border-gray-600 transition">
+      const parcial = p.estado === 'Despachado parcial';
+      const borde = parcial ? 'border-orange-600' : (enPrep ? 'border-neon' : 'border-gray-800');
+      const badge = parcial
+        ? '<span class="text-xs font-bold px-2 py-1 rounded-full bg-orange-600/20 text-orange-400">📦 Parcial — completar</span>'
+        : (enPrep ? '<span class="text-xs font-bold px-2 py-1 rounded-full bg-neon/20 text-neon">🛠️ En preparación</span>'
+                  : '<span class="text-xs font-bold px-2 py-1 rounded-full bg-gray-800 text-gray-400">⏳ Pendiente</span>');
+      return `<button onclick="abrirPedido(${p.id})" class="w-full text-left bg-gray-900 border ${borde} rounded-xl p-4 hover:border-gray-600 transition">
         <div class="flex justify-between items-center">
           <div>
             <p class="text-white font-bold text-lg">Pedido #${p.id}</p>
@@ -88,7 +99,7 @@ async function cargarPedidos(){
           </div>
           <div class="text-right">
             <p class="text-neon font-bold">${fmt(p.total)}</p>
-            <span class="text-xs font-bold px-2 py-1 rounded-full ${enPrep?'bg-neon/20 text-neon':'bg-gray-800 text-gray-400'}">${enPrep?'🛠️ En preparación':'⏳ Pendiente'}</span>
+            ${badge}
           </div>
         </div>
       </button>`;
@@ -118,24 +129,38 @@ function renderArmado(){
   const d = pedidoActual;
   $('arm-titulo').textContent = 'Pedido #' + d.id;
   $('arm-distribuidor').textContent = d.distribuidor || 'Sin distribuidor';
-  $('arm-estado').textContent = '🛠️ En preparación';
-  $('arm-items').innerHTML = d.items.map(it => {
-    const sinStock = it.stock <= 0 && !it.tildado;
-    return `<div class="flex items-center gap-3 bg-gray-900 border ${it.tildado?'border-neon/50 bg-neon/5':'border-gray-800'} rounded-xl p-4 ${sinStock?'opacity-60':''}">
-      <button onclick="toggleTilde(${it.id_producto})" class="w-12 h-12 rounded-lg border-2 ${it.tildado?'bg-neon border-neon':'border-gray-600'} flex items-center justify-center text-2xl flex-shrink-0 transition">
-        ${it.tildado?'<span class="text-black font-bold">✓</span>':''}
-      </button>
-      <div class="flex-1 min-w-0">
-        <p class="text-white font-bold ${it.tildado?'line-through opacity-60':''}">${it.nombre}</p>
-        <p class="text-gray-500 text-xs">Stock disponible: ${it.stock}${sinStock?' · <span class="text-red-400">SIN STOCK</span>':''}</p>
-      </div>
-      <div class="text-right flex-shrink-0">
-        <p class="text-2xl font-bold text-neon">${it.cantidad}</p>
-        <p class="text-gray-600 text-xs">a sacar</p>
-      </div>
-    </div>`;
-  }).join('');
+  $('arm-estado').textContent = d.estado === 'Despachado parcial' ? '📦 Parcial — completar' : '🛠️ En preparación';
+  // Ordenar: primero los que faltan (no tildados), luego los hechos
+  const faltan = d.items.filter(i=>!i.tildado);
+  const hechos = d.items.filter(i=>i.tildado);
+  let html = '';
+  if(faltan.length){
+    html += '<p class="text-orange-400 text-xs font-bold uppercase mb-2 mt-1">⬜ Falta sacar (' + faltan.length + ')</p>';
+    html += faltan.map(renderItem).join('');
+  }
+  if(hechos.length){
+    html += '<p class="text-neon text-xs font-bold uppercase mb-2 mt-5">✓ Ya sacado (' + hechos.length + ')</p>';
+    html += hechos.map(renderItem).join('');
+  }
+  $('arm-items').innerHTML = html;
   actualizarProgreso();
+}
+
+function renderItem(it){
+  const sinStock = it.stock <= 0 && !it.tildado;
+  return `<div class="flex items-center gap-3 bg-gray-900 border ${it.tildado?'border-neon/50 bg-neon/5':'border-gray-800'} rounded-xl p-4 mb-2 ${sinStock?'opacity-60':''}">
+    <button onclick="toggleTilde(${it.id_producto})" class="w-12 h-12 rounded-lg border-2 ${it.tildado?'bg-neon border-neon':'border-gray-600'} flex items-center justify-center text-2xl flex-shrink-0 transition">
+      ${it.tildado?'<span class="text-black font-bold">✓</span>':''}
+    </button>
+    <div class="flex-1 min-w-0">
+      <p class="text-white font-bold ${it.tildado?'line-through opacity-60':''}">${it.nombre}</p>
+      <p class="text-gray-500 text-xs">Stock disponible: ${it.stock}${sinStock?' · <span class="text-red-400 font-bold">SIN STOCK</span>':''}</p>
+    </div>
+    <div class="text-right flex-shrink-0">
+      <p class="text-2xl font-bold text-neon">${it.cantidad}</p>
+      <p class="text-gray-600 text-xs">a sacar</p>
+    </div>
+  </div>`;
 }
 
 function actualizarProgreso(){
@@ -146,7 +171,20 @@ function actualizarProgreso(){
   $('arm-progreso').style.width = pct + '%';
   $('arm-progreso-txt').textContent = hechos + ' de ' + total + ' productos preparados';
   $('btn-listo').disabled = hechos < total;
-  $('btn-listo').textContent = hechos < total ? `Faltan ${total-hechos} productos` : '✓ Pedido listo (despachar)';
+  const faltan = total - hechos;
+  const aviso = $('aviso-faltan');
+  const btnParcial = $('btn-parcial');
+  if(faltan > 0 && hechos > 0){
+    aviso.classList.remove('hidden');
+    aviso.textContent = '⚠️ Faltan ' + faltan + ' producto(s) sin sacar';
+    btnParcial.classList.remove('hidden');
+  } else if(faltan > 0 && hechos === 0){
+    aviso.classList.add('hidden');
+    btnParcial.classList.add('hidden');
+  } else {
+    aviso.classList.add('hidden');
+    btnParcial.classList.add('hidden');
+  }
 }
 
 async function toggleTilde(idProd){
@@ -172,13 +210,29 @@ async function toggleTilde(idProd){
 }
 
 async function marcarListo(){
-  if(!confirm('¿Marcar el pedido #' + pedidoActual.id + ' como listo y despachado?')) return;
+  if(!confirm('¿Marcar el pedido #' + pedidoActual.id + ' como completo y despachado?')) return;
   try{
     await fetch(`${API_URL}/armado/pedidos/${pedidoActual.id}/listo`, {method:'PUT'});
-    alert('✅ Pedido despachado.');
-    volverLista();
-    cargarPedidos();
+    alert('✅ Pedido despachado completo.');
+    volverLista(); cargarPedidos();
   }catch(e){ alert('No se pudo marcar como listo.'); }
+}
+
+function guardarYSeguir(){
+  // El estado y los tildes ya están guardados en la base. Solo volvemos.
+  alert('💾 Guardado. El pedido queda En preparación, podés seguir cuando llegue stock.');
+  volverLista(); cargarPedidos();
+}
+
+async function despacharParcial(){
+  const faltan = pedidoActual.items.filter(i=>!i.tildado);
+  const txt = faltan.map(i=>'• ' + i.nombre + ' x' + i.cantidad).join('\n');
+  if(!confirm('Vas a despachar SOLO lo que sacaste.\n\nQueda pendiente de entregar:\n' + txt + '\n\n¿Confirmás el despacho parcial?')) return;
+  try{
+    await fetch(`${API_URL}/armado/pedidos/${pedidoActual.id}/despacho_parcial`, {method:'PUT'});
+    alert('📦 Despachado lo armado. Lo que faltó quedó registrado en el pedido.');
+    volverLista(); cargarPedidos();
+  }catch(e){ alert('No se pudo despachar parcial.'); }
 }
 
 function volverLista(){
