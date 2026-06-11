@@ -41,7 +41,20 @@
                 <h2 class="text-xl font-bold text-white">Tablero de Control</h2>
                 <p id="fecha-hoy" class="text-gray-500 text-xs mt-0.5"></p>
             </div>
-            <div class="flex gap-3">
+            <div class="flex gap-3 items-center">
+                <div class="relative">
+                    <button onclick="toggleNotificaciones()" class="relative text-2xl hover:scale-110 transition" title="Notificaciones">
+                        🔔
+                        <span id="notif-badge" class="hidden absolute -top-1 -right-1 bg-red-600 text-white text-xs font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">0</span>
+                    </button>
+                    <div id="notif-panel" class="hidden absolute right-0 mt-2 w-80 bg-gray-950 border border-gray-700 rounded-xl shadow-2xl z-50 max-h-96 overflow-hidden flex flex-col">
+                        <div class="flex justify-between items-center p-3 border-b border-gray-800">
+                            <span class="text-white font-bold text-sm">Notificaciones</span>
+                            <button onclick="marcarTodasLeidas()" class="text-xs text-neon hover:text-yellow-300">Marcar leídas</button>
+                        </div>
+                        <div id="notif-lista" class="overflow-y-auto"></div>
+                    </div>
+                </div>
                 <button onclick="cargarTodo()" class="text-sm text-neon hover:text-yellow-300 font-bold">↻ Actualizar</button>
                 <button onclick="abrirModalTarea()" class="bg-neon text-black font-bold py-2 px-4 rounded-lg text-sm hover:bg-yellow-300 transition">+ Tarea</button>
             </div>
@@ -49,6 +62,7 @@
 
         <div class="flex-1 overflow-y-auto p-6">
 
+            <!-- FILA 1: Contadores rápidos -->
             <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
                 <div class="bg-black border border-gray-800 rounded-xl p-4">
                     <p class="text-xs text-gray-500 font-bold uppercase mb-1">Pedidos B2B Pendientes</p>
@@ -68,8 +82,10 @@
                 </div>
             </div>
 
+            <!-- FILA 2: Pedidos B2B + Tareas del día -->
             <div class="grid grid-cols-2 gap-6 mb-6">
 
+                <!-- Pedidos B2B pendientes -->
                 <div class="bg-black border border-gray-800 rounded-xl overflow-hidden">
                     <div class="px-5 py-3 border-b border-gray-800 bg-gray-900 flex justify-between items-center">
                         <h3 class="font-bold text-white text-sm">📦 Pedidos B2B por despachar</h3>
@@ -80,6 +96,7 @@
                     </div>
                 </div>
 
+                <!-- Tareas del día -->
                 <div class="bg-black border border-gray-800 rounded-xl overflow-hidden">
                     <div class="px-5 py-3 border-b border-gray-800 bg-gray-900 flex justify-between items-center">
                         <h3 class="font-bold text-white text-sm">✅ Tareas pendientes</h3>
@@ -91,8 +108,10 @@
                 </div>
             </div>
 
+            <!-- FILA 3: Alertas de stock -->
             <div class="grid grid-cols-2 gap-6 mb-6">
 
+                <!-- Stock productos -->
                 <div class="bg-black border border-red-900/50 rounded-xl overflow-hidden">
                     <div class="px-5 py-3 border-b border-red-900/50 bg-gray-900 flex justify-between items-center">
                         <h3 class="font-bold text-white text-sm">⚠️ Productos con stock bajo</h3>
@@ -103,6 +122,7 @@
                     </div>
                 </div>
 
+                <!-- Stock insumos -->
                 <div class="bg-black border border-red-900/50 rounded-xl overflow-hidden">
                     <div class="px-5 py-3 border-b border-red-900/50 bg-gray-900 flex justify-between items-center">
                         <h3 class="font-bold text-white text-sm">⚠️ Insumos con stock bajo</h3>
@@ -114,8 +134,10 @@
                 </div>
             </div>
 
+            <!-- FILA 4: Deudas y Cobros -->
             <div class="grid grid-cols-2 gap-6">
 
+                <!-- Deudas a proveedores -->
                 <div class="bg-black border border-orange-900/50 rounded-xl overflow-hidden">
                     <div class="px-5 py-3 border-b border-orange-900/50 bg-gray-900 flex justify-between items-center">
                         <h3 class="font-bold text-white text-sm">🔴 Lo que debés a proveedores</h3>
@@ -126,6 +148,7 @@
                     </div>
                 </div>
 
+                <!-- Cobros pendientes de distribuidores -->
                 <div class="bg-black border border-yellow-900/50 rounded-xl overflow-hidden">
                     <div class="px-5 py-3 border-b border-yellow-900/50 bg-gray-900 flex justify-between items-center">
                         <h3 class="font-bold text-white text-sm">🟡 Lo que te deben distribuidores</h3>
@@ -140,6 +163,7 @@
         </div>
     </main>
 
+    <!-- Modal nueva tarea -->
     <div id="modal-tarea" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
         <div class="bg-gray-900 border border-gray-700 rounded-xl p-6 w-[460px] shadow-2xl">
             <h3 class="text-lg font-bold text-white mb-4 border-l-4 border-neon pl-2">Nueva Tarea</h3>
@@ -173,6 +197,7 @@
         </div>
     </div>
 
+    <!-- Modal registrar cobro distribuidor -->
     <div id="modal-cobro" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
         <div class="bg-gray-900 border border-gray-700 rounded-xl p-6 w-[420px] shadow-2xl">
             <h3 class="text-lg font-bold text-white mb-1 border-l-4 border-neon pl-2">Registrar Cobro</h3>
@@ -204,6 +229,7 @@
         </div>
     </div>
 
+    <!-- Modal pagar proveedor -->
     <div id="modal-pago-prov" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
         <div class="bg-gray-900 border border-gray-700 rounded-xl p-6 w-[420px] shadow-2xl">
             <h3 class="text-lg font-bold text-white mb-1 border-l-4 border-neon pl-2">Registrar Pago</h3>
@@ -255,13 +281,11 @@
             empleados = (await res.json()).filter(e => e.activo);
             const opts = empleados.map(e => `<option value="${e.id}">${e.apellido}, ${e.nombre}</option>`).join('');
             ['tarea-empleado','cobro-empleado','pago-prov-empleado'].forEach(id => {
-                const el = document.getElementById(id);
-                if (el) el.innerHTML = opts;
+                document.getElementById(id).innerHTML = opts;
             });
         }
 
         async function cargarTodo() {
-            await cargarEmpleados();
             await Promise.all([
                 cargarPedidos(),
                 cargarTareas(),
@@ -305,57 +329,23 @@
             const lista = await res.json();
             const cont = document.getElementById('lista-tareas');
             if (!lista.length) { cont.innerHTML = '<p class="p-4 text-center text-gray-600 text-sm">Sin tareas pendientes ✓</p>'; return; }
-            
             cont.innerHTML = lista.map(t => {
                 const vence = t.fecha_vencimiento ? new Date(t.fecha_vencimiento) : null;
                 const hoyD = new Date(); hoyD.setHours(0,0,0,0);
                 const vencida = vence && vence < hoyD;
                 const fechaStr = vence ? vence.toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit'}) : '';
-                
-                // Lógica de WhatsApp
-                const emp = empleados.find(e => e.id === t.id_empleado_asignado);
-                let tel = emp && emp.telefono ? String(emp.telefono).replace(/\D/g, '') : '';
-                if (tel && !tel.startsWith('54')) tel = '549' + tel; // Agrega prefijo si no lo tiene
-                
-                const textoMsg = `Hola ${emp ? emp.nombre : ''}! Tenés una nueva tarea asignada en Portal del Viento:\n👉 *${t.titulo}*\n${t.descripcion ? '_' + t.descripcion + '_' : ''}`;
-                const encodedMsg = encodeURIComponent(textoMsg);
-
                 return `
                 <div class="px-5 py-3 flex justify-between items-center hover:bg-gray-900 transition ${vencida ? 'border-l-2 border-red-600' : ''}">
-                    <div class="flex-1 min-w-0 pr-4">
+                    <div class="flex-1 min-w-0">
                         <p class="font-bold text-white text-sm truncate">${PRIORIDAD[t.prioridad] || '🟡'} ${t.titulo}</p>
-                        <p class="text-gray-500 text-xs">
-                            ${emp ? '👤 ' + emp.nombre + ' ' + emp.apellido : '👤 Sin asignar'} 
-                            ${fechaStr ? `· Vence ${fechaStr}` : ''} 
-                            ${vencida ? '<span class="text-red-400 font-bold">VENCIDA</span>' : ''}
-                        </p>
+                        <p class="text-gray-500 text-xs">${t.descripcion || ''} ${fechaStr ? `· Vence ${fechaStr}` : ''} ${vencida ? '<span class="text-red-400 font-bold">VENCIDA</span>' : ''}</p>
                     </div>
-                    <div class="flex items-center gap-2 shrink-0">
-                        ${tel ? `<a href="https://wa.me/${tel}?text=${encodedMsg}" target="_blank" class="bg-green-600 hover:bg-green-500 text-white px-2 py-1 rounded text-xs font-bold transition" title="Avisar por WhatsApp">💬</a>` : ''}
-                        <button onclick="completarTarea(${t.id})" class="text-xs border border-gray-700 hover:border-green-600 hover:text-green-400 px-2 py-1 rounded transition" title="Marcar como completada">✓</button>
-                    </div>
-                </div>`;
-            }).join('');
+                    <button onclick="completarTarea(${t.id})" class="text-xs border border-gray-700 hover:border-green-600 hover:text-green-400 px-2 py-1 rounded ml-2 shrink-0">✓</button>
+                </div>`}).join('');
         }
 
         async function completarTarea(id) {
             await fetch(`${API_URL}/tareas/${id}/completar`, { method:'PUT' });
-            cargarTareas();
-        }
-
-        async function guardarTarea() {
-            const data = {
-                titulo:               document.getElementById('tarea-titulo').value,
-                descripcion:          document.getElementById('tarea-desc').value || null,
-                fecha_vencimiento:    document.getElementById('tarea-fecha').value || null,
-                prioridad:            document.getElementById('tarea-prioridad').value,
-                id_empleado_asignado: parseInt(document.getElementById('tarea-empleado').value) || null
-            };
-            if (!data.titulo) { alert('Ingresá un título.'); return; }
-            await fetch(`${API_URL}/tareas/nueva`, {
-                method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(data)
-            });
-            cerrarModales(); 
             cargarTareas();
         }
 
@@ -439,12 +429,30 @@
                 </div>`).join('');
         }
 
-        // ── MODALES COMPARTIDOS ──────────────────────────────────
-        function abrirModalTarea() {
+        // ── MODALES ──────────────────────────────────────────────
+
+        async function abrirModalTarea() {
+            await cargarEmpleados();
             document.getElementById('modal-tarea').classList.replace('modal-oculto','modal-visible');
         }
 
+        async function guardarTarea() {
+            const data = {
+                titulo:               document.getElementById('tarea-titulo').value,
+                descripcion:          document.getElementById('tarea-desc').value || null,
+                fecha_vencimiento:    document.getElementById('tarea-fecha').value || null,
+                prioridad:            document.getElementById('tarea-prioridad').value,
+                id_empleado_asignado: parseInt(document.getElementById('tarea-empleado').value) || null
+            };
+            if (!data.titulo) { alert('Ingresá un título.'); return; }
+            await fetch(`${API_URL}/tareas/nueva`, {
+                method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(data)
+            });
+            cerrarModales(); cargarTareas();
+        }
+
         function abrirModalCobro(id_dist, nombre, id_pedido, total) {
+            cargarEmpleados();
             document.getElementById('cobro-id-dist').value    = id_dist;
             document.getElementById('cobro-id-pedido').value  = id_pedido;
             document.getElementById('cobro-dist-nombre').textContent = nombre;
@@ -468,6 +476,7 @@
         }
 
         function abrirModalPagoProv(id_prov, nombre, id_orden, total) {
+            cargarEmpleados();
             document.getElementById('pago-prov-id').value     = id_prov;
             document.getElementById('pago-orden-id').value    = id_orden;
             document.getElementById('pago-prov-nombre').textContent = nombre;
@@ -494,7 +503,78 @@
             document.querySelectorAll('.modal-visible').forEach(m => m.classList.replace('modal-visible','modal-oculto'));
         }
 
-        window.onload = cargarTodo;
+        // ===== NOTIFICACIONES =====
+        var notifUltimoMax = 0;
+        var notifPanelAbierto = false;
+
+        function reproducirSonidoNotif() {
+            try {
+                var ctx = new (window.AudioContext || window.webkitAudioContext)();
+                var o = ctx.createOscillator();
+                var g = ctx.createGain();
+                o.connect(g); g.connect(ctx.destination);
+                o.type = 'sine'; o.frequency.value = 880;
+                g.gain.setValueAtTime(0.18, ctx.currentTime);
+                g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
+                o.start(); o.stop(ctx.currentTime + 0.4);
+            } catch(e) {}
+        }
+
+        function iconoNotif(tipo) {
+            return tipo === 'pedido' ? '📦' : tipo === 'pago' ? '💰' : tipo === 'produccion' ? '🏭' : tipo === 'faltante' ? '⚠️' : '🔔';
+        }
+
+        async function cargarNotificaciones(esInicial) {
+            try {
+                var data = await fetch(`${API_URL}/notificaciones`).then(r => r.json());
+                var nuevas = data.nuevas || 0;
+                var badge = document.getElementById('notif-badge');
+                if (nuevas > 0) { badge.textContent = nuevas; badge.classList.remove('hidden'); }
+                else { badge.classList.add('hidden'); }
+                // Detectar si llegó algo nuevo para sonar
+                var maxId = 0;
+                (data.notificaciones||[]).forEach(function(n){ if (n.id > maxId) maxId = n.id; });
+                if (!esInicial && maxId > notifUltimoMax && notifUltimoMax > 0) {
+                    reproducirSonidoNotif();
+                }
+                notifUltimoMax = maxId;
+                // Render lista
+                var cont = document.getElementById('notif-lista');
+                if (!data.notificaciones || data.notificaciones.length === 0) {
+                    cont.innerHTML = '<p class="text-gray-500 text-sm text-center py-6">No hay notificaciones.</p>';
+                    return;
+                }
+                cont.innerHTML = data.notificaciones.map(function(n){
+                    var f = (n.fecha||'').replace('T',' ').substring(0,16);
+                    return '<div class="p-3 border-b border-gray-800 ' + (n.leida ? 'opacity-50' : 'bg-gray-900/50') + '">' +
+                        '<div class="flex gap-2"><span>' + iconoNotif(n.tipo) + '</span><div class="flex-1">' +
+                        '<p class="text-white text-sm font-bold">' + (n.titulo||'') + '</p>' +
+                        (n.detalle ? '<p class="text-gray-400 text-xs">' + n.detalle + '</p>' : '') +
+                        '<p class="text-gray-600 text-xs mt-1">' + f + '</p>' +
+                        '</div></div></div>';
+                }).join('');
+            } catch(e) {}
+        }
+
+        function toggleNotificaciones() {
+            notifPanelAbierto = !notifPanelAbierto;
+            document.getElementById('notif-panel').classList.toggle('hidden', !notifPanelAbierto);
+            if (notifPanelAbierto) cargarNotificaciones(false);
+        }
+
+        async function marcarTodasLeidas() {
+            try {
+                await fetch(`${API_URL}/notificaciones/leer_todas`, { method:'PUT' });
+                cargarNotificaciones(false);
+            } catch(e) {}
+        }
+
+        window.onload = function() {
+            cargarTodo();
+            cargarNotificaciones(true);
+            // Revisar notificaciones cada 30 segundos
+            setInterval(function(){ cargarNotificaciones(false); }, 30000);
+        };
     </script>
 </body>
 </html>
