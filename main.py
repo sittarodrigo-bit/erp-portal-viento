@@ -39,6 +39,23 @@ def liberar_conexion(conn):
 def fetchall_dict(cursor):
     return [dict(row) for row in cursor.fetchall()]
 
+def crear_notificacion(tipo, titulo, detalle=None):
+    """Crea una notificación. No rompe si la tabla no existe (queda silencioso).
+    Usa su propia conexión para no interferir con la transacción en curso."""
+    try:
+        c = obtener_conexion()
+        try:
+            cur = c.cursor()
+            cur.execute("INSERT INTO notificaciones (tipo, titulo, detalle) VALUES (%s,%s,%s)",
+                        (tipo, titulo[:160] if titulo else None, detalle))
+            c.commit()
+        except Exception:
+            c.rollback()
+        finally:
+            liberar_conexion(c)
+    except Exception:
+        pass
+
 def registrar_movimiento_stock(cur, id_producto, cantidad, tipo, origen, motivo=None, id_local=None):
     """Registra un movimiento de stock. cantidad positiva=entrada, negativa=salida.
     No rompe si la tabla no existe todavía (queda silencioso)."""
@@ -888,12 +905,19 @@ def registrar_cobro_admin(cobro: NuevoCobroDistribuidor):
             VALUES (%s,%s,%s,%s,%s,%s,%s)
         """, (cobro.id_distribuidor, cobro.id_pedido, id_emp, cobro.monto, cobro.metodo, cobro.referencia, cobro.notas))
         conn.commit()
+        try:
+            crear_notificacion("pago", "Pago de distribuidor registrado",
+                               "$" + str(cobro.monto) + " - " + (cobro.metodo or ""))
+        except Exception:
+            pass
         return {"status": "ok"}
     except Exception as e:
         conn.rollback()
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         liberar_conexion(conn)
+
+
 
 @app.post("/api/cobros_distribuidores/nuevo")
 def registrar_cobro_distribuidor(cobro: NuevoCobroDistribuidor):
@@ -1071,6 +1095,11 @@ def crear_pedido_b2b(pedido: PedidoB2B):
             """, (id_pedido, item.id_producto, item.cantidad, item.precio_unitario))
         # NOTA: el stock NO se descuenta al crear el pedido. Se descuenta al despachar.
         conn.commit()
+        try:
+            crear_notificacion("pedido", "Nuevo pedido de distribuidor",
+                               "Pedido #" + str(id_pedido) + " por $" + str(pedido.total))
+        except Exception:
+            pass
         return {"id_pedido": id_pedido}
     except Exception as e:
         conn.rollback()
@@ -1738,6 +1767,11 @@ def registrar_produccion(prod: ProduccionCreate):
         except Exception:
             conn.rollback()
         conn.commit()
+        try:
+            crear_notificacion("produccion", "Producción registrada",
+                               str(prod.cantidad_producida) + " unidades")
+        except Exception:
+            pass
         return {"status": "ok"}
     except Exception as e:
         conn.rollback()
@@ -1914,6 +1948,41 @@ def pedidos_pendientes():
             WHERE p.estado NOT IN ('Despachado','Cancelado') ORDER BY p.fecha DESC LIMIT 20
         """)
         return fetchall_dict(cur)
+    finally:
+        liberar_conexion(conn)
+
+@app.get("/api/notificaciones")
+def listar_notificaciones(solo_nuevas: bool = False):
+    """Lista notificaciones (las 50 más recientes). Si solo_nuevas, solo las no leídas."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            if solo_nuevas:
+                cur.execute("SELECT id, tipo, titulo, detalle, leida, fecha::text FROM notificaciones WHERE leida=false ORDER BY id DESC LIMIT 50")
+            else:
+                cur.execute("SELECT id, tipo, titulo, detalle, leida, fecha::text FROM notificaciones ORDER BY id DESC LIMIT 50")
+            filas = fetchall_dict(cur)
+            cur.execute("SELECT COUNT(*) AS c FROM notificaciones WHERE leida=false")
+            nuevas = cur.fetchone()['c']
+            return {"nuevas": nuevas, "notificaciones": filas}
+        except Exception:
+            conn.rollback()
+            return {"nuevas": 0, "notificaciones": []}
+    finally:
+        liberar_conexion(conn)
+
+@app.put("/api/notificaciones/leer_todas")
+def marcar_notificaciones_leidas():
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        try:
+            cur.execute("UPDATE notificaciones SET leida=true WHERE leida=false")
+            conn.commit()
+        except Exception:
+            conn.rollback()
+        return {"status": "ok"}
     finally:
         liberar_conexion(conn)
 
@@ -3066,6 +3135,11 @@ def pos_faltantes_crear(f: FaltanteCreate):
                     (f.id_local, f.descripcion, f.cantidad, f.id_empleado))
         fid = cur.fetchone()[0]
         conn.commit()
+        try:
+            crear_notificacion("faltante", "Cajero reportó un faltante",
+                               (f.descripcion or "") + (" (x" + str(f.cantidad) + ")" if f.cantidad else ""))
+        except Exception:
+            pass
         return {"id": fid}
     except Exception as e:
         conn.rollback()
@@ -3952,6 +4026,11 @@ def mp_sincronizar_todos():
                 conn.commit()
                 registrados += 1
                 detalle.append({"distribuidor": pref['id_distribuidor'], "monto": float(p.get("monto") or 0)})
+                try:
+                    crear_notificacion("pago", "Pago online de distribuidor (Mercado Pago)",
+                                       "$" + str(float(p.get("monto") or 0)))
+                except Exception:
+                    pass
         return {"status": "ok", "registrados": registrados, "detalle": detalle}
     except Exception as e:
         conn.rollback()
