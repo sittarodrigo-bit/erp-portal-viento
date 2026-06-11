@@ -690,6 +690,11 @@ def ingresar_stock_producto(id: int, data: IngresoStock):
         row = cur.fetchone()
         if not row:
             raise HTTPException(status_code=404, detail="Producto no encontrado")
+        # Quitar marca "en proceso" (ya se ingresó a stock)
+        try:
+            cur.execute("DELETE FROM produccion_en_proceso WHERE id_producto=%s", (id,))
+        except Exception:
+            pass
         conn.commit()
         return {"status": "ok", "stock_actual": float(row['stock_actual'])}
     except HTTPException:
@@ -1070,6 +1075,49 @@ def crear_pedido_b2b(pedido: PedidoB2B):
     except Exception as e:
         conn.rollback()
         raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
+class EnProcesoData(BaseModel):
+    id_producto: int
+    marcado_por: Optional[str] = None
+
+@app.post("/api/produccion/en_proceso")
+def marcar_en_proceso(data: EnProcesoData):
+    """Marca o desmarca (toggle) un producto como en proceso de producción."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        try:
+            cur.execute("SELECT 1 FROM produccion_en_proceso WHERE id_producto=%s", (data.id_producto,))
+            existe = cur.fetchone()
+            if existe:
+                cur.execute("DELETE FROM produccion_en_proceso WHERE id_producto=%s", (data.id_producto,))
+                conn.commit()
+                return {"status": "ok", "en_proceso": False}
+            else:
+                cur.execute("INSERT INTO produccion_en_proceso (id_producto, marcado_por) VALUES (%s,%s)",
+                            (data.id_producto, data.marcado_por))
+                conn.commit()
+                return {"status": "ok", "en_proceso": True}
+        except Exception:
+            conn.rollback()
+            raise HTTPException(status_code=400, detail="Falta correr CREAR_EN_PROCESO.sql en la base.")
+    finally:
+        liberar_conexion(conn)
+
+@app.get("/api/produccion/en_proceso")
+def listar_en_proceso():
+    """Devuelve los ids de productos marcados como en proceso."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            cur.execute("SELECT id_producto, marcado_por, fecha::text FROM produccion_en_proceso")
+            return fetchall_dict(cur)
+        except Exception:
+            conn.rollback()
+            return []
     finally:
         liberar_conexion(conn)
 
@@ -1684,6 +1732,11 @@ def registrar_produccion(prod: ProduccionCreate):
         for item in cur.fetchall():
             cant_descontar = float(item[1]) * prod.cantidad_producida
             cur.execute("UPDATE insumos SET stock_actual = stock_actual - %s WHERE id = %s", (cant_descontar, item[0]))
+        # Quitar el marcado "en proceso" de este producto (ya se ingresó)
+        try:
+            cur.execute("DELETE FROM produccion_en_proceso WHERE id_producto=%s", (prod.id_producto,))
+        except Exception:
+            conn.rollback()
         conn.commit()
         return {"status": "ok"}
     except Exception as e:
