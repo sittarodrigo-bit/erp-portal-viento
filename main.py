@@ -1273,6 +1273,129 @@ def pedido_faltantes(id: int):
     finally:
         liberar_conexion(conn)
 
+@app.get("/api/armado/pedidos")
+def armado_listar_pedidos():
+    """Lista pedidos Pendientes y En preparación para la pantalla de armado."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("""
+            SELECT p.id, p.estado, p.total, p.fecha::text AS fecha,
+                   d.razon_social AS distribuidor
+            FROM pedidos_b2b p
+            LEFT JOIN distribuidores d ON p.id_distribuidor = d.id
+            WHERE p.estado IN ('Pendiente','En preparación')
+            ORDER BY CASE WHEN p.estado='En preparación' THEN 0 ELSE 1 END, p.id ASC
+        """)
+        return fetchall_dict(cur)
+    finally:
+        liberar_conexion(conn)
+
+@app.get("/api/armado/pedidos/{id}")
+def armado_detalle_pedido(id: int):
+    """Detalle del pedido para armar: ítems, cuánto hay tildado y stock disponible."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("SELECT p.id, p.estado, p.total, d.razon_social AS distribuidor FROM pedidos_b2b p LEFT JOIN distribuidores d ON p.id_distribuidor=d.id WHERE p.id=%s", (id,))
+        cab = cur.fetchone()
+        if not cab:
+            raise HTTPException(status_code=404, detail="Pedido no encontrado")
+        # Tildados
+        tildados = {}
+        try:
+            cur.execute("SELECT id_producto, cantidad FROM preparacion_items WHERE id_pedido=%s", (id,))
+            for r in cur.fetchall():
+                tildados[r['id_producto']] = float(r['cantidad'] or 0)
+        except Exception:
+            conn.rollback()
+        cur.execute("""
+            SELECT d.id_producto, p.nombre, p.sku, d.cantidad, COALESCE(p.stock_actual,0) AS stock
+            FROM detalle_pedidos_b2b d LEFT JOIN productos p ON d.id_producto=p.id
+            WHERE d.id_pedido=%s ORDER BY p.nombre
+        """, (id,))
+        items = []
+        for r in fetchall_dict(cur):
+            items.append({
+                "id_producto": r['id_producto'], "nombre": r['nombre'], "sku": r['sku'],
+                "cantidad": float(r['cantidad'] or 0), "stock": float(r['stock'] or 0),
+                "tildado": r['id_producto'] in tildados
+            })
+        return {"id": cab['id'], "estado": cab['estado'], "distribuidor": cab['distribuidor'], "items": items}
+    finally:
+        liberar_conexion(conn)
+
+@app.put("/api/armado/pedidos/{id}/iniciar")
+def armado_iniciar(id: int):
+    """Marca el pedido como En preparación."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        cur.execute("UPDATE pedidos_b2b SET estado='En preparación' WHERE id=%s AND estado='Pendiente'", (id,))
+        conn.commit()
+        return {"status": "ok"}
+    finally:
+        liberar_conexion(conn)
+
+class TildeItem(BaseModel):
+    id_producto: int
+    cantidad: float
+    tildar: bool
+    preparado_por: Optional[str] = None
+
+@app.post("/api/armado/pedidos/{id}/tilde")
+def armado_tilde(id: int, data: TildeItem):
+    """Tilda (saca del stock) o destilda (devuelve al stock) un ítem del pedido."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        try:
+            cur.execute("SELECT cantidad FROM preparacion_items WHERE id_pedido=%s AND id_producto=%s", (id, data.id_producto))
+            ya = cur.fetchone()
+        except Exception:
+            conn.rollback()
+            raise HTTPException(status_code=400, detail="Falta correr CREAR_PREPARACION.sql en la base.")
+        if data.tildar:
+            if ya:
+                return {"status": "ok", "ya_estaba": True}
+            # Descontar del stock (sin quedar negativo) y registrar
+            cur.execute("UPDATE productos SET stock_actual = GREATEST(COALESCE(stock_actual,0) - %s, 0) WHERE id=%s", (data.cantidad, data.id_producto))
+            cur.execute("INSERT INTO preparacion_items (id_pedido, id_producto, cantidad, preparado_por) VALUES (%s,%s,%s,%s)",
+                        (id, data.id_producto, data.cantidad, data.preparado_por))
+            conn.commit()
+            return {"status": "ok", "tildado": True}
+        else:
+            if not ya:
+                return {"status": "ok", "ya_estaba": False}
+            # Devolver al stock y borrar el registro
+            cur.execute("UPDATE productos SET stock_actual = COALESCE(stock_actual,0) + %s WHERE id=%s", (float(ya[0] or 0), data.id_producto))
+            cur.execute("DELETE FROM preparacion_items WHERE id_pedido=%s AND id_producto=%s", (id, data.id_producto))
+            conn.commit()
+            return {"status": "ok", "tildado": False}
+    except HTTPException:
+        raise
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
+@app.put("/api/armado/pedidos/{id}/listo")
+def armado_listo(id: int):
+    """Marca el pedido como Despachado (listo). El stock ya se descontó al tildar."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        cur.execute("UPDATE pedidos_b2b SET estado='Despachado' WHERE id=%s", (id,))
+        conn.commit()
+        try:
+            crear_notificacion("pedido", "Pedido armado y despachado", "Pedido #" + str(id))
+        except Exception:
+            pass
+        return {"status": "ok"}
+    finally:
+        liberar_conexion(conn)
+
 @app.get("/api/pedidos_b2b/historial")
 def historial_pedidos_b2b(estado: Optional[str] = None, id_distribuidor: Optional[int] = None):
     conn = obtener_conexion()
@@ -1352,21 +1475,22 @@ def cambiar_estado_pedido(id: int, estado: str):
     conn = obtener_conexion()
     try:
         cur = conn.cursor()
-        # Estado anterior para saber si hay que mover stock
         cur.execute("SELECT estado FROM pedidos_b2b WHERE id=%s", (id,))
         er = cur.fetchone()
         estado_previo = er[0] if er else None
         cur.execute("UPDATE pedidos_b2b SET estado = %s WHERE id = %s", (estado, id))
-        # Al DESPACHAR (desde un estado no despachado): descontar stock (sin quedar negativo)
-        if estado == 'Despachado' and estado_previo != 'Despachado':
-            cur.execute("SELECT id_producto, cantidad FROM detalle_pedidos_b2b WHERE id_pedido = %s", (id,))
-            for item in cur.fetchall():
-                cur.execute("UPDATE productos SET stock_actual = GREATEST(COALESCE(stock_actual,0) - %s, 0) WHERE id = %s", (item[1], item[0]))
-        # Al CANCELAR un pedido que estaba despachado: devolver stock
-        if estado == 'Cancelado' and estado_previo == 'Despachado':
-            cur.execute("SELECT id_producto, cantidad FROM detalle_pedidos_b2b WHERE id_pedido = %s", (id,))
-            for item in cur.fetchall():
-                cur.execute("UPDATE productos SET stock_actual = COALESCE(stock_actual,0) + %s WHERE id = %s", (item[1], item[0]))
+        # NOTA: el stock se descuenta al TILDAR cada ítem en la pantalla de armado,
+        # no al despachar. Acá ya no se toca stock al pasar a Despachado.
+        # Al CANCELAR: devolver al stock lo que se haya tildado (sacado) en preparación.
+        if estado == 'Cancelado' and estado_previo != 'Cancelado':
+            try:
+                cur.execute("SELECT id_producto, cantidad FROM preparacion_items WHERE id_pedido = %s", (id,))
+                for item in cur.fetchall():
+                    cur.execute("UPDATE productos SET stock_actual = COALESCE(stock_actual,0) + %s WHERE id = %s", (item[1], item[0]))
+                cur.execute("DELETE FROM preparacion_items WHERE id_pedido = %s", (id,))
+            except Exception:
+                conn.rollback()
+                cur.execute("UPDATE pedidos_b2b SET estado = %s WHERE id = %s", (estado, id))
         conn.commit()
         return {"status": "ok"}
     except Exception as e:
@@ -4569,6 +4693,14 @@ def route_admin():
 @app.get("/catalogo")
 def route_catalogo():
     return serve_html("catalogo_stock.html")
+
+@app.get("/tienda")
+def route_tienda():
+    return serve_html("tienda.html")
+
+@app.get("/armado")
+def route_armado():
+    return serve_html("armado_pedidos.html")
 
 @app.get("/insumos")
 def route_insumos():
