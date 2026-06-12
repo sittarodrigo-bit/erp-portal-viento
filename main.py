@@ -1,6 +1,6 @@
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Body
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, Response
 from pydantic import BaseModel
 from typing import List, Optional
 import psycopg2
@@ -1916,6 +1916,123 @@ def listar_fichajes(fecha: Optional[str] = None, id_empleado: Optional[int] = No
             {where} ORDER BY r.fecha_hora DESC LIMIT 200
         """, params)
         return fetchall_dict(cur)
+    finally:
+        liberar_conexion(conn)
+
+@app.get("/api/liquidacion/detalle")
+def liquidacion_detalle(fecha_desde: str, fecha_hasta: str):
+    """Liquidación por rango de fechas: por cada empleado, el detalle día por día
+    (horas, entrada, salida) más el valor hora. El pago doble y los descuentos de
+    anticipos se aplican en el frontend (el usuario los marca y recalcula)."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("SELECT column_name FROM information_schema.columns WHERE table_name='empleados' AND column_name='valor_hora'")
+        tiene_vh = bool(cur.fetchone())
+        vh_sel = "COALESCE(e.valor_hora,0)" if tiene_vh else "0"
+        # Emparejar entrada->salida y agrupar por DÍA
+        cur.execute(f"""
+            WITH pares AS (
+                SELECT e.id AS id_empleado, e.nombre, e.apellido, {vh_sel} AS valor_hora,
+                       r.fecha_hora AS entrada,
+                       LEAD(r.fecha_hora) OVER (PARTITION BY r.id_empleado ORDER BY r.fecha_hora) AS salida,
+                       r.tipo
+                FROM registros_horarios r JOIN empleados e ON r.id_empleado = e.id
+                WHERE DATE(r.fecha_hora) >= %s AND DATE(r.fecha_hora) <= %s
+            )
+            SELECT id_empleado, nombre, apellido, valor_hora,
+                   DATE(entrada) AS dia,
+                   MIN(entrada) AS primera_entrada,
+                   MAX(salida) AS ultima_salida,
+                   ROUND(CAST(SUM(EXTRACT(EPOCH FROM (salida - entrada))/3600.0) AS numeric), 2) AS horas
+            FROM pares
+            WHERE LOWER(tipo)='entrada' AND salida IS NOT NULL
+            GROUP BY id_empleado, nombre, apellido, valor_hora, DATE(entrada)
+            ORDER BY nombre, apellido, dia
+        """, (fecha_desde, fecha_hasta))
+        filas = fetchall_dict(cur)
+        # Agrupar por empleado
+        empleados = {}
+        for f in filas:
+            eid = f['id_empleado']
+            if eid not in empleados:
+                empleados[eid] = {
+                    "id_empleado": eid, "nombre": f['nombre'], "apellido": f['apellido'],
+                    "valor_hora": float(f['valor_hora'] or 0), "dias": [], "horas_totales": 0
+                }
+            horas = float(f['horas'] or 0)
+            empleados[eid]['dias'].append({
+                "dia": str(f['dia']),
+                "entrada": str(f['primera_entrada'])[11:16] if f['primera_entrada'] else '',
+                "salida": str(f['ultima_salida'])[11:16] if f['ultima_salida'] else '',
+                "horas": horas
+            })
+            empleados[eid]['horas_totales'] += horas
+        # Anticipos pendientes de cada empleado en general (no solo del período)
+        for eid, emp in empleados.items():
+            emp['horas_totales'] = round(emp['horas_totales'], 2)
+            emp['pago_base'] = round(emp['horas_totales'] * emp['valor_hora'], 2)
+            try:
+                cur.execute("""
+                    SELECT a.id, a.monto, COALESCE(a.observaciones,'') AS obs, a.fecha::text AS fecha,
+                           COALESCE((SELECT SUM(d.monto) FROM descuentos_anticipos d WHERE d.id_anticipo=a.id),0) AS descontado
+                    FROM anticipos_empleados a
+                    WHERE a.id_empleado=%s AND COALESCE(a.pagado,false)=false
+                    ORDER BY a.fecha
+                """, (eid,))
+                ants = []
+                for a in fetchall_dict(cur):
+                    monto = float(a['monto'] or 0)
+                    desc = float(a['descontado'] or 0)
+                    saldo = round(monto - desc, 2)
+                    if saldo > 0:
+                        ants.append({"id": a['id'], "monto": monto, "descontado": desc,
+                                     "saldo": saldo, "obs": a['obs'], "fecha": a['fecha']})
+                emp['anticipos'] = ants
+            except Exception:
+                conn.rollback()
+                emp['anticipos'] = []
+        return list(empleados.values())
+    finally:
+        liberar_conexion(conn)
+
+@app.post("/api/liquidacion/descontar_anticipo")
+def descontar_anticipo(data: dict = Body(...)):
+    """Registra un descuento (parcial o total) sobre un anticipo.
+    Si el saldo llega a 0, marca el anticipo como pagado."""
+    id_anticipo = data.get('id_anticipo')
+    monto = float(data.get('monto') or 0)
+    id_empleado = data.get('id_empleado')
+    obs = data.get('observacion')
+    if not id_anticipo or monto <= 0:
+        raise HTTPException(status_code=400, detail="Datos incompletos")
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            cur.execute("SELECT monto FROM anticipos_empleados WHERE id=%s", (id_anticipo,))
+            row = cur.fetchone()
+            if not row:
+                raise HTTPException(status_code=404, detail="Anticipo no encontrado")
+            total = float(row['monto'] or 0)
+            cur.execute("SELECT COALESCE(SUM(monto),0) AS d FROM descuentos_anticipos WHERE id_anticipo=%s", (id_anticipo,))
+            ya = float(cur.fetchone()['d'] or 0)
+            saldo = total - ya
+            if monto > saldo + 0.01:
+                raise HTTPException(status_code=400, detail=f"El descuento (${monto}) supera el saldo del anticipo (${round(saldo,2)})")
+            cur.execute("INSERT INTO descuentos_anticipos (id_anticipo, id_empleado, monto, observacion) VALUES (%s,%s,%s,%s)",
+                        (id_anticipo, id_empleado, monto, obs))
+            # ¿Quedó saldado?
+            nuevo_saldo = saldo - monto
+            if nuevo_saldo <= 0.01:
+                cur.execute("UPDATE anticipos_empleados SET pagado=true, fecha_pago=NOW() WHERE id=%s", (id_anticipo,))
+            conn.commit()
+            return {"status": "ok", "saldo_restante": round(max(0, nuevo_saldo), 2)}
+        except HTTPException:
+            raise
+        except Exception:
+            conn.rollback()
+            raise HTTPException(status_code=400, detail="Falta correr CREAR_DESCUENTOS_ANTICIPOS.sql en la base.")
     finally:
         liberar_conexion(conn)
 
@@ -5026,6 +5143,15 @@ def serve_html(filename: str):
 def index():
     return serve_html("login.html")
 
+@app.get("/static/auth.js")
+def serve_auth_js():
+    path = os.path.join(os.path.dirname(__file__), 'pantallas', 'auth.js')
+    if not os.path.exists(path):
+        return HTMLResponse(content="// auth.js no encontrado", status_code=404, media_type="application/javascript")
+    with open(path, 'r', encoding='utf-8') as f:
+        return Response(content=f.read(), media_type="application/javascript",
+                        headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"})
+
 @app.get("/login")
 def route_login():
     return serve_html("login.html")
@@ -5077,6 +5203,10 @@ def route_empleados():
 @app.get("/reportes")
 def route_reportes():
     return serve_html("reportes.html")
+
+@app.get("/liquidacion")
+def route_liquidacion():
+    return serve_html("liquidacion.html")
 
 @app.get("/configuracion")
 def route_configuracion():
