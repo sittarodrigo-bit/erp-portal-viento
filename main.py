@@ -1738,6 +1738,113 @@ def cambiar_estado_empleado(id_emp: int, activo: bool):
 # ==============================================================================
 # FICHAJES
 # ==============================================================================
+# ==============================================================================
+# RELOJ DE FICHAJE POR PIN (tablet fija del local, sin GPS)
+# ==============================================================================
+class PinLookup(BaseModel):
+    pin: str
+
+@app.post("/api/fichaje/empleado_por_pin")
+def empleado_por_pin(data: PinLookup):
+    """Devuelve el empleado dueño del PIN (para mostrar nombre/foto antes de fichar)."""
+    pin = (data.pin or '').strip()
+    if len(pin) < 4:
+        raise HTTPException(status_code=400, detail="PIN incompleto")
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            cur.execute("""SELECT id, nombre, apellido, COALESCE(foto_url,'') AS foto_url
+                           FROM empleados WHERE pin_fichaje=%s AND COALESCE(activo,true)=true""", (pin,))
+        except Exception:
+            conn.rollback()
+            cur.execute("""SELECT id, nombre, apellido, '' AS foto_url
+                           FROM empleados WHERE pin_fichaje=%s AND COALESCE(activo,true)=true""", (pin,))
+        emp = cur.fetchone()
+        if not emp:
+            raise HTTPException(status_code=404, detail="PIN no reconocido")
+        # Último fichaje para sugerir si toca entrada o salida
+        cur.execute("SELECT tipo FROM registros_horarios WHERE id_empleado=%s ORDER BY fecha_hora DESC LIMIT 1", (emp['id'],))
+        ult = cur.fetchone()
+        ultimo_tipo = (ult['tipo'] if ult else None)
+        proximo = 'salida' if (ultimo_tipo and ultimo_tipo.strip().lower() == 'entrada') else 'entrada'
+        return {"id": emp['id'], "nombre": emp['nombre'], "apellido": emp['apellido'],
+                "foto_url": emp['foto_url'], "proximo": proximo}
+    finally:
+        liberar_conexion(conn)
+
+class FichajePin(BaseModel):
+    pin: str
+    tipo: str
+    id_local: Optional[int] = None
+    nombre_local: Optional[str] = None
+
+@app.post("/api/fichaje/por_pin")
+def fichaje_por_pin(data: FichajePin):
+    """Ficha entrada/salida usando el PIN. Mantiene el bloqueo de duplicados."""
+    pin = (data.pin or '').strip()
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT id, nombre, apellido FROM empleados WHERE pin_fichaje=%s AND COALESCE(activo,true)=true", (pin,))
+        emp = cur.fetchone()
+        if not emp:
+            raise HTTPException(status_code=404, detail="PIN no reconocido")
+        id_emp = emp[0]
+        tipo_nuevo = (data.tipo or '').strip().lower()
+        # Bloqueo de duplicados consecutivos
+        cur.execute("SELECT tipo FROM registros_horarios WHERE id_empleado=%s ORDER BY fecha_hora DESC LIMIT 1", (id_emp,))
+        ultimo = cur.fetchone()
+        if ultimo:
+            tipo_ultimo = (ultimo[0] or '').strip().lower()
+            if tipo_ultimo == tipo_nuevo:
+                if tipo_nuevo == 'entrada':
+                    raise HTTPException(status_code=409, detail="Ya tenés una entrada registrada. Fichá la salida primero.")
+                else:
+                    raise HTTPException(status_code=409, detail="Ya tenés una salida registrada. Fichá una entrada primero.")
+        else:
+            if tipo_nuevo == 'salida':
+                raise HTTPException(status_code=409, detail="No tenés una entrada registrada. Fichá la entrada primero.")
+        obs = ("Local: " + data.nombre_local) if data.nombre_local else None
+        cur.execute("INSERT INTO registros_horarios (id_empleado, tipo, observacion) VALUES (%s,%s,%s)",
+                    (id_emp, data.tipo, obs))
+        conn.commit()
+        return {"status": "ok", "nombre": emp[1], "apellido": emp[2], "tipo": tipo_nuevo}
+    except HTTPException:
+        raise
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
+class AsignarPin(BaseModel):
+    pin: str
+
+@app.put("/api/empleados/{id_emp}/pin")
+def asignar_pin(id_emp: int, data: AsignarPin):
+    """Asigna un PIN de 4 dígitos a un empleado. Valida que sea único."""
+    pin = (data.pin or '').strip()
+    if not pin.isdigit() or len(pin) != 4:
+        raise HTTPException(status_code=400, detail="El PIN debe ser de 4 dígitos numéricos")
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        try:
+            cur.execute("SELECT id FROM empleados WHERE pin_fichaje=%s AND id<>%s", (pin, id_emp))
+            if cur.fetchone():
+                raise HTTPException(status_code=409, detail="Ese PIN ya lo usa otro empleado. Elegí otro.")
+            cur.execute("UPDATE empleados SET pin_fichaje=%s WHERE id=%s", (pin, id_emp))
+            conn.commit()
+            return {"status": "ok"}
+        except HTTPException:
+            raise
+        except Exception:
+            conn.rollback()
+            raise HTTPException(status_code=400, detail="Falta correr CREAR_PIN_FICHAJE.sql en la base.")
+    finally:
+        liberar_conexion(conn)
+
 @app.post("/api/fichaje")
 def registrar_fichaje(data: FichajeData):
     conn = obtener_conexion()
@@ -4966,6 +5073,10 @@ def route_mayoristas():
 @app.get("/fichajes")
 def route_fichajes():
     return serve_html("portal_fichaje.html")
+
+@app.get("/reloj")
+def route_reloj():
+    return serve_html("reloj_fichaje.html")
 
 @app.get("/qr")
 def route_qr():
