@@ -7,11 +7,27 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 import os
 
-app = FastAPI(title="API Portal del Viento - Alfajores")
+app = FastAPI(
+    title="API Portal del Viento - Alfajores",
+    docs_url=None,      # Oculta /docs (mapa público de la API) en producción
+    redoc_url=None,     # Oculta /redoc
+    openapi_url=None    # Oculta el esquema OpenAPI
+)
+
+# CORS: solo se permiten pedidos desde el propio dominio del sistema.
+# Si más adelante usás otro dominio (ej: la tienda en otro lado), agregalo a la lista.
+ORIGENES_PERMITIDOS = [
+    "https://web-production-1588b.up.railway.app",
+    "https://erp.portaldelviento.com.ar",
+]
+# Permite definir orígenes extra por variable de entorno (separados por coma), sin tocar código
+_extra = os.environ.get("CORS_ORIGINS", "")
+if _extra:
+    ORIGENES_PERMITIDOS += [o.strip() for o in _extra.split(",") if o.strip()]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ORIGENES_PERMITIDOS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -20,7 +36,11 @@ app.add_middleware(
 # ==============================================================================
 # BASE DE DATOS
 # ==============================================================================
-DB_URL = os.environ.get("DATABASE_URL", "postgresql://neondb_owner:npg_jqkxN4SRzP5o@ep-still-firefly-apwc5fuw-pooler.c-7.us-east-1.aws.neon.tech/neondb?sslmode=require")
+# La conexión a la base se toma SOLO de la variable de entorno DATABASE_URL
+# (configurada en Railway). No se deja la contraseña escrita en el código.
+DB_URL = os.environ.get("DATABASE_URL")
+if not DB_URL:
+    raise RuntimeError("Falta la variable de entorno DATABASE_URL. Configurala en Railway.")
 
 def obtener_conexion():
     try:
