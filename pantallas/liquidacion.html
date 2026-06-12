@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Liquidación de Sueldos | Portal del Viento</title>
+<script>window.PANEL_ACTUAL = "reportes";</script>
+<script src="/static/auth.js"></script>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>tailwind.config={theme:{extend:{colors:{neon:'#d4ff3f'}}}}</script>
+</head>
+<body class="bg-gray-950 text-gray-200 font-sans min-h-screen">
+
+  <header class="bg-black border-b border-gray-800 px-6 py-4 flex items-center justify-between sticky top-0 z-20">
+    <div class="flex items-center gap-3">
+      <a href="/admin" class="text-gray-400 hover:text-white text-sm">← Panel</a>
+      <h1 class="text-neon font-bold text-lg">💵 Liquidación de Sueldos</h1>
+    </div>
+  </header>
+
+  <main class="p-6 max-w-5xl mx-auto">
+    <!-- Selector de fechas -->
+    <div class="bg-black border border-gray-800 rounded-2xl p-5 mb-6">
+      <div class="flex flex-wrap gap-4 items-end">
+        <div>
+          <label class="block text-xs text-gray-500 font-bold mb-1">Desde</label>
+          <input type="date" id="fecha-desde" class="bg-gray-900 border border-gray-700 text-white rounded-lg p-2.5">
+        </div>
+        <div>
+          <label class="block text-xs text-gray-500 font-bold mb-1">Hasta</label>
+          <input type="date" id="fecha-hasta" class="bg-gray-900 border border-gray-700 text-white rounded-lg p-2.5">
+        </div>
+        <button onclick="cargar()" class="bg-neon text-black font-bold px-6 py-2.5 rounded-lg">Calcular</button>
+        <div class="flex gap-2 ml-auto">
+          <button onclick="rangoRapido('semana')" class="text-xs border border-gray-700 text-gray-300 hover:text-white px-3 py-2 rounded-lg">Esta semana</button>
+          <button onclick="rangoRapido('quincena')" class="text-xs border border-gray-700 text-gray-300 hover:text-white px-3 py-2 rounded-lg">Quincena</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="contenido">
+      <p class="text-gray-500 text-center py-16">Elegí un rango de fechas y tocá Calcular.</p>
+    </div>
+  </main>
+
+<script>
+const API_URL = window.location.origin + "/api";
+const $ = id => document.getElementById(id);
+const fmt = n => '$' + (Math.round((parseFloat(n)||0))).toLocaleString('es-AR');
+let datos = [];
+// Estado local: días marcados como doble por empleado (clave: idEmp-dia)
+let diasDobles = {};
+
+function rangoRapido(tipo){
+  const hoy = new Date();
+  let desde = new Date(hoy);
+  if(tipo === 'semana'){
+    const dia = (hoy.getDay()+6)%7; // lunes=0
+    desde.setDate(hoy.getDate()-dia);
+  } else if(tipo === 'quincena'){
+    desde.setDate(hoy.getDate()-14);
+  }
+  $('fecha-desde').value = desde.toISOString().split('T')[0];
+  $('fecha-hasta').value = hoy.toISOString().split('T')[0];
+  cargar();
+}
+
+async function cargar(){
+  const desde = $('fecha-desde').value, hasta = $('fecha-hasta').value;
+  if(!desde || !hasta){ alert('Elegí las dos fechas.'); return; }
+  $('contenido').innerHTML = '<p class="text-gray-500 text-center py-16">Calculando...</p>';
+  try{
+    datos = await fetch(`${API_URL}/liquidacion/detalle?fecha_desde=${desde}&fecha_hasta=${hasta}`).then(r=>r.json());
+    diasDobles = {};
+    render();
+  }catch(e){
+    $('contenido').innerHTML = '<p class="text-red-400 text-center py-16">No se pudo calcular.</p>';
+  }
+}
+
+function render(){
+  if(!datos.length){
+    $('contenido').innerHTML = '<div class="text-center py-16 text-gray-500"><div class="text-5xl mb-3">📭</div>No hay fichajes en ese rango.</div>';
+    return;
+  }
+  $('contenido').innerHTML = datos.map(renderEmpleado).join('');
+}
+
+function renderEmpleado(emp){
+  const vh = emp.valor_hora || 0;
+  // Calcular pago con días dobles
+  let totalHoras = 0, pagoHoras = 0;
+  const filasDias = emp.dias.map(d => {
+    const clave = emp.id_empleado + '-' + d.dia;
+    const esDoble = !!diasDobles[clave];
+    const factor = esDoble ? 2 : 1;
+    const pagoDia = d.horas * vh * factor;
+    totalHoras += d.horas;
+    pagoHoras += pagoDia;
+    const fechaTxt = new Date(d.dia + 'T12:00:00').toLocaleDateString('es-AR',{weekday:'short', day:'numeric', month:'short'});
+    return `<tr class="${esDoble?'bg-amber-900/20':''}">
+      <td class="py-2 px-3 text-gray-300">${fechaTxt}</td>
+      <td class="py-2 px-3 text-center text-gray-400">${d.entrada} - ${d.salida}</td>
+      <td class="py-2 px-3 text-center text-white font-bold">${d.horas.toFixed(2)} h</td>
+      <td class="py-2 px-3 text-center">
+        <label class="inline-flex items-center gap-1 cursor-pointer">
+          <input type="checkbox" ${esDoble?'checked':''} onchange="toggleDoble('${clave}')" class="accent-amber-500">
+          <span class="text-xs ${esDoble?'text-amber-400 font-bold':'text-gray-600'}">x2</span>
+        </label>
+      </td>
+      <td class="py-2 px-3 text-right font-bold ${esDoble?'text-amber-400':'text-white'}">${fmt(pagoDia)}</td>
+    </tr>`;
+  }).join('');
+
+  // Anticipos
+  const anticipos = emp.anticipos || [];
+  const totalAnticipos = anticipos.reduce((a,x)=>a+x.saldo,0);
+  const filasAnt = anticipos.length ? anticipos.map(a => `
+    <div class="flex items-center justify-between bg-gray-900 border border-gray-800 rounded-lg p-3 mb-2">
+      <div>
+        <p class="text-white text-sm font-bold">${fmt(a.saldo)} <span class="text-gray-500 text-xs font-normal">pendiente</span></p>
+        <p class="text-gray-500 text-xs">${a.obs || 'Anticipo'} · ${(a.fecha||'').substring(0,10)}${a.descontado>0?(' · ya descontado '+fmt(a.descontado)):''}</p>
+      </div>
+      <button onclick="descontar(${a.id}, ${a.saldo}, ${emp.id_empleado})" class="text-xs bg-red-900/40 text-red-300 border border-red-800 hover:bg-red-900 px-3 py-1.5 rounded font-bold">Descontar</button>
+    </div>`).join('') : '<p class="text-gray-600 text-sm">Sin anticipos pendientes.</p>';
+
+  const neto = pagoHoras - totalAnticipos;
+
+  return `<div class="bg-black border border-gray-800 rounded-2xl p-5 mb-5">
+    <div class="flex justify-between items-center mb-4">
+      <h2 class="text-white font-bold text-xl">${emp.nombre} ${emp.apellido}</h2>
+      <span class="text-gray-500 text-sm">Valor hora: ${fmt(vh)}</span>
+    </div>
+
+    <div class="overflow-x-auto mb-4">
+      <table class="w-full text-sm">
+        <thead class="text-xs text-gray-500 border-b border-gray-800">
+          <tr><th class="py-2 px-3 text-left">Día</th><th class="py-2 px-3 text-center">Horario</th><th class="py-2 px-3 text-center">Horas</th><th class="py-2 px-3 text-center">Doble</th><th class="py-2 px-3 text-right">Pago</th></tr>
+        </thead>
+        <tbody class="divide-y divide-gray-800">${filasDias}</tbody>
+      </table>
+    </div>
+
+    <div class="grid md:grid-cols-2 gap-4">
+      <div>
+        <p class="text-xs text-gray-500 font-bold uppercase mb-2">Anticipos a descontar</p>
+        ${filasAnt}
+      </div>
+      <div class="bg-gray-900 rounded-xl p-4">
+        <div class="flex justify-between py-1.5 text-sm"><span class="text-gray-400">Total horas</span><span class="text-white font-bold">${totalHoras.toFixed(2)} h</span></div>
+        <div class="flex justify-between py-1.5 text-sm"><span class="text-gray-400">Pago por horas</span><span class="text-white font-bold">${fmt(pagoHoras)}</span></div>
+        <div class="flex justify-between py-1.5 text-sm"><span class="text-gray-400">(−) Anticipos pendientes</span><span class="text-red-400 font-bold">${fmt(totalAnticipos)}</span></div>
+        <div class="flex justify-between py-3 mt-2 border-t border-gray-700"><span class="text-white font-bold">NETO A PAGAR</span><span class="text-neon font-bold text-2xl">${fmt(neto)}</span></div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function toggleDoble(clave){
+  diasDobles[clave] = !diasDobles[clave];
+  render();
+}
+
+async function descontar(idAnticipo, saldo, idEmpleado){
+  const entrada = prompt('¿Cuánto querés descontar de este anticipo?\n\nSaldo pendiente: $' + Math.round(saldo).toLocaleString('es-AR') + '\n\n(Escribí el monto, o dejá el total para saldarlo)', Math.round(saldo));
+  if(entrada === null) return;
+  const monto = parseFloat(entrada);
+  if(isNaN(monto) || monto <= 0){ alert('Monto inválido.'); return; }
+  if(monto > saldo + 0.01){ alert('No podés descontar más que el saldo pendiente.'); return; }
+  try{
+    const res = await fetch(`${API_URL}/liquidacion/descontar_anticipo`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ id_anticipo: idAnticipo, monto: monto, id_empleado: idEmpleado, observacion: 'Descuento en liquidación' })
+    });
+    if(res.ok){
+      const r = await res.json();
+      alert('✅ Descontado ' + fmt(monto) + (r.saldo_restante > 0 ? ('. Queda pendiente ' + fmt(r.saldo_restante)) : '. Anticipo saldado.'));
+      cargar(); // recargar para reflejar
+    } else {
+      const e = await res.json(); alert('❌ ' + (e.detail || 'No se pudo descontar'));
+    }
+  }catch(e){ alert('❌ Error de conexión.'); }
+}
+
+// Rango inicial: esta semana
+rangoRapido('semana');
+</script>
+</body>
+</html>
