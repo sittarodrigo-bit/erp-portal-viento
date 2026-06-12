@@ -125,10 +125,15 @@
             </div>
 
             <div class="flex justify-between items-center border-t border-gray-700 pt-4">
-                <div class="flex gap-2">
-                    <button onclick="cambiarEstado('Preparado')" class="text-xs bg-blue-700 hover:bg-blue-600 text-white px-3 py-1.5 rounded font-bold">Preparar</button>
-                    <button onclick="cambiarEstado('Despachado')" class="text-xs bg-green-700 hover:bg-green-600 text-white px-3 py-1.5 rounded font-bold">Despachar</button>
-                    <button onclick="cambiarEstado('Cancelado')" class="text-xs bg-red-800 hover:bg-red-700 text-white px-3 py-1.5 rounded font-bold">Cancelar</button>
+                <div class="flex items-center gap-2">
+                    <label class="text-xs text-gray-400 font-bold">Estado:</label>
+                    <select id="sel-estado-hist" onchange="cambiarEstado(this.value)" class="bg-gray-800 border border-gray-700 text-white text-sm rounded-lg px-3 py-2 font-bold">
+                        <option value="Pendiente">⏳ Pendiente</option>
+                        <option value="En preparación">🛠️ En preparación</option>
+                        <option value="Terminado">✅ Terminado</option>
+                        <option value="Despachado">🚚 Despachado</option>
+                        <option value="Cancelado">❌ Cancelado</option>
+                    </select>
                 </div>
                 <button onclick="eliminarPedido()" class="text-xs text-red-500 hover:text-red-400 font-bold">🗑 Eliminar</button>
             </div>
@@ -366,6 +371,13 @@
             document.getElementById('det-dist').textContent   = dist.razon_social || pedidoActual.distribuidor;
             document.getElementById('det-fecha').textContent  = new Date(pedidoActual.fecha).toLocaleString('es-AR', {dateStyle:'long', timeStyle:'short'});
             document.getElementById('det-total').textContent  = '$ ' + parseFloat(pedidoActual.total).toLocaleString('es-AR');
+            var selEst = document.getElementById('sel-estado-hist');
+            if (selEst) {
+                // Si el estado no está entre las opciones (ej "Preparado" viejo), lo agrega
+                var existe = Array.prototype.some.call(selEst.options, function(o){ return o.value === pedidoActual.estado; });
+                if (!existe && pedidoActual.estado) { var op = document.createElement('option'); op.value = pedidoActual.estado; op.textContent = pedidoActual.estado; selEst.appendChild(op); }
+                selEst.value = pedidoActual.estado;
+            }
 
             renderDetalle();
             await cargarProductosAgregar();
@@ -507,8 +519,25 @@
         }
 
         async function cambiarEstado(estado) {
-            await fetch(API_URL + '/pedidos/' + pedidoActual.id + '/estado?estado=' + estado, { method:'PUT' });
-            cerrarModales(); cargarPedidos();
+            if (!pedidoActual) return;
+            var ABIERTOS = ['Pendiente','En preparación'];
+            var CON_STOCK = ['Terminado','Despachado','Despachado parcial'];
+            if (CON_STOCK.indexOf(pedidoActual.estado) !== -1 && ABIERTOS.indexOf(estado) !== -1) {
+                if (!confirm('Al revertir a "' + estado + '" se devuelve al stock todo lo preparado y habrá que volver a armar el pedido.\n\n¿Continuar?')) {
+                    var s = document.getElementById('sel-estado-hist'); if (s) s.value = pedidoActual.estado;
+                    return;
+                }
+            }
+            if (estado === 'Cancelado') {
+                if (!confirm('¿Cancelar el pedido? Si tenía stock preparado, se devuelve.')) {
+                    var s2 = document.getElementById('sel-estado-hist'); if (s2) s2.value = pedidoActual.estado;
+                    return;
+                }
+            }
+            try {
+                await fetch(API_URL + '/pedidos/' + pedidoActual.id + '/estado?estado=' + encodeURIComponent(estado), { method:'PUT' });
+                cerrarModales(); cargarPedidos();
+            } catch(e) { alert('No se pudo cambiar el estado.'); }
         }
 
         async function eliminarPedido() {
