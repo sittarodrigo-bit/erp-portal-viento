@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Reloj de Fichaje | Portal del Viento</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>tailwind.config={theme:{extend:{colors:{neon:'#d4ff3f'}}}}</script>
+<style>
+  .tecla{transition:transform .08s}
+  .tecla:active{transform:scale(.92)}
+</style>
+</head>
+<body class="bg-gray-950 text-gray-200 font-sans min-h-screen flex flex-col">
+
+  <!-- VINCULAR AL LOCAL (solo la primera vez en el dispositivo) -->
+  <div id="pantalla-vincular" class="hidden flex-1 flex items-center justify-center p-6">
+    <div class="bg-black border border-gray-800 rounded-2xl p-8 max-w-sm w-full text-center">
+      <h1 class="text-neon font-bold text-xl tracking-widest uppercase mb-2">Portal del Viento</h1>
+      <p class="text-gray-400 text-sm mb-6">Configurá este dispositivo como reloj de fichaje de un local. Queda fijo.</p>
+      <label class="block text-xs text-gray-500 font-bold mb-1 text-left">Local</label>
+      <select id="vinc-local" class="w-full bg-gray-900 border border-gray-700 text-white rounded-lg p-3 mb-4"></select>
+      <label class="block text-xs text-gray-500 font-bold mb-1 text-left">Usuario admin</label>
+      <input type="text" id="vinc-user" class="w-full bg-gray-900 border border-gray-700 text-white rounded-lg p-3 mb-3" placeholder="Usuario de administrador" autocapitalize="off">
+      <label class="block text-xs text-gray-500 font-bold mb-1 text-left">Clave de administrador</label>
+      <input type="password" id="vinc-clave" class="w-full bg-gray-900 border border-gray-700 text-white rounded-lg p-3 mb-4" placeholder="Clave de admin">
+      <button onclick="vincularLocal()" class="w-full bg-neon text-black font-bold py-3 rounded-xl">Vincular este dispositivo</button>
+      <p id="vinc-error" class="text-red-400 text-sm mt-3 hidden"></p>
+    </div>
+  </div>
+
+  <!-- RELOJ (teclado de PIN) -->
+  <div id="pantalla-reloj" class="hidden flex-1 flex flex-col">
+    <header class="flex justify-between items-center px-5 py-3 border-b border-gray-800">
+      <div>
+        <span class="text-neon font-bold tracking-widest uppercase text-sm">Portal del Viento</span>
+        <span id="reloj-local" class="text-gray-500 text-sm ml-2"></span>
+      </div>
+      <div class="flex items-center gap-4">
+        <span id="reloj-hora" class="text-white font-bold text-lg tabular-nums"></span>
+        <button onclick="desvincular()" class="text-gray-600 hover:text-gray-400 text-xs">⚙</button>
+      </div>
+    </header>
+
+    <div class="flex-1 flex flex-col items-center justify-center p-6">
+      <p class="text-gray-400 text-lg mb-2">Ingresá tu PIN</p>
+      <!-- Puntos del PIN -->
+      <div id="pin-display" class="flex gap-3 mb-8 h-6">
+        <div class="w-4 h-4 rounded-full border-2 border-gray-600"></div>
+        <div class="w-4 h-4 rounded-full border-2 border-gray-600"></div>
+        <div class="w-4 h-4 rounded-full border-2 border-gray-600"></div>
+        <div class="w-4 h-4 rounded-full border-2 border-gray-600"></div>
+      </div>
+      <!-- Teclado -->
+      <div class="grid grid-cols-3 gap-3 w-full max-w-xs">
+        <button onclick="tecla('1')" class="tecla bg-gray-900 border border-gray-800 text-white text-3xl font-bold rounded-2xl py-5">1</button>
+        <button onclick="tecla('2')" class="tecla bg-gray-900 border border-gray-800 text-white text-3xl font-bold rounded-2xl py-5">2</button>
+        <button onclick="tecla('3')" class="tecla bg-gray-900 border border-gray-800 text-white text-3xl font-bold rounded-2xl py-5">3</button>
+        <button onclick="tecla('4')" class="tecla bg-gray-900 border border-gray-800 text-white text-3xl font-bold rounded-2xl py-5">4</button>
+        <button onclick="tecla('5')" class="tecla bg-gray-900 border border-gray-800 text-white text-3xl font-bold rounded-2xl py-5">5</button>
+        <button onclick="tecla('6')" class="tecla bg-gray-900 border border-gray-800 text-white text-3xl font-bold rounded-2xl py-5">6</button>
+        <button onclick="tecla('7')" class="tecla bg-gray-900 border border-gray-800 text-white text-3xl font-bold rounded-2xl py-5">7</button>
+        <button onclick="tecla('8')" class="tecla bg-gray-900 border border-gray-800 text-white text-3xl font-bold rounded-2xl py-5">8</button>
+        <button onclick="tecla('9')" class="tecla bg-gray-900 border border-gray-800 text-white text-3xl font-bold rounded-2xl py-5">9</button>
+        <button onclick="borrarTecla()" class="tecla bg-gray-800 text-gray-400 text-xl font-bold rounded-2xl py-5">←</button>
+        <button onclick="tecla('0')" class="tecla bg-gray-900 border border-gray-800 text-white text-3xl font-bold rounded-2xl py-5">0</button>
+        <button onclick="limpiarPin()" class="tecla bg-gray-800 text-gray-400 text-sm font-bold rounded-2xl py-5">Borrar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- CONFIRMACIÓN (empleado identificado, elegir entrada/salida) -->
+  <div id="pantalla-confirmar" class="hidden fixed inset-0 bg-black/95 z-50 flex flex-col items-center justify-center p-6">
+    <div id="conf-foto" class="w-28 h-28 rounded-full bg-gray-800 mb-4 overflow-hidden flex items-center justify-center text-5xl"></div>
+    <p id="conf-nombre" class="text-white font-bold text-2xl mb-1"></p>
+    <p id="conf-hora" class="text-gray-500 mb-8 tabular-nums"></p>
+    <div class="flex gap-4 w-full max-w-md">
+      <button onclick="fichar('entrada')" id="btn-entrada" class="flex-1 bg-green-600 active:bg-green-500 text-white font-bold py-6 rounded-2xl text-xl">🟢 Entrada</button>
+      <button onclick="fichar('salida')" id="btn-salida" class="flex-1 bg-red-600 active:bg-red-500 text-white font-bold py-6 rounded-2xl text-xl">🔴 Salida</button>
+    </div>
+    <button onclick="cancelarConfirmar()" class="text-gray-500 mt-6 text-sm">Cancelar</button>
+  </div>
+
+  <!-- CARTEL DE RESULTADO -->
+  <div id="cartel" class="hidden fixed inset-0 bg-black/95 z-[60] flex flex-col items-center justify-center p-6 text-center">
+    <div id="cartel-icono" class="text-7xl mb-4"></div>
+    <p id="cartel-texto" class="text-white font-bold text-3xl"></p>
+    <p id="cartel-sub" class="text-gray-400 text-lg mt-2"></p>
+  </div>
+
+<script>
+const API_URL = window.location.origin + "/api";
+const $ = id => document.getElementById(id);
+let pin = "";
+let empleadoActual = null;
+let localReloj = null;
+
+// ¿Ya está vinculado este dispositivo?
+try { localReloj = JSON.parse(localStorage.getItem('reloj_local') || 'null'); } catch(e) {}
+
+function init(){
+  if(localReloj && localReloj.id){
+    $('pantalla-reloj').classList.remove('hidden');
+    $('reloj-local').textContent = '· ' + (localReloj.nombre || 'Local');
+    tick();
+  } else {
+    $('pantalla-vincular').classList.remove('hidden');
+    cargarLocales();
+  }
+}
+
+async function cargarLocales(){
+  try{
+    const locales = await fetch(`${API_URL}/pos/locales`).then(r=>r.json());
+    $('vinc-local').innerHTML = locales.map(l=>`<option value="${l.id}" data-nombre="${l.nombre}">${l.nombre}</option>`).join('');
+  }catch(e){
+    // fallback a /locales si el endpoint difiere
+    try{
+      const locales = await fetch(`${API_URL}/locales`).then(r=>r.json());
+      $('vinc-local').innerHTML = locales.map(l=>`<option value="${l.id}" data-nombre="${l.nombre}">${l.nombre}</option>`).join('');
+    }catch(e2){ $('vinc-local').innerHTML = '<option>No se pudieron cargar</option>'; }
+  }
+}
+
+async function vincularLocal(){
+  const sel = $('vinc-local');
+  const id = sel.value;
+  const nombre = sel.options[sel.selectedIndex]?.dataset.nombre || 'Local';
+  const user = $('vinc-user').value.trim();
+  const clave = $('vinc-clave').value;
+  if(!user || !clave){ mostrarVincError('Ingresá usuario y clave de admin.'); return; }
+  try{
+    const res = await fetch(`${API_URL}/login`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ username: user, password: clave })
+    });
+    if(!res.ok){ mostrarVincError('Usuario o clave incorrectos.'); return; }
+    const data = await res.json();
+    if(data && data.rol === 'admin'){
+      localReloj = { id: parseInt(id), nombre: nombre };
+      localStorage.setItem('reloj_local', JSON.stringify(localReloj));
+      $('pantalla-vincular').classList.add('hidden');
+      $('pantalla-reloj').classList.remove('hidden');
+      $('reloj-local').textContent = '· ' + nombre;
+      tick();
+    } else {
+      mostrarVincError('Ese usuario no es administrador.');
+    }
+  }catch(e){ mostrarVincError('No se pudo validar.'); }
+}
+
+function mostrarVincError(msg){ const e=$('vinc-error'); e.textContent=msg; e.classList.remove('hidden'); }
+
+function desvincular(){
+  const user = prompt('Usuario de admin:');
+  if(!user) return;
+  const clave = prompt('Clave de admin:');
+  if(!clave) return;
+  fetch(`${API_URL}/login`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ username: user.trim(), password: clave }) })
+    .then(r=> r.ok ? r.json() : Promise.reject())
+    .then(data=>{
+      if(data && data.rol === 'admin'){
+        localStorage.removeItem('reloj_local'); location.reload();
+      } else { alert('Ese usuario no es administrador.'); }
+    }).catch(()=> alert('Usuario o clave incorrectos.'));
+}
+
+// ===== Teclado PIN =====
+function tecla(n){
+  if(pin.length >= 4) return;
+  pin += n;
+  pintarPin();
+  if(pin.length === 4) buscarEmpleado();
+}
+function borrarTecla(){ pin = pin.slice(0,-1); pintarPin(); }
+function limpiarPin(){ pin = ""; pintarPin(); }
+function pintarPin(){
+  const dots = $('pin-display').children;
+  for(let i=0;i<4;i++){
+    dots[i].className = i < pin.length
+      ? 'w-4 h-4 rounded-full bg-neon border-2 border-neon'
+      : 'w-4 h-4 rounded-full border-2 border-gray-600';
+  }
+}
+
+async function buscarEmpleado(){
+  try{
+    const res = await fetch(`${API_URL}/fichaje/empleado_por_pin`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ pin: pin })
+    });
+    if(!res.ok){
+      const e = await res.json().catch(()=>({}));
+      mostrarCartel('❌', 'PIN no reconocido', e.detail || '', 'red');
+      limpiarPin();
+      return;
+    }
+    empleadoActual = await res.json();
+    mostrarConfirmar();
+  }catch(e){ mostrarCartel('❌', 'Error', 'No se pudo conectar', 'red'); limpiarPin(); }
+}
+
+function mostrarConfirmar(){
+  const e = empleadoActual;
+  const foto = $('conf-foto');
+  if(e.foto_url){ foto.innerHTML = `<img src="${e.foto_url}" class="w-full h-full object-cover">`; }
+  else { foto.innerHTML = '👤'; }
+  $('conf-nombre').textContent = e.nombre + ' ' + e.apellido;
+  $('conf-hora').textContent = new Date().toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
+  // Resaltar el botón que corresponde (sugerencia)
+  $('btn-entrada').style.opacity = e.proximo === 'entrada' ? '1' : '.5';
+  $('btn-salida').style.opacity  = e.proximo === 'salida' ? '1' : '.5';
+  $('pantalla-confirmar').classList.remove('hidden');
+}
+
+function cancelarConfirmar(){
+  $('pantalla-confirmar').classList.add('hidden');
+  empleadoActual = null; limpiarPin();
+}
+
+async function fichar(tipo){
+  $('btn-entrada').disabled = true; $('btn-salida').disabled = true;
+  try{
+    const res = await fetch(`${API_URL}/fichaje/por_pin`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ pin: pin, tipo: tipo, id_local: localReloj.id, nombre_local: localReloj.nombre })
+    });
+    const data = await res.json().catch(()=>({}));
+    $('pantalla-confirmar').classList.add('hidden');
+    if(res.ok){
+      const hora = new Date().toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
+      mostrarCartel(tipo==='entrada'?'🟢':'🔴',
+        (tipo==='entrada'?'¡Hola ':'¡Chau ') + data.nombre + '!',
+        (tipo==='entrada'?'Entrada':'Salida') + ' registrada · ' + hora, 'green');
+    } else {
+      mostrarCartel('⚠️', 'No se pudo fichar', data.detail || '', 'red');
+    }
+  }catch(e){
+    $('pantalla-confirmar').classList.add('hidden');
+    mostrarCartel('❌','Error','No se pudo conectar','red');
+  }finally{
+    $('btn-entrada').disabled = false; $('btn-salida').disabled = false;
+    empleadoActual = null; limpiarPin();
+  }
+}
+
+function mostrarCartel(icono, texto, sub, color){
+  $('cartel-icono').textContent = icono;
+  $('cartel-texto').textContent = texto;
+  $('cartel-texto').className = 'font-bold text-3xl ' + (color==='green'?'text-green-400':'text-red-400');
+  $('cartel-sub').textContent = sub;
+  $('cartel').classList.remove('hidden');
+  setTimeout(()=>{ $('cartel').classList.add('hidden'); }, 2600);
+}
+
+// Reloj en pantalla
+function tick(){
+  const h = $('reloj-hora');
+  if(h) h.textContent = new Date().toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  setTimeout(tick, 1000);
+}
+
+init();
+</script>
+</body>
+</html>
