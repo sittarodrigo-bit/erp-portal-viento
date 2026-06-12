@@ -36,7 +36,15 @@
           <h2 id="arm-titulo" class="text-2xl font-bold text-white"></h2>
           <p id="arm-distribuidor" class="text-neon font-bold mt-1"></p>
         </div>
-        <span id="arm-estado" class="text-xs font-bold px-3 py-1.5 rounded-full bg-gray-800 text-gray-400"></span>
+        <div class="text-right">
+          <select id="arm-estado-sel" onchange="cambiarEstadoArmado(this.value)" class="bg-gray-800 border border-gray-700 text-white text-sm rounded-lg px-3 py-2 font-bold">
+            <option value="Pendiente">⏳ Pendiente</option>
+            <option value="En preparación">🛠️ En preparación</option>
+            <option value="Terminado">✅ Terminado</option>
+            <option value="Despachado">🚚 Despachado</option>
+          </select>
+          <p class="text-gray-600 text-xs mt-1">Cambiá el estado para revertir</p>
+        </div>
       </div>
       <div class="mt-3">
         <div class="w-full bg-gray-900 rounded-full h-2 overflow-hidden">
@@ -129,7 +137,7 @@ function renderArmado(){
   const d = pedidoActual;
   $('arm-titulo').textContent = 'Pedido #' + d.id;
   $('arm-distribuidor').textContent = d.distribuidor || 'Sin distribuidor';
-  $('arm-estado').textContent = d.estado === 'Despachado parcial' ? '📦 Parcial — completar' : '🛠️ En preparación';
+  var sel = $('arm-estado-sel'); if (sel) sel.value = d.estado || 'En preparación';
   const faltan = d.items.filter(i=>!i.completo);
   const hechos = d.items.filter(i=>i.completo);
   let html = '';
@@ -216,6 +224,29 @@ async function ajustar(idProd, delta){
     // revertir
     it.preparado = prep; it.completo = prep >= it.cantidad; renderArmado();
     alert('No se pudo actualizar. ¿Corriste el SQL?');
+  }
+}
+
+async function cambiarEstadoArmado(nuevoEstado){
+  const d = pedidoActual;
+  const ABIERTOS = ['Pendiente','En preparación'];
+  const CON_STOCK = ['Terminado','Despachado','Despachado parcial'];
+  if (CON_STOCK.includes(d.estado) && ABIERTOS.includes(nuevoEstado)) {
+    if (!confirm('Al revertir a "' + nuevoEstado + '" se devuelve al stock todo lo que se había preparado, y vas a tener que volver a armar el pedido.\n\n¿Continuar?')) {
+      $('arm-estado-sel').value = d.estado;
+      return;
+    }
+  }
+  try {
+    await fetch(`${API_URL}/pedidos/${d.id}/estado?estado=${encodeURIComponent(nuevoEstado)}`, {method:'PUT'});
+    const det = await fetch(`${API_URL}/armado/pedidos/${d.id}`).then(r=>r.json());
+    const eraRevert = CON_STOCK.includes(d.estado) && ABIERTOS.includes(nuevoEstado);
+    pedidoActual = det;
+    renderArmado();
+    if (eraRevert) alert('✅ Pedido revertido. El stock fue devuelto, ya podés editar o re-armar.');
+  } catch(e) {
+    alert('No se pudo cambiar el estado.');
+    if ($('arm-estado-sel')) $('arm-estado-sel').value = d.estado;
   }
 }
 
