@@ -42,10 +42,18 @@
     <script>
         const API_URL = window.location.origin + "/api";
 
-        // Si ya hay sesión, redirigir
-        if (sessionStorage.getItem('usuario')) {
-            window.location.href = '/admin';
-        }
+        // Si ya hay sesión de admin, redirigir al panel
+        (function(){
+            var raw = sessionStorage.getItem('usuario');
+            if (!raw) return;
+            try {
+                var u = JSON.parse(raw);
+                var rol = (u && u.rol ? String(u.rol).toLowerCase().trim() : '');
+                if (rol === 'admin' || rol === 'administrativo') {
+                    window.location.href = '/admin';
+                }
+            } catch(e) {}
+        })();
 
         async function iniciarSesion() {
             const username = document.getElementById('username').value.trim();
@@ -72,6 +80,11 @@
                 if (!res.ok) {
                     mostrarError(data.detail || "Error de acceso.");
                 } else {
+                    var rol = (data.rol ? String(data.rol).toLowerCase().trim() : '');
+                    if (rol !== 'admin' && rol !== 'administrativo') {
+                        mostrarError("Acceso solo para administradores.");
+                        return;
+                    }
                     sessionStorage.setItem('usuario', JSON.stringify(data));
                     window.location.href = '/admin';
                 }
