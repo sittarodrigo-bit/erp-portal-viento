@@ -1284,8 +1284,8 @@ def armado_listar_pedidos():
                    d.razon_social AS distribuidor
             FROM pedidos_b2b p
             LEFT JOIN distribuidores d ON p.id_distribuidor = d.id
-            WHERE p.estado IN ('Pendiente','En preparación','Despachado parcial')
-            ORDER BY CASE WHEN p.estado='En preparación' THEN 0 WHEN p.estado='Despachado parcial' THEN 1 ELSE 2 END, p.id ASC
+            WHERE p.estado IN ('Pendiente','En preparación','Despachado parcial','Terminado')
+            ORDER BY CASE WHEN p.estado='En preparación' THEN 0 WHEN p.estado='Despachado parcial' THEN 1 WHEN p.estado='Pendiente' THEN 2 ELSE 3 END, p.id ASC
         """)
         return fetchall_dict(cur)
     finally:
@@ -1498,14 +1498,24 @@ def actualizar_pedido(id: int, payload: PedidoUpdate):
     conn = obtener_conexion()
     try:
         cur = conn.cursor()
-        # Si el pedido ya fue despachado, devolver al stock lo que se había descontado
         cur.execute("SELECT estado FROM pedidos_b2b WHERE id=%s", (id,))
         er = cur.fetchone()
         estado_actual = er[0] if er else None
-        if estado_actual == 'Despachado':
-            cur.execute("SELECT id_producto, cantidad FROM detalle_pedidos_b2b WHERE id_pedido = %s", (id,))
+        ABIERTOS = ('Pendiente', 'En preparación')
+        # Solo se puede editar un pedido ABIERTO. Si está Terminado/Despachado,
+        # hay que revertirlo primero (eso devuelve el stock preparado).
+        if estado_actual is not None and estado_actual not in ABIERTOS:
+            raise HTTPException(status_code=409, detail="Para editar este pedido primero revertilo a 'Pendiente' o 'En preparación' (eso devuelve el stock).")
+        # Si tenía ítems preparados (estaba en preparación a medias), devolver ese stock
+        # y limpiar los tildes, porque las cantidades pueden cambiar al editar.
+        try:
+            cur.execute("SELECT id_producto, cantidad FROM preparacion_items WHERE id_pedido = %s", (id,))
             for v in cur.fetchall():
                 cur.execute("UPDATE productos SET stock_actual = COALESCE(stock_actual,0) + %s WHERE id = %s", (v[1], v[0]))
+            cur.execute("DELETE FROM preparacion_items WHERE id_pedido = %s", (id,))
+        except Exception:
+            conn.rollback()
+        # Reescribir el detalle del pedido (esto NO toca stock: el stock se mueve al armar)
         cur.execute("DELETE FROM detalle_pedidos_b2b WHERE id_pedido = %s", (id,))
         cur.execute("UPDATE pedidos_b2b SET total = %s WHERE id = %s", (payload.total, id))
         for item in payload.detalle:
@@ -1514,14 +1524,13 @@ def actualizar_pedido(id: int, payload: PedidoUpdate):
                     INSERT INTO detalle_pedidos_b2b (id_pedido, id_producto, cantidad, precio_unitario)
                     VALUES (%s,%s,%s,%s)
                 """, (id, item.id_producto, item.cantidad, item.precio_unitario))
-        # Si seguía despachado, volver a descontar las nuevas cantidades (topado a 0)
-        if estado_actual == 'Despachado':
-            for item in payload.detalle:
-                if item.cantidad > 0:
-                    cur.execute("UPDATE productos SET stock_actual = GREATEST(COALESCE(stock_actual,0) - %s, 0) WHERE id = %s",
-                                (item.cantidad, item.id_producto))
+        # Si estaba "En preparación", al editar vuelve a "Pendiente" para re-armar limpio
+        if estado_actual == 'En preparación':
+            cur.execute("UPDATE pedidos_b2b SET estado='Pendiente' WHERE id=%s", (id,))
         conn.commit()
         return {"status": "ok"}
+    except HTTPException:
+        raise
     except Exception as e:
         conn.rollback()
         raise HTTPException(status_code=500, detail=str(e))
@@ -1536,10 +1545,24 @@ def cambiar_estado_pedido(id: int, estado: str):
         cur.execute("SELECT estado FROM pedidos_b2b WHERE id=%s", (id,))
         er = cur.fetchone()
         estado_previo = er[0] if er else None
-        cur.execute("UPDATE pedidos_b2b SET estado = %s WHERE id = %s", (estado, id))
-        # NOTA: el stock se descuenta al TILDAR cada ítem en la pantalla de armado,
-        # no al despachar. Acá ya no se toca stock al pasar a Despachado.
-        # Al CANCELAR: devolver al stock lo que se haya tildado (sacado) en preparación.
+
+        # Estados que implican stock ya descontado (lo preparado/tildado salió del depósito)
+        CON_STOCK = ('Terminado', 'Despachado', 'Despachado parcial')
+        # Estados "abiertos" donde el pedido se puede editar/re-armar
+        ABIERTOS = ('Pendiente', 'En preparación')
+
+        # Si REVERTIMOS de un estado con stock descontado a uno abierto:
+        # devolver al stock lo preparado y limpiar los tildes, para poder editar/re-armar.
+        if estado_previo in CON_STOCK and estado in ABIERTOS:
+            try:
+                cur.execute("SELECT id_producto, cantidad FROM preparacion_items WHERE id_pedido = %s", (id,))
+                for item in cur.fetchall():
+                    cur.execute("UPDATE productos SET stock_actual = COALESCE(stock_actual,0) + %s WHERE id = %s", (item[1], item[0]))
+                cur.execute("DELETE FROM preparacion_items WHERE id_pedido = %s", (id,))
+            except Exception:
+                conn.rollback()
+
+        # Si CANCELAMOS: devolver lo preparado (si había) y limpiar
         if estado == 'Cancelado' and estado_previo != 'Cancelado':
             try:
                 cur.execute("SELECT id_producto, cantidad FROM preparacion_items WHERE id_pedido = %s", (id,))
@@ -1548,9 +1571,10 @@ def cambiar_estado_pedido(id: int, estado: str):
                 cur.execute("DELETE FROM preparacion_items WHERE id_pedido = %s", (id,))
             except Exception:
                 conn.rollback()
-                cur.execute("UPDATE pedidos_b2b SET estado = %s WHERE id = %s", (estado, id))
+
+        cur.execute("UPDATE pedidos_b2b SET estado = %s WHERE id = %s", (estado, id))
         conn.commit()
-        return {"status": "ok"}
+        return {"status": "ok", "estado": estado, "estado_previo": estado_previo}
     except Exception as e:
         conn.rollback()
         raise HTTPException(status_code=500, detail=str(e))
@@ -3305,6 +3329,68 @@ def pos_faltantes_listar(id_local: Optional[int] = None, estado: Optional[str] =
         q += " ORDER BY f.fecha DESC"
         cur.execute(q, tuple(params))
         return fetchall_dict(cur)
+    finally:
+        liberar_conexion(conn)
+
+class NovedadCreate(BaseModel):
+    id_local: Optional[int] = None
+    nombre_local: Optional[str] = None
+    mensaje: str
+    cargada_por: Optional[str] = None
+
+@app.post("/api/pos/novedades")
+def crear_novedad(n: NovedadCreate):
+    if not n.mensaje or not n.mensaje.strip():
+        raise HTTPException(status_code=400, detail="El mensaje no puede estar vacío")
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        try:
+            cur.execute("INSERT INTO novedades_pos (id_local, nombre_local, mensaje, cargada_por) VALUES (%s,%s,%s,%s) RETURNING id",
+                        (n.id_local, n.nombre_local, n.mensaje.strip(), n.cargada_por))
+            nid = cur.fetchone()[0]
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise HTTPException(status_code=400, detail="Falta correr CREAR_NOVEDADES.sql en la base.")
+        # Notificación a la campanita
+        try:
+            crear_notificacion("novedad", "Novedad de " + (n.nombre_local or "un local"),
+                               (n.cargada_por + ": " if n.cargada_por else "") + n.mensaje.strip()[:140])
+        except Exception:
+            pass
+        return {"id": nid}
+    finally:
+        liberar_conexion(conn)
+
+@app.get("/api/pos/novedades")
+def listar_novedades(id_local: Optional[int] = None, limit: int = 50):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            if id_local:
+                cur.execute("SELECT id, id_local, nombre_local, mensaje, cargada_por, leida, fecha::text FROM novedades_pos WHERE id_local=%s ORDER BY id DESC LIMIT %s", (id_local, limit))
+            else:
+                cur.execute("SELECT id, id_local, nombre_local, mensaje, cargada_por, leida, fecha::text FROM novedades_pos ORDER BY id DESC LIMIT %s", (limit,))
+            return fetchall_dict(cur)
+        except Exception:
+            conn.rollback()
+            return []
+    finally:
+        liberar_conexion(conn)
+
+@app.put("/api/pos/novedades/{id}/leer")
+def leer_novedad(id: int):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        try:
+            cur.execute("UPDATE novedades_pos SET leida=true WHERE id=%s", (id,))
+            conn.commit()
+        except Exception:
+            conn.rollback()
+        return {"status": "ok"}
     finally:
         liberar_conexion(conn)
 
