@@ -1743,10 +1743,31 @@ def registrar_fichaje(data: FichajeData):
     conn = obtener_conexion()
     try:
         cur = conn.cursor()
+        # Ver el último fichaje del empleado para evitar dobles consecutivos
+        cur.execute("""SELECT tipo, fecha_hora FROM registros_horarios
+                       WHERE id_empleado=%s ORDER BY fecha_hora DESC LIMIT 1""", (data.id_empleado,))
+        ultimo = cur.fetchone()
+        tipo_nuevo = (data.tipo or '').strip().lower()
+        if ultimo:
+            tipo_ultimo = (ultimo[0] or '').strip().lower()
+            # No permitir dos entradas seguidas ni dos salidas seguidas
+            if tipo_ultimo == tipo_nuevo:
+                if tipo_nuevo == 'entrada':
+                    raise HTTPException(status_code=409, detail="Ya fichaste tu entrada. Tenés que fichar la salida antes de marcar otra entrada.")
+                elif tipo_nuevo == 'salida':
+                    raise HTTPException(status_code=409, detail="Ya fichaste tu salida. Tenés que fichar una entrada antes de marcar otra salida.")
+                else:
+                    raise HTTPException(status_code=409, detail="Ya registraste ese mismo movimiento.")
+        else:
+            # Primer fichaje del empleado: debería ser una entrada
+            if tipo_nuevo == 'salida':
+                raise HTTPException(status_code=409, detail="No tenés una entrada registrada. Fichá la entrada primero.")
         cur.execute("INSERT INTO registros_horarios (id_empleado, tipo, observacion) VALUES (%s,%s,%s)",
                     (data.id_empleado, data.tipo, data.observacion))
         conn.commit()
-        return {"status": "ok"}
+        return {"status": "ok", "tipo": tipo_nuevo}
+    except HTTPException:
+        raise
     except Exception as e:
         conn.rollback()
         raise HTTPException(status_code=500, detail=str(e))
