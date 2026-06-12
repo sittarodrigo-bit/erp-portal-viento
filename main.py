@@ -1339,6 +1339,58 @@ def armado_iniciar(id: int):
     finally:
         liberar_conexion(conn)
 
+class SetearCantidad(BaseModel):
+    id_producto: int
+    cantidad: float          # cantidad final preparada (la que se escribe)
+    preparado_por: Optional[str] = None
+
+@app.post("/api/armado/pedidos/{id}/setear_cantidad")
+def armado_setear_cantidad(id: int, data: SetearCantidad):
+    """Setea la cantidad preparada de un ítem (la escrita por el usuario) y ajusta
+    el stock por la diferencia con lo que había. Una sola operación."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT cantidad FROM detalle_pedidos_b2b WHERE id_pedido=%s AND id_producto=%s", (id, data.id_producto))
+        ped = cur.fetchone()
+        if not ped:
+            raise HTTPException(status_code=404, detail="Producto no está en el pedido")
+        pedido_cant = float(ped[0] or 0)
+        try:
+            cur.execute("SELECT cantidad FROM preparacion_items WHERE id_pedido=%s AND id_producto=%s", (id, data.id_producto))
+            row = cur.fetchone()
+        except Exception:
+            conn.rollback()
+            raise HTTPException(status_code=400, detail="Falta correr CREAR_PREPARACION.sql en la base.")
+        actual = float(row[0]) if row else 0.0
+        nueva = float(data.cantidad or 0)
+        if nueva < 0: nueva = 0
+        if nueva > pedido_cant: nueva = pedido_cant   # no más de lo pedido
+        cambio = nueva - actual
+        if cambio > 0:
+            cur.execute("UPDATE productos SET stock_actual = GREATEST(COALESCE(stock_actual,0) - %s, 0) WHERE id=%s", (cambio, data.id_producto))
+        elif cambio < 0:
+            cur.execute("UPDATE productos SET stock_actual = COALESCE(stock_actual,0) + %s WHERE id=%s", (abs(cambio), data.id_producto))
+        if row:
+            if nueva <= 0:
+                cur.execute("DELETE FROM preparacion_items WHERE id_pedido=%s AND id_producto=%s", (id, data.id_producto))
+            else:
+                cur.execute("UPDATE preparacion_items SET cantidad=%s, preparado_por=%s WHERE id_pedido=%s AND id_producto=%s",
+                            (nueva, data.preparado_por, id, data.id_producto))
+        else:
+            if nueva > 0:
+                cur.execute("INSERT INTO preparacion_items (id_pedido, id_producto, cantidad, preparado_por) VALUES (%s,%s,%s,%s)",
+                            (id, data.id_producto, nueva, data.preparado_por))
+        conn.commit()
+        return {"status": "ok", "cantidad": nueva}
+    except HTTPException:
+        raise
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
 class AjusteCantidad(BaseModel):
     id_producto: int
     delta: float          # +1 o -1 (o el paso que se cargue)
