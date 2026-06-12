@@ -161,18 +161,53 @@ function renderItem(it){
     <div class="flex items-center justify-between gap-3">
       <div class="flex-1 min-w-0">
         <p class="text-white font-bold">${it.nombre} ${completo?'<span class="text-neon">✓</span>':''}</p>
-        <p class="text-gray-500 text-xs">Stock disponible: ${it.stock}</p>
+        <p class="text-gray-500 text-xs">Pedido: ${it.cantidad} · Stock: ${it.stock}</p>
       </div>
       <div class="flex items-center gap-2 flex-shrink-0">
-        <button onclick="ajustar(${it.id_producto},-1)" class="w-11 h-11 rounded-lg bg-gray-800 text-white text-2xl flex items-center justify-center active:bg-gray-700">−</button>
-        <div class="text-center min-w-[64px]">
-          <p class="text-2xl font-bold ${completo?'text-neon':'text-white'}">${prep}<span class="text-gray-600 text-base">/${it.cantidad}</span></p>
-        </div>
-        <button onclick="ajustar(${it.id_producto},1)" class="w-11 h-11 rounded-lg bg-neon text-black text-2xl font-bold flex items-center justify-center active:scale-90">+</button>
+        <input type="number" inputmode="numeric" min="0" max="${it.cantidad}" value="${prep}"
+               id="cant-${it.id_producto}"
+               onkeydown="if(event.key==='Enter'){setearCant(${it.id_producto})}"
+               class="w-20 bg-black border border-gray-600 focus:border-neon text-white text-center text-xl font-bold rounded-lg py-2 outline-none">
+        <span class="text-gray-600 text-sm">/ ${it.cantidad}</span>
+        <button onclick="setearCant(${it.id_producto})" class="bg-neon text-black font-bold px-4 py-2.5 rounded-lg active:scale-95">OK</button>
       </div>
     </div>
     <div class="w-full bg-gray-800 rounded-full h-1.5 mt-3 overflow-hidden"><div class="bg-neon h-1.5 transition-all" style="width:${pctItem}%"></div></div>
   </div>`;
+}
+
+async function setearCant(idProd){
+  const it = pedidoActual.items.find(i=>i.id_producto===idProd);
+  if(!it) return;
+  const input = document.getElementById('cant-'+idProd);
+  let valor = parseInt(input.value);
+  if(isNaN(valor) || valor < 0) valor = 0;
+  if(valor > it.cantidad) valor = it.cantidad;
+  const prep = it.preparado || 0;
+  if(valor === prep){ return; } // sin cambios
+  const diff = valor - prep;
+  // Aviso si carga más de lo que hay en stock
+  if(diff > 0 && diff > it.stock){
+    if(!confirm('Estás cargando ' + diff + ' pero hay ' + it.stock + ' en stock. ¿Continuar igual? (el stock puede quedar en 0)')){
+      input.value = prep; return;
+    }
+  }
+  // Optimista
+  const stockAnterior = it.stock;
+  it.preparado = valor;
+  it.completo = valor >= it.cantidad;
+  it.stock = Math.max(0, it.stock - diff);
+  renderArmado();
+  try{
+    const r = await fetch(`${API_URL}/armado/pedidos/${pedidoActual.id}/setear_cantidad`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ id_producto: idProd, cantidad: valor, preparado_por: armadoPor })
+    }).then(x=>x.json());
+    if(r && typeof r.cantidad === 'number'){ it.preparado = r.cantidad; it.completo = r.cantidad >= it.cantidad; renderArmado(); }
+  }catch(e){
+    it.preparado = prep; it.completo = prep >= it.cantidad; it.stock = stockAnterior; renderArmado();
+    alert('No se pudo guardar. ¿Corriste el SQL?');
+  }
 }
 
 function actualizarProgreso(){
@@ -196,36 +231,6 @@ function actualizarProgreso(){
   }
 }
 
-async function ajustar(idProd, delta){
-  const it = pedidoActual.items.find(i=>i.id_producto===idProd);
-  if(!it) return;
-  const prep = it.preparado || 0;
-  if(delta > 0 && prep >= it.cantidad) return; // ya está completo
-  if(delta > 0 && it.stock <= 0){
-    if(!confirm('Este producto no tiene stock disponible. ¿Igual lo cargás?')) return;
-  }
-  if(delta < 0 && prep <= 0) return;
-  // Optimista
-  const nuevoPrep = Math.max(0, Math.min(it.cantidad, prep + delta));
-  const movimiento = nuevoPrep - prep;
-  it.preparado = nuevoPrep;
-  it.completo = nuevoPrep >= it.cantidad;
-  if(movimiento > 0) it.stock = Math.max(0, it.stock - movimiento);
-  else it.stock = it.stock + Math.abs(movimiento);
-  renderArmado();
-  try{
-    const r = await fetch(`${API_URL}/armado/pedidos/${pedidoActual.id}/cantidad`, {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ id_producto: idProd, delta: delta, preparado_por: armadoPor })
-    }).then(x=>x.json());
-    // sincronizar con el valor real del server
-    if(r && typeof r.cantidad === 'number'){ it.preparado = r.cantidad; it.completo = r.cantidad >= it.cantidad; renderArmado(); }
-  }catch(e){
-    // revertir
-    it.preparado = prep; it.completo = prep >= it.cantidad; renderArmado();
-    alert('No se pudo actualizar. ¿Corriste el SQL?');
-  }
-}
 
 async function cambiarEstadoArmado(nuevoEstado){
   const d = pedidoActual;
