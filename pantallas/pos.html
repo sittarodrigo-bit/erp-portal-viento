@@ -39,6 +39,7 @@
             <div id="estado-caja-badge" class="text-xs font-bold px-3 py-1.5 rounded-full bg-gray-800 text-gray-500">Sin caja</div>
             <button onclick="abrirCierresPendientes()" id="btn-cierres-pend" class="hidden text-xs font-bold px-3 py-1.5 rounded-full bg-orange-900/40 text-orange-400 border border-orange-800">💵 Cierres pendientes: <span id="cont-cierres-pend">0</span></button>
             <span id="pos-cajero" class="text-gray-400 text-sm"></span>
+            <button onclick="abrirNovedad()" class="text-xs font-bold px-3 py-1.5 rounded-full bg-blue-900/40 text-blue-300 border border-blue-800 hover:bg-blue-900/60">📣 Novedad</button>
             <button onclick="cerrarSesionPos()" class="text-gray-500 hover:text-white text-sm border border-gray-700 rounded px-3 py-1.5">Salir</button>
         </div>
     </header>
@@ -160,6 +161,20 @@
     </div>
 
     <!-- MODAL CIERRE DE CAJA -->
+    <div id="modal-novedad" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
+        <div class="bg-gray-950 border border-gray-800 rounded-2xl w-full max-w-md mx-4">
+            <div class="flex justify-between items-center p-5 border-b border-gray-800">
+                <h3 class="text-white font-bold">📣 Cargar novedad</h3>
+                <button onclick="document.getElementById('modal-novedad').classList.replace('modal-visible','modal-oculto')" class="text-gray-500 hover:text-white text-2xl leading-none">×</button>
+            </div>
+            <div class="p-5">
+                <p class="text-gray-400 text-sm mb-3">Escribí lo que querés que vea administración (un problema, algo que falta, una observación...).</p>
+                <textarea id="novedad-texto" rows="4" placeholder="Ej: Se rompió la heladera exhibidora, avisar al técnico." class="w-full bg-black border border-gray-700 focus:border-blue-500 text-white rounded-lg p-3 text-sm outline-none resize-none"></textarea>
+                <button onclick="enviarNovedad()" class="w-full mt-3 bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-lg">Enviar novedad</button>
+            </div>
+        </div>
+    </div>
+
     <div id="modal-cierres-pend" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
         <div class="bg-gray-950 border border-gray-800 rounded-2xl w-full max-w-lg mx-4 max-h-[80vh] flex flex-col">
             <div class="flex justify-between items-center p-5 border-b border-gray-800">
@@ -483,15 +498,7 @@
         if (posUsuario) { latidoSesion(); setInterval(latidoSesion, 60000); }
 
         async function cerrarSesionPos() {
-            // Registrar fichaje de salida antes de cerrar (no bloquea si falla)
-            if (posUsuario && posUsuario.id_empleado) {
-                try {
-                    await fetch(API_URL + '/fichaje', {
-                        method:'POST', headers:{'Content-Type':'application/json'},
-                        body: JSON.stringify({ id_empleado: posUsuario.id_empleado, tipo: 'salida', observacion: 'Salida POS' })
-                    });
-                } catch(e) {}
-            }
+            // El fichaje de horario se hace por el RELOJ de fichaje, no por el POS.
             // Liberar la sesión única en el servidor
             if (posUsuario && posUsuario.id_usuario) {
                 try { await fetch(API_URL + '/pos/sesion/cerrar?id_usuario=' + posUsuario.id_usuario, { method:'POST' }); } catch(e) {}
@@ -540,6 +547,34 @@
             var datos = localesCache.find(function(l){ return l.id === parseInt(id); }) || {};
             localActual = { id: parseInt(id), nombre: sel.options[sel.selectedIndex].textContent, direccion: datos.direccion || '' };
             await verificarCaja();
+        }
+
+        function abrirNovedad() {
+            document.getElementById('novedad-texto').value = '';
+            document.getElementById('modal-novedad').classList.replace('modal-oculto','modal-visible');
+            setTimeout(function(){ document.getElementById('novedad-texto').focus(); }, 100);
+        }
+
+        async function enviarNovedad() {
+            var texto = (document.getElementById('novedad-texto').value || '').trim();
+            if (!texto) { alert('Escribí la novedad.'); return; }
+            try {
+                var res = await fetch(API_URL + '/pos/novedades', {
+                    method:'POST', headers:{'Content-Type':'application/json'},
+                    body: JSON.stringify({
+                        id_local: (localActual ? localActual.id : null),
+                        nombre_local: (localActual ? localActual.nombre : null),
+                        mensaje: texto,
+                        cargada_por: (posUsuario ? (posUsuario.nombre + ' ' + posUsuario.apellido) : null)
+                    })
+                });
+                if (res.ok) {
+                    document.getElementById('modal-novedad').classList.replace('modal-visible','modal-oculto');
+                    alert('✅ Novedad enviada a administración.');
+                } else {
+                    var e = await res.json(); alert('❌ ' + (e.detail || 'No se pudo enviar'));
+                }
+            } catch(err) { alert('❌ Error de conexión.'); }
         }
 
         async function actualizarContadorCierres() {
