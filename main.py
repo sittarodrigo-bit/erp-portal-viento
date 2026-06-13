@@ -1090,6 +1090,47 @@ def ranking_productos_distribuidor(id_dist: int):
     finally:
         liberar_conexion(conn)
 
+@app.get("/api/ingresos_distribuidores")
+def ingresos_distribuidores(fecha_desde: str, fecha_hasta: str):
+    """Consolidado del dinero que ingresa de distribuidores en un rango de fechas:
+    lista completa de cobros, total general, desglose por método y por distribuidor."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("""
+            SELECT c.id, c.fecha::text AS fecha, COALESCE(c.monto,0) AS monto,
+                   COALESCE(c.metodo,'') AS metodo, c.referencia, c.notas, c.id_pedido,
+                   c.id_distribuidor, COALESCE(d.razon_social,'(sin nombre)') AS distribuidor
+            FROM cobros_distribuidores c
+            LEFT JOIN distribuidores d ON c.id_distribuidor = d.id
+            WHERE DATE(c.fecha) >= %s AND DATE(c.fecha) <= %s
+            ORDER BY c.fecha DESC
+        """, (fecha_desde, fecha_hasta))
+        cobros = fetchall_dict(cur)
+        total = 0.0
+        por_metodo = {}
+        por_dist = {}
+        for c in cobros:
+            m = float(c['monto'] or 0)
+            total += m
+            met = (c['metodo'] or 'otro').strip().lower()
+            por_metodo[met] = por_metodo.get(met, 0) + m
+            dn = c['distribuidor']
+            por_dist[dn] = por_dist.get(dn, 0) + m
+        # Ordenar distribuidores por monto desc
+        ranking = sorted([{"distribuidor": k, "total": round(v, 2)} for k, v in por_dist.items()],
+                         key=lambda x: x['total'], reverse=True)
+        metodos = [{"metodo": k, "total": round(v, 2)} for k, v in por_metodo.items()]
+        return {
+            "total": round(total, 2),
+            "cantidad": len(cobros),
+            "por_metodo": metodos,
+            "por_distribuidor": ranking,
+            "cobros": cobros
+        }
+    finally:
+        liberar_conexion(conn)
+
 @app.get("/api/distribuidores/{id_dist}/estado_cuenta")
 def estado_cuenta_distribuidor(id_dist: int):
     conn = obtener_conexion()
@@ -5362,6 +5403,10 @@ def route_ser_distribuidor():
 @app.get("/prospectos")
 def route_prospectos():
     return serve_html("prospectos.html")
+
+@app.get("/ingresos-distribuidores")
+def route_ingresos_dist():
+    return serve_html("ingresos_distribuidores.html")
 
 @app.get("/configuracion")
 def route_configuracion():
