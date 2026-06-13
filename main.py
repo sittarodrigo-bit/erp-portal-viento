@@ -833,6 +833,101 @@ def crear_distribuidor(dist: Distribuidor):
     finally:
         liberar_conexion(conn)
 
+class ProspectoData(BaseModel):
+    nombre: str
+    telefono: Optional[str] = None
+    email: Optional[str] = None
+    zona: Optional[str] = None
+    tipo_comercio: Optional[str] = None
+    venta_estimada: Optional[str] = None
+    mensaje: Optional[str] = None
+
+@app.post("/api/prospectos")
+def crear_prospecto(p: ProspectoData):
+    """Recibe el formulario público de 'Quiero ser distribuidor'."""
+    if not p.nombre or not p.nombre.strip():
+        raise HTTPException(status_code=400, detail="El nombre es obligatorio")
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        try:
+            cur.execute("""INSERT INTO prospectos_distribuidores
+                (nombre, telefono, email, zona, tipo_comercio, venta_estimada, mensaje)
+                VALUES (%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
+                (p.nombre.strip(), p.telefono, p.email, p.zona, p.tipo_comercio, p.venta_estimada, p.mensaje))
+            pid = cur.fetchone()[0]
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise HTTPException(status_code=400, detail="Falta correr CREAR_PROSPECTOS.sql en la base.")
+        try:
+            crear_notificacion("pedido", "Nuevo interesado en ser distribuidor",
+                               p.nombre.strip() + (" · " + p.zona if p.zona else ""))
+        except Exception:
+            pass
+        return {"status": "ok", "id": pid}
+    finally:
+        liberar_conexion(conn)
+
+@app.get("/api/prospectos")
+def listar_prospectos(estado: Optional[str] = None):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            if estado:
+                cur.execute("SELECT * FROM prospectos_distribuidores WHERE estado=%s ORDER BY id DESC", (estado,))
+            else:
+                cur.execute("SELECT * FROM prospectos_distribuidores ORDER BY id DESC")
+            return fetchall_dict(cur)
+        except Exception:
+            conn.rollback()
+            return []
+    finally:
+        liberar_conexion(conn)
+
+@app.put("/api/prospectos/{id}/estado")
+def cambiar_estado_prospecto(id: int, estado: str):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        cur.execute("UPDATE prospectos_distribuidores SET estado=%s WHERE id=%s", (estado, id))
+        conn.commit()
+        return {"status": "ok"}
+    finally:
+        liberar_conexion(conn)
+
+@app.post("/api/prospectos/{id}/convertir")
+def convertir_prospecto(id: int):
+    """Convierte un prospecto aprobado en distribuidor real."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("SELECT * FROM prospectos_distribuidores WHERE id=%s", (id,))
+        p = cur.fetchone()
+        if not p:
+            raise HTTPException(status_code=404, detail="Prospecto no encontrado")
+        if p.get('id_distribuidor'):
+            raise HTTPException(status_code=409, detail="Este prospecto ya fue convertido en distribuidor")
+        notas = "Captado por embudo."
+        if p.get('venta_estimada'): notas += " Venta estimada: " + str(p['venta_estimada']) + "."
+        if p.get('tipo_comercio'): notas += " Comercio: " + str(p['tipo_comercio']) + "."
+        cur.execute("""
+            INSERT INTO distribuidores (razon_social, telefono, email, localidad, notas, aprobado, activo)
+            VALUES (%s,%s,%s,%s,%s, true, true) RETURNING id
+        """, (p['nombre'], p.get('telefono'), p.get('email'), p.get('zona'), notas))
+        id_dist = cur.fetchone()['id']
+        cur.execute("UPDATE prospectos_distribuidores SET estado='convertido', id_distribuidor=%s WHERE id=%s", (id_dist, id))
+        conn.commit()
+        return {"status": "ok", "id_distribuidor": id_dist}
+    except HTTPException:
+        raise
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
 @app.put("/api/distribuidores/{id}")
 def actualizar_distribuidor(id: int, dist: Distribuidor):
     conn = obtener_conexion()
@@ -2033,6 +2128,58 @@ def descontar_anticipo(data: dict = Body(...)):
         except Exception:
             conn.rollback()
             raise HTTPException(status_code=400, detail="Falta correr CREAR_DESCUENTOS_ANTICIPOS.sql en la base.")
+    finally:
+        liberar_conexion(conn)
+
+@app.post("/api/liquidacion/marcar_pagado")
+def marcar_pagado(data: dict = Body(...)):
+    """Registra el pago del sueldo de un empleado por un período y salda
+    automáticamente sus anticipos pendientes (descuento total)."""
+    id_emp = data.get('id_empleado')
+    desde = data.get('fecha_desde')
+    hasta = data.get('fecha_hasta')
+    total_horas = float(data.get('total_horas') or 0)
+    pago_horas = float(data.get('pago_horas') or 0)
+    detalle = data.get('detalle') or ''
+    if not id_emp:
+        raise HTTPException(status_code=400, detail="Falta el empleado")
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        # Descontar (saldar) los anticipos pendientes del empleado
+        anticipos_desc = 0.0
+        try:
+            cur.execute("""SELECT a.id, a.monto,
+                                  COALESCE((SELECT SUM(d.monto) FROM descuentos_anticipos d WHERE d.id_anticipo=a.id),0) AS descontado
+                           FROM anticipos_empleados a
+                           WHERE a.id_empleado=%s AND COALESCE(a.pagado,false)=false""", (id_emp,))
+            for a in fetchall_dict(cur):
+                saldo = float(a['monto'] or 0) - float(a['descontado'] or 0)
+                if saldo > 0:
+                    cur.execute("INSERT INTO descuentos_anticipos (id_anticipo, id_empleado, monto, observacion) VALUES (%s,%s,%s,%s)",
+                                (a['id'], id_emp, saldo, 'Saldado al pagar sueldo'))
+                    cur.execute("UPDATE anticipos_empleados SET pagado=true, fecha_pago=NOW() WHERE id=%s", (a['id'],))
+                    anticipos_desc += saldo
+        except Exception:
+            conn.rollback()
+            raise HTTPException(status_code=400, detail="Falta correr los SQL de anticipos. Corré CREAR_DESCUENTOS_ANTICIPOS.sql.")
+        neto = pago_horas - anticipos_desc
+        # Registrar el pago
+        try:
+            cur.execute("""INSERT INTO pagos_sueldo
+                (id_empleado, fecha_desde, fecha_hasta, total_horas, pago_horas, anticipos_descontados, neto_pagado, detalle)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s)""",
+                (id_emp, desde, hasta, total_horas, pago_horas, anticipos_desc, neto, detalle))
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise HTTPException(status_code=400, detail="Falta correr CREAR_PAGOS_SUELDO.sql en la base.")
+        # Notificación
+        try:
+            crear_notificacion("pago", "Sueldo pagado", "Neto: $" + str(round(neto)))
+        except Exception:
+            pass
+        return {"status": "ok", "anticipos_descontados": round(anticipos_desc,2), "neto_pagado": round(neto,2)}
     finally:
         liberar_conexion(conn)
 
@@ -5207,6 +5354,14 @@ def route_reportes():
 @app.get("/liquidacion")
 def route_liquidacion():
     return serve_html("liquidacion.html")
+
+@app.get("/ser-distribuidor")
+def route_ser_distribuidor():
+    return serve_html("ser_distribuidor.html")
+
+@app.get("/prospectos")
+def route_prospectos():
+    return serve_html("prospectos.html")
 
 @app.get("/configuracion")
 def route_configuracion():
