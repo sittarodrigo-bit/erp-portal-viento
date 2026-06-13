@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Prospectos de Distribuidores | Portal del Viento</title>
+<script>window.PANEL_ACTUAL = "distribuidores";</script>
+<script src="/static/auth.js"></script>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>tailwind.config={theme:{extend:{colors:{neon:'#d4ff3f'}}}}</script>
+</head>
+<body class="bg-gray-950 text-gray-200 font-sans min-h-screen">
+
+  <header class="bg-black border-b border-gray-800 px-6 py-4 flex items-center justify-between sticky top-0 z-20">
+    <div class="flex items-center gap-3">
+      <a href="/admin" class="text-gray-400 hover:text-white text-sm">← Panel</a>
+      <h1 class="text-neon font-bold text-lg">🎯 Prospectos de distribuidores</h1>
+    </div>
+    <div class="flex items-center gap-3">
+      <a href="/ser-distribuidor" target="_blank" class="text-xs border border-gray-700 text-gray-300 hover:text-white px-3 py-2 rounded-lg">🔗 Ver landing pública</a>
+      <button onclick="cargar()" class="border border-gray-700 text-gray-300 hover:text-white px-4 py-2 rounded-lg text-sm">🔄 Actualizar</button>
+    </div>
+  </header>
+
+  <main class="p-6 max-w-5xl mx-auto">
+    <!-- Compartir landing -->
+    <div class="bg-gradient-to-r from-orange-900/30 to-gray-900 border border-orange-800/50 rounded-2xl p-5 mb-6">
+      <p class="text-white font-bold mb-1">📣 Compartí tu link para captar distribuidores</p>
+      <p class="text-gray-400 text-sm mb-3">Pasá este link por redes, WhatsApp o donde quieras. Los interesados caen acá abajo.</p>
+      <div class="flex gap-2">
+        <input type="text" id="link-landing" readonly class="flex-1 bg-black border border-gray-700 text-neon rounded-lg p-2.5 text-sm">
+        <button onclick="copiarLink()" class="bg-neon text-black font-bold px-4 py-2.5 rounded-lg text-sm">Copiar</button>
+      </div>
+    </div>
+
+    <!-- Filtros -->
+    <div class="flex gap-2 mb-4 flex-wrap">
+      <button onclick="filtrar('todos')" id="fil-todos" class="text-sm px-4 py-2 rounded-full bg-neon text-black font-bold">Todos</button>
+      <button onclick="filtrar('nuevo')" id="fil-nuevo" class="text-sm px-4 py-2 rounded-full border border-gray-700 text-gray-300">🆕 Nuevos</button>
+      <button onclick="filtrar('contactado')" id="fil-contactado" class="text-sm px-4 py-2 rounded-full border border-gray-700 text-gray-300">📞 Contactados</button>
+      <button onclick="filtrar('convertido')" id="fil-convertido" class="text-sm px-4 py-2 rounded-full border border-gray-700 text-gray-300">✅ Convertidos</button>
+      <button onclick="filtrar('descartado')" id="fil-descartado" class="text-sm px-4 py-2 rounded-full border border-gray-700 text-gray-300">🗑 Descartados</button>
+    </div>
+
+    <div id="lista"><p class="text-gray-500 text-center py-16">Cargando...</p></div>
+  </main>
+
+<script>
+const API_URL = window.location.origin + "/api";
+const $ = id => document.getElementById(id);
+let prospectos = [];
+let filtroActivo = 'todos';
+
+document.getElementById('link-landing').value = window.location.origin + '/ser-distribuidor';
+
+function copiarLink(){
+  const inp = $('link-landing');
+  inp.select(); document.execCommand('copy');
+  navigator.clipboard?.writeText(inp.value);
+  alert('✅ Link copiado. Ya podés pegarlo donde quieras.');
+}
+
+async function cargar(){
+  $('lista').innerHTML = '<p class="text-gray-500 text-center py-16">Cargando...</p>';
+  try{
+    prospectos = await fetch(`${API_URL}/prospectos`).then(r=>r.json());
+    render();
+  }catch(e){ $('lista').innerHTML = '<p class="text-red-400 text-center py-16">No se pudo cargar.</p>'; }
+}
+
+function filtrar(estado){
+  filtroActivo = estado;
+  ['todos','nuevo','contactado','convertido','descartado'].forEach(e=>{
+    const b = $('fil-'+e);
+    if(e===estado){ b.className = 'text-sm px-4 py-2 rounded-full bg-neon text-black font-bold'; }
+    else { b.className = 'text-sm px-4 py-2 rounded-full border border-gray-700 text-gray-300'; }
+  });
+  render();
+}
+
+function badge(estado){
+  const m = {
+    nuevo: '<span class="text-xs font-bold px-2 py-1 rounded-full bg-blue-900/40 text-blue-300">🆕 Nuevo</span>',
+    contactado: '<span class="text-xs font-bold px-2 py-1 rounded-full bg-amber-900/40 text-amber-300">📞 Contactado</span>',
+    convertido: '<span class="text-xs font-bold px-2 py-1 rounded-full bg-green-900/40 text-green-300">✅ Convertido</span>',
+    descartado: '<span class="text-xs font-bold px-2 py-1 rounded-full bg-gray-800 text-gray-500">🗑 Descartado</span>'
+  };
+  return m[estado] || estado;
+}
+
+function render(){
+  let lista = prospectos;
+  if(filtroActivo !== 'todos') lista = prospectos.filter(p=>p.estado===filtroActivo);
+  if(!lista.length){ $('lista').innerHTML = '<div class="text-center py-16 text-gray-500"><div class="text-5xl mb-3">📭</div>No hay prospectos en este estado.</div>'; return; }
+  $('lista').innerHTML = lista.map(p=>{
+    const wsp = (p.telefono||'').replace(/[^0-9]/g,'');
+    return `<div class="bg-black border border-gray-800 rounded-2xl p-5 mb-3">
+      <div class="flex justify-between items-start gap-4 flex-wrap">
+        <div class="flex-1 min-w-[200px]">
+          <div class="flex items-center gap-2 mb-1">
+            <h3 class="text-white font-bold text-lg">${p.nombre}</h3>
+            ${badge(p.estado)}
+          </div>
+          <p class="text-gray-400 text-sm">📍 ${p.zona||'—'} ${p.tipo_comercio?(' · '+p.tipo_comercio):''}</p>
+          <p class="text-gray-400 text-sm">📞 ${p.telefono||'—'} ${p.email?(' · '+p.email):''}</p>
+          ${p.venta_estimada?`<p class="text-gray-500 text-sm mt-1">💰 Venta estimada: ${p.venta_estimada}</p>`:''}
+          ${p.mensaje?`<p class="text-gray-500 text-sm mt-2 italic">"${p.mensaje}"</p>`:''}
+          <p class="text-gray-600 text-xs mt-2">${(p.fecha||'').replace('T',' ').substring(0,16)}</p>
+        </div>
+        <div class="flex flex-col gap-2 items-end">
+          ${wsp?`<a href="https://wa.me/54${wsp}" target="_blank" class="text-xs bg-green-700 hover:bg-green-600 text-white px-3 py-2 rounded-lg font-bold whitespace-nowrap">💬 WhatsApp</a>`:''}
+          ${p.estado!=='convertido'?`
+            ${p.estado!=='contactado'?`<button onclick="cambiarEstado(${p.id},'contactado')" class="text-xs border border-amber-700 text-amber-300 hover:bg-amber-900/40 px-3 py-2 rounded-lg whitespace-nowrap">📞 Marcar contactado</button>`:''}
+            <button onclick="convertir(${p.id}, '${(p.nombre||'').replace(/'/g,"")}')" class="text-xs bg-neon text-black font-bold px-3 py-2 rounded-lg whitespace-nowrap">✅ Convertir en distribuidor</button>
+            <button onclick="cambiarEstado(${p.id},'descartado')" class="text-xs text-gray-500 hover:text-gray-300 px-3 py-1">Descartar</button>
+          `:`<span class="text-green-400 text-xs font-bold">Ya es distribuidor ✓</span>`}
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function cambiarEstado(id, estado){
+  try{
+    await fetch(`${API_URL}/prospectos/${id}/estado?estado=${estado}`, {method:'PUT'});
+    cargar();
+  }catch(e){ alert('No se pudo actualizar.'); }
+}
+
+async function convertir(id, nombre){
+  if(!confirm('¿Convertir a "' + nombre + '" en distribuidor?\n\nSe va a crear su ficha de distribuidor automáticamente y vas a poder gestionarlo desde el panel de distribuidores.')) return;
+  try{
+    const res = await fetch(`${API_URL}/prospectos/${id}/convertir`, {method:'POST'});
+    if(res.ok){
+      alert('✅ ¡Listo! Ya es distribuidor. Podés completar sus datos y darle acceso desde el panel de Distribuidores.');
+      cargar();
+    } else {
+      const e = await res.json(); alert('❌ ' + (e.detail || 'No se pudo convertir'));
+    }
+  }catch(e){ alert('❌ Error de conexión.'); }
+}
+
+cargar();
+</script>
+</body>
+</html>
