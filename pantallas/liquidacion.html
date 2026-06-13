@@ -34,6 +34,7 @@
         <div class="flex gap-2 ml-auto">
           <button onclick="rangoRapido('semana')" class="text-xs border border-gray-700 text-gray-300 hover:text-white px-3 py-2 rounded-lg">Esta semana</button>
           <button onclick="rangoRapido('quincena')" class="text-xs border border-gray-700 text-gray-300 hover:text-white px-3 py-2 rounded-lg">Quincena</button>
+          <button onclick="imprimirPlanilla()" class="text-xs bg-gray-800 border border-gray-700 text-white hover:border-gray-500 px-3 py-2 rounded-lg font-bold">🖨️ Planilla general</button>
         </div>
       </div>
     </div>
@@ -126,7 +127,10 @@ function renderEmpleado(emp){
 
   const neto = pagoHoras - totalAnticipos;
 
-  return `<div class="bg-black border border-gray-800 rounded-2xl p-5 mb-5">
+  // Guardar datos calculados para imprimir/pagar
+  emp._calc = { totalHoras: totalHoras, pagoHoras: pagoHoras, totalAnticipos: totalAnticipos, neto: neto, dobles: Object.keys(diasDobles).filter(k=>k.startsWith(emp.id_empleado+'-') && diasDobles[k]) };
+
+  return `<div class="bg-black border border-gray-800 rounded-2xl p-5 mb-5" id="emp-card-${emp.id_empleado}">
     <div class="flex justify-between items-center mb-4">
       <h2 class="text-white font-bold text-xl">${emp.nombre} ${emp.apellido}</h2>
       <span class="text-gray-500 text-sm">Valor hora: ${fmt(vh)}</span>
@@ -152,6 +156,11 @@ function renderEmpleado(emp){
         <div class="flex justify-between py-1.5 text-sm"><span class="text-gray-400">(−) Anticipos pendientes</span><span class="text-red-400 font-bold">${fmt(totalAnticipos)}</span></div>
         <div class="flex justify-between py-3 mt-2 border-t border-gray-700"><span class="text-white font-bold">NETO A PAGAR</span><span class="text-neon font-bold text-2xl">${fmt(neto)}</span></div>
       </div>
+    </div>
+
+    <div class="flex gap-3 mt-4 pt-4 border-t border-gray-800">
+      <button onclick="marcarPagado(${emp.id_empleado})" class="flex-1 bg-green-600 hover:bg-green-500 text-white font-bold py-3 rounded-xl">✓ Marcar pagado</button>
+      <button onclick="imprimirRecibo(${emp.id_empleado})" class="flex-1 border border-gray-700 text-gray-300 hover:text-white font-bold py-3 rounded-xl">🖨️ Imprimir recibo</button>
     </div>
   </div>`;
 }
@@ -180,6 +189,105 @@ async function descontar(idAnticipo, saldo, idEmpleado){
       const e = await res.json(); alert('❌ ' + (e.detail || 'No se pudo descontar'));
     }
   }catch(e){ alert('❌ Error de conexión.'); }
+}
+
+async function marcarPagado(idEmp){
+  const emp = datos.find(e=>e.id_empleado===idEmp);
+  if(!emp || !emp._calc) return;
+  const c = emp._calc;
+  let msg = '¿Marcar como PAGADO a ' + emp.nombre + ' ' + emp.apellido + '?\n\n';
+  msg += 'Pago por horas: ' + fmt(c.pagoHoras) + '\n';
+  if(c.totalAnticipos > 0) msg += 'Se descontarán anticipos por: ' + fmt(c.totalAnticipos) + '\n';
+  msg += 'NETO A PAGAR: ' + fmt(c.neto);
+  if(!confirm(msg)) return;
+  try{
+    const res = await fetch(`${API_URL}/liquidacion/marcar_pagado`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        id_empleado: idEmp,
+        fecha_desde: $('fecha-desde').value,
+        fecha_hasta: $('fecha-hasta').value,
+        total_horas: c.totalHoras,
+        pago_horas: c.pagoHoras,
+        detalle: 'Horas: ' + c.totalHoras.toFixed(2) + ' · Días dobles: ' + c.dobles.length
+      })
+    });
+    if(res.ok){
+      const r = await res.json();
+      alert('✅ Pago registrado.\nNeto pagado: ' + fmt(r.neto_pagado) + (r.anticipos_descontados>0?('\nAnticipos saldados: ' + fmt(r.anticipos_descontados)):''));
+      // Ofrecer imprimir el recibo
+      if(confirm('¿Querés imprimir el recibo?')) imprimirRecibo(idEmp);
+      cargar();
+    } else {
+      const e = await res.json(); alert('❌ ' + (e.detail || 'No se pudo registrar'));
+    }
+  }catch(e){ alert('❌ Error de conexión.'); }
+}
+
+function imprimirRecibo(idEmp){
+  const emp = datos.find(e=>e.id_empleado===idEmp);
+  if(!emp) return;
+  const c = emp._calc || {};
+  const vh = emp.valor_hora || 0;
+  const desde = $('fecha-desde').value, hasta = $('fecha-hasta').value;
+  const filas = emp.dias.map(d=>{
+    const clave = idEmp + '-' + d.dia;
+    const doble = !!diasDobles[clave];
+    const pago = d.horas * vh * (doble?2:1);
+    const f = new Date(d.dia+'T12:00:00').toLocaleDateString('es-AR',{weekday:'short',day:'numeric',month:'short'});
+    return '<tr><td>'+f+(doble?' <b>(x2)</b>':'')+'</td><td style="text-align:center">'+d.entrada+'-'+d.salida+'</td><td style="text-align:center">'+d.horas.toFixed(2)+'</td><td style="text-align:right">$'+Math.round(pago).toLocaleString('es-AR')+'</td></tr>';
+  }).join('');
+  const html = '<html><head><title>Recibo</title><style>'+
+    'body{font-family:Arial,sans-serif;padding:24px;color:#000;max-width:600px}'+
+    'h1{font-size:20px;margin:0}h2{font-size:16px;margin:4px 0 0}'+
+    'p{color:#555;font-size:12px;margin:4px 0}'+
+    'table{width:100%;border-collapse:collapse;font-size:13px;margin:14px 0}'+
+    'th,td{border-bottom:1px solid #ddd;padding:7px}th{text-align:left;border-bottom:2px solid #999}'+
+    '.tot{margin-top:16px;border-top:2px solid #000;padding-top:10px}'+
+    '.row{display:flex;justify-content:space-between;padding:3px 0;font-size:14px}'+
+    '.neto{font-size:20px;font-weight:bold}'+
+    '.firma{margin-top:50px;display:flex;justify-content:space-between}'+
+    '.firma div{border-top:1px solid #000;width:45%;text-align:center;padding-top:5px;font-size:12px}'+
+    '</style></head><body>'+
+    '<h1>Recibo de Sueldo — Portal del Viento</h1>'+
+    '<h2>'+emp.nombre+' '+emp.apellido+'</h2>'+
+    '<p>Período: '+desde+' al '+hasta+' · Valor hora: $'+Math.round(vh).toLocaleString('es-AR')+'</p>'+
+    '<table><thead><tr><th>Día</th><th style="text-align:center">Horario</th><th style="text-align:center">Horas</th><th style="text-align:right">Pago</th></tr></thead><tbody>'+filas+'</tbody></table>'+
+    '<div class="tot">'+
+    '<div class="row"><span>Total horas</span><span>'+(c.totalHoras||0).toFixed(2)+' h</span></div>'+
+    '<div class="row"><span>Pago por horas</span><span>$'+Math.round(c.pagoHoras||0).toLocaleString('es-AR')+'</span></div>'+
+    '<div class="row"><span>(−) Anticipos descontados</span><span>$'+Math.round(c.totalAnticipos||0).toLocaleString('es-AR')+'</span></div>'+
+    '<div class="row neto"><span>NETO PAGADO</span><span>$'+Math.round(c.neto||0).toLocaleString('es-AR')+'</span></div>'+
+    '</div>'+
+    '<div class="firma"><div>Firma empleado</div><div>Firma empleador</div></div>'+
+    '</body></html>';
+  const w = window.open('','_blank'); w.document.write(html); w.document.close(); w.focus();
+  setTimeout(()=>w.print(), 300);
+}
+
+function imprimirPlanilla(){
+  if(!datos.length){ alert('No hay datos para imprimir.'); return; }
+  const desde = $('fecha-desde').value, hasta = $('fecha-hasta').value;
+  let totalGeneral = 0;
+  const filas = datos.map(emp=>{
+    const c = emp._calc || {};
+    totalGeneral += (c.neto||0);
+    return '<tr><td>'+emp.nombre+' '+emp.apellido+'</td><td style="text-align:center">'+(c.totalHoras||0).toFixed(2)+'</td><td style="text-align:right">$'+Math.round(c.pagoHoras||0).toLocaleString('es-AR')+'</td><td style="text-align:right">$'+Math.round(c.totalAnticipos||0).toLocaleString('es-AR')+'</td><td style="text-align:right"><b>$'+Math.round(c.neto||0).toLocaleString('es-AR')+'</b></td></tr>';
+  }).join('');
+  const html = '<html><head><title>Planilla de Sueldos</title><style>'+
+    'body{font-family:Arial,sans-serif;padding:24px;color:#000}'+
+    'h1{font-size:20px;margin:0}p{color:#555;font-size:12px;margin:4px 0 16px}'+
+    'table{width:100%;border-collapse:collapse;font-size:13px}'+
+    'th,td{border:1px solid #999;padding:8px}th{background:#eee;text-align:left}'+
+    '.total{margin-top:16px;font-size:18px;font-weight:bold;text-align:right}'+
+    '</style></head><body>'+
+    '<h1>Planilla de Sueldos — Portal del Viento</h1>'+
+    '<p>Período: '+desde+' al '+hasta+'</p>'+
+    '<table><thead><tr><th>Empleado</th><th style="text-align:center">Horas</th><th style="text-align:right">Pago horas</th><th style="text-align:right">Anticipos</th><th style="text-align:right">Neto</th></tr></thead><tbody>'+filas+'</tbody></table>'+
+    '<p class="total">TOTAL A PAGAR: $'+Math.round(totalGeneral).toLocaleString('es-AR')+'</p>'+
+    '</body></html>';
+  const w = window.open('','_blank'); w.document.write(html); w.document.close(); w.focus();
+  setTimeout(()=>w.print(), 300);
 }
 
 // Rango inicial: esta semana
