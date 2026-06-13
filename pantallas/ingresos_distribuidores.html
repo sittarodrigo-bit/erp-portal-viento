@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ingresos de Distribuidores | Portal del Viento</title>
+<script>window.PANEL_ACTUAL = "distribuidores";</script>
+<script src="/static/auth.js"></script>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>tailwind.config={theme:{extend:{colors:{neon:'#d4ff3f'}}}}</script>
+</head>
+<body class="bg-gray-950 text-gray-200 font-sans min-h-screen">
+
+  <header class="bg-black border-b border-gray-800 px-6 py-4 flex items-center justify-between sticky top-0 z-20">
+    <div class="flex items-center gap-3">
+      <a href="/admin" class="text-gray-400 hover:text-white text-sm">← Panel</a>
+      <h1 class="text-neon font-bold text-lg">💵 Ingresos de Distribuidores</h1>
+    </div>
+    <button onclick="imprimir()" class="border border-gray-700 text-gray-300 hover:text-white px-4 py-2 rounded-lg text-sm">🖨️ Imprimir</button>
+  </header>
+
+  <main class="p-6 max-w-5xl mx-auto">
+    <!-- Filtro de fechas -->
+    <div class="bg-black border border-gray-800 rounded-2xl p-5 mb-6">
+      <div class="flex flex-wrap gap-4 items-end">
+        <div>
+          <label class="block text-xs text-gray-500 font-bold mb-1">Desde</label>
+          <input type="date" id="fecha-desde" class="bg-gray-900 border border-gray-700 text-white rounded-lg p-2.5">
+        </div>
+        <div>
+          <label class="block text-xs text-gray-500 font-bold mb-1">Hasta</label>
+          <input type="date" id="fecha-hasta" class="bg-gray-900 border border-gray-700 text-white rounded-lg p-2.5">
+        </div>
+        <button onclick="cargar()" class="bg-neon text-black font-bold px-6 py-2.5 rounded-lg">Ver ingresos</button>
+        <div class="flex gap-2 ml-auto">
+          <button onclick="rango('mes')" class="text-xs border border-gray-700 text-gray-300 hover:text-white px-3 py-2 rounded-lg">Este mes</button>
+          <button onclick="rango('semana')" class="text-xs border border-gray-700 text-gray-300 hover:text-white px-3 py-2 rounded-lg">Esta semana</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="contenido"><p class="text-gray-500 text-center py-16">Elegí un rango y tocá Ver ingresos.</p></div>
+  </main>
+
+<script>
+const API_URL = window.location.origin + "/api";
+const $ = id => document.getElementById(id);
+const fmt = n => '$' + (Math.round(parseFloat(n)||0)).toLocaleString('es-AR');
+let data = null;
+
+function rango(tipo){
+  const hoy = new Date();
+  let desde = new Date(hoy);
+  if(tipo === 'mes'){ desde = new Date(hoy.getFullYear(), hoy.getMonth(), 1); }
+  else if(tipo === 'semana'){ const d = (hoy.getDay()+6)%7; desde.setDate(hoy.getDate()-d); }
+  $('fecha-desde').value = desde.toISOString().split('T')[0];
+  $('fecha-hasta').value = hoy.toISOString().split('T')[0];
+  cargar();
+}
+
+function nombreMetodo(m){
+  const map = {efectivo:'💵 Efectivo', transferencia:'🏦 Transferencia', tarjeta:'💳 Tarjeta', mp:'🔵 Mercado Pago', mercadopago:'🔵 Mercado Pago', qr:'📱 QR', otro:'Otro'};
+  return map[m] || (m.charAt(0).toUpperCase()+m.slice(1));
+}
+
+async function cargar(){
+  const desde = $('fecha-desde').value, hasta = $('fecha-hasta').value;
+  if(!desde || !hasta){ alert('Elegí las dos fechas.'); return; }
+  $('contenido').innerHTML = '<p class="text-gray-500 text-center py-16">Cargando...</p>';
+  try{
+    data = await fetch(`${API_URL}/ingresos_distribuidores?fecha_desde=${desde}&fecha_hasta=${hasta}`).then(r=>r.json());
+    render();
+  }catch(e){ $('contenido').innerHTML = '<p class="text-red-400 text-center py-16">No se pudo cargar.</p>'; }
+}
+
+function render(){
+  if(!data || data.cantidad === 0){
+    $('contenido').innerHTML = '<div class="text-center py-16 text-gray-500"><div class="text-5xl mb-3">📭</div>No hubo ingresos de distribuidores en ese período.</div>';
+    return;
+  }
+  // Total grande
+  let html = '<div class="bg-gradient-to-r from-green-900/40 to-gray-900 border border-green-800/50 rounded-2xl p-6 mb-5 text-center">' +
+    '<p class="text-gray-400 text-sm uppercase font-bold">Total ingresado</p>' +
+    '<p class="text-neon font-bold text-5xl mt-1">' + fmt(data.total) + '</p>' +
+    '<p class="text-gray-500 text-sm mt-1">' + data.cantidad + ' cobro(s) en el período</p></div>';
+
+  // Desglose por método y por distribuidor (dos columnas)
+  html += '<div class="grid md:grid-cols-2 gap-4 mb-5">';
+  // Método
+  html += '<div class="bg-black border border-gray-800 rounded-2xl p-5"><p class="text-xs text-gray-500 font-bold uppercase mb-3">Por método de pago</p>';
+  html += data.por_metodo.map(m =>
+    '<div class="flex justify-between py-2 border-b border-gray-800 text-sm"><span class="text-gray-300">' + nombreMetodo(m.metodo) + '</span><span class="text-white font-bold">' + fmt(m.total) + '</span></div>'
+  ).join('');
+  html += '</div>';
+  // Distribuidor
+  html += '<div class="bg-black border border-gray-800 rounded-2xl p-5"><p class="text-xs text-gray-500 font-bold uppercase mb-3">Por distribuidor</p>';
+  html += data.por_distribuidor.map(d =>
+    '<div class="flex justify-between py-2 border-b border-gray-800 text-sm"><span class="text-gray-300">' + d.distribuidor + '</span><span class="text-white font-bold">' + fmt(d.total) + '</span></div>'
+  ).join('');
+  html += '</div></div>';
+
+  // Lista completa
+  html += '<div class="bg-black border border-gray-800 rounded-2xl overflow-hidden"><div class="p-4 border-b border-gray-800"><p class="text-white font-bold">Detalle de cobros</p></div>' +
+    '<div class="overflow-x-auto"><table class="w-full text-sm"><thead class="text-xs text-gray-500 border-b border-gray-800 bg-gray-900"><tr>' +
+    '<th class="py-3 px-4 text-left">Fecha</th><th class="py-3 px-4 text-left">Distribuidor</th><th class="py-3 px-4 text-left">Método</th><th class="py-3 px-4 text-left">Nota</th><th class="py-3 px-4 text-right">Monto</th>' +
+    '</tr></thead><tbody class="divide-y divide-gray-800">';
+  html += data.cobros.map(c =>
+    '<tr><td class="py-3 px-4 text-gray-400">' + (c.fecha||'').replace('T',' ').substring(0,16) + '</td>' +
+    '<td class="py-3 px-4 text-white">' + c.distribuidor + '</td>' +
+    '<td class="py-3 px-4 text-gray-300">' + nombreMetodo((c.metodo||'otro').toLowerCase()) + '</td>' +
+    '<td class="py-3 px-4 text-gray-500 text-xs">' + (c.notas||c.referencia||'') + (c.id_pedido?(' · Pedido #'+c.id_pedido):'') + '</td>' +
+    '<td class="py-3 px-4 text-right text-green-400 font-bold">' + fmt(c.monto) + '</td></tr>'
+  ).join('');
+  html += '</tbody></table></div></div>';
+
+  $('contenido').innerHTML = html;
+}
+
+function imprimir(){
+  if(!data || data.cantidad === 0){ alert('No hay datos para imprimir.'); return; }
+  const desde = $('fecha-desde').value, hasta = $('fecha-hasta').value;
+  const filas = data.cobros.map(c =>
+    '<tr><td>' + (c.fecha||'').substring(0,10) + '</td><td>' + c.distribuidor + '</td><td>' + nombreMetodo((c.metodo||'otro').toLowerCase()) + '</td><td style="text-align:right">$' + Math.round(c.monto).toLocaleString('es-AR') + '</td></tr>'
+  ).join('');
+  const html = '<html><head><title>Ingresos de Distribuidores</title><style>' +
+    'body{font-family:Arial,sans-serif;padding:24px;color:#000}h1{font-size:20px;margin:0}p{color:#555;font-size:12px;margin:4px 0 16px}' +
+    'table{width:100%;border-collapse:collapse;font-size:13px}th,td{border:1px solid #999;padding:7px}th{background:#eee;text-align:left}' +
+    '.total{margin-top:16px;font-size:20px;font-weight:bold;text-align:right}</style></head><body>' +
+    '<h1>Ingresos de Distribuidores — Portal del Viento</h1><p>Período: ' + desde + ' al ' + hasta + '</p>' +
+    '<table><thead><tr><th>Fecha</th><th>Distribuidor</th><th>Método</th><th style="text-align:right">Monto</th></tr></thead><tbody>' + filas + '</tbody></table>' +
+    '<p class="total">TOTAL: $' + Math.round(data.total).toLocaleString('es-AR') + '</p></body></html>';
+  const w = window.open('','_blank'); w.document.write(html); w.document.close(); w.focus();
+  setTimeout(()=>w.print(), 300);
+}
+
+rango('mes');
+</script>
+</body>
+</html>
