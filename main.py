@@ -1507,10 +1507,30 @@ def armado_detalle_pedido(id: str):
                     nombre += ' · ' + sabor
                 prep = preparados.get((r['id_producto'], sabor), 0)
                 cant = float(r['cantidad'] or 0)
+                # ¿Es alfajor? Buscar el producto de fábrica del sabor para saber unidades_por_caja
+                upc = 1
+                es_caja = False
+                termino = sabor or (r.get('nombre_producto') or '')
+                if termino:
+                    try:
+                        cur.execute("""SELECT COALESCE(unidades_por_caja,1) AS upc, COALESCE(id_categoria,0) AS cat,
+                                              (SELECT nombre FROM categorias c WHERE c.id=p.id_categoria) AS catnombre
+                                       FROM productos p
+                                       WHERE (LOWER(nombre)=LOWER(%s) OR LOWER(nombre) LIKE LOWER(%s)) AND COALESCE(activo,true)=true
+                                       ORDER BY LENGTH(nombre) LIMIT 1""", (termino, '%'+termino+'%'))
+                        fab = cur.fetchone()
+                        if fab:
+                            u = float(fab['upc'] or 1) or 1
+                            catn = (fab.get('catnombre') or '').lower()
+                            if u >= 2 and 'alfajor' in catn:
+                                upc = u; es_caja = True
+                    except Exception:
+                        conn.rollback()
                 items.append({
                     "id_producto": r['id_producto'], "nombre": nombre, "sku": "", "sabor": sabor,
                     "cantidad": cant, "stock": 0,
-                    "preparado": prep, "completo": prep >= cant and cant > 0
+                    "preparado": prep, "completo": prep >= cant and cant > 0,
+                    "unidades_por_caja": upc, "es_caja": es_caja
                 })
             estado_txt = 'En preparación' if cab['estado'] == 'en_preparacion' else 'Pendiente'
             return {"id": "r"+str(cab['id']), "estado": estado_txt,
