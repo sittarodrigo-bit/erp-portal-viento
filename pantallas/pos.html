@@ -1266,8 +1266,9 @@
                 var row = document.createElement('div');
                 row.className = 'bg-black border border-gray-800 rounded-lg px-3 py-2';
                 var tieneSabores = p.sabores && p.sabores.length;
-                // ¿Es alfajor? (categoría que contenga "alfajor") → pide en múltiplos de 12
-                var esAlfajor = ((p.categoria||'').toLowerCase().indexOf('alfajor') !== -1);
+                // Regla "de a 12": SOLO para el producto puntual "ALFAJOR PDV UNIDAD".
+                var nombreNorm = (p.nombre||'').trim().toLowerCase();
+                var esAlfajor = (nombreNorm === 'alfajor pdv unidad');
                 var selectSabor = '';
                 if (tieneSabores) {
                     selectSabor = '<select class="repo-sabor bg-gray-900 border border-gray-700 text-white rounded p-1.5 text-sm flex-1 mr-2">' +
