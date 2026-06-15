@@ -4490,9 +4490,23 @@ def locales_reposicion_reponer(id: int):
             conn.rollback()
         cur.execute("SELECT id_producto, nombre_producto, cantidad, sabor FROM pos_reposiciones_detalle WHERE id_reposicion=%s", (id,))
         items = fetchall_dict(cur)
+        # ¿El empleado armó cantidades? Si sí, usamos lo armado (no lo pedido).
+        armado = {}
+        hay_armado = False
+        try:
+            cur.execute("SELECT id_producto, COALESCE(sabor,'') AS sabor, cantidad FROM preparacion_reposicion WHERE id_reposicion=%s", (id,))
+            for a in fetchall_dict(cur):
+                armado[(a['id_producto'], a['sabor'] or '')] = float(a['cantidad'] or 0)
+                hay_armado = True
+        except Exception:
+            conn.rollback()
         no_descontados = []  # ítems que no se pudieron descontar de fábrica
         for it in items:
-            cant = float(it['cantidad'] or 0)
+            # Cantidad a reponer: lo ARMADO por el empleado si existe; si no, lo pedido.
+            if hay_armado:
+                cant = armado.get((it['id_producto'], (it.get('sabor') or '')), 0)
+            else:
+                cant = float(it['cantidad'] or 0)
             if cant <= 0:
                 continue
             # 1) Sumar al stock del LOCAL (producto genérico del local)
