@@ -81,12 +81,21 @@
                     mostrarError(data.detail || "Error de acceso.");
                 } else {
                     var rol = (data.rol ? String(data.rol).toLowerCase().trim() : '');
-                    if (rol !== 'admin' && rol !== 'administrativo') {
-                        mostrarError("Acceso solo para administradores.");
-                        return;
-                    }
                     sessionStorage.setItem('usuario', JSON.stringify(data));
-                    window.location.href = '/admin';
+                    // Mandar a cada rol a su pantalla principal
+                    if (rol === 'admin' || rol === 'administrativo') {
+                        window.location.href = '/admin';
+                    } else if (rol === 'produccion') {
+                        window.location.href = '/produccion-panel';
+                    } else if (rol === 'deposito') {
+                        window.location.href = '/armado';
+                    } else if (rol === 'vendedor') {
+                        mostrarError("Los vendedores ingresan por el acceso del POS.");
+                        sessionStorage.removeItem('usuario');
+                    } else {
+                        mostrarError("Tu usuario no tiene un panel asignado. Hablá con el administrador.");
+                        sessionStorage.removeItem('usuario');
+                    }
                 }
             } catch (e) {
                 mostrarError("No se pudo conectar al servidor.");
