@@ -177,19 +177,27 @@ function renderItem(it){
   const pctItem = it.cantidad ? Math.round(prep/it.cantidad*100) : 0;
   const idx = pedidoActual.items.indexOf(it);
   const esRepo = pedidoActual.tipo === 'reposicion';
+  const esCaja = esRepo && it.es_caja && it.unidades_por_caja >= 2;
+  const upc = it.unidades_por_caja || 12;
   const infoStock = esRepo ? '' : ' · Stock: ' + it.stock;
+  // En modo caja: mostramos cajas en vez de unidades
+  const cantMostrar = esCaja ? (it.cantidad / upc) : it.cantidad;
+  const prepMostrar = esCaja ? (prep / upc) : prep;
+  const unidad = esCaja ? 'cajas' : '';
+  const subinfo = esCaja ? `<p class="text-amber-400 text-xs">📦 ${cantMostrar} caja(s) × ${upc} = ${it.cantidad} unidades</p>` : '';
   return `<div class="bg-gray-900 border ${completo?'border-neon/50 bg-neon/5':'border-gray-800'} rounded-xl p-4 mb-2">
     <div class="flex items-center justify-between gap-3">
       <div class="flex-1 min-w-0">
         <p class="text-white font-bold">${it.nombre} ${completo?'<span class="text-neon">✓</span>':''}</p>
-        <p class="text-gray-500 text-xs">Pedido: ${it.cantidad}${infoStock}</p>
+        <p class="text-gray-500 text-xs">Pedido: ${cantMostrar} ${unidad}${infoStock}</p>
+        ${subinfo}
       </div>
       <div class="flex items-center gap-2 flex-shrink-0">
-        <input type="number" inputmode="numeric" min="0" max="${it.cantidad}" value="${prep}"
+        <input type="number" inputmode="numeric" min="0" max="${cantMostrar}" value="${prepMostrar}"
                id="cant-${idx}"
                onkeydown="if(event.key==='Enter'){setearCant(${idx})}"
                class="w-20 bg-black border border-gray-600 focus:border-neon text-white text-center text-xl font-bold rounded-lg py-2 outline-none">
-        <span class="text-gray-600 text-sm">/ ${it.cantidad}</span>
+        <span class="text-gray-600 text-sm">/ ${cantMostrar}${esCaja?' cj':''}</span>
         <button onclick="setearCant(${idx})" class="bg-neon text-black font-bold px-4 py-2.5 rounded-lg active:scale-95">OK</button>
       </div>
     </div>
@@ -201,20 +209,22 @@ async function setearCant(idx){
   const it = pedidoActual.items[idx];
   if(!it) return;
   const input = document.getElementById('cant-'+idx);
-  let valor = parseInt(input.value);
-  if(isNaN(valor) || valor < 0) valor = 0;
+  const esRepo = pedidoActual.tipo === 'reposicion';
+  const esCaja = esRepo && it.es_caja && it.unidades_por_caja >= 2;
+  const upc = it.unidades_por_caja || 12;
+  let valorMostrado = parseInt(input.value);
+  if(isNaN(valorMostrado) || valorMostrado < 0) valorMostrado = 0;
+  // Convertir cajas → unidades para guardar (el sistema siempre maneja unidades por debajo)
+  let valor = esCaja ? (valorMostrado * upc) : valorMostrado;
   if(valor > it.cantidad) valor = it.cantidad;
   const prep = it.preparado || 0;
   if(valor === prep){ return; } // sin cambios
   const diff = valor - prep;
-  const esRepo = pedidoActual.tipo === 'reposicion';
-  // Aviso si carga más de lo que hay en stock (solo pedidos B2B, que descuentan al tildar)
   if(!esRepo && diff > 0 && diff > it.stock){
     if(!confirm('Estás cargando ' + diff + ' pero hay ' + it.stock + ' en stock. ¿Continuar igual? (el stock puede quedar en 0)')){
-      input.value = prep; return;
+      input.value = esCaja ? (prep/upc) : prep; return;
     }
   }
-  // Optimista
   const stockAnterior = it.stock;
   it.preparado = valor;
   it.completo = valor >= it.cantidad;
