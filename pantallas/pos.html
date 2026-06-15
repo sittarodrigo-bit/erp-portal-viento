@@ -1266,6 +1266,8 @@
                 var row = document.createElement('div');
                 row.className = 'bg-black border border-gray-800 rounded-lg px-3 py-2';
                 var tieneSabores = p.sabores && p.sabores.length;
+                // ¿Es alfajor? (categoría que contenga "alfajor") → pide en múltiplos de 12
+                var esAlfajor = ((p.categoria||'').toLowerCase().indexOf('alfajor') !== -1);
                 var selectSabor = '';
                 if (tieneSabores) {
                     selectSabor = '<select class="repo-sabor bg-gray-900 border border-gray-700 text-white rounded p-1.5 text-sm flex-1 mr-2">' +
@@ -1275,10 +1277,10 @@
                 row.innerHTML =
                     '<div class="flex items-center gap-2">' +
                         '<div class="flex-1 min-w-0">' +
-                            '<p class="text-white text-sm font-bold truncate">' + p.nombre + (tieneSabores?' <span class="text-blue-300 text-xs">(por sabor)</span>':'') + '</p>' +
+                            '<p class="text-white text-sm font-bold truncate">' + p.nombre + (tieneSabores?' <span class="text-blue-300 text-xs">(por sabor)</span>':'') + (esAlfajor?' <span class="text-amber-300 text-xs">(de a 12)</span>':'') + '</p>' +
                             '<p class="text-gray-600 text-xs">Stock actual: ' + (parseFloat(p.stock)||0) + '</p>' +
                         '</div>' +
-                        '<input type="number" min="0" step="1" placeholder="Cant." class="repo-cant w-20 bg-gray-900 border border-gray-700 text-white rounded p-1.5 text-sm text-center">' +
+                        '<input type="number" min="0" step="' + (esAlfajor?'12':'1') + '" placeholder="' + (esAlfajor?'×12':'Cant.') + '" class="repo-cant w-20 bg-gray-900 border border-gray-700 text-white rounded p-1.5 text-sm text-center">' +
                         '<button class="repo-add text-xs bg-neon text-black font-bold px-3 py-1.5 rounded">+</button>' +
                     '</div>' +
                     (tieneSabores ? '<div class="flex items-center mt-2">' + selectSabor + '</div>' : '');
@@ -1286,6 +1288,10 @@
                 btn.onclick = function(){
                     var cant = parseFloat(row.querySelector('.repo-cant').value) || 0;
                     if (cant <= 0) { alert('Poné una cantidad.'); return; }
+                    if (esAlfajor && cant % 12 !== 0) {
+                        alert('Los alfajores se piden de a 12 (vienen en cajas de 12).\n\nPoné 12, 24, 36, etc.');
+                        return;
+                    }
                     var sabor = tieneSabores ? row.querySelector('.repo-sabor').value : null;
                     repoItems.push({ id_producto: p.id, nombre: p.nombre, sabor: sabor, cantidad: cant });
                     row.querySelector('.repo-cant').value = '';
