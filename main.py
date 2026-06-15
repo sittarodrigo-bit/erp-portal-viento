@@ -1431,7 +1431,8 @@ def pedido_faltantes(id: int):
 
 @app.get("/api/armado/pedidos")
 def armado_listar_pedidos():
-    """Lista pedidos Pendientes y En preparación para la pantalla de armado."""
+    """Lista pedidos B2B (de distribuidores) y reposiciones de locales habilitadas,
+    para la pantalla de armado. Cada uno marcado con su tipo."""
     conn = obtener_conexion()
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
@@ -1443,13 +1444,74 @@ def armado_listar_pedidos():
             WHERE p.estado IN ('Pendiente','En preparación','Despachado parcial','Terminado')
             ORDER BY CASE WHEN p.estado='En preparación' THEN 0 WHEN p.estado='Despachado parcial' THEN 1 WHEN p.estado='Pendiente' THEN 2 ELSE 3 END, p.id ASC
         """)
-        return fetchall_dict(cur)
+        pedidos = fetchall_dict(cur)
+        for p in pedidos:
+            p['tipo'] = 'b2b'
+            p['nombre'] = p.get('distribuidor') or 'Distribuidor'
+        # Reposiciones de locales habilitadas para armar
+        try:
+            cur.execute("""
+                SELECT r.id, r.estado, r.fecha::text AS fecha, l.nombre AS local
+                FROM pos_reposiciones r
+                LEFT JOIN pos_locales l ON r.id_local = l.id
+                WHERE r.estado IN ('habilitada','en_preparacion')
+                ORDER BY r.id ASC
+            """)
+            for r in fetchall_dict(cur):
+                pedidos.append({
+                    "id": "r" + str(r['id']), "estado": ('En preparación' if r['estado']=='en_preparacion' else 'Pendiente'),
+                    "total": None, "fecha": r['fecha'],
+                    "tipo": "reposicion",
+                    "nombre": "🏪 " + (r.get('local') or 'Local')
+                })
+        except Exception:
+            conn.rollback()
+        return pedidos
     finally:
         liberar_conexion(conn)
 
 @app.get("/api/armado/pedidos/{id}")
-def armado_detalle_pedido(id: int):
-    """Detalle del pedido para armar: ítems, cuánto hay tildado y stock disponible."""
+def armado_detalle_pedido(id: str):
+    """Detalle del pedido para armar. Si el id viene con prefijo 'r' es una
+    reposición de local; si es numérico, un pedido B2B de distribuidor."""
+    # --- Caso reposición de local (id tipo 'r45') ---
+    if isinstance(id, str) and id.startswith('r'):
+        try:
+            rid = int(id[1:])
+        except ValueError:
+            raise HTTPException(status_code=400, detail="ID inválido")
+        conn = obtener_conexion()
+        try:
+            cur = conn.cursor(cursor_factory=RealDictCursor)
+            cur.execute("""SELECT r.id, r.estado, l.nombre AS local
+                           FROM pos_reposiciones r LEFT JOIN pos_locales l ON r.id_local=l.id
+                           WHERE r.id=%s""", (rid,))
+            cab = cur.fetchone()
+            if not cab:
+                raise HTTPException(status_code=404, detail="Reposición no encontrada")
+            cur.execute("SELECT id_producto, nombre_producto, cantidad, sabor FROM pos_reposiciones_detalle WHERE id_reposicion=%s", (rid,))
+            items = []
+            for r in fetchall_dict(cur):
+                nombre = (r.get('nombre_producto') or 'Producto')
+                if r.get('sabor'):
+                    nombre += ' · ' + r['sabor']
+                items.append({
+                    "id_producto": r['id_producto'], "nombre": nombre, "sku": "",
+                    "cantidad": float(r['cantidad'] or 0), "stock": 0,
+                    "preparado": 0, "completo": False
+                })
+            estado_txt = 'En preparación' if cab['estado'] == 'en_preparacion' else 'Pendiente'
+            return {"id": "r"+str(cab['id']), "estado": estado_txt,
+                    "distribuidor": "🏪 " + (cab.get('local') or 'Local'),
+                    "tipo": "reposicion", "items": items}
+        finally:
+            liberar_conexion(conn)
+
+    # --- Caso pedido B2B de distribuidor (id numérico) ---
+    try:
+        id = int(id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="ID inválido")
     conn = obtener_conexion()
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
@@ -1484,12 +1546,20 @@ def armado_detalle_pedido(id: int):
         liberar_conexion(conn)
 
 @app.put("/api/armado/pedidos/{id}/iniciar")
-def armado_iniciar(id: int):
-    """Marca el pedido como En preparación."""
+def armado_iniciar(id: str):
+    """Marca como En preparación. Funciona para pedidos B2B y reposiciones (prefijo 'r')."""
     conn = obtener_conexion()
     try:
         cur = conn.cursor()
-        cur.execute("UPDATE pedidos_b2b SET estado='En preparación' WHERE id=%s AND estado='Pendiente'", (id,))
+        if isinstance(id, str) and id.startswith('r'):
+            try:
+                rid = int(id[1:])
+            except ValueError:
+                raise HTTPException(status_code=400, detail="ID inválido")
+            cur.execute("UPDATE pos_reposiciones SET estado='en_preparacion' WHERE id=%s AND estado='habilitada'", (rid,))
+            conn.commit()
+            return {"status": "ok"}
+        cur.execute("UPDATE pedidos_b2b SET estado='En preparación' WHERE id=%s AND estado='Pendiente'", (int(id),))
         conn.commit()
         return {"status": "ok"}
     finally:
@@ -4215,6 +4285,33 @@ def locales_reposiciones(id_local: Optional[int] = None, estado: Optional[str] =
         liberar_conexion(conn)
 
 # Marca la reposición como repuesta y suma el stock pedido a cada producto
+@app.put("/api/locales/reposiciones/{id}/habilitar")
+def locales_reposicion_habilitar(id: int):
+    """Habilita una reposición para que aparezca en el panel de armado del empleado."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("SELECT estado FROM pos_reposiciones WHERE id=%s", (id,))
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Reposición no encontrada")
+        if row['estado'] == 'repuesto':
+            raise HTTPException(status_code=409, detail="Esta reposición ya fue repuesta")
+        cur.execute("UPDATE pos_reposiciones SET estado='habilitada' WHERE id=%s", (id,))
+        conn.commit()
+        try:
+            crear_notificacion("pedido", "Reposición habilitada para armado", "Reposición #" + str(id))
+        except Exception:
+            pass
+        return {"status": "ok"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
 @app.put("/api/locales/reposiciones/{id}/reponer")
 def locales_reposicion_reponer(id: int):
     conn = obtener_conexion()
