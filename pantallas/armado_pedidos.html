@@ -149,28 +149,16 @@ function renderArmado(){
   $('arm-distribuidor').textContent = d.distribuidor || 'Sin distribuidor';
   var sel = $('arm-estado-sel'); if (sel) sel.style.display = esRepo ? 'none' : '';
 
-  if(esRepo){
-    // Paso 1: el empleado VE qué preparar. El armado completo (tildar/despachar) viene en el próximo paso.
-    let html = '<div class="bg-blue-900/20 border border-blue-800 rounded-xl p-3 mb-4 text-blue-200 text-sm">🏪 Reposición de ' + (d.distribuidor||'local') + '. Estos son los productos a preparar:</div>';
-    html += d.items.map(it =>
-      '<div class="bg-gray-900 border border-gray-800 rounded-xl p-4 mb-2 flex justify-between items-center">' +
-      '<span class="text-white font-bold">' + it.nombre + '</span>' +
-      '<span class="text-neon font-bold text-lg">' + it.cantidad + '</span></div>'
-    ).join('');
-    $('arm-items').innerHTML = html;
-    // Ocultar barra de progreso y botones de despacho en modo reposición (paso 1)
-    var prog = document.getElementById('arm-progreso-wrap'); if(prog) prog.style.display='none';
-    var botonera = document.getElementById('arm-botonera'); if(botonera) botonera.style.display='none';
-    return;
-  } else {
-    var prog = document.getElementById('arm-progreso-wrap'); if(prog) prog.style.display='';
-    var botonera = document.getElementById('arm-botonera'); if(botonera) botonera.style.display='';
-  }
+  var prog = document.getElementById('arm-progreso-wrap'); if(prog) prog.style.display='';
+  var botonera = document.getElementById('arm-botonera'); if(botonera) botonera.style.display='';
 
-  var sel2 = $('arm-estado-sel'); if (sel2) sel2.value = d.estado || 'En preparación';
+  var sel2 = $('arm-estado-sel'); if (sel2 && !esRepo) sel2.value = d.estado || 'En preparación';
   const faltan = d.items.filter(i=>!i.completo);
   const hechos = d.items.filter(i=>i.completo);
   let html = '';
+  if(esRepo){
+    html += '<div class="bg-blue-900/20 border border-blue-800 rounded-xl p-3 mb-4 text-blue-200 text-sm">🏪 Reposición de ' + (d.distribuidor||'local') + '. Cargá lo que vas preparando.</div>';
+  }
   if(faltan.length){
     html += '<p class="text-orange-400 text-xs font-bold uppercase mb-2 mt-1">⬜ Falta completar (' + faltan.length + ')</p>';
     html += faltan.map(renderItem).join('');
@@ -187,37 +175,41 @@ function renderItem(it){
   const prep = it.preparado || 0;
   const completo = it.completo;
   const pctItem = it.cantidad ? Math.round(prep/it.cantidad*100) : 0;
+  const idx = pedidoActual.items.indexOf(it);
+  const esRepo = pedidoActual.tipo === 'reposicion';
+  const infoStock = esRepo ? '' : ' · Stock: ' + it.stock;
   return `<div class="bg-gray-900 border ${completo?'border-neon/50 bg-neon/5':'border-gray-800'} rounded-xl p-4 mb-2">
     <div class="flex items-center justify-between gap-3">
       <div class="flex-1 min-w-0">
         <p class="text-white font-bold">${it.nombre} ${completo?'<span class="text-neon">✓</span>':''}</p>
-        <p class="text-gray-500 text-xs">Pedido: ${it.cantidad} · Stock: ${it.stock}</p>
+        <p class="text-gray-500 text-xs">Pedido: ${it.cantidad}${infoStock}</p>
       </div>
       <div class="flex items-center gap-2 flex-shrink-0">
         <input type="number" inputmode="numeric" min="0" max="${it.cantidad}" value="${prep}"
-               id="cant-${it.id_producto}"
-               onkeydown="if(event.key==='Enter'){setearCant(${it.id_producto})}"
+               id="cant-${idx}"
+               onkeydown="if(event.key==='Enter'){setearCant(${idx})}"
                class="w-20 bg-black border border-gray-600 focus:border-neon text-white text-center text-xl font-bold rounded-lg py-2 outline-none">
         <span class="text-gray-600 text-sm">/ ${it.cantidad}</span>
-        <button onclick="setearCant(${it.id_producto})" class="bg-neon text-black font-bold px-4 py-2.5 rounded-lg active:scale-95">OK</button>
+        <button onclick="setearCant(${idx})" class="bg-neon text-black font-bold px-4 py-2.5 rounded-lg active:scale-95">OK</button>
       </div>
     </div>
     <div class="w-full bg-gray-800 rounded-full h-1.5 mt-3 overflow-hidden"><div class="bg-neon h-1.5 transition-all" style="width:${pctItem}%"></div></div>
   </div>`;
 }
 
-async function setearCant(idProd){
-  const it = pedidoActual.items.find(i=>i.id_producto===idProd);
+async function setearCant(idx){
+  const it = pedidoActual.items[idx];
   if(!it) return;
-  const input = document.getElementById('cant-'+idProd);
+  const input = document.getElementById('cant-'+idx);
   let valor = parseInt(input.value);
   if(isNaN(valor) || valor < 0) valor = 0;
   if(valor > it.cantidad) valor = it.cantidad;
   const prep = it.preparado || 0;
   if(valor === prep){ return; } // sin cambios
   const diff = valor - prep;
-  // Aviso si carga más de lo que hay en stock
-  if(diff > 0 && diff > it.stock){
+  const esRepo = pedidoActual.tipo === 'reposicion';
+  // Aviso si carga más de lo que hay en stock (solo pedidos B2B, que descuentan al tildar)
+  if(!esRepo && diff > 0 && diff > it.stock){
     if(!confirm('Estás cargando ' + diff + ' pero hay ' + it.stock + ' en stock. ¿Continuar igual? (el stock puede quedar en 0)')){
       input.value = prep; return;
     }
@@ -226,12 +218,14 @@ async function setearCant(idProd){
   const stockAnterior = it.stock;
   it.preparado = valor;
   it.completo = valor >= it.cantidad;
-  it.stock = Math.max(0, it.stock - diff);
+  if(!esRepo) it.stock = Math.max(0, it.stock - diff);
   renderArmado();
   try{
+    const body = { id_producto: it.id_producto, cantidad: valor, preparado_por: armadoPor };
+    if(esRepo) body.sabor = it.sabor || '';
     const r = await fetch(`${API_URL}/armado/pedidos/${pedidoActual.id}/setear_cantidad`, {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ id_producto: idProd, cantidad: valor, preparado_por: armadoPor })
+      body: JSON.stringify(body)
     }).then(x=>x.json());
     if(r && typeof r.cantidad === 'number'){ it.preparado = r.cantidad; it.completo = r.cantidad >= it.cantidad; renderArmado(); }
   }catch(e){
