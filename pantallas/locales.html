@@ -1,6 +1,9 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
+<script>window.PANEL_ACTUAL = "locales";</script>
+<script src="/static/auth.js"></script>
+
     <meta charset="UTF-8">
     <title>Locales | Portal del Viento</title>
     <script src="https://cdn.tailwindcss.com"></script>
@@ -53,6 +56,7 @@
                 <button onclick="cambiarTabGeneral('resumen')" id="tg-resumen" class="pb-3 text-sm font-bold tab-activa">🏬 Resumen</button>
                 <button onclick="cambiarTabGeneral('stock')" id="tg-stock" class="pb-3 text-sm font-bold text-gray-400 hover:text-white">📊 Comparativa de stock</button>
                 <button onclick="cambiarTabGeneral('crear')" id="tg-crear" class="pb-3 text-sm font-bold text-gray-400 hover:text-white">➕ Crear producto</button>
+                <button onclick="cambiarTabGeneral('novedades')" id="tg-novedades" class="pb-3 text-sm font-bold text-gray-400 hover:text-white">📣 Novedades <span id="badge-novedades" class="hidden ml-1 bg-blue-600 text-white text-xs rounded-full px-1.5">0</span></button>
             </div>
 
             <!-- TAB RESUMEN -->
@@ -86,6 +90,17 @@
             </div>
 
             <!-- TAB CREAR PRODUCTO -->
+            <div id="tab-general-novedades" class="hidden">
+                <div class="flex justify-between items-center mb-4">
+                    <div>
+                        <h3 class="text-white font-bold text-lg">📣 Novedades de los locales</h3>
+                        <p class="text-gray-500 text-sm">Mensajes que cargan los empleados desde el POS.</p>
+                    </div>
+                    <button onclick="cargarNovedades()" class="border border-gray-700 text-gray-300 hover:text-white text-sm font-bold py-2 px-4 rounded-lg">🔄 Actualizar</button>
+                </div>
+                <div id="lista-novedades"></div>
+            </div>
+
             <div id="tab-general-crear" class="hidden">
                 <div class="max-w-lg bg-black border border-gray-800 rounded-2xl p-6">
                     <h3 class="text-white font-bold mb-1">➕ Crear producto en todos los locales</h3>
@@ -1007,19 +1022,26 @@
             lista.forEach(r => {
                 const dt = r.fecha ? new Date(r.fecha.replace(' ','T')).toLocaleString('es-AR',{dateStyle:'short',timeStyle:'short'}) : '';
                 const repuesto = r.estado==='repuesto';
+                const habilitada = r.estado==='habilitada' || r.estado==='en_preparacion';
                 const emp = r.empleado_apellido ? `${r.empleado_apellido}, ${r.empleado_nombre}` : '';
                 const items = (r.detalle||[]).map(d=>`${d.cantidad}× ${d.nombre_producto}${d.sabor?' ('+d.sabor+')':''}`).join(', ');
+                let estadoTxt;
+                if (repuesto) estadoTxt = '<span class="text-green-400 text-xs">· ✅ repuesto</span>';
+                else if (r.estado==='en_preparacion') estadoTxt = '<span class="text-blue-400 text-xs">· 🔧 armando</span>';
+                else if (habilitada) estadoTxt = '<span class="text-neon text-xs">· ✅ habilitada para armado</span>';
+                else estadoTxt = '<span class="text-yellow-400 text-xs">· ⏳ pendiente</span>';
                 const div = document.createElement('div');
-                div.className = 'rounded-lg px-4 py-3 border ' + (repuesto?'bg-black border-gray-800 opacity-60':'bg-yellow-900/10 border-yellow-800');
+                div.className = 'rounded-lg px-4 py-3 border ' + (repuesto?'bg-black border-gray-800 opacity-60':(habilitada?'bg-green-900/10 border-green-800':'bg-yellow-900/10 border-yellow-800'));
                 div.innerHTML = `
                     <div class="flex items-center justify-between">
                         <div>
-                            <p class="font-bold text-white">Pedido #${String(r.id).padStart(3,'0')} ${repuesto?'<span class="text-green-400 text-xs">· ✅ repuesto</span>':'<span class="text-yellow-400 text-xs">· ⏳ pendiente</span>'}</p>
+                            <p class="font-bold text-white">Pedido #${String(r.id).padStart(3,'0')} ${estadoTxt}</p>
                             <p class="text-gray-500 text-xs">${dt} ${emp?'· '+emp:''}</p>
                         </div>
                         <div class="flex gap-1">
                             <button class="text-xs border border-gray-600 text-gray-300 hover:text-white px-3 py-1.5 rounded btn-print">🖨️ Imprimir</button>
                             ${repuesto?'':'<button class="text-xs border border-yellow-700 text-yellow-300 hover:bg-yellow-900/30 px-3 py-1.5 rounded font-bold btn-edit">✏️ Modificar</button>'}
+                            ${(repuesto||habilitada)?'':'<button class="text-xs bg-neon text-black hover:bg-yellow-300 px-3 py-1.5 rounded font-bold btn-hab">▶️ Habilitar para armado</button>'}
                             ${repuesto?'':'<button class="text-xs bg-green-800 hover:bg-green-700 text-white px-3 py-1.5 rounded font-bold btn-rep">Reponer (sumar stock)</button>'}
                             <button class="text-xs bg-red-900/50 hover:bg-red-700 text-red-400 hover:text-white px-2 py-1.5 rounded btn-del">✕</button>
                         </div>
@@ -1027,10 +1049,26 @@
                     <p class="text-gray-400 text-sm mt-2">${items}</p>`;
                 div.querySelector('.btn-print').onclick = () => imprimirRemito(r);
                 const ed = div.querySelector('.btn-edit'); if (ed) ed.onclick = () => abrirEditarRepo(r);
+                const hab = div.querySelector('.btn-hab');
+                if (hab) hab.onclick = async () => {
+                    if (confirm('¿Habilitar esta reposición para que el empleado de depósito la arme?\n\nVa a aparecer en su panel de armado.')) {
+                        try {
+                            const res = await fetch(`${API_URL}/locales/reposiciones/${r.id}/habilitar`, {method:'PUT'});
+                            if (!res.ok) { const e = await res.json().catch(()=>({})); alert('No se pudo: ' + (e.detail||'')); }
+                        } catch(e) {}
+                        cargarReposiciones();
+                    }
+                };
                 const rep = div.querySelector('.btn-rep');
                 if (rep) rep.onclick = async () => {
-                    if (confirm('¿Marcar como repuesto? Se sumará al stock lo que figura en este pedido (ya con tus modificaciones).')) {
-                        await fetch(`${API_URL}/locales/reposiciones/${r.id}/reponer`, {method:'PUT'});
+                    if (confirm('¿Marcar como repuesto?\n\nSe sumará al stock del local y se descontará del stock de fábrica según el sabor de cada producto.')) {
+                        try {
+                            const res = await fetch(`${API_URL}/locales/reposiciones/${r.id}/reponer`, {method:'PUT'});
+                            const data = await res.json().catch(()=>({}));
+                            if (data && data.aviso) {
+                                alert('✅ Repuesto.\n\n⚠️ ' + data.aviso + '\n\nRevisá que esos productos existan en la fábrica con un nombre que incluya el sabor.');
+                            }
+                        } catch(e) {}
                         cargarReposiciones();
                     }
                 };
@@ -1323,13 +1361,48 @@
         let stockComparativoData = null;
 
         function cambiarTabGeneral(tab) {
-            ['resumen','stock','crear'].forEach(t => {
-                document.getElementById('tab-general-' + t).classList.toggle('hidden', t !== tab);
-                document.getElementById('tg-' + t).className = t === tab
+            ['resumen','stock','crear','novedades'].forEach(t => {
+                var el = document.getElementById('tab-general-' + t);
+                if (el) el.classList.toggle('hidden', t !== tab);
+                var btn = document.getElementById('tg-' + t);
+                if (btn) btn.className = t === tab
                     ? 'pb-3 text-sm font-bold tab-activa'
                     : 'pb-3 text-sm font-bold text-gray-400 hover:text-white';
             });
             if (tab === 'stock') cargarStockComparativo();
+            if (tab === 'novedades') cargarNovedades();
+        }
+
+        async function cargarNovedades() {
+            var cont = document.getElementById('lista-novedades');
+            if (!cont) return;
+            cont.innerHTML = '<p class="text-gray-500 text-sm">Cargando...</p>';
+            try {
+                var nov = await fetch(`${API_URL}/pos/novedades`).then(r=>r.json());
+                if (!nov.length) { cont.innerHTML = '<p class="text-gray-500 text-sm text-center py-10">No hay novedades.</p>'; return; }
+                cont.innerHTML = nov.map(function(n){
+                    var f = (n.fecha||'').replace('T',' ').substring(0,16);
+                    return '<div class="bg-gray-900 border ' + (n.leida?'border-gray-800':'border-blue-700') + ' rounded-xl p-4 mb-2">' +
+                        '<div class="flex justify-between items-start gap-3">' +
+                        '<div class="flex-1"><p class="text-white text-sm">' + (n.mensaje||'') + '</p>' +
+                        '<p class="text-gray-500 text-xs mt-2">' + (n.nombre_local?('🏬 '+n.nombre_local+' · '):'') + (n.cargada_por?('👤 '+n.cargada_por+' · '):'') + f + '</p></div>' +
+                        (n.leida?'':'<button onclick="marcarNovedadLeida(' + n.id + ')" class="text-xs border border-gray-700 text-gray-300 hover:text-white px-2 py-1 rounded shrink-0">✓ Vista</button>') +
+                        '</div></div>';
+                }).join('');
+            } catch(e) { cont.innerHTML = '<p class="text-red-400 text-sm">No se pudieron cargar.</p>'; }
+        }
+
+        async function marcarNovedadLeida(id) {
+            try { await fetch(`${API_URL}/pos/novedades/${id}/leer`, {method:'PUT'}); cargarNovedades(); actualizarBadgeNovedades(); } catch(e) {}
+        }
+
+        async function actualizarBadgeNovedades() {
+            try {
+                var nov = await fetch(`${API_URL}/pos/novedades`).then(r=>r.json());
+                var n = (nov||[]).filter(function(x){ return !x.leida; }).length;
+                var b = document.getElementById('badge-novedades');
+                if (b) { b.textContent = n; b.classList.toggle('hidden', n===0); }
+            } catch(e) {}
         }
 
         async function cargarStockComparativo() {
@@ -1418,7 +1491,7 @@
         async function cargarEmpresaLocal() {
             try { window.empresaCache = await fetch(`${API_URL}/empresa`).then(r=>r.json()); } catch(e) {}
         }
-        window.onload = function(){ cargarGeneral(); cargarEmpresaLocal(); cargarCierresPendientesGeneral(); };
+        window.onload = function(){ cargarGeneral(); cargarEmpresaLocal(); cargarCierresPendientesGeneral(); actualizarBadgeNovedades(); };
 
         async function cargarCierresPendientesGeneral() {
             try {
