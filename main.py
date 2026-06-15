@@ -4226,16 +4226,55 @@ def locales_reposicion_reponer(id: int):
             raise HTTPException(status_code=404, detail="Reposición no encontrada")
         if row['estado'] == 'repuesto':
             return {"status": "ya_repuesto"}
-        cur.execute("SELECT id_producto, cantidad FROM pos_reposiciones_detalle WHERE id_reposicion=%s", (id,))
+        cur.execute("SELECT id_producto, nombre_producto, cantidad, sabor FROM pos_reposiciones_detalle WHERE id_reposicion=%s", (id,))
         items = fetchall_dict(cur)
+        no_descontados = []  # ítems que no se pudieron descontar de fábrica
         for it in items:
+            cant = float(it['cantidad'] or 0)
+            if cant <= 0:
+                continue
+            # 1) Sumar al stock del LOCAL (producto genérico del local)
             if it['id_producto']:
-                cur.execute("UPDATE pos_productos SET stock = COALESCE(stock,0) + %s WHERE id=%s", (it['cantidad'], it['id_producto']))
-                registrar_movimiento_stock(cur, it['id_producto'], it['cantidad'], 'entrada', 'reposicion',
+                cur.execute("UPDATE pos_productos SET stock = COALESCE(stock,0) + %s WHERE id=%s", (cant, it['id_producto']))
+                registrar_movimiento_stock(cur, it['id_producto'], cant, 'entrada', 'reposicion',
                                            motivo='Reposición #' + str(id))
+            # 2) Descontar del stock de FÁBRICA según el SABOR pedido.
+            #    En fábrica 1 unidad = 1 caja (ej: 12 alfajores). El local pide en unidades sueltas,
+            #    así que dividimos las unidades por las "unidades_por_caja" del producto de fábrica.
+            termino = (it.get('sabor') or it.get('nombre_producto') or '').strip()
+            id_fab = None
+            upc = 1
+            if termino:
+                cur.execute("SELECT id, COALESCE(unidades_por_caja,1) AS upc FROM productos WHERE LOWER(nombre)=LOWER(%s) AND COALESCE(activo,true)=true LIMIT 1", (termino,))
+                fab = cur.fetchone()
+                if not fab:
+                    cur.execute("SELECT id, COALESCE(unidades_por_caja,1) AS upc FROM productos WHERE LOWER(nombre) LIKE LOWER(%s) AND COALESCE(activo,true)=true ORDER BY LENGTH(nombre) LIMIT 1", ('%'+termino+'%',))
+                    fab = cur.fetchone()
+                if fab:
+                    id_fab = fab['id']
+                    try:
+                        upc = float(fab['upc'] or 1)
+                        if upc <= 0:
+                            upc = 1
+                    except Exception:
+                        upc = 1
+            if id_fab:
+                # Convertir unidades pedidas a cajas (lo que se descuenta de fábrica)
+                cajas = cant / upc
+                cur.execute("UPDATE productos SET stock_actual = GREATEST(COALESCE(stock_actual,0) - %s, 0) WHERE id=%s", (cajas, id_fab))
+                try:
+                    registrar_movimiento_stock(cur, id_fab, -cajas, 'salida', 'reposicion_local',
+                                               motivo='Enviado a local (reposición #' + str(id) + ', ' + str(int(cant)) + ' u = ' + str(round(cajas,2)) + ' cajas)')
+                except Exception:
+                    pass
+            else:
+                no_descontados.append(termino or ('producto #' + str(it.get('id_producto'))))
         cur.execute("UPDATE pos_reposiciones SET estado='repuesto' WHERE id=%s", (id,))
         conn.commit()
-        return {"status": "ok"}
+        resultado = {"status": "ok"}
+        if no_descontados:
+            resultado["aviso"] = "No se pudo descontar de fábrica (no se encontró el producto): " + ", ".join(no_descontados)
+        return resultado
     except HTTPException:
         raise
     except Exception as e:
@@ -5340,6 +5379,143 @@ def serve_auth_js():
         return Response(content=f.read(), media_type="application/javascript",
                         headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"})
 
+@app.get("/api/ia/estado")
+def ia_estado():
+    try:
+        import ia_service
+        return {"configurado": ia_service.esta_configurado()}
+    except Exception:
+        return {"configurado": False}
+
+@app.post("/api/ia/preguntar")
+def ia_preguntar(data: dict = Body(...)):
+    """Responde una pregunta del admin sobre los datos del negocio.
+    Arma un resumen (ventas, stock, deudas, ingresos) y lo manda a la IA."""
+    pregunta = (data.get("pregunta") or "").strip()
+    if not pregunta:
+        raise HTTPException(status_code=400, detail="Escribí una pregunta")
+    try:
+        import ia_service
+    except Exception:
+        raise HTTPException(status_code=500, detail="No se pudo cargar el asistente")
+    if not ia_service.esta_configurado():
+        raise HTTPException(status_code=400, detail="El asistente no está configurado. Falta cargar la API key de Anthropic en Railway (variable ANTHROPIC_API_KEY).")
+
+    resumen = {}
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        # --- Ventas POS últimos 30 días ---
+        try:
+            cur.execute("""SELECT COALESCE(SUM(total),0) AS total, COUNT(*) AS cant
+                           FROM pos_ventas WHERE fecha >= NOW() - INTERVAL '30 days'""")
+            r = cur.fetchone()
+            resumen["ventas_pos_ultimos_30_dias"] = {"total": float(r["total"] or 0), "cantidad_ventas": r["cant"]}
+        except Exception:
+            conn.rollback()
+        # --- Ventas POS hoy ---
+        try:
+            cur.execute("SELECT COALESCE(SUM(total),0) AS total, COUNT(*) AS cant FROM pos_ventas WHERE DATE(fecha)=CURRENT_DATE")
+            r = cur.fetchone()
+            resumen["ventas_pos_hoy"] = {"total": float(r["total"] or 0), "cantidad_ventas": r["cant"]}
+        except Exception:
+            conn.rollback()
+        # --- Stock bajo ---
+        try:
+            cur.execute("""SELECT nombre, stock_actual, stock_alerta FROM productos
+                           WHERE COALESCE(activo,true)=true AND COALESCE(stock_actual,0) <= COALESCE(stock_alerta,0)
+                           ORDER BY stock_actual ASC LIMIT 20""")
+            resumen["productos_con_stock_bajo"] = [
+                {"producto": x["nombre"], "stock": float(x["stock_actual"] or 0), "alerta": float(x["stock_alerta"] or 0)}
+                for x in fetchall_dict(cur)
+            ]
+        except Exception:
+            conn.rollback()
+        # --- Ingresos de distribuidores últimos 30 días ---
+        try:
+            cur.execute("""SELECT COALESCE(SUM(monto),0) AS total, COUNT(*) AS cant
+                           FROM cobros_distribuidores WHERE fecha >= NOW() - INTERVAL '30 days'""")
+            r = cur.fetchone()
+            resumen["ingresos_distribuidores_ultimos_30_dias"] = {"total": float(r["total"] or 0), "cantidad_cobros": r["cant"]}
+        except Exception:
+            conn.rollback()
+        # --- Deudas de distribuidores (pedidos despachados - cobros) ---
+        try:
+            cur.execute("""
+                SELECT d.razon_social AS distribuidor,
+                    COALESCE((SELECT SUM(p.total) FROM pedidos_b2b p WHERE p.id_distribuidor=d.id AND p.estado IN ('Despachado','Despachado parcial')),0) AS pedidos,
+                    COALESCE((SELECT SUM(c.monto) FROM cobros_distribuidores c WHERE c.id_distribuidor=d.id),0) AS cobrado
+                FROM distribuidores d WHERE COALESCE(d.activo,true)=true
+            """)
+            deudas = []
+            for x in fetchall_dict(cur):
+                saldo = float(x["pedidos"] or 0) - float(x["cobrado"] or 0)
+                if saldo > 0:
+                    deudas.append({"distribuidor": x["distribuidor"], "debe": round(saldo, 2)})
+            deudas.sort(key=lambda z: z["debe"], reverse=True)
+            resumen["distribuidores_que_deben"] = deudas[:20]
+            resumen["total_a_cobrar_distribuidores"] = round(sum(d["debe"] for d in deudas), 2)
+        except Exception:
+            conn.rollback()
+        # --- Pedidos pendientes ---
+        try:
+            cur.execute("SELECT COUNT(*) AS c FROM pedidos_b2b WHERE estado IN ('Pendiente','En preparación')")
+            resumen["pedidos_b2b_pendientes"] = cur.fetchone()["c"]
+        except Exception:
+            conn.rollback()
+    finally:
+        liberar_conexion(conn)
+
+    res = ia_service.preguntar(pregunta, resumen)
+    if not res.get("ok"):
+        raise HTTPException(status_code=502, detail=res.get("error", "Error del asistente"))
+    return {"respuesta": res["respuesta"]}
+
+@app.get("/api/deudas_distribuidores")
+def deudas_distribuidores():
+    """Deuda de cada distribuidor (pedidos despachados − cobros), ordenada de mayor a menor,
+    con la antigüedad de su pedido despachado más viejo (para detectar deuda vieja)."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("""
+            SELECT d.id, d.razon_social AS distribuidor, d.telefono,
+                COALESCE((SELECT SUM(p.total) FROM pedidos_b2b p
+                          WHERE p.id_distribuidor=d.id AND p.estado IN ('Despachado','Despachado parcial')),0) AS pedidos,
+                COALESCE((SELECT SUM(c.monto) FROM cobros_distribuidores c WHERE c.id_distribuidor=d.id),0) AS cobrado,
+                (SELECT MIN(p.fecha) FROM pedidos_b2b p
+                 WHERE p.id_distribuidor=d.id AND p.estado IN ('Despachado','Despachado parcial')) AS pedido_mas_viejo
+            FROM distribuidores d
+            WHERE COALESCE(d.activo,true)=true
+        """)
+        filas = fetchall_dict(cur)
+        deudores = []
+        total = 0.0
+        from datetime import datetime, timezone
+        ahora = datetime.now(timezone.utc)
+        for f in filas:
+            saldo = float(f['pedidos'] or 0) - float(f['cobrado'] or 0)
+            if saldo > 0.5:
+                dias = None
+                if f.get('pedido_mas_viejo'):
+                    try:
+                        pv = f['pedido_mas_viejo']
+                        if pv.tzinfo is None:
+                            pv = pv.replace(tzinfo=timezone.utc)
+                        dias = (ahora - pv).days
+                    except Exception:
+                        dias = None
+                deudores.append({
+                    "id": f['id'], "distribuidor": f['distribuidor'], "telefono": f.get('telefono'),
+                    "debe": round(saldo, 2),
+                    "dias_deuda": dias
+                })
+                total += saldo
+        deudores.sort(key=lambda x: x['debe'], reverse=True)
+        return {"total": round(total, 2), "cantidad": len(deudores), "deudores": deudores}
+    finally:
+        liberar_conexion(conn)
+
 @app.get("/login")
 def route_login():
     return serve_html("login.html")
@@ -5407,6 +5583,10 @@ def route_prospectos():
 @app.get("/ingresos-distribuidores")
 def route_ingresos_dist():
     return serve_html("ingresos_distribuidores.html")
+
+@app.get("/deudas-distribuidores")
+def route_deudas_dist():
+    return serve_html("deudas_distribuidores.html")
 
 @app.get("/configuracion")
 def route_configuracion():
