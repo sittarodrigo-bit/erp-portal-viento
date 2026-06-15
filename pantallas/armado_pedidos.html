@@ -63,10 +63,7 @@
     <div class="fixed bottom-0 left-0 right-0 bg-black border-t border-gray-800 p-4" id="arm-botonera">
       <div class="max-w-3xl mx-auto space-y-2">
         <div id="aviso-faltan" class="hidden text-center text-orange-400 text-sm font-bold"></div>
-        <div class="flex gap-2">
-          <button onclick="guardarYSeguir()" class="flex-1 border border-gray-700 text-gray-300 hover:text-white font-bold py-3 rounded-xl text-sm">💾 Guardar y seguir después</button>
-          <button id="btn-parcial" onclick="despacharParcial()" class="flex-1 bg-orange-600 hover:bg-orange-500 text-white font-bold py-3 rounded-xl text-sm">📦 Despachar lo armado</button>
-        </div>
+        <button id="btn-parcial" onclick="despacharParcial()" class="w-full bg-orange-600 hover:bg-orange-500 text-white font-bold py-3 rounded-xl text-sm">📦 Despachar lo armado (finaliza)</button>
         <button id="btn-listo" onclick="marcarListo()" class="w-full bg-neon text-black font-bold py-4 rounded-xl text-lg disabled:bg-gray-700 disabled:text-gray-500">✓ Pedido completo (despachar todo)</button>
       </div>
     </div>
@@ -298,15 +295,9 @@ async function marcarListo(){
   }catch(e){ alert('No se pudo marcar como listo.'); }
 }
 
-function guardarYSeguir(){
-  // El estado y los tildes ya están guardados en la base. Solo volvemos.
-  alert('💾 Guardado. El pedido queda En preparación, podés seguir cuando llegue stock.');
-  volverLista(); cargarPedidos();
-}
-
 async function despacharParcial(){
   const faltan = pedidoActual.items.filter(i=>!i.completo).map(i=>'• ' + i.nombre + ': faltan ' + (i.cantidad-(i.preparado||0)) + ' de ' + i.cantidad);
-  if(!confirm('Vas a despachar lo que cargaste.\n\nQueda pendiente:\n' + faltan.join('\n') + '\n\n¿Confirmás el despacho parcial?')) return;
+  if(!confirm('Vas a despachar lo que cargaste y FINALIZAR el armado.\n\nQueda pendiente:\n' + faltan.join('\n') + '\n\nSi después necesitás cambiar algo, reabrílo desde el panel de pedidos o de locales.\n\n¿Confirmás?')) return;
   try{
     await fetch(`${API_URL}/armado/pedidos/${pedidoActual.id}/despacho_parcial`, {method:'PUT'});
     alert('📦 Despachado lo armado. Lo que faltó quedó registrado.');
