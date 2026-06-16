@@ -1849,9 +1849,18 @@ def armado_listo(id: str):
         liberar_conexion(conn)
 
 @app.put("/api/armado/pedidos/{id}/despacho_parcial")
-def armado_despacho_parcial(id: int):
-    """Despacha lo que ya está tildado y deja constancia de lo que faltó.
-    El pedido queda como 'Despachado parcial'."""
+def armado_despacho_parcial(id: str):
+    """Despacha lo que ya está armado y finaliza. Para reposiciones (prefijo 'r')
+    descuenta lo preparado (igual que 'listo') y cierra la reposición."""
+    # --- Reposición de local: despachar lo armado = finalizar con descuento de lo preparado ---
+    if isinstance(id, str) and id.startswith('r'):
+        return armado_listo(id)
+
+    # --- Pedido B2B de distribuidor ---
+    try:
+        id = int(id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="ID inválido")
     conn = obtener_conexion()
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
