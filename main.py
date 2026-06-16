@@ -1441,7 +1441,7 @@ def armado_listar_pedidos():
                    d.razon_social AS distribuidor
             FROM pedidos_b2b p
             LEFT JOIN distribuidores d ON p.id_distribuidor = d.id
-            WHERE p.estado IN ('Pendiente','En preparación','Despachado parcial','Terminado')
+            WHERE p.estado IN ('Pendiente','En preparación')
             ORDER BY CASE WHEN p.estado='En preparación' THEN 0 WHEN p.estado='Despachado parcial' THEN 1 WHEN p.estado='Pendiente' THEN 2 ELSE 3 END, p.id ASC
         """)
         pedidos = fetchall_dict(cur)
