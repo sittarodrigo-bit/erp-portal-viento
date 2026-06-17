@@ -129,6 +129,7 @@ class Producto(BaseModel):
     precio_minorista: float = 0.0
     precio_mayorista: float = 0.0
     unidades_por_caja: Optional[int] = None
+    visible_mayorista: Optional[bool] = True
 
 class StockUpdate(BaseModel):
     nuevo_stock: int
@@ -581,6 +582,7 @@ def get_productos():
             cur.execute("""
                 SELECT id, sku, nombre, tipo, stock_actual AS stock, stock_actual,
                        id_categoria, stock_alerta, imagen_url, unidades_por_caja,
+                       COALESCE(visible_mayorista, true) AS visible_mayorista,
                        COALESCE(precio_minorista,0) AS precio_minorista,
                        COALESCE(precio_mayorista,0) AS precio_mayorista
                 FROM productos
@@ -604,19 +606,34 @@ def get_productos():
         liberar_conexion(conn)
 
 @app.get("/api/productos/con_presentaciones")
-def get_productos_presentaciones():
+def get_productos_presentaciones(solo_visibles_mayorista: bool = False):
     conn = obtener_conexion()
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
-        cur.execute("""
-            SELECT id, sku, nombre, tipo, stock_actual AS stock, stock_actual,
-                   id_categoria, stock_alerta, imagen_url,
-                   COALESCE(precio_minorista,0) AS precio_minorista,
-                   COALESCE(precio_mayorista,0) AS precio_mayorista
-            FROM productos
-            WHERE COALESCE(activo, true) = true
-            ORDER BY nombre ASC
-        """)
+        # Si lo pide el portal de distribuidores, oculta los marcados como no visibles.
+        filtro_vis = " AND COALESCE(visible_mayorista, true) = true" if solo_visibles_mayorista else ""
+        try:
+            cur.execute(f"""
+                SELECT id, sku, nombre, tipo, stock_actual AS stock, stock_actual,
+                       id_categoria, stock_alerta, imagen_url,
+                       COALESCE(precio_minorista,0) AS precio_minorista,
+                       COALESCE(precio_mayorista,0) AS precio_mayorista
+                FROM productos
+                WHERE COALESCE(activo, true) = true{filtro_vis}
+                ORDER BY nombre ASC
+            """)
+        except Exception:
+            # Si la columna no existe todavía, traer sin filtro (no rompe)
+            conn.rollback()
+            cur.execute("""
+                SELECT id, sku, nombre, tipo, stock_actual AS stock, stock_actual,
+                       id_categoria, stock_alerta, imagen_url,
+                       COALESCE(precio_minorista,0) AS precio_minorista,
+                       COALESCE(precio_mayorista,0) AS precio_mayorista
+                FROM productos
+                WHERE COALESCE(activo, true) = true
+                ORDER BY nombre ASC
+            """)
         productos = fetchall_dict(cur)
         # Presentación virtual "Unidad" usando el precio mayorista del propio producto,
         # para que el portal mayorista y los pedidos sigan funcionando igual.
@@ -679,6 +696,18 @@ def actualizar_producto(id: int, prod: Producto):
                 SET sku=%s, nombre=%s, tipo=%s, id_categoria=%s, stock_alerta=%s, imagen_url=%s,
                     precio_minorista=%s, precio_mayorista=%s
                 WHERE id=%s
+            """, (prod.sku, prod.nombre, prod.tipo, prod.id_categoria, prod.stock_alerta,
+                  prod.imagen_url, prod.precio_minorista, prod.precio_mayorista, id))
+        # Guardar visibilidad para mayoristas (si la columna existe)
+        try:
+            vis = True if prod.visible_mayorista is None else bool(prod.visible_mayorista)
+            cur.execute("UPDATE productos SET visible_mayorista=%s WHERE id=%s", (vis, id))
+        except Exception:
+            conn.rollback()
+            # reintenta el update principal por si el rollback lo deshizo
+            cur.execute("""
+                UPDATE productos SET sku=%s, nombre=%s, tipo=%s, id_categoria=%s, stock_alerta=%s,
+                    imagen_url=%s, precio_minorista=%s, precio_mayorista=%s WHERE id=%s
             """, (prod.sku, prod.nombre, prod.tipo, prod.id_categoria, prod.stock_alerta,
                   prod.imagen_url, prod.precio_minorista, prod.precio_mayorista, id))
         conn.commit()
@@ -3714,14 +3743,25 @@ def precios_para_distribuidor(id_dist: int):
         # Mapa de descuentos del cliente por categoría
         cur.execute("SELECT id_categoria, porcentaje FROM descuentos_distribuidor WHERE id_distribuidor=%s", (id_dist,))
         desc = {r['id_categoria']: float(r['porcentaje']) for r in fetchall_dict(cur)}
-        cur.execute("""
-            SELECT id, sku, nombre, id_categoria, imagen_url,
-                   COALESCE(precio_minorista,0) AS precio_minorista,
-                   COALESCE(precio_mayorista,0) AS precio_mayorista
-            FROM productos
-            WHERE COALESCE(activo, true) = true
-            ORDER BY nombre ASC
-        """)
+        try:
+            cur.execute("""
+                SELECT id, sku, nombre, id_categoria, imagen_url,
+                       COALESCE(precio_minorista,0) AS precio_minorista,
+                       COALESCE(precio_mayorista,0) AS precio_mayorista
+                FROM productos
+                WHERE COALESCE(activo, true) = true AND COALESCE(visible_mayorista, true) = true
+                ORDER BY nombre ASC
+            """)
+        except Exception:
+            conn.rollback()
+            cur.execute("""
+                SELECT id, sku, nombre, id_categoria, imagen_url,
+                       COALESCE(precio_minorista,0) AS precio_minorista,
+                       COALESCE(precio_mayorista,0) AS precio_mayorista
+                FROM productos
+                WHERE COALESCE(activo, true) = true
+                ORDER BY nombre ASC
+            """)
         productos = fetchall_dict(cur)
         for p in productos:
             base = float(p['precio_mayorista'] or 0)
