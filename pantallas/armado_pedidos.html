@@ -23,9 +23,19 @@
 
   <!-- Vista lista de pedidos -->
   <main id="vista-lista" class="p-5 max-w-3xl mx-auto">
-    <h2 class="text-xl font-bold text-white mb-4">Pedidos por armar</h2>
-    <div id="lista-pedidos" class="space-y-3">
-      <p class="text-gray-500 text-center py-10">Cargando...</p>
+    <div class="flex gap-2 mb-4">
+      <button onclick="cambiarTab('pendientes')" id="tab-pendientes" class="px-4 py-2 rounded-lg text-sm font-bold bg-neon text-black">📋 Por armar</button>
+      <button onclick="cambiarTab('historial')" id="tab-historial" class="px-4 py-2 rounded-lg text-sm font-bold border border-gray-700 text-gray-300">📜 Historial</button>
+    </div>
+    <div id="cont-pendientes">
+      <div id="lista-pedidos" class="space-y-3">
+        <p class="text-gray-500 text-center py-10">Cargando...</p>
+      </div>
+    </div>
+    <div id="cont-historial" class="hidden">
+      <div id="lista-historial" class="space-y-3">
+        <p class="text-gray-500 text-center py-10">Cargando...</p>
+      </div>
     </div>
   </main>
 
@@ -282,7 +292,42 @@ function volverLista(){
   $('vista-lista').classList.remove('hidden');
 }
 
+
+function cambiarTab(tab){
+  const esPend = tab === 'pendientes';
+  document.getElementById('cont-pendientes').classList.toggle('hidden', !esPend);
+  document.getElementById('cont-historial').classList.toggle('hidden', esPend);
+  document.getElementById('tab-pendientes').className = 'px-4 py-2 rounded-lg text-sm font-bold ' + (esPend?'bg-neon text-black':'border border-gray-700 text-gray-300');
+  document.getElementById('tab-historial').className = 'px-4 py-2 rounded-lg text-sm font-bold ' + (!esPend?'bg-neon text-black':'border border-gray-700 text-gray-300');
+  if(!esPend) cargarHistorial();
+}
+
+async function cargarHistorial(){
+  const cont = document.getElementById('lista-historial');
+  cont.innerHTML = '<p class="text-gray-500 text-center py-10">Cargando...</p>';
+  try{
+    const hist = await fetch(`${API_URL}/armado/historial`).then(r=>r.json());
+    if(!hist.length){ cont.innerHTML = '<div class="text-center py-12 text-gray-500"><div class="text-4xl mb-2">\ud83d\udce4</div>Todav\u00eda no hay pedidos armados.</div>'; return; }
+    cont.innerHTML = hist.map(function(p){
+      const esRepo = p.tipo === 'reposicion';
+      const titulo = esRepo ? ('Reposici\u00f3n #' + String(p.id).replace('r','')) : ('Pedido #' + p.id);
+      const badge = esRepo
+        ? '<span class="text-xs font-bold px-2 py-1 rounded-full bg-blue-600/20 text-blue-300">\ud83c\udfea Local</span>'
+        : '<span class="text-xs font-bold px-2 py-1 rounded-full bg-gray-700 text-gray-300">\ud83d\ude9a Distribuidor</span>';
+      const fecha = (p.fecha||'').replace('T',' ').substring(0,16);
+      const montoTxt = (p.total!==null && p.total!==undefined) ? ('<p class="text-gray-400 text-sm">'+fmt(p.total)+'</p>') : '';
+      return '<button onclick="abrirPedido(\''+p.id+'\')" class="w-full text-left bg-gray-900 border border-gray-800 rounded-xl p-4 hover:border-gray-600 transition">'+
+        '<div class="flex justify-between items-center"><div>'+
+        '<p class="text-white font-bold">'+titulo+'</p>'+
+        '<p class="text-gray-400 text-sm">'+p.nombre+'</p>'+
+        '<p class="text-gray-600 text-xs mt-1">'+fecha+' \u00b7 '+p.estado+'</p>'+
+        '</div><div class="text-right">'+montoTxt+badge+'</div></div></button>';
+    }).join('');
+  }catch(e){ cont.innerHTML = '<p class="text-red-400 text-center py-10">No se pudo cargar el historial.</p>'; }
+}
+
 cargarPedidos();
+
 </script>
 </body>
 </html>
