@@ -1933,7 +1933,20 @@ def detalle_pedido_b2b(id: int):
             JOIN productos pr ON dp.id_producto = pr.id
             WHERE dp.id_pedido = %s
         """, (id,))
-        return fetchall_dict(cur)
+        items = fetchall_dict(cur)
+        # Sumar lo realmente preparado/armado (si existe), para reflejarlo en el remito
+        preparado = {}
+        hay_preparado = False
+        try:
+            cur.execute("SELECT id_producto, cantidad FROM preparacion_items WHERE id_pedido=%s", (id,))
+            for pr in fetchall_dict(cur):
+                preparado[pr['id_producto']] = float(pr['cantidad'] or 0)
+                hay_preparado = True
+        except Exception:
+            conn.rollback()
+        for it in items:
+            it['armado'] = preparado.get(it['id_producto'], None) if hay_preparado else None
+        return items
     finally:
         liberar_conexion(conn)
 
@@ -4445,7 +4458,21 @@ def locales_reposiciones(id_local: Optional[int] = None, estado: Optional[str] =
         reps = fetchall_dict(cur)
         for rep in reps:
             cur.execute("SELECT id_producto, nombre_producto, cantidad, sabor FROM pos_reposiciones_detalle WHERE id_reposicion=%s", (rep['id'],))
-            rep['detalle'] = fetchall_dict(cur)
+            det = fetchall_dict(cur)
+            # Traer lo que el empleado armó (preparado), para reflejarlo en el remito
+            preparado = {}
+            try:
+                cur.execute("SELECT id_producto, COALESCE(sabor,'') AS sabor, cantidad FROM preparacion_reposicion WHERE id_reposicion=%s", (rep['id'],))
+                for pr in fetchall_dict(cur):
+                    preparado[(pr['id_producto'], pr['sabor'] or '')] = float(pr['cantidad'] or 0)
+            except Exception:
+                conn.rollback()
+            hay_preparado = len(preparado) > 0
+            for d in det:
+                key = (d['id_producto'], (d.get('sabor') or ''))
+                d['armado'] = preparado.get(key, None) if hay_preparado else None
+            rep['detalle'] = det
+            rep['tiene_armado'] = hay_preparado
         return reps
     finally:
         liberar_conexion(conn)
