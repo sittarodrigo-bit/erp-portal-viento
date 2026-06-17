@@ -1138,9 +1138,28 @@ def estado_cuenta_distribuidor(id_dist: int):
         cur = conn.cursor(cursor_factory=RealDictCursor)
         cur.execute("""
             SELECT id, fecha::text, total, estado, observaciones FROM pedidos_b2b
-            WHERE id_distribuidor = %s AND estado = 'Despachado' ORDER BY fecha DESC
+            WHERE id_distribuidor = %s AND estado IN ('Despachado','Despachado parcial') ORDER BY fecha DESC
         """, (id_dist,))
         pedidos = fetchall_dict(cur)
+        # Para cada pedido, calcular el monto REAL despachado:
+        # si hay armado registrado, se cobra lo armado (precio x cantidad armada); si no, el total pedido.
+        for p in pedidos:
+            monto_real = None
+            try:
+                cur.execute("""
+                    SELECT COALESCE(SUM(pi.cantidad * dp.precio_unitario), 0) AS monto, COUNT(*) AS n
+                    FROM preparacion_items pi
+                    JOIN detalle_pedidos_b2b dp ON dp.id_pedido = pi.id_pedido AND dp.id_producto = pi.id_producto
+                    WHERE pi.id_pedido = %s
+                """, (p['id'],))
+                row = cur.fetchone()
+                if row and row['n'] and int(row['n']) > 0:
+                    monto_real = float(row['monto'] or 0)
+            except Exception:
+                conn.rollback()
+                monto_real = None
+            p['total_pedido'] = float(p['total'] or 0)
+            p['total'] = monto_real if monto_real is not None else float(p['total'] or 0)
         cur.execute("""
             SELECT c.id, c.fecha::text, c.monto, c.metodo, c.referencia, c.notas, c.id_pedido,
                    e.nombre as empleado_nombre, e.apellido as empleado_apellido
@@ -1166,15 +1185,31 @@ def cuenta_corriente_global():
     conn = obtener_conexion()
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
+        # Total despachado por distribuidor: si el pedido tiene armado registrado,
+        # se toma lo armado (cantidad x precio); si no, el total del pedido.
         cur.execute("""
+            WITH pedidos_real AS (
+                SELECT pb.id, pb.id_distribuidor,
+                    CASE WHEN EXISTS (SELECT 1 FROM preparacion_items pi WHERE pi.id_pedido = pb.id)
+                         THEN COALESCE((
+                            SELECT SUM(pi.cantidad * dp.precio_unitario)
+                            FROM preparacion_items pi
+                            JOIN detalle_pedidos_b2b dp ON dp.id_pedido = pi.id_pedido AND dp.id_producto = pi.id_producto
+                            WHERE pi.id_pedido = pb.id
+                         ), 0)
+                         ELSE COALESCE(pb.total, 0)
+                    END AS monto_real
+                FROM pedidos_b2b pb
+                WHERE pb.estado IN ('Despachado','Despachado parcial')
+            )
             SELECT d.id, d.razon_social, d.limite_credito,
                    COALESCE(ped.total_despachado, 0) AS total_despachado,
                    COALESCE(cob.total_cobrado, 0) AS total_cobrado,
                    (COALESCE(ped.total_despachado,0) - COALESCE(cob.total_cobrado,0)) AS saldo
             FROM distribuidores d
             LEFT JOIN (
-                SELECT id_distribuidor, SUM(total) AS total_despachado
-                FROM pedidos_b2b WHERE estado='Despachado' GROUP BY id_distribuidor
+                SELECT id_distribuidor, SUM(monto_real) AS total_despachado
+                FROM pedidos_real GROUP BY id_distribuidor
             ) ped ON ped.id_distribuidor = d.id
             LEFT JOIN (
                 SELECT id_distribuidor, SUM(monto) AS total_cobrado
@@ -5795,8 +5830,21 @@ def deudas_distribuidores():
         cur = conn.cursor(cursor_factory=RealDictCursor)
         cur.execute("""
             SELECT d.id, d.razon_social AS distribuidor, d.telefono,
-                COALESCE((SELECT SUM(p.total) FROM pedidos_b2b p
-                          WHERE p.id_distribuidor=d.id AND p.estado IN ('Despachado','Despachado parcial')),0) AS pedidos,
+                COALESCE((
+                    SELECT SUM(
+                        CASE WHEN EXISTS (SELECT 1 FROM preparacion_items pi WHERE pi.id_pedido = p.id)
+                             THEN COALESCE((
+                                SELECT SUM(pi.cantidad * dp.precio_unitario)
+                                FROM preparacion_items pi
+                                JOIN detalle_pedidos_b2b dp ON dp.id_pedido = pi.id_pedido AND dp.id_producto = pi.id_producto
+                                WHERE pi.id_pedido = p.id
+                             ), 0)
+                             ELSE COALESCE(p.total, 0)
+                        END
+                    )
+                    FROM pedidos_b2b p
+                    WHERE p.id_distribuidor=d.id AND p.estado IN ('Despachado','Despachado parcial')
+                ),0) AS pedidos,
                 COALESCE((SELECT SUM(c.monto) FROM cobros_distribuidores c WHERE c.id_distribuidor=d.id),0) AS cobrado,
                 (SELECT MIN(p.fecha) FROM pedidos_b2b p
                  WHERE p.id_distribuidor=d.id AND p.estado IN ('Despachado','Despachado parcial')) AS pedido_mas_viejo
