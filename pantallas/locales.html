@@ -1156,15 +1156,23 @@
             doc.text(`Fecha pedido: ${dt}`, 14, 45);
             doc.text(`Solicitó: ${emp}`, 14, 51);
             doc.text(`Impreso: ${new Date().toLocaleString('es-AR')}`, 196, 39, {align:'right'});
-            // Tabla
-            const filas = (r.detalle||[]).map(d => [
-                d.sabor ? (d.nombre_producto + ' — ' + d.sabor) : d.nombre_producto,
-                String(d.cantidad),
-                ''  // columna "preparado" para tildar a mano
-            ]);
+            // Tabla. Si el pedido ya fue armado, mostramos lo realmente preparado.
+            const tieneArmado = r.tiene_armado;
+            const filas = (r.detalle||[]).map(d => {
+                const nombre = d.sabor ? (d.nombre_producto + ' — ' + d.sabor) : d.nombre_producto;
+                const pedido = String(d.cantidad);
+                if (tieneArmado) {
+                    const arm = (d.armado === null || d.armado === undefined) ? 0 : d.armado;
+                    return [nombre, pedido, String(arm)];
+                }
+                return [nombre, pedido, ''];  // sin armar: columna vacía para tildar a mano
+            });
+            const encab = tieneArmado
+                ? [['Producto', 'Pedido', 'Despachado']]
+                : [['Producto', 'Cant.', 'Preparado ✓']];
             doc.autoTable({
                 startY: 58,
-                head: [['Producto', 'Cant.', 'Preparado ✓']],
+                head: encab,
                 body: filas,
                 headStyles: { fillColor:[255,255,255], textColor:[0,0,0], fontStyle:'bold', lineWidth:0.3, lineColor:[0,0,0] },
                 styles: { fontSize:11, cellPadding:4, lineWidth:0.1, lineColor:[120,120,120] },
