@@ -1,6 +1,9 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
+<script>window.PANEL_ACTUAL = "catalogo_stock";</script>
+<script src="/static/auth.js"></script>
+
     <meta charset="UTF-8">
     <title>Catálogo | Portal del Viento</title>
     <script src="https://cdn.tailwindcss.com"></script>
@@ -128,6 +131,12 @@
             <div id="preview-imagen-prod" class="hidden mb-4">
                 <img id="img-preview-prod" src="" class="h-24 rounded-lg object-cover border border-gray-700">
             </div>
+
+            <label class="flex items-center gap-2 mb-4 cursor-pointer bg-black border border-gray-700 rounded p-3">
+                <input type="checkbox" id="prod-visible-mayorista" checked class="w-5 h-5 accent-neon">
+                <span class="text-sm text-white font-bold">Visible para distribuidores</span>
+                <span class="text-gray-500 text-xs">(destildá para ocultarlo a los mayoristas)</span>
+            </label>
             
             <div class="flex justify-end gap-3">
                 <button onclick="cerrarModales()" class="px-4 py-2 text-gray-400 hover:text-white font-bold">Cancelar</button>
@@ -262,7 +271,7 @@
                                     class="text-xs bg-green-900/40 text-green-400 border border-green-800 hover:bg-green-900 px-2 py-1 rounded transition" title="Modificar Precio">
                                     💲 Precio
                                 </button>
-                                <button onclick="abrirModalEditar(${p.id}, '${p.nombre.replace(/'/g,"\\'")}', '${p.sku}', ${p.id_categoria||'null'}, ${p.stock_alerta||20}, '${p.imagen_url||''}', ${precio}, ${idPres || 'null'}, ${p.unidades_por_caja||'null'})"
+                                <button onclick="abrirModalEditar(${p.id}, '${p.nombre.replace(/'/g,"\\'")}', '${p.sku}', ${p.id_categoria||'null'}, ${p.stock_alerta||20}, '${p.imagen_url||''}', ${precio}, ${idPres || 'null'}, ${p.unidades_por_caja||'null'}, ${p.visible_mayorista===false?'false':'true'})"
                                     class="text-xs border border-gray-700 bg-gray-800 hover:border-gray-500 px-2 py-1 rounded text-gray-400 hover:text-white" title="Editar Producto">
                                     ✎
                                 </button>
@@ -307,12 +316,13 @@
             document.getElementById('prod-upc').value = '12';
             document.getElementById('prod-precio').value = '';
             document.getElementById('prod-imagen').value = '';
+            document.getElementById('prod-visible-mayorista').checked = true;
             previsualizarImagen();
             document.getElementById('prod-stock').disabled = false;
             document.getElementById('modal-producto').classList.replace('modal-oculto','modal-visible');
         }
 
-        function abrirModalEditar(id, nombre, sku, id_cat, alerta, imagen, precio, idPres, upc) {
+        function abrirModalEditar(id, nombre, sku, id_cat, alerta, imagen, precio, idPres, upc, visibleMay) {
             document.getElementById('modal-prod-titulo').textContent = 'Editar Producto';
             document.getElementById('prod-id').value = id;
             document.getElementById('prod-id-pres').value = idPres || '';
@@ -323,6 +333,7 @@
             document.getElementById('prod-categoria').value = id_cat || '';
             document.getElementById('prod-alerta').value = alerta;
             document.getElementById('prod-upc').value = (upc != null && upc !== 'null') ? upc : 12;
+            document.getElementById('prod-visible-mayorista').checked = (visibleMay !== false);
             document.getElementById('prod-precio').value = precio || 0;
             document.getElementById('prod-imagen').value = imagen || '';
             previsualizarImagen();
@@ -352,7 +363,8 @@
                 unidades_por_caja: parseInt(document.getElementById('prod-upc').value) || null,
                 imagen_url:    document.getElementById('prod-imagen').value.trim() || null,
                 precio_mayorista: precioMay,
-                precio_minorista: 0
+                precio_minorista: 0,
+                visible_mayorista: document.getElementById('prod-visible-mayorista').checked
             };
             if (!data.sku || !data.nombre) { alert('Completá SKU y nombre.'); return; }
 
