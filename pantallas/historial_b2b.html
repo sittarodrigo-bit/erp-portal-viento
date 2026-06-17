@@ -1,6 +1,9 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
+<script>window.PANEL_ACTUAL = "historial_b2b";</script>
+<script src="/static/auth.js"></script>
+
     <meta charset="UTF-8">
     <title>Pedidos B2B | Portal del Viento</title>
     <script src="https://cdn.tailwindcss.com"></script>
@@ -627,20 +630,32 @@
             doc.text('Fecha: ' + new Date(pedidoActual.fecha).toLocaleDateString('es-AR'), 150, 53);
             doc.text('Estado: ' + pedidoActual.estado, 150, 58);
 
-            var totalUnidades = itemsActuales.reduce(function(a, i){ return a + (parseInt(i.cantidad) || 0); }, 0);
+            var hayArmado = itemsActuales.some(function(i){ return i.armado !== null && i.armado !== undefined; });
+            var totalUnidades = itemsActuales.reduce(function(a, i){
+                var c = hayArmado ? (i.armado || 0) : (parseInt(i.cantidad) || 0);
+                return a + c;
+            }, 0);
             var itemsDistintos = itemsActuales.length;
 
             doc.autoTable({
                 startY: 67,
-                head: [['Producto','Cantidad','Recibido conforme']],
-                body: itemsActuales.map(function(i) { return [i.producto, i.cantidad, '☐']; }),
+                head: hayArmado ? [['Producto','Pedido','Despachado','Recibido conforme']] : [['Producto','Cantidad','Recibido conforme']],
+                body: itemsActuales.map(function(i) {
+                    if (hayArmado) {
+                        var arm = (i.armado === null || i.armado === undefined) ? 0 : i.armado;
+                        return [i.producto, i.cantidad, arm, '☐'];
+                    }
+                    return [i.producto, i.cantidad, '☐'];
+                }),
                 foot: [
-                    ['TOTAL: ' + itemsDistintos + ' productos / ' + totalUnidades + ' unidades', '', '']
+                    hayArmado
+                      ? ['TOTAL: ' + itemsDistintos + ' productos / ' + totalUnidades + ' unidades despachadas', '', '', '']
+                      : ['TOTAL: ' + itemsDistintos + ' productos / ' + totalUnidades + ' unidades', '', '']
                 ],
                 headStyles: {fillColor:[255,255,255], textColor:[0,0,0], fontStyle:'bold', lineWidth:0.3, lineColor:[0,0,0], fontSize:8},
                 footStyles: {fillColor:[255,255,255], textColor:[0,0,0], fontStyle:'bold', fontSize:9, lineWidth:0.3, lineColor:[0,0,0]},
                 styles: {fontSize:8, cellPadding:1.5, lineWidth:0.1, lineColor:[120,120,120]},
-                columnStyles: {1:{halign:'center'}, 2:{halign:'center'}}
+                columnStyles: hayArmado ? {1:{halign:'center'}, 2:{halign:'center'}, 3:{halign:'center'}} : {1:{halign:'center'}, 2:{halign:'center'}}
             });
             var y = doc.lastAutoTable.finalY + 18;
             if (y > 270) y = 270;
