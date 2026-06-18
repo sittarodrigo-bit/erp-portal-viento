@@ -4863,12 +4863,11 @@ def locales_reposicion_reponer(id: int):
             raise HTTPException(status_code=404, detail="Reposición no encontrada")
         if row['estado'] == 'repuesto':
             return {"status": "ya_repuesto"}
-        fabrica_ya_descontada = bool(row['desc'])  # true si pasó por el armado
+        fabrica_ya_descontada = bool(row['desc'])
 
         cur.execute("SELECT id_producto, nombre_producto, cantidad, sabor FROM pos_reposiciones_detalle WHERE id_reposicion=%s", (id,))
         items = fetchall_dict(cur)
 
-        # Cantidades armadas por el empleado (si las hay)
         armado = {}
         hay_armado = False
         try:
@@ -4881,46 +4880,95 @@ def locales_reposicion_reponer(id: int):
 
         no_descontados = []
         for it in items:
-            # Cantidad real: lo armado si existe; si no, lo pedido.
             if hay_armado:
                 cant = armado.get((it['id_producto'], (it.get('sabor') or '')), 0)
             else:
                 cant = float(it['cantidad'] or 0)
             if cant <= 0:
                 continue
-            # 1) SUMAR al stock del LOCAL (esto es lo que hace "Reponer")
+
+            # 1) SUMAR al stock del LOCAL
             if it['id_producto']:
                 cur.execute("UPDATE pos_productos SET stock = COALESCE(stock,0) + %s WHERE id=%s", (cant, it['id_producto']))
                 try:
                     registrar_movimiento_stock(cur, it['id_producto'], cant, 'entrada', 'reposicion', motivo='Reposición #' + str(id))
                 except Exception:
                     pass
-            # 2) Descontar de FÁBRICA SOLO si NO pasó por el armado (reposición directa)
+
+            # 2) Descontar de FÁBRICA solo si no pasó por el armado
             if fabrica_ya_descontada:
                 continue
-            termino = (it.get('sabor') or it.get('nombre_producto') or '').strip()
-            id_fab = None; upc = 1
-            if termino:
-                cur.execute("SELECT id, COALESCE(unidades_por_caja,1) AS upc FROM productos WHERE LOWER(nombre)=LOWER(%s) AND COALESCE(activo,true)=true LIMIT 1", (termino,))
+
+            nombre_prod = (it.get('nombre_producto') or '').strip()
+            sabor       = (it.get('sabor') or '').strip()
+
+            # Armamos los términos de búsqueda en orden de precisión:
+            # 1º "Alfajor Frambuesa" (nombre + sabor exacto)
+            # 2º LIKE "%Alfajor%Frambuesa%"
+            # 3º solo sabor exacto (comportamiento anterior, como fallback)
+            # 4º LIKE "%frambuesa%"
+            terminos_exactos = []
+            terminos_like    = []
+
+            if nombre_prod and sabor:
+                terminos_exactos.append(nombre_prod + ' ' + sabor)
+                terminos_like.append('%' + nombre_prod + '%' + sabor + '%')
+                terminos_like.append('%' + sabor + '%' + nombre_prod + '%')
+            if nombre_prod:
+                terminos_exactos.append(nombre_prod)
+                terminos_like.append('%' + nombre_prod + '%')
+            if sabor:
+                terminos_exactos.append(sabor)
+                terminos_like.append('%' + sabor + '%')
+
+            id_fab = None
+            upc    = 1
+
+            # Búsqueda exacta primero
+            for termino in terminos_exactos:
+                cur.execute(
+                    "SELECT id, COALESCE(unidades_por_caja,1) AS upc FROM productos "
+                    "WHERE LOWER(nombre)=LOWER(%s) AND COALESCE(activo,true)=true LIMIT 1",
+                    (termino,)
+                )
                 fab = cur.fetchone()
-                if not fab:
-                    cur.execute("SELECT id, COALESCE(unidades_por_caja,1) AS upc FROM productos WHERE LOWER(nombre) LIKE LOWER(%s) AND COALESCE(activo,true)=true ORDER BY LENGTH(nombre) LIMIT 1", ('%'+termino+'%',))
-                    fab = cur.fetchone()
                 if fab:
                     id_fab = fab['id']
-                    try:
-                        upc = float(fab['upc'] or 1) or 1
-                    except Exception:
-                        upc = 1
+                    try: upc = float(fab['upc'] or 1) or 1
+                    except Exception: upc = 1
+                    break
+
+            # Si no encontró exacto, buscar por LIKE (más corto primero = más específico)
+            if not id_fab:
+                for termino in terminos_like:
+                    cur.execute(
+                        "SELECT id, COALESCE(unidades_por_caja,1) AS upc FROM productos "
+                        "WHERE LOWER(nombre) LIKE LOWER(%s) AND COALESCE(activo,true)=true "
+                        "ORDER BY LENGTH(nombre) LIMIT 1",
+                        (termino,)
+                    )
+                    fab = cur.fetchone()
+                    if fab:
+                        id_fab = fab['id']
+                        try: upc = float(fab['upc'] or 1) or 1
+                        except Exception: upc = 1
+                        break
+
             if id_fab:
                 cajas = cant / upc
-                cur.execute("UPDATE productos SET stock_actual = GREATEST(COALESCE(stock_actual,0) - %s, 0) WHERE id=%s", (cajas, id_fab))
+                cur.execute(
+                    "UPDATE productos SET stock_actual = GREATEST(COALESCE(stock_actual,0) - %s, 0) WHERE id=%s",
+                    (cajas, id_fab)
+                )
                 try:
-                    registrar_movimiento_stock(cur, id_fab, -cajas, 'salida', 'reposicion_local', motivo='Enviado a local (reposición #' + str(id) + ')')
+                    registrar_movimiento_stock(cur, id_fab, -cajas, 'salida', 'reposicion_local',
+                                               motivo='Enviado a local (reposición #' + str(id) + ')')
                 except Exception:
                     pass
             else:
-                no_descontados.append(termino or ('producto #' + str(it.get('id_producto'))))
+                etiqueta = (nombre_prod + (' (' + sabor + ')' if sabor else '')) or ('producto #' + str(it.get('id_producto')))
+                no_descontados.append(etiqueta)
+
         cur.execute("UPDATE pos_reposiciones SET estado='repuesto' WHERE id=%s", (id,))
         conn.commit()
         resultado = {"status": "ok"}
