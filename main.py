@@ -2608,10 +2608,116 @@ def marcar_pagado(data: dict = Body(...)):
     finally:
         liberar_conexion(conn)
 
+@app.get("/api/costos/productos")
+def listar_costos_productos():
+    """Lista los productos del local (únicos por nombre) con su precio de costo,
+    para la planilla de carga de costos."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            cur.execute("""SELECT nombre, COALESCE(categoria,'') AS categoria,
+                                  MAX(COALESCE(precio,0)) AS precio,
+                                  MAX(COALESCE(precio_costo,0)) AS precio_costo
+                           FROM pos_productos WHERE COALESCE(activo,true)=true
+                           GROUP BY nombre, categoria ORDER BY categoria, nombre""")
+            return fetchall_dict(cur)
+        except Exception:
+            conn.rollback()
+            raise HTTPException(status_code=400, detail="Falta correr CREAR_PRECIO_COSTO.sql en la base.")
+    finally:
+        liberar_conexion(conn)
+
+@app.post("/api/costos/guardar")
+def guardar_costos(data: dict = Body(...)):
+    """Guarda el precio de costo para un producto (por nombre, en todos los locales)."""
+    nombre = (data.get('nombre') or '').strip()
+    costo = float(data.get('precio_costo') or 0)
+    if not nombre:
+        raise HTTPException(status_code=400, detail="Falta el nombre")
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        try:
+            cur.execute("UPDATE pos_productos SET precio_costo=%s WHERE nombre=%s", (costo, nombre))
+            conn.commit()
+            return {"status": "ok"}
+        except Exception:
+            conn.rollback()
+            raise HTTPException(status_code=400, detail="Falta correr CREAR_PRECIO_COSTO.sql en la base.")
+    finally:
+        liberar_conexion(conn)
+
 @app.get("/api/reportes/ganancia_local")
 def reporte_ganancia_local(fecha_desde: str, fecha_hasta: str, id_local: int):
-    """Ganancia del local = (precio de venta − precio mayorista de fábrica) × cantidad.
-    Empareja por nombre con la fábrica. Los productos sin precio mayorista se listan aparte."""
+    """Ganancia del local = (precio de venta − precio de costo cargado) × cantidad.
+    Usa el precio_costo de los productos del local. Los productos sin costo cargado
+    se listan aparte."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        # Mapa nombre → costo (del local)
+        costos = {}
+        try:
+            cur.execute("SELECT nombre, MAX(COALESCE(precio_costo,0)) AS c FROM pos_productos GROUP BY nombre")
+            for r in fetchall_dict(cur):
+                costos[(r['nombre'] or '').strip().lower()] = float(r['c'] or 0)
+        except Exception:
+            conn.rollback()
+        # Ventas del período por producto
+        cur.execute("""
+            SELECT d.nombre_producto,
+                   SUM(d.cantidad) AS cantidad,
+                   SUM(d.cantidad * d.precio_unitario) AS total_vendido
+            FROM pos_detalle_ventas d
+            JOIN pos_ventas v ON d.id_venta = v.id
+            WHERE v.id_local = %s AND DATE(v.fecha) >= %s AND DATE(v.fecha) <= %s
+            GROUP BY d.nombre_producto
+            ORDER BY total_vendido DESC
+        """, (id_local, fecha_desde, fecha_hasta))
+        ventas = fetchall_dict(cur)
+
+        con_costo = []
+        sin_costo = []
+        total_vendido = 0.0
+        total_costo = 0.0
+        total_ganancia = 0.0
+        total_sin_costo = 0.0
+
+        for v in ventas:
+            nombre = v['nombre_producto'] or ''
+            cant = float(v['cantidad'] or 0)
+            vendido = float(v['total_vendido'] or 0)
+            total_vendido += vendido
+            costo_unit = costos.get(nombre.strip().lower(), 0)
+            if costo_unit and costo_unit > 0:
+                costo = costo_unit * cant
+                ganancia = vendido - costo
+                total_costo += costo
+                total_ganancia += ganancia
+                con_costo.append({
+                    "producto": nombre, "cantidad": cant,
+                    "vendido": round(vendido, 2), "costo_mayorista": round(costo, 2),
+                    "ganancia": round(ganancia, 2)
+                })
+            else:
+                total_sin_costo += vendido
+                sin_costo.append({"producto": nombre, "cantidad": cant, "vendido": round(vendido, 2)})
+
+        return {
+            "total_vendido": round(total_vendido, 2),
+            "total_con_costo": round(total_vendido - total_sin_costo, 2),
+            "total_costo_mayorista": round(total_costo, 2),
+            "total_ganancia": round(total_ganancia, 2),
+            "total_sin_costo": round(total_sin_costo, 2),
+            "con_costo": con_costo,
+            "sin_costo": sin_costo
+        }
+    finally:
+        liberar_conexion(conn)
+
+@app.get("/api/reportes/ganancia_local_OLD_DESUSO")
+def reporte_ganancia_local_old(fecha_desde: str, fecha_hasta: str, id_local: int):
     conn = obtener_conexion()
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
@@ -6111,6 +6217,10 @@ def route_liquidacion():
 @app.get("/ganancia-local")
 def route_ganancia_local():
     return serve_html("ganancia_local.html")
+
+@app.get("/costos-productos")
+def route_costos_productos():
+    return serve_html("costos_productos.html")
 
 @app.get("/ser-distribuidor")
 def route_ser_distribuidor():
