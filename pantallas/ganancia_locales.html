@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ganancia del Local | Portal del Viento</title>
+<script>window.PANEL_ACTUAL = "reportes";</script>
+<script src="/static/auth.js"></script>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>tailwind.config={theme:{extend:{colors:{neon:'#d4ff3f'}}}}</script>
+</head>
+<body class="bg-gray-950 text-gray-200 font-sans min-h-screen">
+
+  <header class="bg-black border-b border-gray-800 px-6 py-4 flex items-center justify-between sticky top-0 z-20">
+    <div class="flex items-center gap-3">
+      <a href="/admin" class="text-gray-400 hover:text-white text-sm">← Panel</a>
+      <h1 class="text-neon font-bold text-lg">📈 Ganancia del Local</h1>
+    </div>
+    <button onclick="imprimir()" class="border border-gray-700 text-gray-300 hover:text-white px-4 py-2 rounded-lg text-sm">🖨️ Imprimir</button>
+  </header>
+
+  <main class="p-6 max-w-5xl mx-auto">
+    <div class="bg-black border border-gray-800 rounded-2xl p-5 mb-6">
+      <div class="flex flex-wrap gap-4 items-end">
+        <div>
+          <label class="block text-xs text-gray-500 font-bold mb-1">Local</label>
+          <select id="sel-local" class="bg-gray-900 border border-gray-700 text-white rounded-lg p-2.5"></select>
+        </div>
+        <div>
+          <label class="block text-xs text-gray-500 font-bold mb-1">Desde</label>
+          <input type="date" id="fecha-desde" class="bg-gray-900 border border-gray-700 text-white rounded-lg p-2.5">
+        </div>
+        <div>
+          <label class="block text-xs text-gray-500 font-bold mb-1">Hasta</label>
+          <input type="date" id="fecha-hasta" class="bg-gray-900 border border-gray-700 text-white rounded-lg p-2.5">
+        </div>
+        <button onclick="cargar()" class="bg-neon text-black font-bold px-6 py-2.5 rounded-lg">Calcular</button>
+        <div class="flex gap-2 ml-auto">
+          <button onclick="rango('mes')" class="text-xs border border-gray-700 text-gray-300 hover:text-white px-3 py-2 rounded-lg">Este mes</button>
+          <button onclick="rango('semana')" class="text-xs border border-gray-700 text-gray-300 hover:text-white px-3 py-2 rounded-lg">Esta semana</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="contenido"><p class="text-gray-500 text-center py-16">Elegí un local y un rango, y tocá Calcular.</p></div>
+  </main>
+
+<script>
+const API_URL = window.location.origin + "/api";
+const $ = id => document.getElementById(id);
+const fmt = n => '$' + (Math.round(parseFloat(n)||0)).toLocaleString('es-AR');
+let data = null;
+
+async function cargarLocales(){
+  try{
+    const locales = await fetch(`${API_URL}/pos/locales`).then(r=>r.json());
+    $('sel-local').innerHTML = locales.map(l=>`<option value="${l.id}">${l.nombre}</option>`).join('');
+  }catch(e){ $('sel-local').innerHTML = '<option>Error</option>'; }
+}
+
+function rango(tipo){
+  const hoy = new Date();
+  let desde = new Date(hoy);
+  if(tipo === 'mes'){ desde = new Date(hoy.getFullYear(), hoy.getMonth(), 1); }
+  else if(tipo === 'semana'){ const d=(hoy.getDay()+6)%7; desde.setDate(hoy.getDate()-d); }
+  $('fecha-desde').value = desde.toISOString().split('T')[0];
+  $('fecha-hasta').value = hoy.toISOString().split('T')[0];
+  cargar();
+}
+
+async function cargar(){
+  const desde=$('fecha-desde').value, hasta=$('fecha-hasta').value, local=$('sel-local').value;
+  if(!desde||!hasta||!local){ alert('Completá local y fechas.'); return; }
+  $('contenido').innerHTML = '<p class="text-gray-500 text-center py-16">Calculando...</p>';
+  try{
+    data = await fetch(`${API_URL}/reportes/ganancia_local?fecha_desde=${desde}&fecha_hasta=${hasta}&id_local=${local}`).then(r=>r.json());
+    render();
+  }catch(e){ $('contenido').innerHTML = '<p class="text-red-400 text-center py-16">No se pudo calcular.</p>'; }
+}
+
+function render(){
+  if(!data || (data.con_costo.length===0 && data.sin_costo.length===0)){
+    $('contenido').innerHTML = '<div class="text-center py-16 text-gray-500"><div class="text-5xl mb-3">📭</div>No hubo ventas en ese período.</div>';
+    return;
+  }
+  let html = '';
+  // Tarjetas resumen
+  html += '<div class="grid md:grid-cols-3 gap-4 mb-6">';
+  html += '<div class="bg-black border border-gray-800 rounded-2xl p-5 text-center"><p class="text-gray-500 text-xs uppercase font-bold">Vendido (con costo)</p><p class="text-white font-bold text-3xl mt-1">'+fmt(data.total_con_costo)+'</p></div>';
+  html += '<div class="bg-black border border-gray-800 rounded-2xl p-5 text-center"><p class="text-gray-500 text-xs uppercase font-bold">Costo mayorista</p><p class="text-orange-400 font-bold text-3xl mt-1">'+fmt(data.total_costo_mayorista)+'</p></div>';
+  html += '<div class="bg-gradient-to-r from-green-900/40 to-gray-900 border border-green-800/50 rounded-2xl p-5 text-center"><p class="text-gray-400 text-xs uppercase font-bold">Ganancia</p><p class="text-neon font-bold text-3xl mt-1">'+fmt(data.total_ganancia)+'</p></div>';
+  html += '</div>';
+
+  // Detalle con costo
+  html += '<div class="bg-black border border-gray-800 rounded-2xl overflow-hidden mb-5"><div class="p-4 border-b border-gray-800"><p class="text-white font-bold">Productos con ganancia calculada</p></div><div class="overflow-x-auto"><table class="w-full text-sm"><thead class="text-xs text-gray-500 border-b border-gray-800 bg-gray-900"><tr><th class="py-3 px-4 text-left">Producto</th><th class="py-3 px-4 text-center">Cant.</th><th class="py-3 px-4 text-right">Vendido</th><th class="py-3 px-4 text-right">Costo</th><th class="py-3 px-4 text-right">Ganancia</th></tr></thead><tbody class="divide-y divide-gray-800">';
+  html += data.con_costo.map(p =>
+    '<tr><td class="py-3 px-4 text-white">'+p.producto+'</td><td class="py-3 px-4 text-center text-gray-400">'+p.cantidad+'</td><td class="py-3 px-4 text-right text-gray-300">'+fmt(p.vendido)+'</td><td class="py-3 px-4 text-right text-orange-400">'+fmt(p.costo_mayorista)+'</td><td class="py-3 px-4 text-right text-neon font-bold">'+fmt(p.ganancia)+'</td></tr>'
+  ).join('');
+  html += '</tbody></table></div></div>';
+
+  // Sin costo (aparte)
+  if(data.sin_costo.length){
+    html += '<div class="bg-black border border-yellow-800/50 rounded-2xl overflow-hidden"><div class="p-4 border-b border-gray-800"><p class="text-yellow-400 font-bold">⚠️ Sin precio mayorista cargado (no se calculó ganancia)</p><p class="text-gray-500 text-xs mt-1">Estos productos no se encontraron en la fábrica con precio mayorista. Vendido: '+fmt(data.total_sin_costo)+'</p></div><div class="overflow-x-auto"><table class="w-full text-sm"><thead class="text-xs text-gray-500 border-b border-gray-800 bg-gray-900"><tr><th class="py-3 px-4 text-left">Producto</th><th class="py-3 px-4 text-center">Cant.</th><th class="py-3 px-4 text-right">Vendido</th></tr></thead><tbody class="divide-y divide-gray-800">';
+    html += data.sin_costo.map(p =>
+      '<tr><td class="py-3 px-4 text-gray-300">'+p.producto+'</td><td class="py-3 px-4 text-center text-gray-500">'+p.cantidad+'</td><td class="py-3 px-4 text-right text-gray-400">'+fmt(p.vendido)+'</td></tr>'
+    ).join('');
+    html += '</tbody></table></div></div>';
+  }
+
+  $('contenido').innerHTML = html;
+}
+
+function imprimir(){
+  if(!data) return;
+  const desde=$('fecha-desde').value, hasta=$('fecha-hasta').value;
+  const localNom = $('sel-local').options[$('sel-local').selectedIndex].text;
+  const filas = data.con_costo.map(p =>
+    '<tr><td>'+p.producto+'</td><td style="text-align:center">'+p.cantidad+'</td><td style="text-align:right">$'+Math.round(p.vendido).toLocaleString('es-AR')+'</td><td style="text-align:right">$'+Math.round(p.costo_mayorista).toLocaleString('es-AR')+'</td><td style="text-align:right">$'+Math.round(p.ganancia).toLocaleString('es-AR')+'</td></tr>'
+  ).join('');
+  const html = '<html><head><title>Ganancia del Local</title><style>body{font-family:Arial,sans-serif;padding:24px;color:#000}h1{font-size:20px;margin:0}p{color:#555;font-size:12px;margin:4px 0 16px}table{width:100%;border-collapse:collapse;font-size:13px}th,td{border:1px solid #999;padding:7px}th{background:#eee;text-align:left}.total{margin-top:16px;font-size:18px;font-weight:bold;text-align:right}</style></head><body>'+
+    '<h1>Ganancia del Local — '+localNom+'</h1><p>Período: '+desde+' al '+hasta+'</p>'+
+    '<table><thead><tr><th>Producto</th><th style="text-align:center">Cant.</th><th style="text-align:right">Vendido</th><th style="text-align:right">Costo</th><th style="text-align:right">Ganancia</th></tr></thead><tbody>'+filas+'</tbody></table>'+
+    '<p class="total">GANANCIA TOTAL: $'+Math.round(data.total_ganancia).toLocaleString('es-AR')+'</p></body></html>';
+  const w = window.open('','_blank'); w.document.write(html); w.document.close(); w.focus(); setTimeout(()=>w.print(),300);
+}
+
+cargarLocales().then(()=>rango('mes'));
+</script>
+</body>
+</html>
