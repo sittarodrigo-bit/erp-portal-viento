@@ -4902,16 +4902,40 @@ def locales_reposicion_reponer(id: int):
         # IDs: 1=ALFAJORES, 2=TRUFAS, 3=CONITOS, 4=DULCE DE LECHE,
         #      6=BOMBAS, 7=CUBANITOS, 8=LInea tradicional
         CATEGORIA_MAP = [
-            ('ALFAJOR PDV',      1),   # ALFAJORES
-            ('ALFAJOR',          1),   # ALFAJORES
-            ('CONITOS SUELTOS',  3),   # CONITOS
-            ('CONITO',           3),   # CONITOS
-            ('TRUFA',            2),   # TRUFAS
-            ('CUBANITO',         7),   # CUBANITOS
-            ('DULCE DE LECHE',   4),   # DULCE DE LECHE
-            ('BOMBA',            6),   # BOMBAS
-            ('TRADICIONAL',      8),   # LInea tradicional
+            ('ALFAJOR PDV',           1),
+            ('ALFAJOR',               1),
+            ('CONITOS DULCE DE LECHE',3),
+            ('CONITOS SUELTOS',       3),
+            ('CUBANITOS SUELTOS',     7),
+            ('CUBANITO',              7),
+            ('TRUFAS',                2),
+            ('TRUFA',                 2),
+            ('DULCE DE LECHE SABORIZADO', 4),
+            ('DULCE DE  LECHE',       4),
+            ('DULCE DE LECHE',        4),
+            ('BOMBA',                 6),
+            ('TRADICIONAL',           8),
         ]
+
+        # Palabras clave del sabor que buscar en el nombre del producto de fábrica
+        # Cuando el sabor del POS no coincide exactamente con el nombre en fábrica
+        SABOR_ALIAS = {
+            'clasico':   ['clasic', 'clasico', 'classic'],
+            'clasica':   ['clasic', 'clasico', 'classic'],
+            'clasicas':  ['clasic', 'clasico', 'classic'],
+            'baileys':   ['baileys', 'bayles'],
+            'malbec':    ['malbec'],
+            'ron':       ['ron'],
+            'dubai':     ['dubai'],
+            'pistacho':  ['pistach'],
+            'blanco':    ['blanc', 'blanco'],
+            'negro':     ['negro'],
+            'amarula':   ['amarula'],
+            'frambuesa': ['frambuesa', 'framb'],
+            'ahumado':   ['ahumado'],
+            'avellana':  ['avellana'],
+            'avellanas': ['avellana'],
+        }
 
         def id_categoria_fabrica(nombre_producto):
             nombre_up = (nombre_producto or '').upper()
@@ -4919,6 +4943,72 @@ def locales_reposicion_reponer(id: int):
                 if clave in nombre_up:
                     return id_cat
             return None
+
+        def buscar_en_fabrica(cur, id_cat, sabor, nombre_prod):
+            """Busca el producto en fábrica. Devuelve (id, upc) o (None, 1)."""
+            terminos_sabor = []
+            if sabor:
+                terminos_sabor.append(sabor)
+                for alias in SABOR_ALIAS.get(sabor.lower(), []):
+                    if alias not in terminos_sabor:
+                        terminos_sabor.append(alias)
+
+            # PASO 1: categoría + sabor
+            if id_cat and terminos_sabor:
+                for t in terminos_sabor:
+                    cur.execute("""
+                        SELECT id, COALESCE(unidades_por_caja,1) AS upc
+                        FROM productos
+                        WHERE id_categoria = %s
+                          AND LOWER(nombre) LIKE LOWER(%s)
+                          AND COALESCE(activo,true) = true
+                        ORDER BY LENGTH(nombre) LIMIT 1
+                    """, (id_cat, '%' + t + '%'))
+                    fab = cur.fetchone()
+                    if fab:
+                        return fab['id'], float(fab['upc'] or 1) or 1
+
+            # PASO 2: solo categoría (sin sabor — para productos genéricos como "Conitos dulce de leche x 6")
+            if id_cat and not terminos_sabor:
+                cur.execute("""
+                    SELECT id, COALESCE(unidades_por_caja,1) AS upc
+                    FROM productos
+                    WHERE id_categoria = %s
+                      AND COALESCE(activo,true) = true
+                    ORDER BY LENGTH(nombre) LIMIT 1
+                """, (id_cat,))
+                fab = cur.fetchone()
+                if fab:
+                    return fab['id'], float(fab['upc'] or 1) or 1
+
+            # PASO 3: sabor en toda la tabla (fallback)
+            if terminos_sabor:
+                for t in terminos_sabor:
+                    cur.execute("""
+                        SELECT id, COALESCE(unidades_por_caja,1) AS upc
+                        FROM productos
+                        WHERE LOWER(nombre) LIKE LOWER(%s)
+                          AND COALESCE(activo,true) = true
+                        ORDER BY LENGTH(nombre) LIMIT 1
+                    """, ('%' + t + '%',))
+                    fab = cur.fetchone()
+                    if fab:
+                        return fab['id'], float(fab['upc'] or 1) or 1
+
+            # PASO 4: nombre_producto completo en toda la tabla
+            if nombre_prod:
+                cur.execute("""
+                    SELECT id, COALESCE(unidades_por_caja,1) AS upc
+                    FROM productos
+                    WHERE LOWER(nombre) LIKE LOWER(%s)
+                      AND COALESCE(activo,true) = true
+                    ORDER BY LENGTH(nombre) LIMIT 1
+                """, ('%' + nombre_prod + '%',))
+                fab = cur.fetchone()
+                if fab:
+                    return fab['id'], float(fab['upc'] or 1) or 1
+
+            return None, 1
 
         no_descontados = []
         for it in items:
@@ -4945,73 +5035,7 @@ def locales_reposicion_reponer(id: int):
             sabor       = (it.get('sabor') or '').strip()
             id_cat      = id_categoria_fabrica(nombre_prod)
 
-            id_fab = None
-            upc    = 1
-
-            if sabor and id_cat:
-                # PASO 1: buscar por categoria + sabor en el nombre (caso principal)
-                cur.execute("""
-                    SELECT id, COALESCE(unidades_por_caja,1) AS upc
-                    FROM productos
-                    WHERE id_categoria = %s
-                      AND LOWER(nombre) LIKE LOWER(%s)
-                      AND COALESCE(activo,true) = true
-                    ORDER BY LENGTH(nombre)
-                    LIMIT 1
-                """, (id_cat, '%' + sabor + '%'))
-                fab = cur.fetchone()
-                if fab:
-                    id_fab = fab['id']
-                    try: upc = float(fab['upc'] or 1) or 1
-                    except Exception: upc = 1
-
-            if not id_fab and sabor:
-                # PASO 2: buscar por sabor en toda la tabla (fallback sin categoria)
-                cur.execute("""
-                    SELECT id, COALESCE(unidades_por_caja,1) AS upc
-                    FROM productos
-                    WHERE LOWER(nombre) LIKE LOWER(%s)
-                      AND COALESCE(activo,true) = true
-                    ORDER BY LENGTH(nombre)
-                    LIMIT 1
-                """, ('%' + sabor + '%',))
-                fab = cur.fetchone()
-                if fab:
-                    id_fab = fab['id']
-                    try: upc = float(fab['upc'] or 1) or 1
-                    except Exception: upc = 1
-
-            if not id_fab and nombre_prod:
-                # PASO 3: sin sabor, buscar por nombre_producto con categoria
-                if id_cat:
-                    cur.execute("""
-                        SELECT id, COALESCE(unidades_por_caja,1) AS upc
-                        FROM productos
-                        WHERE id_categoria = %s
-                          AND LOWER(nombre) LIKE LOWER(%s)
-                          AND COALESCE(activo,true) = true
-                        ORDER BY LENGTH(nombre)
-                        LIMIT 1
-                    """, (id_cat, '%' + nombre_prod + '%'))
-                    fab = cur.fetchone()
-                    if fab:
-                        id_fab = fab['id']
-                        try: upc = float(fab['upc'] or 1) or 1
-                        except Exception: upc = 1
-                if not id_fab:
-                    cur.execute("""
-                        SELECT id, COALESCE(unidades_por_caja,1) AS upc
-                        FROM productos
-                        WHERE LOWER(nombre) LIKE LOWER(%s)
-                          AND COALESCE(activo,true) = true
-                        ORDER BY LENGTH(nombre)
-                        LIMIT 1
-                    """, ('%' + nombre_prod + '%',))
-                    fab = cur.fetchone()
-                    if fab:
-                        id_fab = fab['id']
-                        try: upc = float(fab['upc'] or 1) or 1
-                        except Exception: upc = 1
+            id_fab, upc = buscar_en_fabrica(cur, id_cat, sabor, nombre_prod)
 
             if id_fab:
                 cajas = cant / upc
