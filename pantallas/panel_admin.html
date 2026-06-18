@@ -32,10 +32,12 @@
             <a href="/distribuidores" class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">🚚 Distribuidores</a>
             <a href="/prospectos"     class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">🎯 Prospectos (captación)</a>
             <a href="/ingresos-distribuidores" class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">💵 Ingresos distribuidores</a>
+            <a href="/deudas-distribuidores" class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">📕 Deudas distribuidores</a>
             <a href="/historial-b2b"  class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">📋 Pedidos B2B</a>
             <a href="/empleados"      class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">👥 Empleados</a>
             <a href="/liquidacion"    class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">💵 Liquidación de sueldos</a>
             <a href="/reportes"       class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">📈 Reportes</a>
+            <a href="/ganancia-local" class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">📈 Ganancia del local</a>
             <a href="/configuracion"  class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">⚙️ Configuración</a>
         </nav>
         <div id="usuario-info" class="p-4 border-t border-gray-800 text-xs text-gray-500 text-center"></div>
@@ -582,5 +584,71 @@
             setInterval(function(){ cargarNotificaciones(false); }, 30000);
         };
     </script>
+<!-- ===== ASISTENTE IA ===== -->
+<button onclick="abrirIA()" id="ia-fab" style="position:fixed;bottom:24px;right:24px;z-index:70;background:#d4ff3f;color:#000;border:none;border-radius:100px;padding:14px 20px;font-weight:bold;font-size:15px;cursor:pointer;box-shadow:0 8px 24px rgba(0,0,0,.4)">🤖 Asistente</button>
+
+<div id="ia-panel" style="display:none;position:fixed;bottom:24px;right:24px;z-index:71;width:380px;max-width:calc(100vw - 32px);height:520px;max-height:calc(100vh - 48px);background:#0a0a0a;border:1px solid #2a2a2a;border-radius:18px;flex-direction:column;overflow:hidden;box-shadow:0 20px 50px rgba(0,0,0,.6)">
+  <div style="background:#000;padding:14px 16px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #222">
+    <div><span style="color:#d4ff3f;font-weight:bold">🤖 Asistente</span><span style="color:#666;font-size:12px;margin-left:6px">Portal del Viento</span></div>
+    <button onclick="cerrarIA()" style="background:none;border:none;color:#888;font-size:22px;cursor:pointer;line-height:1">×</button>
+  </div>
+  <div id="ia-mensajes" style="flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:10px"></div>
+  <div style="padding:12px;border-top:1px solid #222;display:flex;gap:8px">
+    <input type="text" id="ia-input" placeholder="Preguntá sobre ventas, stock, deudas..." onkeydown="if(event.key==='Enter')enviarIA()" style="flex:1;background:#1a1a1a;border:1px solid #333;color:#fff;border-radius:10px;padding:11px;font-size:14px;outline:none">
+    <button onclick="enviarIA()" id="ia-enviar" style="background:#d4ff3f;color:#000;border:none;border-radius:10px;padding:0 16px;font-weight:bold;cursor:pointer">➤</button>
+  </div>
+</div>
+
+<script>
+let iaIniciado = false;
+function abrirIA(){
+  document.getElementById('ia-panel').style.display = 'flex';
+  document.getElementById('ia-fab').style.display = 'none';
+  if(!iaIniciado){
+    iaIniciado = true;
+    iaBurbuja('asistente', '¡Hola! Soy tu asistente. Preguntame sobre las ventas, el stock, las deudas de distribuidores o los ingresos. Por ejemplo: "¿cuánto vendí hoy?" o "¿qué productos tienen poco stock?"');
+    // Chequear si está configurado
+    fetch(API_URL + '/ia/estado').then(r=>r.json()).then(d=>{
+      if(!d.configurado) iaBurbuja('asistente', '⚠️ Todavía no estoy activado. Hay que cargar la API key de Anthropic en Railway para que pueda responder.');
+    }).catch(()=>{});
+  }
+  setTimeout(()=>document.getElementById('ia-input').focus(), 100);
+}
+function cerrarIA(){
+  document.getElementById('ia-panel').style.display = 'none';
+  document.getElementById('ia-fab').style.display = 'block';
+}
+function iaBurbuja(quien, texto){
+  const cont = document.getElementById('ia-mensajes');
+  const div = document.createElement('div');
+  const esUser = quien === 'user';
+  div.style.cssText = 'max-width:85%;padding:10px 13px;border-radius:14px;font-size:14px;line-height:1.45;white-space:pre-wrap;' +
+    (esUser ? 'align-self:flex-end;background:#d4ff3f;color:#000' : 'align-self:flex-start;background:#1e1e1e;color:#e5e5e5');
+  div.textContent = texto;
+  cont.appendChild(div);
+  cont.scrollTop = cont.scrollHeight;
+  return div;
+}
+async function enviarIA(){
+  const inp = document.getElementById('ia-input');
+  const pregunta = inp.value.trim();
+  if(!pregunta) return;
+  iaBurbuja('user', pregunta);
+  inp.value = '';
+  const btn = document.getElementById('ia-enviar');
+  btn.disabled = true;
+  const pensando = iaBurbuja('asistente', 'Pensando...');
+  try{
+    const res = await fetch(API_URL + '/ia/preguntar', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ pregunta: pregunta })
+    });
+    const d = await res.json();
+    if(res.ok){ pensando.textContent = d.respuesta; }
+    else { pensando.textContent = '⚠️ ' + (d.detail || 'No pude responder.'); }
+  }catch(e){ pensando.textContent = '⚠️ Error de conexión.'; }
+  finally{ btn.disabled = false; document.getElementById('ia-mensajes').scrollTop = 99999; }
+}
+</script>
 </body>
 </html>
