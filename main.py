@@ -2656,12 +2656,28 @@ def reporte_ganancia_local(fecha_desde: str, fecha_hasta: str, id_local: int):
     conn = obtener_conexion()
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
-        # Mapa nombre → costo (del local)
+        # Mapa nombre del producto base → costo
         costos = {}
         try:
             cur.execute("SELECT nombre, MAX(COALESCE(precio_costo,0)) AS c FROM pos_productos GROUP BY nombre")
             for r in fetchall_dict(cur):
                 costos[(r['nombre'] or '').strip().lower()] = float(r['c'] or 0)
+        except Exception:
+            conn.rollback()
+        # Mapa de variantes: "nombre base (variante)" → (costo_base_unitario, factor)
+        # El POS guarda la venta como "NombreBase (NombreVariante)".
+        variantes = {}
+        try:
+            cur.execute("""SELECT pp.nombre AS base, v.nombre AS variante, COALESCE(v.factor,1) AS factor
+                           FROM pos_producto_variantes v
+                           JOIN pos_productos pp ON v.id_producto = pp.id
+                           WHERE COALESCE(v.activo,true)=true""")
+            for r in fetchall_dict(cur):
+                base = (r['base'] or '').strip()
+                varn = (r['variante'] or '').strip()
+                clave = (base + ' (' + varn + ')').lower()
+                costo_base = costos.get(base.lower(), 0)
+                variantes[clave] = (costo_base, float(r['factor'] or 1))
         except Exception:
             conn.rollback()
         # Ventas del período por producto
@@ -2689,7 +2705,15 @@ def reporte_ganancia_local(fecha_desde: str, fecha_hasta: str, id_local: int):
             cant = float(v['cantidad'] or 0)
             vendido = float(v['total_vendido'] or 0)
             total_vendido += vendido
-            costo_unit = costos.get(nombre.strip().lower(), 0)
+            nclave = nombre.strip().lower()
+            costo_unit = 0
+            # 1) ¿Es una variante? (nombre con presentación) → costo base × factor
+            if nclave in variantes:
+                cbase, factor = variantes[nclave]
+                costo_unit = cbase * factor
+            else:
+                # 2) Producto base directo
+                costo_unit = costos.get(nclave, 0)
             if costo_unit and costo_unit > 0:
                 costo = costo_unit * cant
                 ganancia = vendido - costo
