@@ -2608,6 +2608,75 @@ def marcar_pagado(data: dict = Body(...)):
     finally:
         liberar_conexion(conn)
 
+@app.get("/api/reportes/ganancia_local")
+def reporte_ganancia_local(fecha_desde: str, fecha_hasta: str, id_local: int):
+    """Ganancia del local = (precio de venta − precio mayorista de fábrica) × cantidad.
+    Empareja por nombre con la fábrica. Los productos sin precio mayorista se listan aparte."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        # Todo lo vendido en el período por ese local (sumado por producto)
+        cur.execute("""
+            SELECT d.nombre_producto,
+                   SUM(d.cantidad) AS cantidad,
+                   SUM(d.cantidad * d.precio_unitario) AS total_vendido,
+                   AVG(d.precio_unitario) AS precio_prom
+            FROM pos_detalle_ventas d
+            JOIN pos_ventas v ON d.id_venta = v.id
+            WHERE v.id_local = %s AND DATE(v.fecha) >= %s AND DATE(v.fecha) <= %s
+            GROUP BY d.nombre_producto
+            ORDER BY total_vendido DESC
+        """, (id_local, fecha_desde, fecha_hasta))
+        ventas = fetchall_dict(cur)
+
+        con_costo = []
+        sin_costo = []
+        total_vendido = 0.0
+        total_costo = 0.0
+        total_ganancia = 0.0
+        total_sin_costo = 0.0
+
+        for v in ventas:
+            nombre = v['nombre_producto'] or ''
+            cant = float(v['cantidad'] or 0)
+            vendido = float(v['total_vendido'] or 0)
+            total_vendido += vendido
+            # Buscar precio mayorista en fábrica por nombre (exacto o contiene)
+            mayorista = None
+            if nombre.strip():
+                cur.execute("SELECT precio_mayorista FROM productos WHERE LOWER(nombre)=LOWER(%s) AND COALESCE(activo,true)=true LIMIT 1", (nombre.strip(),))
+                f = cur.fetchone()
+                if not f:
+                    cur.execute("SELECT precio_mayorista FROM productos WHERE LOWER(nombre) LIKE LOWER(%s) AND COALESCE(activo,true)=true ORDER BY LENGTH(nombre) LIMIT 1", ('%'+nombre.strip()+'%',))
+                    f = cur.fetchone()
+                if f and f['precio_mayorista'] is not None and float(f['precio_mayorista']) > 0:
+                    mayorista = float(f['precio_mayorista'])
+            if mayorista is not None:
+                costo = mayorista * cant
+                ganancia = vendido - costo
+                total_costo += costo
+                total_ganancia += ganancia
+                con_costo.append({
+                    "producto": nombre, "cantidad": cant,
+                    "vendido": round(vendido, 2), "costo_mayorista": round(costo, 2),
+                    "ganancia": round(ganancia, 2)
+                })
+            else:
+                total_sin_costo += vendido
+                sin_costo.append({"producto": nombre, "cantidad": cant, "vendido": round(vendido, 2)})
+
+        return {
+            "total_vendido": round(total_vendido, 2),
+            "total_con_costo": round(total_vendido - total_sin_costo, 2),
+            "total_costo_mayorista": round(total_costo, 2),
+            "total_ganancia": round(total_ganancia, 2),
+            "total_sin_costo": round(total_sin_costo, 2),
+            "con_costo": con_costo,
+            "sin_costo": sin_costo
+        }
+    finally:
+        liberar_conexion(conn)
+
 @app.get("/api/reportes/horas_trabajadas")
 def reporte_horas_trabajadas(fecha_desde: str, fecha_hasta: str):
     conn = obtener_conexion()
@@ -6038,6 +6107,10 @@ def route_reportes():
 @app.get("/liquidacion")
 def route_liquidacion():
     return serve_html("liquidacion.html")
+
+@app.get("/ganancia-local")
+def route_ganancia_local():
+    return serve_html("ganancia_local.html")
 
 @app.get("/ser-distribuidor")
 def route_ser_distribuidor():
