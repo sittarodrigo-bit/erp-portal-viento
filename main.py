@@ -2616,11 +2616,12 @@ def listar_costos_productos():
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
         try:
-            cur.execute("""SELECT nombre, COALESCE(categoria,'') AS categoria,
+            cur.execute("""SELECT nombre,
+                                  MAX(COALESCE(categoria,'')) AS categoria,
                                   MAX(COALESCE(precio,0)) AS precio,
                                   MAX(COALESCE(precio_costo,0)) AS precio_costo
                            FROM pos_productos WHERE COALESCE(activo,true)=true
-                           GROUP BY nombre, categoria ORDER BY categoria, nombre""")
+                           GROUP BY nombre ORDER BY nombre""")
             return fetchall_dict(cur)
         except Exception:
             conn.rollback()
@@ -2644,6 +2645,25 @@ def guardar_costos(data: dict = Body(...)):
         except Exception:
             conn.rollback()
             raise HTTPException(status_code=400, detail="Falta correr CREAR_PRECIO_COSTO.sql en la base.")
+    finally:
+        liberar_conexion(conn)
+
+@app.post("/api/costos/guardar_precio")
+def guardar_precio_venta(data: dict = Body(...)):
+    """Guarda el precio de venta para un producto (por nombre, en todos los locales)."""
+    nombre = (data.get('nombre') or '').strip()
+    precio = float(data.get('precio') or 0)
+    if not nombre:
+        raise HTTPException(status_code=400, detail="Falta el nombre")
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        cur.execute("UPDATE pos_productos SET precio=%s WHERE nombre=%s", (precio, nombre))
+        conn.commit()
+        return {"status": "ok"}
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
     finally:
         liberar_conexion(conn)
 
@@ -4878,20 +4898,21 @@ def locales_reposicion_reponer(id: int):
         except Exception:
             conn.rollback()
 
-        # Mapeo: palabras clave en nombre_producto del POS → categoría en fábrica
+        # Mapeo: palabras clave en nombre_producto del POS → id_categoria en fábrica
+        # IDs: 1=ALFAJORES, 2=TRUFAS, 3=CONITOS, 7=CUBANITOS
         CATEGORIA_MAP = [
-            ('ALFAJOR PDV',  'ALFAJORES'),
-            ('ALFAJOR',      'ALFAJORES'),
-            ('CONITO',       'CONITOS'),
-            ('CUBANITO',     'CUBANITOS'),
-            ('TRUFA',        'TRUFAS'),
+            ('ALFAJOR PDV', 1),
+            ('ALFAJOR',     1),
+            ('TRUFA',       2),
+            ('CONITO',      3),
+            ('CUBANITO',    7),
         ]
 
-        def categoria_fabrica(nombre_producto):
+        def id_categoria_fabrica(nombre_producto):
             nombre_up = (nombre_producto or '').upper()
-            for clave, cat in CATEGORIA_MAP:
+            for clave, id_cat in CATEGORIA_MAP:
                 if clave in nombre_up:
-                    return cat
+                    return id_cat
             return None
 
         no_descontados = []
@@ -4917,41 +4938,27 @@ def locales_reposicion_reponer(id: int):
 
             nombre_prod = (it.get('nombre_producto') or '').strip()
             sabor       = (it.get('sabor') or '').strip()
-            categoria   = categoria_fabrica(nombre_prod)
+            id_cat      = id_categoria_fabrica(nombre_prod)
+
+            # Término de búsqueda: sabor si existe, sino nombre_producto
+            termino = sabor if sabor else nombre_prod
 
             id_fab = None
             upc    = 1
 
-            if sabor:
-                # Buscar por sabor filtrando por categoría si la conocemos
+            if termino:
                 pasos = []
-                if categoria:
-                    pasos.append(("LOWER(nombre)=LOWER(%s) AND UPPER(COALESCE(categoria,''))=%s", [sabor, categoria]))
-                    pasos.append(("LOWER(nombre) LIKE LOWER(%s) AND UPPER(COALESCE(categoria,''))=%s ORDER BY LENGTH(nombre)", ['%'+sabor+'%', categoria]))
+                if id_cat:
+                    # Con categoría correcta (por id_categoria, no por texto)
+                    pasos.append((
+                        "LOWER(nombre) LIKE LOWER(%s) AND id_categoria=%s ORDER BY LENGTH(nombre)",
+                        ['%' + termino + '%', id_cat]
+                    ))
                 # Fallback sin categoría
-                pasos.append(("LOWER(nombre)=LOWER(%s)", [sabor]))
-                pasos.append(("LOWER(nombre) LIKE LOWER(%s) ORDER BY LENGTH(nombre)", ['%'+sabor+'%']))
-
-                for condicion, params in pasos:
-                    cur.execute(
-                        f"SELECT id, COALESCE(unidades_por_caja,1) AS upc FROM productos "
-                        f"WHERE {condicion} AND COALESCE(activo,true)=true LIMIT 1",
-                        params
-                    )
-                    fab = cur.fetchone()
-                    if fab:
-                        id_fab = fab['id']
-                        try: upc = float(fab['upc'] or 1) or 1
-                        except Exception: upc = 1
-                        break
-            else:
-                # Sin sabor: buscar por nombre_producto
-                pasos = []
-                if categoria:
-                    pasos.append(("LOWER(nombre)=LOWER(%s) AND UPPER(COALESCE(categoria,''))=%s", [nombre_prod, categoria]))
-                    pasos.append(("LOWER(nombre) LIKE LOWER(%s) AND UPPER(COALESCE(categoria,''))=%s ORDER BY LENGTH(nombre)", ['%'+nombre_prod+'%', categoria]))
-                pasos.append(("LOWER(nombre)=LOWER(%s)", [nombre_prod]))
-                pasos.append(("LOWER(nombre) LIKE LOWER(%s) ORDER BY LENGTH(nombre)", ['%'+nombre_prod+'%']))
+                pasos.append((
+                    "LOWER(nombre) LIKE LOWER(%s) ORDER BY LENGTH(nombre)",
+                    ['%' + termino + '%']
+                ))
 
                 for condicion, params in pasos:
                     cur.execute(
