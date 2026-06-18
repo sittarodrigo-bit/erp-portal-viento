@@ -2627,7 +2627,6 @@ def listar_costos_productos():
             raise HTTPException(status_code=400, detail="Falta correr CREAR_PRECIO_COSTO.sql en la base.")
     finally:
         liberar_conexion(conn)
-
 @app.post("/api/costos/guardar")
 def guardar_costos(data: dict = Body(...)):
     """Guarda el precio de costo para un producto (por nombre, en todos los locales)."""
