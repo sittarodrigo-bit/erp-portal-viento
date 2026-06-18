@@ -21,7 +21,7 @@
 
   <main class="p-6 max-w-4xl mx-auto">
     <div class="bg-blue-900/20 border border-blue-800 rounded-2xl p-4 mb-5 text-blue-200 text-sm">
-      💡 Cargá el <b>precio de costo</b> y el <b>precio de venta</b> de cada producto. El sistema calcula el margen automáticamente. Los cambios de precio de venta se aplican a <b>todos los locales</b>.
+      💡 Cargá el <b>precio de venta</b> y el <b>precio de costo</b> de cada producto. El margen se calcula automáticamente. Los cambios se aplican a <b>todos los locales</b>.
     </div>
 
     <div class="mb-4">
@@ -29,7 +29,7 @@
     </div>
 
     <!-- Cabecera de columnas -->
-    <div class="hidden md:grid grid-cols-[1fr_120px_120px_80px] gap-3 px-3 mb-1 text-xs text-gray-500 uppercase font-bold tracking-wide">
+    <div class="hidden md:grid grid-cols-[1fr_130px_130px_70px] gap-3 px-3 mb-1 text-xs text-gray-500 uppercase font-bold tracking-wide">
       <span>Producto</span>
       <span class="text-right">Precio venta $</span>
       <span class="text-right">Costo $</span>
@@ -49,7 +49,9 @@ async function cargar(){
   try{
     productos = await fetch(`${API_URL}/costos/productos`).then(r=>r.json());
     render();
-  }catch(e){ $('lista').innerHTML = '<p class="text-red-400 text-center py-16">No se pudo cargar. ¿Corriste el SQL?</p>'; }
+  }catch(e){
+    $('lista').innerHTML = '<p class="text-red-400 text-center py-16">No se pudo cargar. ¿Corriste el SQL?</p>';
+  }
 }
 
 function filtrar(){ render(); }
@@ -59,63 +61,48 @@ function render(){
   let lista = productos;
   if(q) lista = productos.filter(p => (p.nombre||'').toLowerCase().includes(q) || (p.categoria||'').toLowerCase().includes(q));
   if(!lista.length){ $('lista').innerHTML = '<p class="text-gray-500 text-center py-10">Sin productos.</p>'; return; }
+
   $('lista').innerHTML = lista.map((p)=>{
     const i = productos.indexOf(p);
-    const margen = (p.precio>0 && p.precio_costo>0)
+    const margen = (p.precio > 0 && p.precio_costo > 0)
       ? Math.round((p.precio - p.precio_costo) / p.precio * 100)
       : null;
-    const margenColor = margen === null ? 'text-gray-600' : margen >= 40 ? 'text-neon' : margen >= 20 ? 'text-yellow-400' : 'text-red-400';
-    return `<div class="bg-black border border-gray-800 rounded-xl p-3 mb-2 grid grid-cols-[1fr_auto] md:grid-cols-[1fr_120px_120px_80px] gap-3 items-center">
-      <!-- Nombre y categoría -->
+    const margenColor = margen === null
+      ? 'text-gray-600'
+      : margen >= 40 ? 'text-neon font-bold'
+      : margen >= 20 ? 'text-yellow-400 font-bold'
+      : 'text-red-400 font-bold';
+
+    return `<div class="bg-black border border-gray-800 rounded-xl p-3 mb-2 grid grid-cols-[1fr_auto] md:grid-cols-[1fr_130px_130px_70px] gap-3 items-center">
+
       <div class="min-w-0">
         <p class="text-white font-bold truncate">${p.nombre}</p>
         <p class="text-gray-500 text-xs">${p.categoria||'Sin categoría'}</p>
       </div>
 
       <!-- Precio de venta -->
-      <div class="flex items-center gap-1 justify-end">
+      <div class="flex flex-col items-end gap-1">
         <span class="text-gray-500 text-xs md:hidden">Venta $</span>
         <input type="number" min="0" value="${p.precio||0}" id="precio-${i}"
                onblur="guardarPrecio(${i})" onkeydown="if(event.key==='Enter')this.blur()"
-               class="w-24 bg-gray-900 border border-gray-700 focus:border-blue-400 text-white text-center rounded-lg p-2 outline-none">
+               class="w-28 bg-gray-900 border border-blue-700 focus:border-blue-400 text-white text-center rounded-lg p-2 outline-none">
       </div>
 
       <!-- Costo -->
-      <div class="flex items-center gap-1 justify-end">
+      <div class="flex flex-col items-end gap-1">
         <span class="text-gray-500 text-xs md:hidden">Costo $</span>
         <input type="number" min="0" value="${p.precio_costo||0}" id="costo-${i}"
                onblur="guardarCosto(${i})" onkeydown="if(event.key==='Enter')this.blur()"
-               class="w-24 bg-gray-900 border border-gray-700 focus:border-neon text-white text-center rounded-lg p-2 outline-none">
+               class="w-28 bg-gray-900 border border-gray-700 focus:border-neon text-white text-center rounded-lg p-2 outline-none">
       </div>
 
       <!-- Margen -->
-      <div class="text-right ${margenColor} font-bold text-sm col-span-2 md:col-span-1">
+      <div class="text-right ${margenColor} text-sm col-span-2 md:col-span-1">
         ${margen !== null ? margen + '%' : '—'}
       </div>
+
     </div>`;
   }).join('');
-}
-
-async function guardarCosto(i){
-  const p = productos[i];
-  const input = document.getElementById('costo-'+i);
-  const nuevo = parseFloat(input.value) || 0;
-  if(nuevo === parseFloat(p.precio_costo||0)) return;
-  input.style.borderColor = '#d4ff3f';
-  try{
-    const res = await fetch(`${API_URL}/costos/guardar`, {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ nombre: p.nombre, precio_costo: nuevo })
-    });
-    if(res.ok){
-      p.precio_costo = nuevo;
-      setTimeout(()=>{ input.style.borderColor=''; render(); }, 400);
-    } else {
-      const e = await res.json().catch(()=>({}));
-      alert('❌ ' + (e.detail||'No se pudo guardar'));
-      input.style.borderColor='';
-    }
-  }catch(e){ alert('Error de conexión.'); input.style.borderColor=''; }
 }
 
 async function guardarPrecio(i){
@@ -126,7 +113,8 @@ async function guardarPrecio(i){
   input.style.borderColor = '#60a5fa';
   try{
     const res = await fetch(`${API_URL}/costos/guardar_precio`, {
-      method:'POST', headers:{'Content-Type':'application/json'},
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
       body: JSON.stringify({ nombre: p.nombre, precio: nuevo })
     });
     if(res.ok){
@@ -135,6 +123,29 @@ async function guardarPrecio(i){
     } else {
       const e = await res.json().catch(()=>({}));
       alert('❌ ' + (e.detail||'No se pudo guardar el precio'));
+      input.style.borderColor='';
+    }
+  }catch(e){ alert('Error de conexión.'); input.style.borderColor=''; }
+}
+
+async function guardarCosto(i){
+  const p = productos[i];
+  const input = document.getElementById('costo-'+i);
+  const nuevo = parseFloat(input.value) || 0;
+  if(nuevo === parseFloat(p.precio_costo||0)) return;
+  input.style.borderColor = '#d4ff3f';
+  try{
+    const res = await fetch(`${API_URL}/costos/guardar`, {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ nombre: p.nombre, precio_costo: nuevo })
+    });
+    if(res.ok){
+      p.precio_costo = nuevo;
+      setTimeout(()=>{ input.style.borderColor=''; render(); }, 400);
+    } else {
+      const e = await res.json().catch(()=>({}));
+      alert('❌ ' + (e.detail||'No se pudo guardar'));
       input.style.borderColor='';
     }
   }catch(e){ alert('Error de conexión.'); input.style.borderColor=''; }
