@@ -1493,6 +1493,68 @@ def pedido_faltantes(id: int):
     finally:
         liberar_conexion(conn)
 
+@app.get("/api/armado/historial")
+def armado_historial():
+    """Pedidos B2B y reposiciones ya despachados/terminados, para el historial del armado."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        salida = []
+        # Pedidos B2B despachados/terminados
+        try:
+            cur.execute("""
+                SELECT p.id, p.estado, p.total, p.fecha::text AS fecha, d.razon_social AS distribuidor
+                FROM pedidos_b2b p LEFT JOIN distribuidores d ON p.id_distribuidor=d.id
+                WHERE p.estado IN ('Despachado','Despachado parcial','Terminado')
+                ORDER BY p.id DESC LIMIT 100
+            """)
+            for p in fetchall_dict(cur):
+                # Quién armó: tomamos el preparado_por de los ítems preparados
+                armado_por = ''
+                try:
+                    cur.execute("SELECT preparado_por FROM preparacion_items WHERE id_pedido=%s AND preparado_por IS NOT NULL AND preparado_por<>'' LIMIT 1", (p['id'],))
+                    qa = cur.fetchone()
+                    if qa: armado_por = qa['preparado_por']
+                except Exception:
+                    conn.rollback()
+                salida.append({
+                    "id": p['id'], "tipo": "b2b", "estado": p['estado'],
+                    "nombre": p.get('distribuidor') or 'Distribuidor',
+                    "total": p.get('total'), "fecha": p['fecha'],
+                    "armado_por": armado_por
+                })
+        except Exception:
+            conn.rollback()
+        # Reposiciones repuestas
+        try:
+            cur.execute("""
+                SELECT r.id, r.estado, r.fecha::text AS fecha, l.nombre AS local
+                FROM pos_reposiciones r LEFT JOIN pos_locales l ON r.id_local=l.id
+                WHERE r.estado='repuesto'
+                ORDER BY r.id DESC LIMIT 100
+            """)
+            for r in fetchall_dict(cur):
+                armado_por = ''
+                try:
+                    cur.execute("SELECT preparado_por FROM preparacion_reposicion WHERE id_reposicion=%s AND preparado_por IS NOT NULL AND preparado_por<>'' LIMIT 1", (r['id'],))
+                    qa = cur.fetchone()
+                    if qa: armado_por = qa['preparado_por']
+                except Exception:
+                    conn.rollback()
+                salida.append({
+                    "id": "r"+str(r['id']), "tipo": "reposicion", "estado": "Repuesto",
+                    "nombre": "🏪 " + (r.get('local') or 'Local'),
+                    "total": None, "fecha": r['fecha'],
+                    "armado_por": armado_por
+                })
+        except Exception:
+            conn.rollback()
+        # Ordenar todo por fecha desc
+        salida.sort(key=lambda x: (x.get('fecha') or ''), reverse=True)
+        return salida
+    finally:
+        liberar_conexion(conn)
+
 @app.get("/api/armado/pedidos")
 def armado_listar_pedidos():
     """Lista pedidos B2B (de distribuidores) y reposiciones de locales habilitadas,
@@ -1934,20 +1996,31 @@ def armado_despacho_parcial(id: str):
                 prep[r['id_producto']] = float(r['cantidad'] or 0)
         except Exception:
             conn.rollback()
-        cur.execute("""SELECT d.id_producto, p.nombre, d.cantidad
+        cur.execute("""SELECT d.id_producto, p.nombre, d.cantidad, d.precio_unitario
                        FROM detalle_pedidos_b2b d LEFT JOIN productos p ON d.id_producto=p.id
                        WHERE d.id_pedido=%s""", (id,))
         items = fetchall_dict(cur)
         faltantes = []
+        nuevo_total = 0.0
         for i in items:
             pedido_c = float(i['cantidad'] or 0)
             armado_c = prep.get(i['id_producto'], 0)
+            precio = float(i['precio_unitario'] or 0)
+            # Ajustar el detalle a lo realmente entregado (lo armado)
+            cur.execute("UPDATE detalle_pedidos_b2b SET cantidad=%s WHERE id_pedido=%s AND id_producto=%s",
+                        (armado_c, id, i['id_producto']))
+            nuevo_total += armado_c * precio
             if armado_c < pedido_c:
                 faltantes.append({"nombre": i['nombre'], "falta": pedido_c - armado_c})
         nota = ""
         if faltantes:
             nota = "Faltó entregar: " + ", ".join([(f['nombre'] or '?') + " x" + str(int(f['falta'])) for f in faltantes])
-        cur.execute("UPDATE pedidos_b2b SET estado='Despachado parcial' WHERE id=%s", (id,))
+        # Recalcular el total del pedido a lo realmente entregado (para que la deuda sea correcta)
+        try:
+            cur.execute("UPDATE pedidos_b2b SET estado='Despachado parcial', total=%s WHERE id=%s", (nuevo_total, id))
+        except Exception:
+            conn.rollback()
+            cur.execute("UPDATE pedidos_b2b SET estado='Despachado parcial' WHERE id=%s", (id,))
         conn.commit()
         try:
             crear_notificacion("pedido", "Pedido despachado PARCIAL", "Pedido #" + str(id) + ". " + nota)
