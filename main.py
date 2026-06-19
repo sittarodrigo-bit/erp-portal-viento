@@ -1625,33 +1625,94 @@ def armado_detalle_pedido(id: str):
                     preparados[(pr['id_producto'], pr['sabor'] or '')] = float(pr['cantidad'] or 0)
             except Exception:
                 conn.rollback()
+            # Mapeo nombre_producto del POS → id_categoria en fábrica
+            CAT_MAP_DET = [
+                ('ALFAJOR PDV',           1),
+                ('ALFAJOR',               1),
+                ('CONITOS DULCE DE LECHE',3),
+                ('CONITOS SUELTOS',       3),
+                ('CUBANITOS SUELTOS',     7),
+                ('CUBANITO',              7),
+                ('TRUFAS',                2),
+                ('TRUFA',                 2),
+                ('DULCE DE LECHE SABORIZADO', 4),
+                ('DULCE DE  LECHE',       4),
+                ('DULCE DE LECHE',        4),
+                ('BOMBA',                 6),
+                ('TRADICIONAL',           8),
+            ]
+            SAB_ALIAS_DET = {
+                'clasico':   ['clasic'], 'clasica': ['clasic'], 'clasicas': ['clasic'],
+                'baileys':   ['baile', 'bayles', 'baileys'],
+                'malbec':    ['malbe', 'malbec'],
+                'ron':       ['rn', 'ron'],
+                'blanco':    ['blanc', 'blanco'],
+                'frambuesa': ['framb', 'frambuesa'],
+                'pistacho':  ['pistach'],
+                'negro':     ['negro'],
+                'amarula':   ['amarula'],
+                'ahumado':   ['ahumado'],
+                'avellana':  ['avellana'], 'avellanas': ['avellana'],
+                'arandanos': ['aranda'],
+                'dubai':     ['dubai'],
+                'menta':     ['menta'], 'cafe': ['cafe'], 'coco': ['coco'],
+            }
+            def get_id_cat_det(nombre_prod):
+                nombre_up = (nombre_prod or '').upper()
+                for clave, id_cat in CAT_MAP_DET:
+                    if clave in nombre_up:
+                        return id_cat
+                return None
+
             items = []
             for r in detalle:
-                nombre = (r.get('nombre_producto') or 'Producto')
+                nombre_prod_orig = (r.get('nombre_producto') or 'Producto')
                 sabor = r.get('sabor') or ''
-                if sabor:
-                    nombre += ' · ' + sabor
+                nombre = nombre_prod_orig + (' · ' + sabor if sabor else '')
                 prep = preparados.get((r['id_producto'], sabor), 0)
                 cant = float(r['cantidad'] or 0)
-                # ¿Es alfajor? Buscar el producto de fábrica del sabor para saber unidades_por_caja
                 upc = 1
                 es_caja = False
-                termino = sabor or (r.get('nombre_producto') or '')
-                if termino:
-                    try:
-                        cur.execute("""SELECT COALESCE(unidades_por_caja,1) AS upc, COALESCE(id_categoria,0) AS cat,
-                                              (SELECT nombre FROM categorias c WHERE c.id=p.id_categoria) AS catnombre
-                                       FROM productos p
-                                       WHERE (LOWER(nombre)=LOWER(%s) OR LOWER(nombre) LIKE LOWER(%s)) AND COALESCE(activo,true)=true
-                                       ORDER BY LENGTH(nombre) LIMIT 1""", (termino, '%'+termino+'%'))
-                        fab = cur.fetchone()
+                id_cat_det = get_id_cat_det(nombre_prod_orig)
+                # Buscar en fábrica filtrando por categoría para evitar confusión entre productos
+                terminos = []
+                if sabor:
+                    terminos.append(sabor)
+                    for a in SAB_ALIAS_DET.get(sabor.lower(), []):
+                        if a not in terminos:
+                            terminos.append(a)
+                if not terminos and nombre_prod_orig:
+                    terminos.append(nombre_prod_orig)
+                try:
+                    fab = None
+                    for t in terminos:
+                        pat = ('%' + t) if len(t.strip()) <= 3 else ('%' + t + '%')
+                        if id_cat_det:
+                            cur.execute("""SELECT COALESCE(unidades_por_caja,1) AS upc, id_categoria
+                                           FROM productos
+                                           WHERE id_categoria=%s
+                                             AND (LOWER(nombre) LIKE LOWER(%s) OR LOWER(nombre) LIKE LOWER(%s))
+                                             AND COALESCE(activo,true)=true
+                                           ORDER BY LENGTH(nombre) LIMIT 1""",
+                                        (id_cat_det, pat, '%' + t.strip() + '%'))
+                            fab = cur.fetchone()
+                        if not fab:
+                            cur.execute("""SELECT COALESCE(unidades_por_caja,1) AS upc, id_categoria
+                                           FROM productos
+                                           WHERE (LOWER(nombre) LIKE LOWER(%s) OR LOWER(nombre) LIKE LOWER(%s))
+                                             AND COALESCE(activo,true)=true
+                                           ORDER BY LENGTH(nombre) LIMIT 1""",
+                                        (pat, '%' + t.strip() + '%'))
+                            fab = cur.fetchone()
                         if fab:
-                            u = float(fab['upc'] or 1) or 1
-                            catn = (fab.get('catnombre') or '').lower()
-                            if u >= 2 and 'alfajor' in catn:
-                                upc = u; es_caja = True
-                    except Exception:
-                        conn.rollback()
+                            break
+                    if fab:
+                        u = float(fab['upc'] or 1) or 1
+                        # Solo convertir a cajas en ALFAJORES (id_categoria=1)
+                        if u >= 2 and fab.get('id_categoria') == 1:
+                            upc = u; es_caja = True
+                except Exception:
+                    conn.rollback()
                 items.append({
                     "id_producto": r['id_producto'], "nombre": nombre, "sku": "", "sabor": sabor,
                     "cantidad": cant, "stock": 0,
