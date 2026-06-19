@@ -1627,6 +1627,7 @@ def armado_detalle_pedido(id: str):
                 conn.rollback()
             # Mapeo nombre_producto del POS → id_categoria en fábrica
             CAT_MAP_DET = [
+                ('ALFAJOR TRADICIONAL',   14),  # TRADICIONAL - debe ir antes que ALFAJOR
                 ('ALFAJOR PDV',           1),
                 ('ALFAJOR',               1),
                 ('CONITOS DULCE DE LECHE',3),
@@ -1973,6 +1974,7 @@ def armado_listo(id: str):
                 raise HTTPException(status_code=400, detail="Falta correr CREAR_PREPARACION_REPOSICION.sql en la base.")
             # Mapeo nombre_producto del POS → id_categoria en fábrica
             CATEGORIA_MAP_ARMADO = [
+                ('ALFAJOR TRADICIONAL',   14),  # TRADICIONAL - debe ir antes que ALFAJOR
                 ('ALFAJOR PDV',           1),
                 ('ALFAJOR',               1),
                 ('CONITOS DULCE DE LECHE',3),
@@ -2008,6 +2010,7 @@ def armado_listo(id: str):
                 'cafe':           ['cafe'],
                 'coco':           ['coco'],
                 'cognac':         ['cognac'],
+                'tradicional':    ['tradicional', 'tradic'],
                 'whisky':         ['whisky'],
                 'limon':          ['limon'],
                 'naranja':        ['naranja'],
@@ -2781,6 +2784,7 @@ def marcar_pagado(data: dict = Body(...)):
 def debug_buscar_fabrica(nombre_producto: str, sabor: str = ""):
     """Endpoint de diagnóstico: simula la búsqueda que hace reponer() para un ítem."""
     CATEGORIA_MAP = [
+        ('ALFAJOR TRADICIONAL',   14),  # debe ir antes que ALFAJOR
         ('ALFAJOR PDV',           1),
         ('ALFAJOR',               1),
         ('CONITOS DULCE DE LECHE',3),
@@ -5148,6 +5152,7 @@ def locales_reposicion_reponer(id: int):
         # IDs: 1=ALFAJORES, 2=TRUFAS, 3=CONITOS, 4=DULCE DE LECHE,
         #      6=BOMBAS, 7=CUBANITOS, 8=LInea tradicional
         CATEGORIA_MAP = [
+            ('ALFAJOR TRADICIONAL',   14),  # TRADICIONAL - debe ir antes que ALFAJOR
             ('ALFAJOR PDV',           1),
             ('ALFAJOR',               1),
             ('CONITOS DULCE DE LECHE',3),
@@ -5160,7 +5165,7 @@ def locales_reposicion_reponer(id: int):
             ('DULCE DE  LECHE',       4),
             ('DULCE DE LECHE',        4),
             ('BOMBA',                 6),
-            ('TRADICIONAL',           8),
+            ('TRADICIONAL',           8),   # Linea tradicional
         ]
 
         # Alias: sabor del POS → términos a buscar en nombre de fábrica
