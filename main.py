@@ -5157,7 +5157,6 @@ def locales_reposicion_reponer(id: int):
             id_cat      = id_categoria_fabrica(nombre_prod)
 
             id_fab, upc = buscar_en_fabrica(cur, id_cat, sabor, nombre_prod)
-            print(f"REPONER DEBUG: nombre={nombre_prod!r} sabor={sabor!r} id_cat={id_cat} id_fab={id_fab} upc={upc} cant={cant}", flush=True)
 
             if id_fab:
                 # Solo dividir por unidades_por_caja en ALFAJORES (id_categoria=1)
