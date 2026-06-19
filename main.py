@@ -5036,7 +5036,9 @@ def locales_reposicion_reponer(id: int):
             id_cat      = id_categoria_fabrica(nombre_prod)
 
             id_fab, upc = buscar_en_fabrica(cur, id_cat, sabor, nombre_prod)
-
+# DEBUG TEMPORAL
+import logging
+logging.warning(f"REPONER DEBUG: nombre={nombre_prod!r} sabor={sabor!r} id_cat={id_cat} id_fab={id_fab} upc={upc} cant={cant}")
             if id_fab:
                 cajas = cant / upc
                 cur.execute(
