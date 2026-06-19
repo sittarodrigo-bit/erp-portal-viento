@@ -1910,32 +1910,140 @@ def armado_listo(id: str):
             except Exception:
                 conn.rollback()
                 raise HTTPException(status_code=400, detail="Falta correr CREAR_PREPARACION_REPOSICION.sql en la base.")
+            # Mapeo nombre_producto del POS → id_categoria en fábrica
+            CATEGORIA_MAP_ARMADO = [
+                ('ALFAJOR PDV',           1),
+                ('ALFAJOR',               1),
+                ('CONITOS DULCE DE LECHE',3),
+                ('CONITOS SUELTOS',       3),
+                ('CUBANITOS SUELTOS',     7),
+                ('CUBANITO',              7),
+                ('TRUFAS',                2),
+                ('TRUFA',                 2),
+                ('DULCE DE LECHE SABORIZADO', 4),
+                ('DULCE DE  LECHE',       4),
+                ('DULCE DE LECHE',        4),
+                ('BOMBA',                 6),
+                ('TRADICIONAL',           8),
+            ]
+            SABOR_ALIAS_ARMADO = {
+                'clasico':        ['clasic'],
+                'clasica':        ['clasic'],
+                'clasicas':       ['clasic'],
+                'baileys':        ['baile', 'bayles', 'baileys'],
+                'malbec':         ['malbe', 'malbec'],
+                'ron':            ['rn', 'ron'],
+                'blanco':         ['blanc', 'blanco'],
+                'frambuesa':      ['framb', 'frambuesa'],
+                'pistacho':       ['pistach'],
+                'negro':          ['negro'],
+                'amarula':        ['amarula'],
+                'ahumado':        ['ahumado'],
+                'avellana':       ['avellana'],
+                'avellanas':      ['avellana'],
+                'arandanos':      ['aranda'],
+                'dubai':          ['dubai'],
+                'menta':          ['menta'],
+                'cafe':           ['cafe'],
+                'coco':           ['coco'],
+                'cognac':         ['cognac'],
+                'whisky':         ['whisky'],
+                'limon':          ['limon'],
+                'naranja':        ['naranja'],
+                'mango':          ['mango'],
+                'maracuya':       ['maracuya'],
+                'mandarina':      ['mandarin'],
+                'moscatel':       ['moscatel'],
+                'cabernet':       ['cabernet'],
+                'tiramisu':       ['tiramisu'],
+                'pasas':          ['pasas'],
+                'amarula':        ['amarula'],
+            }
+
+            def id_cat_armado(nombre_prod):
+                nombre_up = (nombre_prod or '').upper()
+                for clave, id_cat in CATEGORIA_MAP_ARMADO:
+                    if clave in nombre_up:
+                        return id_cat
+                return None
+
+            def buscar_fab_armado(cur, id_cat, sabor, nombre_prod):
+                terminos = []
+                if sabor:
+                    terminos.append(sabor)
+                    for alias in SABOR_ALIAS_ARMADO.get(sabor.lower(), []):
+                        if alias not in terminos:
+                            terminos.append(alias)
+                # PASO 1: categoria + sabor
+                if id_cat and terminos:
+                    for t in terminos:
+                        pat = ('%' + t) if len(t.strip()) <= 3 else ('%' + t + '%')
+                        cur.execute("""
+                            SELECT id, COALESCE(unidades_por_caja,1) AS upc, id_categoria
+                            FROM productos
+                            WHERE id_categoria = %s
+                              AND (LOWER(nombre) LIKE LOWER(%s) OR LOWER(nombre) LIKE LOWER(%s))
+                              AND COALESCE(activo,true) = true
+                            ORDER BY LENGTH(nombre) LIMIT 1
+                        """, (id_cat, pat, '%' + t.strip() + '%'))
+                        fab = cur.fetchone()
+                        if fab:
+                            return fab['id'], float(fab['upc'] or 1) or 1, fab['id_categoria']
+                # PASO 2: solo categoria sin sabor
+                if id_cat and not terminos:
+                    cur.execute("""
+                        SELECT id, COALESCE(unidades_por_caja,1) AS upc, id_categoria
+                        FROM productos
+                        WHERE id_categoria = %s AND COALESCE(activo,true) = true
+                        ORDER BY LENGTH(nombre) LIMIT 1
+                    """, (id_cat,))
+                    fab = cur.fetchone()
+                    if fab:
+                        return fab['id'], float(fab['upc'] or 1) or 1, fab['id_categoria']
+                # PASO 3: solo sabor sin categoria (productos sin mapeo)
+                if not id_cat and terminos:
+                    for t in terminos:
+                        cur.execute("""
+                            SELECT id, COALESCE(unidades_por_caja,1) AS upc, id_categoria
+                            FROM productos
+                            WHERE LOWER(nombre) LIKE LOWER(%s) AND COALESCE(activo,true) = true
+                            ORDER BY LENGTH(nombre) LIMIT 1
+                        """, ('%' + t.strip() + '%',))
+                        fab = cur.fetchone()
+                        if fab:
+                            return fab['id'], float(fab['upc'] or 1) or 1, fab['id_categoria']
+                return None, 1, None
+
+            # Traer nombre_producto del detalle de reposicion para el mapeo de categoria
+            detalle_repo = {}
+            try:
+                cur.execute("SELECT id_producto, nombre_producto, sabor FROM pos_reposiciones_detalle WHERE id_reposicion=%s", (rid,))
+                for d in fetchall_dict(cur):
+                    detalle_repo[(d['id_producto'], (d.get('sabor') or ''))] = (d.get('nombre_producto') or '')
+            except Exception:
+                conn.rollback()
+
             no_descontados = []
             for it in preparado:
                 cant = float(it['cantidad'] or 0)
                 if cant <= 0:
                     continue
-                # El armado SOLO descuenta de FÁBRICA (la mercadería sale del depósito).
-                # El stock del LOCAL se suma después, cuando se confirma "Reponer" en el panel de locales.
-                termino = (it.get('sabor') or '').strip()
-                id_fab = None; upc = 1
-                if termino:
-                    cur.execute("SELECT id, COALESCE(unidades_por_caja,1) AS upc FROM productos WHERE LOWER(nombre)=LOWER(%s) AND COALESCE(activo,true)=true LIMIT 1", (termino,))
-                    fab = cur.fetchone()
-                    if not fab:
-                        cur.execute("SELECT id, COALESCE(unidades_por_caja,1) AS upc FROM productos WHERE LOWER(nombre) LIKE LOWER(%s) AND COALESCE(activo,true)=true ORDER BY LENGTH(nombre) LIMIT 1", ('%'+termino+'%',))
-                        fab = cur.fetchone()
-                    if fab:
-                        id_fab = fab['id']
-                        try:
-                            upc = float(fab['upc'] or 1) or 1
-                        except Exception:
-                            upc = 1
+                sabor_it   = (it.get('sabor') or '').strip()
+                id_prod_it = it.get('id_producto')
+                nombre_prod = detalle_repo.get((id_prod_it, sabor_it), '')
+                id_cat = id_cat_armado(nombre_prod)
+                id_fab, upc, id_cat_fab = buscar_fab_armado(cur, id_cat, sabor_it, nombre_prod)
                 if id_fab:
-                    cajas = cant / upc
-                    cur.execute("UPDATE productos SET stock_actual = GREATEST(COALESCE(stock_actual,0) - %s, 0) WHERE id=%s", (cajas, id_fab))
+                    # Solo dividir por upc en ALFAJORES (id_categoria=1)
+                    descuento = (cant / upc) if id_cat_fab == 1 else cant
+                    cur.execute("UPDATE productos SET stock_actual = GREATEST(COALESCE(stock_actual,0) - %s, 0) WHERE id=%s", (descuento, id_fab))
+                    try:
+                        registrar_movimiento_stock(cur, id_fab, -descuento, 'salida', 'reposicion_local',
+                                                   motivo='Armado reposición #' + str(rid))
+                    except Exception:
+                        pass
                 else:
-                    no_descontados.append(termino or ('producto #' + str(it.get('id_producto'))))
+                    no_descontados.append(nombre_prod + (' (' + sabor_it + ')' if sabor_it else '') or ('producto #' + str(id_prod_it)))
             cur.execute("UPDATE pos_reposiciones SET estado='armada', stock_descontado=true WHERE id=%s", (rid,))
             conn.commit()
             try:
