@@ -5,6 +5,7 @@
 <script src="/static/auth.js"></script>
 
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Locales | Portal del Viento</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -20,7 +21,9 @@
     </style>
 </head>
 <body class="bg-gray-950 text-gray-200 font-sans h-screen flex">
-    <aside class="w-64 bg-black border-r border-gray-800 flex flex-col shrink-0">
+    <!-- Fondo oscuro al abrir menú en celular -->
+    <div id="menu-backdrop" onclick="cerrarMenu()" class="hidden fixed inset-0 bg-black/60 z-30 md:hidden"></div>
+    <aside id="sidebar" class="w-64 bg-black border-r border-gray-800 flex flex-col shrink-0 fixed md:static inset-y-0 left-0 z-40 -translate-x-full md:translate-x-0 transition-transform duration-200">
         <div class="p-6 border-b border-gray-800 text-center">
             <h1 class="text-neon font-bold text-lg tracking-widest uppercase">Portal del Viento</h1>
             <p class="text-white text-xs mt-1 font-bold italic">ALFAJORES</p>
@@ -43,14 +46,18 @@
     </aside>
 
     <main class="flex-1 flex flex-col overflow-hidden">
-        <header class="bg-gray-900 border-b border-gray-800 py-4 px-8 flex justify-between items-center shrink-0">
-            <h2 id="titulo" class="text-xl font-bold text-white">Locales</h2>
-            <button id="btn-volver" onclick="volverGeneral()" class="hidden border border-gray-600 text-gray-300 hover:text-white font-bold py-2 px-4 rounded-lg text-sm transition">← Volver a todos</button>
+        <header class="bg-gray-900 border-b border-gray-800 py-4 px-4 md:px-8 flex justify-between items-center shrink-0 gap-3">
+            <div class="flex items-center gap-3 min-w-0">
+                <button onclick="abrirMenu()" class="md:hidden text-gray-300 text-2xl shrink-0">☰</button>
+                <h2 id="titulo" class="text-lg md:text-xl font-bold text-white truncate">Locales</h2>
+            </div>
+            <button id="btn-volver" onclick="volverGeneral()" class="hidden border border-gray-600 text-gray-300 hover:text-white font-bold py-2 px-4 rounded-lg text-sm transition shrink-0">← Volver</button>
         </header>
 
         <!-- VISTA GENERAL -->
-        <div id="vista-general" class="flex-1 overflow-y-auto p-8">
+        <div id="vista-general" class="flex-1 overflow-y-auto p-4 md:p-8">
             <div id="aviso-cierres-pend" class="hidden mb-5"></div>
+            <!-- Sub-pestañas de la vista general -->
             <div class="flex gap-6 border-b border-gray-800 mb-6">
                 <button onclick="cambiarTabGeneral('resumen')" id="tg-resumen" class="pb-3 text-sm font-bold tab-activa">🏬 Resumen</button>
                 <button onclick="cambiarTabGeneral('stock')" id="tg-stock" class="pb-3 text-sm font-bold text-gray-400 hover:text-white">📊 Comparativa de stock</button>
@@ -66,6 +73,7 @@
                 <div id="cards-locales" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
                     <p class="text-gray-500 col-span-full text-center py-12">Cargando locales...</p>
                 </div>
+
                 <div id="comparativa" class="mt-8 hidden">
                     <h3 class="text-white font-bold mb-3">📊 Comparativa de ventas del mes</h3>
                     <div class="bg-black border border-gray-800 rounded-xl p-5 space-y-3" id="comparativa-cont"></div>
@@ -87,7 +95,7 @@
                 </div>
             </div>
 
-            <!-- TAB NOVEDADES -->
+            <!-- TAB CREAR PRODUCTO -->
             <div id="tab-general-novedades" class="hidden">
                 <div class="flex justify-between items-center mb-4">
                     <div>
@@ -99,7 +107,6 @@
                 <div id="lista-novedades"></div>
             </div>
 
-            <!-- TAB CREAR PRODUCTO -->
             <div id="tab-general-crear" class="hidden">
                 <div class="max-w-lg bg-black border border-gray-800 rounded-2xl p-6">
                     <h3 class="text-white font-bold mb-1">➕ Crear producto en todos los locales</h3>
@@ -131,7 +138,7 @@
 
         <!-- VISTA DETALLE -->
         <div id="vista-detalle" class="hidden flex-1 flex flex-col overflow-hidden">
-            <div class="bg-gray-900 border-b border-gray-800 px-8 flex gap-6 shrink-0">
+            <div class="bg-gray-900 border-b border-gray-800 px-4 md:px-8 flex gap-4 md:gap-6 shrink-0 overflow-x-auto">
                 <button onclick="cambiarTab('ventas')" id="tab-ventas" class="py-3 text-sm font-bold tab-activa">🧾 Ventas</button>
                 <button onclick="cambiarTab('productos')" id="tab-productos" class="py-3 text-sm font-bold text-gray-400 hover:text-white">📦 Productos y Stock</button>
                 <button onclick="cambiarTab('faltantes')" id="tab-faltantes" class="py-3 text-sm font-bold text-gray-400 hover:text-white">⚠️ Faltantes</button>
@@ -139,7 +146,7 @@
                 <button onclick="cambiarTab('gastos')" id="tab-gastos" class="py-3 text-sm font-bold text-gray-400 hover:text-white">💸 Gastos</button>
                 <button onclick="cambiarTab('cierres')" id="tab-cierres" class="py-3 text-sm font-bold text-gray-400 hover:text-white">🔒 Cierres de caja</button>
             </div>
-            <div class="flex-1 overflow-y-auto p-8">
+            <div class="flex-1 overflow-y-auto p-4 md:p-8">
                 <!-- VENTAS -->
                 <div id="panel-ventas">
                     <div class="bg-black border border-gray-800 rounded-xl p-4 mb-5 flex items-end gap-3">
@@ -220,7 +227,7 @@
                     </div>
                     <div id="lista-gastos-local" class="space-y-2"></div>
                 </div>
-                <!-- CIERRES -->
+
                 <div id="panel-cierres" class="hidden">
                     <div class="flex flex-wrap gap-3 mb-4 items-end bg-black p-4 rounded-xl border border-gray-800">
                         <div>
@@ -243,8 +250,8 @@
     </main>
 
     <!-- MODAL PRODUCTO -->
-    <div id="modal-producto" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
-        <div class="bg-gray-900 border border-gray-700 rounded-xl p-6 w-[460px] shadow-2xl">
+    <div id="modal-producto" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50 p-4">
+        <div class="bg-gray-900 border border-gray-700 rounded-xl p-6 w-full max-w-[460px] shadow-2xl">
             <div class="flex justify-between items-center mb-4">
                 <h3 id="prod-titulo" class="text-lg font-bold text-white border-l-4 border-neon pl-2">Nuevo producto</h3>
                 <button onclick="cerrarModales()" class="text-gray-500 hover:text-white text-2xl leading-none">×</button>
@@ -254,12 +261,9 @@
             <input type="text" id="prod-nombre" class="w-full bg-black border border-gray-700 text-white rounded p-3 mb-3">
             <div class="grid grid-cols-2 gap-3 mb-3">
                 <div>
-                    <!-- PRECIO: solo lectura. Para editar, usá Costos de Productos -->
-                    <label class="block text-xs text-gray-500 font-bold mb-1">
-                        Precio ($)
-                        <a href="/costos" class="ml-1 text-blue-400 hover:text-blue-300 font-normal normal-case">✏️ editar en Costos</a>
-                    </label>
-                    <p id="prod-precio-display" class="w-full bg-gray-950 border border-gray-800 text-gray-400 rounded p-2 font-bold text-center cursor-not-allowed select-none min-h-[36px] flex items-center justify-center">—</p>
+                    <label class="block text-xs text-gray-500 font-bold mb-1">Precio ($)</label>
+                    <input type="number" id="prod-precio" step="0.01" readonly title="El precio se edita desde 'Costos y precios'" class="w-full bg-gray-900 border border-gray-700 text-gray-400 rounded p-2 font-bold cursor-not-allowed">
+                    <p class="text-gray-600 text-[10px] mt-1">Se edita en "Costos y precios"</p>
                 </div>
                 <div>
                     <label class="block text-xs text-gray-500 font-bold mb-1">Categoría</label>
@@ -274,19 +278,6 @@
                     <input type="number" id="prod-alerta" step="0.01" value="0" class="w-full bg-black border border-gray-700 text-white rounded p-2 text-sm">
                 </div>
             </div>
-            <!-- Producto en fábrica (vinculación directa) -->
-            <div class="mb-3">
-                <label class="block text-xs text-gray-500 font-bold mb-1">
-                    🏭 Producto en fábrica
-                    <span class="text-gray-600 font-normal">(opcional — evita confusiones en reposición)</span>
-                </label>
-                <input type="text" id="prod-fab-buscar" placeholder="🔍 Buscar en fábrica..." oninput="filtrarProdFabrica()"
-                       class="w-full bg-black border border-gray-700 focus:border-blue-500 text-white rounded p-2 text-sm mb-1 outline-none">
-                <select id="prod-fab-select" class="w-full bg-black border border-blue-800 text-white rounded p-2 text-sm">
-                    <option value="">— Sin vincular (usa búsqueda automática) —</option>
-                </select>
-                <p id="prod-fab-actual" class="text-blue-400 text-xs mt-1 hidden"></p>
-            </div>
             <div class="flex justify-end gap-3 mt-2">
                 <button onclick="cerrarModales()" class="px-4 py-2 text-gray-400 hover:text-white font-bold">Cancelar</button>
                 <button onclick="guardarProducto()" class="bg-neon text-black px-6 py-2 rounded font-bold hover:bg-yellow-300">Guardar</button>
@@ -295,8 +286,8 @@
     </div>
 
     <!-- MODAL EDITAR REPOSICIÓN -->
-    <div id="modal-repo-edit" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
-        <div class="bg-gray-900 border border-gray-700 rounded-xl p-6 w-[520px] shadow-2xl max-h-[88vh] overflow-y-auto">
+    <div id="modal-repo-edit" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50 p-4">
+        <div class="bg-gray-900 border border-gray-700 rounded-xl p-6 w-full max-w-[520px] shadow-2xl max-h-[88vh] overflow-y-auto">
             <div class="flex justify-between items-center mb-4">
                 <h3 id="repo-edit-titulo" class="text-lg font-bold text-white border-l-4 border-neon pl-2">Modificar pedido</h3>
                 <button onclick="cerrarModales()" class="text-gray-500 hover:text-white text-2xl leading-none">×</button>
@@ -332,9 +323,10 @@
         </div>
     </div>
 
+    <!-- MODAL HISTORIAL DE STOCK -->
     <!-- MODAL CREAR/EDITAR LOCAL -->
-    <div id="modal-local" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
-        <div class="bg-gray-900 border border-gray-700 rounded-xl p-6 w-[440px] shadow-2xl">
+    <div id="modal-local" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50 p-4">
+        <div class="bg-gray-900 border border-gray-700 rounded-xl p-6 w-full max-w-[440px] shadow-2xl">
             <div class="flex justify-between items-center mb-4">
                 <h3 id="modal-local-titulo" class="text-lg font-bold text-white border-l-4 border-neon pl-2">Nuevo local</h3>
                 <button onclick="cerrarModales()" class="text-gray-500 hover:text-white text-2xl leading-none">×</button>
@@ -354,9 +346,8 @@
         </div>
     </div>
 
-    <!-- MODAL HISTORIAL DE STOCK -->
-    <div id="modal-historial" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
-        <div class="bg-gray-900 border border-gray-700 rounded-xl p-6 w-[520px] shadow-2xl max-h-[88vh] overflow-y-auto">
+    <div id="modal-historial" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50 p-4">
+        <div class="bg-gray-900 border border-gray-700 rounded-xl p-6 w-full max-w-[520px] shadow-2xl max-h-[88vh] overflow-y-auto">
             <div class="flex justify-between items-center mb-1">
                 <h3 class="text-lg font-bold text-white border-l-4 border-neon pl-2">📜 Historial de stock</h3>
                 <button onclick="cerrarModales()" class="text-gray-500 hover:text-white text-2xl leading-none">×</button>
@@ -367,14 +358,16 @@
     </div>
 
     <!-- MODAL VARIANTES Y SABORES -->
-    <div id="modal-variantes" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
-        <div class="bg-gray-900 border border-gray-700 rounded-xl p-6 w-[520px] shadow-2xl max-h-[88vh] overflow-y-auto">
+    <div id="modal-variantes" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50 p-4">
+        <div class="bg-gray-900 border border-gray-700 rounded-xl p-6 w-full max-w-[520px] shadow-2xl max-h-[88vh] overflow-y-auto">
             <div class="flex justify-between items-center mb-1">
                 <h3 class="text-lg font-bold text-white border-l-4 border-neon pl-2">Variantes y Sabores</h3>
                 <button onclick="cerrarModales()" class="text-gray-500 hover:text-white text-2xl leading-none">×</button>
             </div>
             <p id="var-prod-nombre" class="text-neon text-sm font-bold mb-4 pl-3"></p>
             <input type="hidden" id="var-prod-id">
+
+            <!-- VARIANTES -->
             <div class="mb-5">
                 <h4 class="text-white font-bold text-sm mb-2">📦 Presentaciones (unidad / caja 6 / caja 12...)</h4>
                 <div id="lista-variantes" class="space-y-2 mb-3"></div>
@@ -397,6 +390,8 @@
                 </div>
                 <p class="text-gray-600 text-xs mt-1">"Unidades" = cuánto descuenta del stock al vender (unidad=1, caja de 6=6).</p>
             </div>
+
+            <!-- SABORES -->
             <div>
                 <h4 class="text-white font-bold text-sm mb-2">🍫 Sabores (para pedir reposición por sabor)</h4>
                 <div id="lista-sabores" class="flex flex-wrap gap-2 mb-3"></div>
@@ -409,7 +404,7 @@
     </div>
 
     <!-- MODAL SUMAR STOCK -->
-    <div id="modal-stock" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
+    <div id="modal-stock" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50 p-4">
         <div class="bg-gray-900 border border-gray-700 rounded-xl p-6 w-96 shadow-2xl">
             <h3 class="text-lg font-bold text-white mb-1">Sumar stock</h3>
             <p id="stock-prod-nombre" class="text-neon text-sm font-bold mb-4"></p>
@@ -428,6 +423,15 @@
         const usr = JSON.parse(sessionStorage.getItem('usuario') || '{}');
         if (usr.nombre) document.getElementById('usuario-info').textContent = `${usr.nombre} ${usr.apellido} · ${usr.rol}`;
 
+        // Menú lateral en celular
+        function abrirMenu(){
+            document.getElementById('sidebar').classList.remove('-translate-x-full');
+            document.getElementById('menu-backdrop').classList.remove('hidden');
+        }
+        function cerrarMenu(){
+            document.getElementById('sidebar').classList.add('-translate-x-full');
+            document.getElementById('menu-backdrop').classList.add('hidden');
+        }
         let localActual = null;
 
         function fmt(n) { return '$ ' + (parseFloat(n)||0).toLocaleString('es-AR'); }
@@ -528,6 +532,7 @@
                 `;
                 cont.appendChild(card);
             });
+            // Comparativa
             const comp = document.getElementById('comparativa');
             const cc = document.getElementById('comparativa-cont');
             const max = Math.max(...data.map(l=>l.ventas_mes), 1);
@@ -559,6 +564,7 @@
             document.getElementById('vista-detalle').classList.remove('hidden');
             document.getElementById('btn-volver').classList.remove('hidden');
             document.getElementById('titulo').textContent = '🏬 ' + l.nombre;
+            // Placeholder inmediato para que no quede en blanco mientras carga
             var lv = document.getElementById('lista-ventas');
             if (lv) lv.innerHTML = '<p class="text-gray-500 text-sm">Cargando ventas...</p>';
             var kp = document.getElementById('ventas-kpis');
@@ -590,6 +596,7 @@
         // ── CIERRES DE CAJA ──
         async function cargarCierres() {
             if (!localActual) return;
+            // Inicializa fechas (último mes) si están vacías
             if (document.getElementById('cie-desde') && !document.getElementById('cie-desde').value) {
                 const hoy = new Date();
                 const ini = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
@@ -607,7 +614,10 @@
             if (qs.length) url += '?' + qs.join('&');
             try {
                 const lista = await fetch(url).then(r=>r.json());
-                if (!lista.length) { cont.innerHTML = '<p class="text-gray-500 text-center py-8">No hay cierres de caja en este período.</p>'; return; }
+                if (!lista.length) {
+                    cont.innerHTML = '<p class="text-gray-500 text-center py-8">No hay cierres de caja en este período.</p>';
+                    return;
+                }
                 cont.innerHTML = '';
                 lista.forEach(c => {
                     const fCierre = c.fecha_cierre ? new Date(c.fecha_cierre).toLocaleString('es-AR', {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '—';
@@ -616,9 +626,11 @@
                     if (Math.abs(dif) < 0.5) difHtml = '<span class="text-gray-400 font-bold">Sin diferencia</span>';
                     else if (dif > 0) difHtml = `<span class="text-green-400 font-bold">Sobra $ ${dif.toLocaleString('es-AR')}</span>`;
                     else difHtml = `<span class="text-red-400 font-bold">Falta $ ${Math.abs(dif).toLocaleString('es-AR')}</span>`;
+
                     const control = c.controlado
                         ? `<div class="text-xs text-green-400 font-bold mt-2">✓ Recibido y controlado por ${c.controlado_por || '—'}${c.fecha_control ? ' · ' + new Date(c.fecha_control).toLocaleDateString('es-AR') : ''}</div>`
                         : `<button onclick="controlarCierre(${c.id})" class="mt-2 text-xs border border-neon bg-neon/10 text-neon hover:bg-neon hover:text-black px-3 py-1.5 rounded font-bold transition">Marcar recibido / controlado</button>`;
+
                     cont.innerHTML += `
                         <div class="bg-black border border-gray-800 rounded-xl p-4">
                             <div class="flex justify-between items-start mb-3">
@@ -648,7 +660,9 @@
                                 : `<div class="text-xs text-orange-400 font-bold mt-2">💵 Pendiente de retiro</div>`}
                         </div>`;
                 });
-            } catch(e) { cont.innerHTML = '<p class="text-red-400 text-center py-8">Error al cargar los cierres.</p>'; }
+            } catch(e) {
+                cont.innerHTML = '<p class="text-red-400 text-center py-8">Error al cargar los cierres.</p>';
+            }
         }
 
         async function controlarCierre(idCaja) {
@@ -664,6 +678,7 @@
 
         // ── VENTAS ──
         async function cargarVentas() {
+            // Inicializa el reporte para el contador con fecha de hoy
             const hoyR = new Date().toISOString().slice(0,10);
             if (document.getElementById('rv-desde') && !document.getElementById('rv-desde').value) {
                 document.getElementById('rv-desde').value = hoyR;
@@ -675,6 +690,7 @@
                 fetch(`${API_URL}/locales/${id}/ventas`).then(r=>r.json()).catch(()=>[]),
                 fetch(`${API_URL}/locales/${id}/mas_vendidos`).then(r=>r.json()).catch(()=>[])
             ]);
+            // KPIs
             const hoy = new Date().toISOString().split('T')[0];
             let totalHoy=0, totalTodo=0;
             ventas.forEach(v=>{ totalTodo+=parseFloat(v.total)||0; if((v.fecha||'').split(' ')[0]===hoy) totalHoy+=parseFloat(v.total)||0; });
@@ -682,6 +698,7 @@
                 <div class="bg-black border border-neon rounded-xl p-4 text-center"><p class="text-gray-500 text-xs">Ventas hoy</p><p class="text-neon font-bold text-2xl">${fmt(totalHoy)}</p></div>
                 <div class="bg-black border border-gray-800 rounded-xl p-4 text-center"><p class="text-gray-500 text-xs">Tickets (todo)</p><p class="text-white font-bold text-2xl">${ventas.length}</p></div>
                 <div class="bg-black border border-gray-800 rounded-xl p-4 text-center"><p class="text-gray-500 text-xs">Total acumulado</p><p class="text-white font-bold text-2xl">${fmt(totalTodo)}</p></div>`;
+            // Más vendidos
             const mv = document.getElementById('mas-vendidos');
             mv.innerHTML = '';
             if (!top.length) mv.innerHTML = '<p class="text-gray-600 text-sm">Sin ventas todavía.</p>';
@@ -692,6 +709,7 @@
                     <div class="flex justify-between text-sm mb-1"><span class="text-gray-300">${p.nombre_producto}</span><span class="text-neon font-bold">${p.unidades} u · ${fmt(p.total)}</span></div>
                     <div class="w-full bg-gray-900 rounded-full h-1.5"><div class="bg-neon h-1.5 rounded-full" style="width:${pct}%"></div></div></div>`;
             });
+            // Lista de ventas
             const lv = document.getElementById('lista-ventas');
             lv.innerHTML = '';
             if (!ventas.length) { lv.innerHTML = '<p class="text-gray-600 text-sm">Sin ventas.</p>'; return; }
@@ -707,8 +725,9 @@
             });
         }
 
-        // ── REPORTE DE VENTAS ──
+        // ── REPORTE DE VENTAS (contador) ──
         let reporteVentasCache = [];
+
         async function cargarReporteVentas() {
             const p = new URLSearchParams();
             const desde = document.getElementById('rv-desde').value;
@@ -807,19 +826,31 @@
             if (!confirm('¿Cerrar la caja de "' + nombreLocal + '"' + (responsable ? ' (abierta por ' + responsable + ')' : '') + '?\n\nSe cierra con los totales registrados, sin contar efectivo. Esta acción es para cuando el cajero se fue sin cerrar.')) return;
             try {
                 var res = await fetch(`${API_URL}/locales/caja/${idCaja}/cerrar_admin`, { method:'PUT' });
-                if (res.ok) { alert('✅ Caja cerrada.'); cargarGeneral(); }
-                else { var e = await res.json(); alert('❌ ' + (e.detail || 'No se pudo cerrar.')); }
+                if (res.ok) {
+                    alert('✅ Caja cerrada.');
+                    cargarGeneral();
+                } else {
+                    var e = await res.json(); alert('❌ ' + (e.detail || 'No se pudo cerrar.'));
+                }
             } catch(e) { alert('❌ Error de conexión.'); }
         }
 
         async function guardarPvAfip() {
             if (!localActual) return;
             var pv = document.getElementById('local-pv-afip').value;
-            var body = { nombre: localActual.nombre, direccion: localActual.direccion || null, punto_venta_afip: pv ? parseInt(pv) : null };
+            var body = {
+                nombre: localActual.nombre,
+                direccion: localActual.direccion || null,
+                punto_venta_afip: pv ? parseInt(pv) : null
+            };
             try {
-                var res = await fetch(`${API_URL}/pos/locales/${localActual.id}`, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
-                if (res.ok) { localActual.punto_venta_afip = body.punto_venta_afip; alert('✅ Punto de venta guardado para ' + localActual.nombre + (body.punto_venta_afip ? ' (PV ' + body.punto_venta_afip + ')' : '')); }
-                else { alert('No se pudo guardar.'); }
+                var res = await fetch(`${API_URL}/pos/locales/${localActual.id}`, {
+                    method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)
+                });
+                if (res.ok) {
+                    localActual.punto_venta_afip = body.punto_venta_afip;
+                    alert('✅ Punto de venta guardado para ' + localActual.nombre + (body.punto_venta_afip ? ' (PV ' + body.punto_venta_afip + ')' : ''));
+                } else { alert('No se pudo guardar.'); }
             } catch(e) { alert('Error de conexión.'); }
         }
 
@@ -831,8 +862,13 @@
             if (texto !== 'BORRAR') { alert('Cancelado. No se borró nada.'); return; }
             try {
                 var res = await fetch(`${API_URL}/locales/${localActual.id}/reiniciar?confirmar=SI`, { method:'DELETE' });
-                if (res.ok) { alert('✅ Listo. El local quedó en cero, listo para arrancar.'); cargarReporteVentas(); cargarVentas(); }
-                else { var e = await res.json(); alert('❌ ' + (e.detail || 'No se pudo reiniciar.')); }
+                if (res.ok) {
+                    alert('✅ Listo. El local quedó en cero, listo para arrancar.');
+                    cargarReporteVentas();
+                    cargarVentas();
+                } else {
+                    var e = await res.json(); alert('❌ ' + (e.detail || 'No se pudo reiniciar.'));
+                }
             } catch(e) { alert('❌ Error de conexión.'); }
         }
 
@@ -892,6 +928,7 @@
                 tr.querySelector('.btn-del').onclick = () => eliminarProducto(p.id, p.nombre);
                 tabla.appendChild(tr);
             });
+            // Resetear buscador y actualizar contador
             var inp = document.getElementById('buscar-prod-local');
             if (inp) { inp.value = ''; }
             var cont = document.getElementById('contador-prod-local');
@@ -914,46 +951,26 @@
             if (cont) cont.textContent = q ? (visibles + ' de ' + filas.length + ' productos') : (filas.length + ' productos');
         }
 
-        async function abrirModalProducto(p) {
+        function abrirModalProducto(p) {
             document.getElementById('prod-titulo').textContent = p && p.id ? 'Editar producto' : 'Nuevo producto';
             document.getElementById('prod-id').value = p && p.id ? p.id : '';
             document.getElementById('prod-nombre').value = p ? p.nombre : '';
-            // Precio: solo lectura
-            const precioDisplay = document.getElementById('prod-precio-display');
-            if (precioDisplay) precioDisplay.textContent = p ? ('$ ' + (parseFloat(p.precio)||0).toLocaleString('es-AR')) : '—';
+            document.getElementById('prod-precio').value = p ? p.precio : '';
             document.getElementById('prod-categoria').value = p && p.categoria ? p.categoria : '';
             document.getElementById('prod-stock').value = p ? (p.stock||0) : 0;
             document.getElementById('prod-alerta').value = p ? (p.stock_alerta||0) : 0;
-            // Cargar productos de fábrica para el selector
-            await cargarProductosFabrica();
-            document.getElementById('prod-fab-buscar').value = '';
-            const sel = document.getElementById('prod-fab-select');
-            sel.innerHTML = '<option value="">— Sin vincular (usa búsqueda automática) —</option>' +
-                productosFabricaCache.map(pr => `<option value="${pr.id}">${pr.nombre} (${pr.sku||'id:'+pr.id})</option>`).join('');
-            const idFab = p && p.id_producto_fabrica ? p.id_producto_fabrica : '';
-            sel.value = idFab || '';
-            const actual = document.getElementById('prod-fab-actual');
-            if (idFab) {
-                const fab = productosFabricaCache.find(x => String(x.id) === String(idFab));
-                actual.textContent = '✅ Vinculado a: ' + (fab ? fab.nombre : 'id ' + idFab);
-                actual.classList.remove('hidden');
-            } else {
-                actual.classList.add('hidden');
-            }
             document.getElementById('modal-producto').classList.replace('modal-oculto','modal-visible');
         }
 
         async function guardarProducto() {
             const id = document.getElementById('prod-id').value;
-            const idFab = document.getElementById('prod-fab-select').value;
             const data = {
                 id_local: localActual.id,
                 nombre: document.getElementById('prod-nombre').value.trim(),
-                // precio: solo lectura — editá desde /costos
+                precio: parseFloat(document.getElementById('prod-precio').value)||0,
                 categoria: document.getElementById('prod-categoria').value.trim()||null,
                 stock: parseFloat(document.getElementById('prod-stock').value)||0,
-                stock_alerta: parseFloat(document.getElementById('prod-alerta').value)||0,
-                id_producto_fabrica: idFab ? parseInt(idFab) : null
+                stock_alerta: parseFloat(document.getElementById('prod-alerta').value)||0
             };
             if (!data.nombre) { alert('Poné un nombre.'); return; }
             const url = id ? `${API_URL}/pos/productos/${id}` : `${API_URL}/pos/productos`;
@@ -1010,8 +1027,8 @@
         }
 
         // ── REPOSICIONES ──
-        let repoActual = null;
-        let repoProductos = [];
+        let repoActual = null;       // pedido en edición
+        let repoProductos = [];      // productos del local (para agregar)
 
         async function cargarReposiciones() {
             const lista = await fetch(`${API_URL}/locales/reposiciones?id_local=${localActual.id}`).then(r=>r.json()).catch(()=>[]);
@@ -1021,11 +1038,13 @@
             lista.forEach(r => {
                 const dt = r.fecha ? new Date(r.fecha.replace(' ','T')).toLocaleString('es-AR',{dateStyle:'short',timeStyle:'short'}) : '';
                 const repuesto = r.estado==='repuesto';
+                const armada = r.estado==='armada';
                 const habilitada = r.estado==='habilitada' || r.estado==='en_preparacion';
                 const emp = r.empleado_apellido ? `${r.empleado_apellido}, ${r.empleado_nombre}` : '';
                 const items = (r.detalle||[]).map(d=>`${d.cantidad}× ${d.nombre_producto}${d.sabor?' ('+d.sabor+')':''}`).join(', ');
                 let estadoTxt;
                 if (repuesto) estadoTxt = '<span class="text-green-400 text-xs">· ✅ repuesto</span>';
+                else if (armada) estadoTxt = '<span class="text-orange-400 text-xs">· 📦 armada — falta confirmar reposición</span>';
                 else if (r.estado==='en_preparacion') estadoTxt = '<span class="text-blue-400 text-xs">· 🔧 armando</span>';
                 else if (habilitada) estadoTxt = '<span class="text-neon text-xs">· ✅ habilitada para armado</span>';
                 else estadoTxt = '<span class="text-yellow-400 text-xs">· ⏳ pendiente</span>';
@@ -1039,9 +1058,9 @@
                         </div>
                         <div class="flex gap-1">
                             <button class="text-xs border border-gray-600 text-gray-300 hover:text-white px-3 py-1.5 rounded btn-print">🖨️ Imprimir</button>
-                            ${repuesto?'':'<button class="text-xs border border-yellow-700 text-yellow-300 hover:bg-yellow-900/30 px-3 py-1.5 rounded font-bold btn-edit">✏️ Modificar</button>'}
-                            ${(repuesto||habilitada)?'':'<button class="text-xs bg-neon text-black hover:bg-yellow-300 px-3 py-1.5 rounded font-bold btn-hab">▶️ Habilitar para armado</button>'}
-                            ${repuesto?'':'<button class="text-xs bg-green-800 hover:bg-green-700 text-white px-3 py-1.5 rounded font-bold btn-rep">Reponer (sumar stock)</button>'}
+                            ${(repuesto||armada)?'':'<button class="text-xs border border-yellow-700 text-yellow-300 hover:bg-yellow-900/30 px-3 py-1.5 rounded font-bold btn-edit">✏️ Modificar</button>'}
+                            ${(repuesto||habilitada||armada)?'':'<button class="text-xs bg-neon text-black hover:bg-yellow-300 px-3 py-1.5 rounded font-bold btn-hab">▶️ Habilitar para armado</button>'}
+                            ${repuesto?'':'<button class="text-xs bg-green-800 hover:bg-green-700 text-white px-3 py-1.5 rounded font-bold btn-rep">' + (armada?'✅ Confirmar reposición (sumar al local)':'Reponer (sumar stock)') + '</button>'}
                             <button class="text-xs bg-red-900/50 hover:bg-red-700 text-red-400 hover:text-white px-2 py-1.5 rounded btn-del">✕</button>
                         </div>
                     </div>
@@ -1050,27 +1069,43 @@
                 const ed = div.querySelector('.btn-edit'); if (ed) ed.onclick = () => abrirEditarRepo(r);
                 const hab = div.querySelector('.btn-hab');
                 if (hab) hab.onclick = async () => {
-                    if (confirm('¿Habilitar esta reposición para que el empleado de depósito la arme?')) {
-                        try { const res = await fetch(`${API_URL}/locales/reposiciones/${r.id}/habilitar`, {method:'PUT'}); if (!res.ok) { const e = await res.json().catch(()=>({})); alert('No se pudo: ' + (e.detail||'')); } } catch(e) {}
+                    if (confirm('¿Habilitar esta reposición para que el empleado de depósito la arme?\n\nVa a aparecer en su panel de armado.')) {
+                        try {
+                            const res = await fetch(`${API_URL}/locales/reposiciones/${r.id}/habilitar`, {method:'PUT'});
+                            if (!res.ok) { const e = await res.json().catch(()=>({})); alert('No se pudo: ' + (e.detail||'')); }
+                        } catch(e) {}
                         cargarReposiciones();
                     }
                 };
                 const rep = div.querySelector('.btn-rep');
                 if (rep) rep.onclick = async () => {
                     if (confirm('¿Marcar como repuesto?\n\nSe sumará al stock del local y se descontará del stock de fábrica según el sabor de cada producto.')) {
-                        try { const res = await fetch(`${API_URL}/locales/reposiciones/${r.id}/reponer`, {method:'PUT'}); const data = await res.json().catch(()=>({})); if (data && data.aviso) { alert('✅ Repuesto.\n\n⚠️ ' + data.aviso + '\n\nRevisá que esos productos existan en la fábrica con un nombre que incluya el sabor.'); } } catch(e) {}
+                        try {
+                            const res = await fetch(`${API_URL}/locales/reposiciones/${r.id}/reponer`, {method:'PUT'});
+                            const data = await res.json().catch(()=>({}));
+                            if (data && data.aviso) {
+                                alert('✅ Repuesto.\n\n⚠️ ' + data.aviso + '\n\nRevisá que esos productos existan en la fábrica con un nombre que incluya el sabor.');
+                            }
+                        } catch(e) {}
                         cargarReposiciones();
                     }
                 };
-                div.querySelector('.btn-del').onclick = async () => { if (confirm('¿Borrar este pedido de reposición?')) { await fetch(`${API_URL}/locales/reposiciones/${r.id}`, {method:'DELETE'}); cargarReposiciones(); } };
+                div.querySelector('.btn-del').onclick = async () => {
+                    if (confirm('¿Borrar este pedido de reposición?')) {
+                        await fetch(`${API_URL}/locales/reposiciones/${r.id}`, {method:'DELETE'});
+                        cargarReposiciones();
+                    }
+                };
                 cont.appendChild(div);
             });
         }
 
+        // ── EDITAR REPOSICIÓN ──
         async function abrirEditarRepo(r) {
-            repoActual = JSON.parse(JSON.stringify(r));
+            repoActual = JSON.parse(JSON.stringify(r));  // copia editable
             if (!repoActual.detalle) repoActual.detalle = [];
             document.getElementById('repo-edit-titulo').textContent = 'Modificar pedido #' + String(r.id).padStart(3,'0');
+            // cargar productos del local para el selector de "agregar"
             repoProductos = await fetch(`${API_URL}/pos/productos?id_local=${localActual.id}`).then(r=>r.json()).catch(()=>[]);
             const sel = document.getElementById('repo-add-prod');
             sel.innerHTML = repoProductos.map(p=>`<option value="${p.id}">${p.nombre}</option>`).join('');
@@ -1112,10 +1147,14 @@
         async function guardarRepoEdit() {
             const detalle = repoActual.detalle.filter(d=>d.cantidad>0);
             if (!detalle.length) { alert('El pedido quedó vacío. Agregá al menos un producto o borralo desde la lista.'); return; }
-            await fetch(`${API_URL}/locales/reposiciones/${repoActual.id}`, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ detalle: detalle }) });
-            cerrarModales(); cargarReposiciones();
+            await fetch(`${API_URL}/locales/reposiciones/${repoActual.id}`, {
+                method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ detalle: detalle })
+            });
+            cerrarModales();
+            cargarReposiciones();
         }
 
+        // ── IMPRIMIR REMITO ──
         async function imprimirRemito(r) {
             let empresa = {};
             try { empresa = await fetch(`${API_URL}/empresa`).then(x=>x.json()); } catch(e){ empresa = {}; }
@@ -1123,6 +1162,7 @@
             const doc = new jsPDF();
             const dt = r.fecha ? new Date(r.fecha.replace(' ','T')).toLocaleString('es-AR',{dateStyle:'short',timeStyle:'short'}) : '';
             const emp = r.empleado_apellido ? `${r.empleado_apellido}, ${r.empleado_nombre}` : '—';
+            // Membrete
             doc.setFontSize(16); doc.setTextColor(20,20,20);
             doc.text(empresa.nombre || 'Portal del Viento — Alfajores', 14, 18);
             doc.setDrawColor(0); doc.setLineWidth(0.4); doc.line(14, 22, 196, 22);
@@ -1134,17 +1174,31 @@
             doc.text(`Fecha pedido: ${dt}`, 14, 45);
             doc.text(`Solicitó: ${emp}`, 14, 51);
             doc.text(`Impreso: ${new Date().toLocaleString('es-AR')}`, 196, 39, {align:'right'});
+            // Tabla. Si el pedido ya fue armado, mostramos lo realmente preparado.
             const tieneArmado = r.tiene_armado;
             const filas = (r.detalle||[]).map(d => {
                 const nombre = d.sabor ? (d.nombre_producto + ' — ' + d.sabor) : d.nombre_producto;
                 const pedido = String(d.cantidad);
-                if (tieneArmado) { const arm = (d.armado === null || d.armado === undefined) ? 0 : d.armado; return [nombre, pedido, String(arm)]; }
-                return [nombre, pedido, ''];
+                if (tieneArmado) {
+                    const arm = (d.armado === null || d.armado === undefined) ? 0 : d.armado;
+                    return [nombre, pedido, String(arm)];
+                }
+                return [nombre, pedido, ''];  // sin armar: columna vacía para tildar a mano
             });
-            const encab = tieneArmado ? [['Producto', 'Pedido', 'Despachado']] : [['Producto', 'Cant.', 'Preparado ✓']];
-            doc.autoTable({ startY: 58, head: encab, body: filas, headStyles: { fillColor:[255,255,255], textColor:[0,0,0], fontStyle:'bold', lineWidth:0.3, lineColor:[0,0,0] }, styles: { fontSize:11, cellPadding:4, lineWidth:0.1, lineColor:[120,120,120] }, columnStyles: { 0:{cellWidth:120}, 1:{cellWidth:25, halign:'center'}, 2:{cellWidth:37, halign:'center'} } });
+            const encab = tieneArmado
+                ? [['Producto', 'Pedido', 'Despachado']]
+                : [['Producto', 'Cant.', 'Preparado ✓']];
+            doc.autoTable({
+                startY: 58,
+                head: encab,
+                body: filas,
+                headStyles: { fillColor:[255,255,255], textColor:[0,0,0], fontStyle:'bold', lineWidth:0.3, lineColor:[0,0,0] },
+                styles: { fontSize:11, cellPadding:4, lineWidth:0.1, lineColor:[120,120,120] },
+                columnStyles: { 0:{cellWidth:120}, 1:{cellWidth:25, halign:'center'}, 2:{cellWidth:37, halign:'center'} }
+            });
             let y = doc.lastAutoTable.finalY + 25;
             if (y > 250) { doc.addPage(); y = 40; }
+            // Firmas
             doc.setDrawColor(120); doc.setLineWidth(0.3);
             doc.line(20, y, 90, y); doc.line(120, y, 190, y);
             doc.setFontSize(9); doc.setTextColor(80,80,80);
@@ -1176,7 +1230,7 @@
                                 <button class="text-xs bg-red-900/50 hover:bg-red-700 text-red-400 hover:text-white px-2 py-1.5 rounded btn-rj">Rechazar</button>`:''}
                     </div>`;
                 const ap = div.querySelector('.btn-ap'); if (ap) ap.onclick = async () => { await fetch(`${API_URL}/locales/gastos/${g.id}/aprobar`,{method:'PUT'}); cargarGastosLocal(); };
-                const rj = div.querySelector('.btn-rj'); if (rj) rj.onclick = async () => { if(confirm('¿Rechazar este gasto?')){ await fetch(`${API_URL}/locales/gastos/${g.id}/rechazar`,{method:'PUT'}); cargarGastosLocal(); } };
+                const rj = div.querySelector('.btn-rj'); if (rj) rj.onclick = async () => { if(confirm('¿Rechazar este gasto? No se sumará a gastos generales.')){ await fetch(`${API_URL}/locales/gastos/${g.id}/rechazar`,{method:'PUT'}); cargarGastosLocal(); } };
                 cont.appendChild(div);
             });
         }
@@ -1225,7 +1279,7 @@
             const lista = await fetch(`${API_URL}/pos/productos/${idProd}/sabores`).then(r=>r.json()).catch(()=>[]);
             const cont = document.getElementById('lista-sabores');
             cont.innerHTML = '';
-            if (!lista.length) { cont.innerHTML = '<p class="text-gray-600 text-xs">Sin sabores.</p>'; return; }
+            if (!lista.length) { cont.innerHTML = '<p class="text-gray-600 text-xs">Sin sabores. (Solo necesario para alfajores u otros productos por sabor.)</p>'; return; }
             lista.forEach(s => {
                 const span = document.createElement('span');
                 span.className = 'inline-flex items-center gap-2 bg-black border border-gray-700 rounded-full px-3 py-1 text-sm text-white';
@@ -1244,6 +1298,7 @@
             renderSabores(idProd);
         }
 
+        // ── HISTORIAL DE STOCK ──
         async function abrirHistorialProd(p) {
             document.getElementById('hist-prod-nombre').textContent = p.nombre;
             const cont = document.getElementById('hist-lista');
@@ -1268,15 +1323,25 @@
             } catch(e) { cont.innerHTML = '<p class="text-red-400 text-sm">No se pudo cargar el historial.</p>'; }
         }
 
+        // ── BUSCADOR en editar reposición ──
         function filtrarRepoAddProd() {
             const q = (document.getElementById('repo-add-buscar').value || '').toLowerCase().trim();
             const sel = document.getElementById('repo-add-prod');
-            sel.innerHTML = repoProductos.filter(p => !q || (p.nombre||'').toLowerCase().indexOf(q) !== -1).map(p => `<option value="${p.id}">${p.nombre}</option>`).join('');
+            sel.innerHTML = repoProductos
+                .filter(p => !q || (p.nombre||'').toLowerCase().indexOf(q) !== -1)
+                .map(p => `<option value="${p.id}">${p.nombre}</option>`).join('');
         }
 
+        // ── PLANTILLA / IMPORTAR / EXPORTAR PRODUCTOS ──
         function descargarPlantillaProd() {
-            const ws = XLSX.utils.aoa_to_sheet([['nombre','precio','categoria','stock','stock_alerta'],['Alfajor de maicena', 500, 'Alfajores', 100, 20],['Caja x6', 2800, 'Cajas', 30, 5]]);
-            const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Productos'); XLSX.writeFile(wb, 'plantilla_productos.xlsx');
+            const ws = XLSX.utils.aoa_to_sheet([
+                ['nombre','precio','categoria','stock','stock_alerta'],
+                ['Alfajor de maicena', 500, 'Alfajores', 100, 20],
+                ['Caja x6', 2800, 'Cajas', 30, 5]
+            ]);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'Productos');
+            XLSX.writeFile(wb, 'plantilla_productos.xlsx');
         }
 
         async function importarProductos(ev) {
@@ -1288,13 +1353,22 @@
                 const data = await file.arrayBuffer();
                 const wb = XLSX.read(data);
                 const filas = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
-                const productos = filas.map(f => ({ nombre: String(f.nombre||f.Nombre||'').trim(), precio: parseFloat(f.precio||f.Precio||0)||0, categoria: (f.categoria||f.Categoria||'').toString().trim() || null, stock: parseFloat(f.stock||f.Stock||0)||0, stock_alerta: parseFloat(f.stock_alerta||f.alerta||0)||0 })).filter(p => p.nombre);
-                if (!productos.length) { alert('La planilla no tiene productos válidos.'); ev.target.value=''; return; }
-                const res = await fetch(`${API_URL}/pos/productos/importar`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ id_local: localActual.id, productos }) });
+                const productos = filas.map(f => ({
+                    nombre: String(f.nombre||f.Nombre||'').trim(),
+                    precio: parseFloat(f.precio||f.Precio||0)||0,
+                    categoria: (f.categoria||f.Categoria||'').toString().trim() || null,
+                    stock: parseFloat(f.stock||f.Stock||0)||0,
+                    stock_alerta: parseFloat(f.stock_alerta||f.alerta||0)||0
+                })).filter(p => p.nombre);
+                if (!productos.length) { alert('La planilla no tiene productos válidos (revisá la columna "nombre").'); ev.target.value=''; return; }
+                const res = await fetch(`${API_URL}/pos/productos/importar`, {
+                    method:'POST', headers:{'Content-Type':'application/json'},
+                    body: JSON.stringify({ id_local: localActual.id, productos })
+                });
                 const r = await res.json();
-                alert(`✅ Importación terminada.\nInsertados: ${r.insertados}\nSalteados: ${r.salteados}`);
+                alert(`✅ Importación terminada.\nInsertados: ${r.insertados}\nSalteados (vacíos o repetidos): ${r.salteados}`);
                 cargarProductos();
-            } catch(e) { alert('No se pudo leer el archivo.'); }
+            } catch(e) { alert('No se pudo leer el archivo. Asegurate de que sea Excel o CSV.'); }
             finally { ev.target.value=''; }
         }
 
@@ -1304,11 +1378,12 @@
             const aoa = [['nombre','precio','categoria','stock','stock_alerta']];
             lista.forEach(p => aoa.push([p.nombre, p.precio, p.categoria||'', p.stock||0, p.stock_alerta||0]));
             const ws = XLSX.utils.aoa_to_sheet(aoa);
-            const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Productos');
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'Productos');
             XLSX.writeFile(wb, 'productos_' + (localActual.nombre||'local').replace(/[^a-zA-Z0-9]/g,'_') + '.xlsx');
         }
 
-        // ── SUB-PESTAÑAS GENERAL ──
+        // ── SUB-PESTAÑAS DE LA VISTA GENERAL ──
         let stockComparativoData = null;
 
         function cambiarTabGeneral(tab) {
@@ -1316,7 +1391,9 @@
                 var el = document.getElementById('tab-general-' + t);
                 if (el) el.classList.toggle('hidden', t !== tab);
                 var btn = document.getElementById('tg-' + t);
-                if (btn) btn.className = t === tab ? 'pb-3 text-sm font-bold tab-activa' : 'pb-3 text-sm font-bold text-gray-400 hover:text-white';
+                if (btn) btn.className = t === tab
+                    ? 'pb-3 text-sm font-bold tab-activa'
+                    : 'pb-3 text-sm font-bold text-gray-400 hover:text-white';
             });
             if (tab === 'stock') cargarStockComparativo();
             if (tab === 'novedades') cargarNovedades();
@@ -1331,7 +1408,12 @@
                 if (!nov.length) { cont.innerHTML = '<p class="text-gray-500 text-sm text-center py-10">No hay novedades.</p>'; return; }
                 cont.innerHTML = nov.map(function(n){
                     var f = (n.fecha||'').replace('T',' ').substring(0,16);
-                    return '<div class="bg-gray-900 border ' + (n.leida?'border-gray-800':'border-blue-700') + ' rounded-xl p-4 mb-2"><div class="flex justify-between items-start gap-3"><div class="flex-1"><p class="text-white text-sm">' + (n.mensaje||'') + '</p><p class="text-gray-500 text-xs mt-2">' + (n.nombre_local?('🏬 '+n.nombre_local+' · '):'') + (n.cargada_por?('👤 '+n.cargada_por+' · '):'') + f + '</p></div>' + (n.leida?'':'<button onclick="marcarNovedadLeida(' + n.id + ')" class="text-xs border border-gray-700 text-gray-300 hover:text-white px-2 py-1 rounded shrink-0">✓ Vista</button>') + '</div></div>';
+                    return '<div class="bg-gray-900 border ' + (n.leida?'border-gray-800':'border-blue-700') + ' rounded-xl p-4 mb-2">' +
+                        '<div class="flex justify-between items-start gap-3">' +
+                        '<div class="flex-1"><p class="text-white text-sm">' + (n.mensaje||'') + '</p>' +
+                        '<p class="text-gray-500 text-xs mt-2">' + (n.nombre_local?('🏬 '+n.nombre_local+' · '):'') + (n.cargada_por?('👤 '+n.cargada_por+' · '):'') + f + '</p></div>' +
+                        (n.leida?'':'<button onclick="marcarNovedadLeida(' + n.id + ')" class="text-xs border border-gray-700 text-gray-300 hover:text-white px-2 py-1 rounded shrink-0">✓ Vista</button>') +
+                        '</div></div>';
                 }).join('');
             } catch(e) { cont.innerHTML = '<p class="text-red-400 text-sm">No se pudieron cargar.</p>'; }
         }
@@ -1352,22 +1434,36 @@
         async function cargarStockComparativo() {
             const tbody = document.getElementById('stock-tbody');
             tbody.innerHTML = '<tr><td class="p-4 text-gray-500">Cargando...</td></tr>';
-            try { stockComparativoData = await fetch(`${API_URL}/locales/stock_comparativo`).then(r=>r.json()); renderStockComparativo(); }
-            catch(e) { tbody.innerHTML = '<tr><td class="p-4 text-red-400">No se pudo cargar.</td></tr>'; }
+            try {
+                stockComparativoData = await fetch(`${API_URL}/locales/stock_comparativo`).then(r=>r.json());
+                renderStockComparativo();
+            } catch(e) { tbody.innerHTML = '<tr><td class="p-4 text-red-400">No se pudo cargar.</td></tr>'; }
         }
 
         function renderStockComparativo() {
             if (!stockComparativoData) return;
             const { locales, productos } = stockComparativoData;
+            // Cabecera
             const thead = document.getElementById('stock-thead');
-            thead.innerHTML = '<tr><th class="p-4">Producto</th>' + locales.map(l => `<th class="p-4 text-right">${l.nombre}</th>`).join('') + '<th class="p-4 text-right text-neon">Total</th></tr>';
+            thead.innerHTML = '<tr><th class="p-4">Producto</th>' +
+                locales.map(l => `<th class="p-4 text-right">${l.nombre}</th>`).join('') +
+                '<th class="p-4 text-right text-neon">Total</th></tr>';
+            // Filtro
             const q = (document.getElementById('stock-buscar').value || '').toLowerCase().trim();
             const lista = productos.filter(p => !q || p.nombre.toLowerCase().indexOf(q) !== -1);
             const tbody = document.getElementById('stock-tbody');
             if (!lista.length) { tbody.innerHTML = `<tr><td class="p-4 text-gray-500" colspan="${locales.length+2}">Sin productos.</td></tr>`; return; }
             tbody.innerHTML = lista.map(p => {
-                const celdas = p.stock_por_local.map(s => { if (s.stock === null) return '<td class="p-4 text-right text-gray-700">—</td>'; const bajo = s.stock <= 0; return `<td class="p-4 text-right ${bajo?'text-red-400 font-bold':'text-white'}">${s.stock}</td>`; }).join('');
-                return `<tr class="hover:bg-gray-900"><td class="p-4 font-bold text-white">${p.nombre}</td>${celdas}<td class="p-4 text-right text-neon font-bold">${p.total}</td></tr>`;
+                const celdas = p.stock_por_local.map(s => {
+                    if (s.stock === null) return '<td class="p-4 text-right text-gray-700">—</td>';
+                    const bajo = s.stock <= 0;
+                    return `<td class="p-4 text-right ${bajo?'text-red-400 font-bold':'text-white'}">${s.stock}</td>`;
+                }).join('');
+                return `<tr class="hover:bg-gray-900">
+                    <td class="p-4 font-bold text-white">${p.nombre}</td>
+                    ${celdas}
+                    <td class="p-4 text-right text-neon font-bold">${p.total}</td>
+                </tr>`;
             }).join('');
         }
 
@@ -1375,46 +1471,42 @@
             if (!stockComparativoData) { alert('Esperá a que cargue la tabla.'); return; }
             const { locales, productos } = stockComparativoData;
             const aoa = [['Producto', ...locales.map(l=>l.nombre), 'Total']];
-            productos.forEach(p => { aoa.push([p.nombre, ...p.stock_por_local.map(s => s.stock===null ? '' : s.stock), p.total]); });
-            const ws = XLSX.utils.aoa_to_sheet(aoa); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Stock');
+            productos.forEach(p => {
+                aoa.push([p.nombre, ...p.stock_por_local.map(s => s.stock===null ? '' : s.stock), p.total]);
+            });
+            const ws = XLSX.utils.aoa_to_sheet(aoa);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'Stock');
             XLSX.writeFile(wb, 'stock_comparativo.xlsx');
         }
 
         async function crearProductoGlobal() {
             const nombre = document.getElementById('cg-nombre').value.trim();
             if (!nombre) { alert('Poné un nombre.'); return; }
-            const body = { nombre, precio: parseFloat(document.getElementById('cg-precio').value)||0, categoria: document.getElementById('cg-categoria').value.trim()||null, stock: parseFloat(document.getElementById('cg-stock').value)||0, stock_alerta: parseFloat(document.getElementById('cg-alerta').value)||0 };
+            const body = {
+                nombre,
+                precio: parseFloat(document.getElementById('cg-precio').value)||0,
+                categoria: document.getElementById('cg-categoria').value.trim()||null,
+                stock: parseFloat(document.getElementById('cg-stock').value)||0,
+                stock_alerta: parseFloat(document.getElementById('cg-alerta').value)||0
+            };
             const btn = document.getElementById('cg-btn');
             btn.disabled = true; btn.textContent = 'Creando...';
             try {
-                const res = await fetch(`${API_URL}/locales/productos_global`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+                const res = await fetch(`${API_URL}/locales/productos_global`, {
+                    method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)
+                });
                 const r = await res.json();
-                if (res.ok) { alert(`✅ Producto creado.\nLocales nuevos: ${r.creados}\nYa lo tenían: ${r.salteados}\nTotal locales: ${r.total_locales}`); document.getElementById('cg-nombre').value=''; document.getElementById('cg-precio').value=''; document.getElementById('cg-categoria').value=''; document.getElementById('cg-stock').value='0'; document.getElementById('cg-alerta').value='0'; }
-                else { alert('Error: ' + (r.detail || 'no se pudo crear')); }
+                if (res.ok) {
+                    alert(`✅ Producto creado.\nLocales nuevos: ${r.creados}\nYa lo tenían: ${r.salteados}\nTotal locales: ${r.total_locales}`);
+                    document.getElementById('cg-nombre').value = '';
+                    document.getElementById('cg-precio').value = '';
+                    document.getElementById('cg-categoria').value = '';
+                    document.getElementById('cg-stock').value = '0';
+                    document.getElementById('cg-alerta').value = '0';
+                } else { alert('Error: ' + (r.detail || 'no se pudo crear')); }
             } catch(e) { alert('Error de conexión.'); }
             finally { btn.disabled = false; btn.textContent = 'Crear en todos los locales'; }
-        }
-
-        // ── PRODUCTO FABRICA ──
-        let productosFabricaCache = [];
-
-        async function cargarProductosFabrica() {
-            if (productosFabricaCache.length) return;
-            try {
-                const lista = await fetch(`${API_URL}/productos`).then(r=>r.json());
-                productosFabricaCache = lista || [];
-            } catch(e) {}
-        }
-
-        function filtrarProdFabrica() {
-            const q = (document.getElementById('prod-fab-buscar').value || '').toLowerCase().trim();
-            const sel = document.getElementById('prod-fab-select');
-            const actual = sel.value;
-            sel.innerHTML = '<option value="">— Sin vincular (usa búsqueda automática) —</option>' +
-                productosFabricaCache
-                    .filter(p => !q || (p.nombre||'').toLowerCase().includes(q))
-                    .map(p => `<option value="${p.id}" ${String(p.id)===String(actual)?'selected':''}>${p.nombre} (${p.sku||'id:'+p.id})</option>`)
-                    .join('');
         }
 
         function cerrarModales() {
@@ -1433,9 +1525,14 @@
                 var n = (r && r.cantidad) || 0;
                 var cont = document.getElementById('aviso-cierres-pend');
                 if (n === 0) { cont.classList.add('hidden'); return; }
-                var items = (r.cierres||[]).map(function(c){ return '<div class="flex justify-between items-center bg-black border border-orange-900/50 rounded-lg px-3 py-2 mb-1 text-sm"><span class="text-white">Caja #' + c.id + ' · ' + (c.nombre_local||'') + ' · ' + (c.nombre_responsable||'') + '</span><span class="text-orange-400 font-bold">$ ' + (parseFloat(c.total_efectivo)||0).toLocaleString('es-AR') + '</span></div>'; }).join('');
+                var items = (r.cierres||[]).map(function(c){
+                    return '<div class="flex justify-between items-center bg-black border border-orange-900/50 rounded-lg px-3 py-2 mb-1 text-sm"><span class="text-white">Caja #' + c.id + ' · ' + (c.nombre_local||'') + ' · ' + (c.nombre_responsable||'') + '</span><span class="text-orange-400 font-bold">$ ' + (parseFloat(c.total_efectivo)||0).toLocaleString('es-AR') + '</span></div>';
+                }).join('');
                 cont.classList.remove('hidden');
-                cont.innerHTML = '<div class="bg-orange-900/20 border border-orange-700 rounded-xl p-4"><p class="text-orange-300 font-bold text-sm mb-2">💵 Hay ' + n + ' cierre(s) de caja pendientes de retiro de dinero</p>' + items + '<p class="text-gray-500 text-xs mt-2">El retiro se registra desde el POS al momento de entregar el efectivo.</p></div>';
+                cont.innerHTML = '<div class="bg-orange-900/20 border border-orange-700 rounded-xl p-4">' +
+                    '<p class="text-orange-300 font-bold text-sm mb-2">💵 Hay ' + n + ' cierre(s) de caja pendientes de retiro de dinero</p>' +
+                    items +
+                    '<p class="text-gray-500 text-xs mt-2">El retiro se registra desde el POS al momento de entregar el efectivo.</p></div>';
             } catch(e) {}
         }
     </script>
