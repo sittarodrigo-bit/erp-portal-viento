@@ -444,6 +444,18 @@
         let localActual = null;
 
         function fmt(n) { return '$ ' + (parseFloat(n)||0).toLocaleString('es-AR'); }
+        // Muestra una fecha de la base (ya viene en hora argentina) SIN que el navegador
+        // la corra de zona horaria. Formato: dd/mm/aaaa hh:mm
+        function fechaLocal(f, conHora) {
+            if (!f) return '—';
+            var s = String(f).replace('T', ' ');
+            var partes = s.split(' ');
+            var fec = partes[0].split('-'); // [aaaa, mm, dd]
+            if (fec.length < 3) return s;
+            var txt = fec[2] + '/' + fec[1] + '/' + fec[0];
+            if (conHora && partes[1]) txt += ' ' + partes[1].substring(0,5);
+            return txt;
+        }
 
         // ── CREAR / EDITAR LOCAL ──
         function abrirModalLocal() {
@@ -629,7 +641,7 @@
                 }
                 cont.innerHTML = '';
                 lista.forEach(c => {
-                    const fCierre = c.fecha_cierre ? new Date(c.fecha_cierre).toLocaleString('es-AR', {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '—';
+                    const fCierre = fechaLocal(c.fecha_cierre, true);
                     const dif = parseFloat(c.diferencia || 0);
                     let difHtml;
                     if (Math.abs(dif) < 0.5) difHtml = '<span class="text-gray-400 font-bold">Sin diferencia</span>';
@@ -637,7 +649,7 @@
                     else difHtml = `<span class="text-red-400 font-bold">Falta $ ${Math.abs(dif).toLocaleString('es-AR')}</span>`;
 
                     const control = c.controlado
-                        ? `<div class="text-xs text-green-400 font-bold mt-2">✓ Recibido y controlado por ${c.controlado_por || '—'}${c.fecha_control ? ' · ' + new Date(c.fecha_control).toLocaleDateString('es-AR') : ''}</div>`
+                        ? `<div class="text-xs text-green-400 font-bold mt-2">✓ Recibido y controlado por ${c.controlado_por || '—'}${c.fecha_control ? ' · ' + fechaLocal(c.fecha_control, false) : ''}</div>`
                         : `<button onclick="controlarCierre(${c.id})" class="mt-2 text-xs border border-neon bg-neon/10 text-neon hover:bg-neon hover:text-black px-3 py-1.5 rounded font-bold transition">Marcar recibido / controlado</button>`;
 
                     cont.innerHTML += `
@@ -665,7 +677,7 @@
                             ${c.observaciones ? `<p class="text-gray-500 text-xs italic mt-2">📝 ${c.observaciones}</p>` : ''}
                             ${control}
                             ${c.retirado
-                                ? `<div class="text-xs text-blue-400 font-bold mt-2">💵 Dinero retirado por ${c.retirado_por || '—'}${c.fecha_retiro ? ' · ' + new Date(c.fecha_retiro).toLocaleDateString('es-AR') : ''}</div>`
+                                ? `<div class="text-xs text-blue-400 font-bold mt-2">💵 Dinero retirado por ${c.retirado_por || '—'}${c.fecha_retiro ? ' · ' + fechaLocal(c.fecha_retiro, false) : ''}</div>`
                                 : `<div class="text-xs text-orange-400 font-bold mt-2">💵 Pendiente de retiro</div>`}
                         </div>`;
                 });
@@ -715,7 +727,7 @@
             lv.innerHTML = '';
             if (!ventas.length) { lv.innerHTML = '<p class="text-gray-600 text-sm">Sin ventas.</p>'; return; }
             ventas.forEach(v => {
-                const dt = v.fecha ? new Date(v.fecha.replace(' ','T')).toLocaleString('es-AR',{dateStyle:'short',timeStyle:'short'}) : '';
+                const dt = v.fecha ? fechaLocal(v.fecha, true) : '';
                 const items = (v.detalle||[]).map(d=>`${d.cantidad}× ${d.nombre_producto}`).join(', ');
                 lv.innerHTML += `<div class="bg-black border border-gray-800 rounded-lg px-4 py-3">
                     <div class="flex justify-between items-center">
@@ -786,8 +798,8 @@
             else {
                 tbody.innerHTML = ventas.map(v => {
                     const f = v.fecha ? new Date(v.fecha.replace(' ','T')) : null;
-                    const fecha = f ? f.toLocaleDateString('es-AR') : '';
-                    const hora = f ? f.toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'}) : '';
+                    const fecha = fechaLocal(v.fecha, false);
+                    const hora = (String(v.fecha||'').replace('T',' ').split(' ')[1]||'').substring(0,5);
                     let comp;
                     if (v.id_factura) {
                         const tipo = v.tipo_comprobante === 1 ? 'Fact. A' : v.tipo_comprobante === 11 ? 'Fact. C' : 'Fact. B';
@@ -908,8 +920,8 @@
             const aoa = [['Fecha','Hora','Local','Medio de pago','Cajero','Comprobante','Numero','CAE','Total']];
             reporteVentasCache.forEach(v => {
                 const f = v.fecha ? new Date(v.fecha.replace(' ','T')) : null;
-                const fecha = f ? f.toLocaleDateString('es-AR') : '';
-                const hora = f ? f.toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'}) : '';
+                const fecha = fechaLocal(v.fecha, false);
+                const hora = (String(v.fecha||'').replace('T',' ').split(' ')[1]||'').substring(0,5);
                 let tipo, nro, cae;
                 if (v.id_factura) {
                     tipo = v.tipo_comprobante === 1 ? 'Factura A' : v.tipo_comprobante === 11 ? 'Factura C' : 'Factura B';
@@ -1037,7 +1049,7 @@
             cont.innerHTML = '';
             if (!lista.length) { cont.innerHTML = '<p class="text-gray-600 text-sm text-center py-8">No hay faltantes reportados.</p>'; return; }
             lista.forEach(f => {
-                const dt = f.fecha ? new Date(f.fecha.replace(' ','T')).toLocaleString('es-AR',{dateStyle:'short',timeStyle:'short'}) : '';
+                const dt = f.fecha ? fechaLocal(f.fecha, true) : '';
                 const resuelto = f.estado==='resuelto';
                 const emp = f.empleado_apellido ? `${f.empleado_apellido}, ${f.empleado_nombre}` : '';
                 const div = document.createElement('div');
