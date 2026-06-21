@@ -4781,7 +4781,7 @@ def locales_ventas(id_local: int, desde: Optional[str] = None, hasta: Optional[s
         liberar_conexion(conn)
 
 @app.get("/api/locales/{id_local}/mas_vendidos")
-def locales_mas_vendidos(id_local: int, desde: Optional[str] = None, hasta: Optional[str] = None):
+def locales_mas_vendidos(id_local: int, desde: Optional[str] = None, hasta: Optional[str] = None, orden: Optional[str] = "unidades"):
     conn = obtener_conexion()
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
@@ -4793,7 +4793,9 @@ def locales_mas_vendidos(id_local: int, desde: Optional[str] = None, hasta: Opti
         params = [id_local]
         if desde: q += " AND v.fecha::date >= %s"; params.append(desde)
         if hasta: q += " AND v.fecha::date <= %s"; params.append(hasta)
-        q += " GROUP BY d.nombre_producto ORDER BY unidades DESC LIMIT 50"
+        # Ordenar por plata (total) o por cantidad (unidades)
+        col_orden = "total" if (orden == "total" or orden == "plata") else "unidades"
+        q += f" GROUP BY d.nombre_producto ORDER BY {col_orden} DESC LIMIT 50"
         cur.execute(q, tuple(params))
         return fetchall_dict(cur)
     finally:
