@@ -183,7 +183,16 @@
                         </div>
                     </div>
                     <div class="grid grid-cols-3 gap-4 mb-5" id="ventas-kpis"></div>
-                    <h3 class="text-white font-bold mb-3">🏆 Más vendidos</h3>
+                    <div class="flex items-center justify-between mb-3 gap-3 flex-wrap">
+                        <h3 class="text-white font-bold">🏆 Más vendidos <span id="mv-periodo" class="text-gray-500 text-xs font-normal"></span></h3>
+                        <div class="flex items-center gap-2">
+                            <span class="text-gray-500 text-xs">Ordenar por:</span>
+                            <select id="mv-orden" onchange="cargarMasVendidos()" class="bg-gray-900 border border-gray-700 text-white rounded-lg p-1.5 text-xs">
+                                <option value="unidades">Cantidad (unidades)</option>
+                                <option value="total">Plata (facturado)</option>
+                            </select>
+                        </div>
+                    </div>
                     <div id="mas-vendidos" class="space-y-1 mb-6"></div>
                     <h3 class="text-white font-bold mb-3">🧾 Últimas ventas (pedidos del cajero)</h3>
                     <div id="lista-ventas" class="space-y-2"></div>
@@ -686,10 +695,7 @@
                 cargarReporteVentas();
             }
             const id = localActual.id;
-            const [ventas, top] = await Promise.all([
-                fetch(`${API_URL}/locales/${id}/ventas`).then(r=>r.json()).catch(()=>[]),
-                fetch(`${API_URL}/locales/${id}/mas_vendidos`).then(r=>r.json()).catch(()=>[])
-            ]);
+            const ventas = await fetch(`${API_URL}/locales/${id}/ventas`).then(r=>r.json()).catch(()=>[]);
             // KPIs
             const hoy = new Date().toISOString().split('T')[0];
             let totalHoy=0, totalTodo=0;
@@ -698,18 +704,13 @@
                 <div class="bg-black border border-neon rounded-xl p-4 text-center"><p class="text-gray-500 text-xs">Ventas hoy</p><p class="text-neon font-bold text-2xl">${fmt(totalHoy)}</p></div>
                 <div class="bg-black border border-gray-800 rounded-xl p-4 text-center"><p class="text-gray-500 text-xs">Tickets (todo)</p><p class="text-white font-bold text-2xl">${ventas.length}</p></div>
                 <div class="bg-black border border-gray-800 rounded-xl p-4 text-center"><p class="text-gray-500 text-xs">Total acumulado</p><p class="text-white font-bold text-2xl">${fmt(totalTodo)}</p></div>`;
-            // Más vendidos
-            const mv = document.getElementById('mas-vendidos');
-            mv.innerHTML = '';
-            if (!top.length) mv.innerHTML = '<p class="text-gray-600 text-sm">Sin ventas todavía.</p>';
-            const maxu = top.length ? (parseFloat(top[0].unidades)||1) : 1;
-            top.slice(0,10).forEach(p => {
-                const pct = Math.max(3, Math.round((parseFloat(p.unidades)||0)/maxu*100));
-                mv.innerHTML += `<div class="bg-black border border-gray-800 rounded-lg px-4 py-2">
-                    <div class="flex justify-between text-sm mb-1"><span class="text-gray-300">${p.nombre_producto}</span><span class="text-neon font-bold">${p.unidades} u · ${fmt(p.total)}</span></div>
-                    <div class="w-full bg-gray-900 rounded-full h-1.5"><div class="bg-neon h-1.5 rounded-full" style="width:${pct}%"></div></div></div>`;
-            });
-            // Lista de ventas
+            // Más vendidos (en su propia función, respeta fechas y orden)
+            cargarMasVendidos();
+            // Lista de últimas ventas
+            renderListaVentas(ventas);
+        }
+
+        function renderListaVentas(ventas) {
             const lv = document.getElementById('lista-ventas');
             lv.innerHTML = '';
             if (!ventas.length) { lv.innerHTML = '<p class="text-gray-600 text-sm">Sin ventas.</p>'; return; }
@@ -725,10 +726,40 @@
             });
         }
 
+        async function cargarMasVendidos() {
+            if (!localActual) return;
+            const id = localActual.id;
+            const desde = (document.getElementById('rv-desde')||{}).value || '';
+            const hasta = (document.getElementById('rv-hasta')||{}).value || '';
+            const orden = (document.getElementById('mv-orden')||{}).value || 'unidades';
+            let url = `${API_URL}/locales/${id}/mas_vendidos?orden=${orden}`;
+            if (desde) url += `&desde=${desde}`;
+            if (hasta) url += `&hasta=${hasta}`;
+            // Mostrar el período arriba
+            const per = document.getElementById('mv-periodo');
+            if (per) per.textContent = (desde||hasta) ? ('· ' + (desde||'inicio') + ' a ' + (hasta||'hoy')) : '· todo el historial';
+            const top = await fetch(url).then(r=>r.json()).catch(()=>[]);
+            const mv = document.getElementById('mas-vendidos');
+            mv.innerHTML = '';
+            if (!top.length) { mv.innerHTML = '<p class="text-gray-600 text-sm">Sin ventas en este período.</p>'; return; }
+            const ordenarPorPlata = (orden === 'total');
+            const maxv = ordenarPorPlata
+                ? (parseFloat(top[0].total)||1)
+                : (parseFloat(top[0].unidades)||1);
+            top.slice(0,15).forEach((p, i) => {
+                const valor = ordenarPorPlata ? (parseFloat(p.total)||0) : (parseFloat(p.unidades)||0);
+                const pct = Math.max(3, Math.round(valor/maxv*100));
+                mv.innerHTML += `<div class="bg-black border border-gray-800 rounded-lg px-4 py-2">
+                    <div class="flex justify-between text-sm mb-1"><span class="text-gray-300">${i+1}. ${p.nombre_producto}</span><span class="text-neon font-bold">${p.unidades} u · ${fmt(p.total)}</span></div>
+                    <div class="w-full bg-gray-900 rounded-full h-1.5"><div class="bg-neon h-1.5 rounded-full" style="width:${pct}%"></div></div></div>`;
+            });
+        }
+
         // ── REPORTE DE VENTAS (contador) ──
         let reporteVentasCache = [];
 
         async function cargarReporteVentas() {
+            cargarMasVendidos();  // actualizar el ranking con las fechas elegidas
             const p = new URLSearchParams();
             const desde = document.getElementById('rv-desde').value;
             const hasta = document.getElementById('rv-hasta').value;
