@@ -511,6 +511,7 @@
         var cajaActual = null;        // {id, ...}
         var productosLocal = [];      // productos del local
         var carrito = [];             // items de la venta
+        var refVentaActual = null;    // llave única para evitar ventas duplicadas
         var metodoSel = null;
         var empresa = {};
 
@@ -804,6 +805,11 @@
         // ── COBRO ──
         function abrirModalCobro() {
             if (!carrito.length) return;
+            // Generar la llave única de esta venta (una sola vez por cobro).
+            // Si el cajero reintenta el mismo cobro, va con la misma llave y el server no la duplica.
+            if (!refVentaActual) {
+                refVentaActual = 'v-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+            }
             metodoSel = null;
             modoDividido = false;
             document.getElementById('pago-dividido').classList.add('hidden');
@@ -907,12 +913,13 @@
             try {
                 var res = await fetch(API_URL + '/pos/ventas', {
                     method:'POST', headers:{'Content-Type':'application/json'},
-                    body: JSON.stringify({ id_caja: cajaActual.id, id_local: localActual.id, metodo_pago: metodoPrincipal, total: total, detalle: detalle, pagos: pagos, id_empleado: (posUsuario ? posUsuario.id_empleado : null), nombre_cajero: (posUsuario ? (posUsuario.nombre + ' ' + posUsuario.apellido) : null) })
+                    body: JSON.stringify({ id_caja: cajaActual.id, id_local: localActual.id, metodo_pago: metodoPrincipal, total: total, detalle: detalle, pagos: pagos, id_empleado: (posUsuario ? posUsuario.id_empleado : null), nombre_cajero: (posUsuario ? (posUsuario.nombre + ' ' + posUsuario.apellido) : null), ref_unica: refVentaActual })
                 });
                 if (res.ok) {
                     var r = await res.json();
                     ventaParaFacturar = { id_venta: r.id_venta, total: total, metodo: metodoPrincipal, detalle: detalle };
                     carrito = [];
+                    refVentaActual = null;   // listo para la próxima venta (nueva llave)
                     renderCarrito();
                     cerrarModales();
                     // Mostramos la pregunta de inmediato (no esperamos a recargar la caja)
