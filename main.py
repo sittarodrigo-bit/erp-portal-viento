@@ -2034,7 +2034,7 @@ def armado_despacho_parcial(id: str):
         liberar_conexion(conn)
 
 @app.get("/api/pedidos_b2b/historial")
-def historial_pedidos_b2b(estado: Optional[str] = None, id_distribuidor: Optional[int] = None):
+def historial_pedidos_b2b(estado: Optional[str] = None, id_distribuidor: Optional[int] = None, desde: Optional[str] = None, limite: Optional[int] = 200, modo: Optional[str] = None):
     conn = obtener_conexion()
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
@@ -2051,7 +2051,17 @@ def historial_pedidos_b2b(estado: Optional[str] = None, id_distribuidor: Optiona
             query += " AND p.estado = %s"; params.append(estado)
         if id_distribuidor:
             query += " AND p.id_distribuidor = %s"; params.append(id_distribuidor)
+        if desde:
+            query += " AND p.fecha::date >= %s"; params.append(desde)
+        # Modo "para hacer": pendientes/sin despachar (cualquier fecha) + todo lo de hoy
+        if modo == 'pendientes_hoy':
+            query += " AND (p.estado NOT IN ('Despachado','Cancelado') OR p.fecha::date = CURRENT_DATE)"
         query += " ORDER BY p.fecha DESC"
+        try:
+            lim = int(limite) if limite else 200
+        except Exception:
+            lim = 200
+        query += " LIMIT %s"; params.append(lim)
         try:
             cur.execute(query, tuple(params))
             return fetchall_dict(cur)
@@ -2071,7 +2081,11 @@ def historial_pedidos_b2b(estado: Optional[str] = None, id_distribuidor: Optiona
                 q2 += " AND p.estado = %s"; p2.append(estado)
             if id_distribuidor:
                 q2 += " AND p.id_distribuidor = %s"; p2.append(id_distribuidor)
-            q2 += " ORDER BY p.fecha DESC"
+            if desde:
+                q2 += " AND p.fecha::date >= %s"; p2.append(desde)
+            if modo == 'pendientes_hoy':
+                q2 += " AND (p.estado NOT IN ('Despachado','Cancelado') OR p.fecha::date = CURRENT_DATE)"
+            q2 += " ORDER BY p.fecha DESC LIMIT %s"; p2.append(lim)
             cur.execute(q2, tuple(p2))
             return fetchall_dict(cur)
     finally:
