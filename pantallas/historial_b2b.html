@@ -1109,14 +1109,23 @@
             var tel = (p.dist_telefono || '').replace(/[^0-9]/g,'');
             var html = '<p class="text-gray-400 text-sm mb-3">Elegí el mensaje para enviar a <b class="text-white">' + (p.distribuidor||'') + '</b></p>';
             if (!tel) html += '<p class="text-orange-400 text-xs mb-3">⚠️ Este distribuidor no tiene teléfono cargado.</p>';
-            html += '<div class="space-y-2">'
-                + '<button onclick="enviarWsp(' + p.id + ',\\'recepcion\\')" class="w-full text-left bg-gray-800 hover:bg-gray-700 rounded px-4 py-3 text-sm text-gray-200">✅ Confirmar recepción del pedido</button>'
-                + '<button onclick="enviarWsp(' + p.id + ',\\'listo\\')" class="w-full text-left bg-gray-800 hover:bg-gray-700 rounded px-4 py-3 text-sm text-gray-200">📦 Pedido listo (con importe a abonar)</button>'
-                + '<button onclick="enviarWsp(' + p.id + ',\\'cuenta\\')" class="w-full text-left bg-gray-800 hover:bg-gray-700 rounded px-4 py-3 text-sm text-gray-200">📊 Estado de cuenta</button>'
-                + '<button onclick="enviarWsp(' + p.id + ',\\'terminado\\')" class="w-full text-left bg-gray-800 hover:bg-gray-700 rounded px-4 py-3 text-sm text-gray-200">✔️ Pedido terminado</button>'
-                + '<button onclick="enviarWsp(' + p.id + ',\\'despachado\\')" class="w-full text-left bg-gray-800 hover:bg-gray-700 rounded px-4 py-3 text-sm text-gray-200">🚚 Pedido despachado (con datos de guía)</button>'
-                + '</div>';
+            var tipos = [
+                ['recepcion',  '✅ Confirmar recepción del pedido'],
+                ['listo',      '📦 Pedido listo (con importe a abonar)'],
+                ['cuenta',     '📊 Estado de cuenta'],
+                ['terminado',  '✔️ Pedido terminado'],
+                ['despachado', '🚚 Pedido despachado (con datos de guía)']
+            ];
+            html += '<div class="space-y-2" id="wsp-btns-' + p.id + '"></div>';
             abrirModalDist('📱 Enviar WhatsApp', html);
+            var cont = document.getElementById('wsp-btns-' + p.id);
+            tipos.forEach(function(t) {
+                var b = document.createElement('button');
+                b.className = 'w-full text-left bg-gray-800 hover:bg-gray-700 rounded px-4 py-3 text-sm text-gray-200';
+                b.textContent = t[1];
+                b.onclick = function() { enviarWsp(p.id, t[0]); };
+                cont.appendChild(b);
+            });
         }
         async function enviarWsp(idPedido, tipo) {
             var lista = await fetch(API_URL + '/pedidos_b2b/historial?limite=400').then(function(r){return r.json();});
