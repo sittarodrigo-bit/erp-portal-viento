@@ -2052,10 +2052,10 @@ def historial_pedidos_b2b(estado: Optional[str] = None, id_distribuidor: Optiona
         if id_distribuidor:
             query += " AND p.id_distribuidor = %s"; params.append(id_distribuidor)
         if desde:
-            query += " AND p.fecha::date >= %s"; params.append(desde)
+            query += " AND p.fecha >= %s"; params.append(desde)
         # Modo "para hacer": pendientes/sin despachar (cualquier fecha) + todo lo de hoy
         if modo == 'pendientes_hoy':
-            query += " AND (p.estado NOT IN ('Despachado','Cancelado') OR p.fecha::date = CURRENT_DATE)"
+            query += " AND (p.estado NOT IN ('Despachado','Cancelado') OR p.fecha >= CURRENT_DATE)"
         query += " ORDER BY p.fecha DESC"
         try:
             lim = int(limite) if limite else 200
@@ -2082,9 +2082,9 @@ def historial_pedidos_b2b(estado: Optional[str] = None, id_distribuidor: Optiona
             if id_distribuidor:
                 q2 += " AND p.id_distribuidor = %s"; p2.append(id_distribuidor)
             if desde:
-                q2 += " AND p.fecha::date >= %s"; p2.append(desde)
+                q2 += " AND p.fecha >= %s"; p2.append(desde)
             if modo == 'pendientes_hoy':
-                q2 += " AND (p.estado NOT IN ('Despachado','Cancelado') OR p.fecha::date = CURRENT_DATE)"
+                q2 += " AND (p.estado NOT IN ('Despachado','Cancelado') OR p.fecha >= CURRENT_DATE)"
             q2 += " ORDER BY p.fecha DESC LIMIT %s"; p2.append(lim)
             cur.execute(q2, tuple(p2))
             return fetchall_dict(cur)
