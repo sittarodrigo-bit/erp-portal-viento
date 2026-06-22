@@ -2039,7 +2039,9 @@ def historial_pedidos_b2b(estado: Optional[str] = None, id_distribuidor: Optiona
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
         query = """
-            SELECT p.id, p.fecha::text, p.total, p.estado, p.id_distribuidor, d.razon_social as distribuidor
+            SELECT p.id, p.fecha::text, p.total, p.estado, p.id_distribuidor, d.razon_social as distribuidor,
+                   d.telefono AS dist_telefono,
+                   COALESCE(p.guia_transporte,'') AS guia_transporte, COALESCE(p.guia_numero,'') AS guia_numero
             FROM pedidos_b2b p
             LEFT JOIN distribuidores d ON p.id_distribuidor = d.id
             WHERE 1=1
@@ -2050,8 +2052,28 @@ def historial_pedidos_b2b(estado: Optional[str] = None, id_distribuidor: Optiona
         if id_distribuidor:
             query += " AND p.id_distribuidor = %s"; params.append(id_distribuidor)
         query += " ORDER BY p.fecha DESC"
-        cur.execute(query, tuple(params))
-        return fetchall_dict(cur)
+        try:
+            cur.execute(query, tuple(params))
+            return fetchall_dict(cur)
+        except Exception:
+            conn.rollback()
+            # Fallback si todavía no existen las columnas de guía
+            q2 = """
+                SELECT p.id, p.fecha::text, p.total, p.estado, p.id_distribuidor, d.razon_social as distribuidor,
+                       d.telefono AS dist_telefono,
+                       '' AS guia_transporte, '' AS guia_numero
+                FROM pedidos_b2b p
+                LEFT JOIN distribuidores d ON p.id_distribuidor = d.id
+                WHERE 1=1
+            """
+            p2 = []
+            if estado:
+                q2 += " AND p.estado = %s"; p2.append(estado)
+            if id_distribuidor:
+                q2 += " AND p.id_distribuidor = %s"; p2.append(id_distribuidor)
+            q2 += " ORDER BY p.fecha DESC"
+            cur.execute(q2, tuple(p2))
+            return fetchall_dict(cur)
     finally:
         liberar_conexion(conn)
 
@@ -2170,6 +2192,27 @@ def cambiar_estado_pedido(id: int, estado: str):
     except Exception as e:
         conn.rollback()
         raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
+class GuiaTransporte(BaseModel):
+    transporte: Optional[str] = None
+    numero: Optional[str] = None
+
+@app.put("/api/pedidos_b2b/{id}/guia")
+def guardar_guia_transporte(id: int, data: GuiaTransporte):
+    """Guarda los datos de la guía de transporte en el pedido."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        try:
+            cur.execute("UPDATE pedidos_b2b SET guia_transporte=%s, guia_numero=%s WHERE id=%s",
+                        (data.transporte, data.numero, id))
+            conn.commit()
+            return {"status": "ok"}
+        except Exception:
+            conn.rollback()
+            raise HTTPException(status_code=400, detail="Falta correr CREAR_GUIA_TRANSPORTE.sql en la base.")
     finally:
         liberar_conexion(conn)
 
