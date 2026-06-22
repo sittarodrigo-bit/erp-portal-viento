@@ -13,47 +13,46 @@
 <body class="bg-gray-950 text-gray-200 font-sans min-h-screen">
 
   <!-- Header -->
-  <header class="bg-black border-b border-gray-800 px-5 py-4 flex items-center justify-between sticky top-0 z-30">
+  <header class="bg-black border-b border-gray-800 px-5 py-2.5 flex items-center justify-between sticky top-0 z-30">
     <div class="flex items-center gap-3">
-      <h1 class="text-neon font-bold text-lg tracking-widest uppercase">Portal del Viento</h1>
+      <h1 class="text-neon font-bold text-base tracking-widest uppercase">Portal del Viento</h1>
       <span class="text-gray-600 text-sm">· Armado de pedidos</span>
     </div>
-    <button onclick="cargarPedidos()" class="border border-gray-700 text-gray-300 hover:text-white px-4 py-2 rounded-lg text-sm">🔄 Actualizar</button>
+    <button onclick="cargarPedidos()" class="border border-gray-700 text-gray-300 hover:text-white px-3 py-1.5 rounded-lg text-sm">🔄 Actualizar</button>
   </header>
 
   <!-- Vista lista de pedidos -->
-  <main id="vista-lista" class="p-5 max-w-3xl mx-auto">
-    <div class="flex gap-2 mb-4">
+  <main id="vista-lista" class="p-4 max-w-5xl mx-auto">
+    <div class="flex gap-2 mb-3">
       <button onclick="cambiarTab('pendientes')" id="tab-pendientes" class="px-4 py-2 rounded-lg text-sm font-bold bg-neon text-black">📋 Por armar</button>
       <button onclick="cambiarTab('historial')" id="tab-historial" class="px-4 py-2 rounded-lg text-sm font-bold border border-gray-700 text-gray-300">📜 Historial</button>
     </div>
     <div id="cont-pendientes">
-      <div id="lista-pedidos" class="space-y-3">
-        <p class="text-gray-500 text-center py-10">Cargando...</p>
+      <div id="lista-pedidos" class="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        <p class="text-gray-500 text-center py-10 col-span-full">Cargando...</p>
       </div>
     </div>
     <div id="cont-historial" class="hidden">
-      <div id="lista-historial" class="space-y-3">
-        <p class="text-gray-500 text-center py-10">Cargando...</p>
+      <div id="lista-historial" class="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        <p class="text-gray-500 text-center py-10 col-span-full">Cargando...</p>
       </div>
     </div>
   </main>
 
   <!-- Vista detalle / armado -->
-  <main id="vista-armado" class="hidden p-5 max-w-3xl mx-auto pb-32">
-    <button onclick="volverLista()" class="text-gray-400 hover:text-white text-sm mb-4">← Volver a la lista</button>
-    <div class="bg-black border border-gray-800 rounded-2xl p-5 mb-4">
-      <div class="flex justify-between items-start">
-        <div>
-          <p class="text-gray-500 text-xs uppercase font-bold">Pedido</p>
-          <h2 id="arm-titulo" class="text-2xl font-bold text-white"></h2>
-          <p id="arm-distribuidor" class="text-neon font-bold mt-1"></p>
+  <main id="vista-armado" class="hidden p-4 max-w-5xl mx-auto pb-32">
+    <button onclick="volverLista()" class="text-gray-400 hover:text-white text-sm mb-3">← Volver a la lista</button>
+    <div class="bg-black border border-gray-800 rounded-xl p-4 mb-3">
+      <div class="flex justify-between items-center">
+        <div class="flex items-baseline gap-3">
+          <h2 id="arm-titulo" class="text-xl font-bold text-white"></h2>
+          <p id="arm-distribuidor" class="text-neon font-bold text-sm"></p>
         </div>
         <div class="text-right">
           <span id="arm-estado-badge" class="text-gray-500 text-sm"></span>
         </div>
       </div>
-      <div class="mt-3" id="arm-progreso-wrap">
+      <div class="mt-2.5" id="arm-progreso-wrap">
         <div class="w-full bg-gray-900 rounded-full h-2 overflow-hidden">
           <div id="arm-progreso" class="bg-neon h-2 transition-all" style="width:0%"></div>
         </div>
@@ -61,14 +60,14 @@
       </div>
     </div>
 
-    <div id="arm-items" class="space-y-2"></div>
+    <div id="arm-items" class="grid md:grid-cols-2 gap-2"></div>
 
     <!-- Barra inferior fija -->
-    <div class="fixed bottom-0 left-0 right-0 bg-black border-t border-gray-800 p-4" id="arm-botonera">
-      <div class="max-w-3xl mx-auto space-y-2">
-        <div id="aviso-faltan" class="hidden text-center text-orange-400 text-sm font-bold"></div>
-        <button id="btn-parcial" onclick="despacharParcial()" class="w-full bg-orange-600 hover:bg-orange-500 text-white font-bold py-3 rounded-xl text-sm">📦 Despachar lo armado (finaliza)</button>
-        <button id="btn-listo" onclick="marcarListo()" class="w-full bg-neon text-black font-bold py-4 rounded-xl text-lg disabled:bg-gray-700 disabled:text-gray-500">✓ Pedido completo (despachar todo)</button>
+    <div class="fixed bottom-0 left-0 right-0 bg-black border-t border-gray-800 p-3" id="arm-botonera">
+      <div class="max-w-5xl mx-auto flex gap-2">
+        <div id="aviso-faltan" class="hidden"></div>
+        <button id="btn-parcial" onclick="despacharParcial()" class="flex-1 bg-orange-600 hover:bg-orange-500 text-white font-bold py-3 rounded-xl text-sm">📦 Despachar lo armado (finaliza)</button>
+        <button id="btn-listo" onclick="marcarListo()" class="flex-1 bg-neon text-black font-bold py-3 rounded-xl text-base disabled:bg-gray-700 disabled:text-gray-500">✓ Pedido completo</button>
       </div>
     </div>
   </main>
@@ -109,21 +108,19 @@ async function cargarPedidos(){
       const titulo = esRepo ? ('Reposición #' + String(p.id).replace('r','')) : ('Pedido #' + p.id);
       const nombre = p.nombre || p.distribuidor || 'Sin nombre';
       const montoTxt = (p.total !== null && p.total !== undefined) ? ('<p class="text-neon font-bold">' + fmt(p.total) + '</p>') : '';
-      return `<button onclick="abrirPedido('${p.id}')" class="w-full text-left bg-gray-900 border ${borde} rounded-xl p-4 hover:border-gray-600 transition">
-        <div class="flex justify-between items-center">
-          <div>
-            <p class="text-white font-bold text-lg">${titulo}</p>
-            <p class="text-gray-400 text-sm">${nombre}</p>
+      return `<button onclick="abrirPedido('${p.id}')" class="text-left bg-gray-900 border ${borde} rounded-xl p-3 hover:border-gray-600 transition h-full">
+        <div class="flex justify-between items-start gap-2">
+          <div class="min-w-0">
+            <p class="text-white font-bold">${titulo}</p>
+            <p class="text-gray-400 text-sm truncate">${nombre}</p>
           </div>
-          <div class="text-right">
-            ${montoTxt}
-            ${badge}
-          </div>
+          ${montoTxt ? '<div class="text-right shrink-0">'+montoTxt+'</div>' : ''}
         </div>
+        <div class="mt-2">${badge}</div>
       </button>`;
     }).join('');
   }catch(e){
-    cont.innerHTML = '<p class="text-red-400 text-center py-10">No se pudieron cargar los pedidos.</p>';
+    cont.innerHTML = '<p class="text-red-400 text-center py-10 col-span-full">No se pudieron cargar los pedidos.</p>';
   }
 }
 
@@ -157,14 +154,14 @@ function renderArmado(){
   const hechos = d.items.filter(i=>i.completo);
   let html = '';
   if(esRepo){
-    html += '<div class="bg-blue-900/20 border border-blue-800 rounded-xl p-3 mb-4 text-blue-200 text-sm">🏪 Reposición de ' + (d.distribuidor||'local') + '. Cargá lo que vas preparando.</div>';
+    html += '<div class="bg-blue-900/20 border border-blue-800 rounded-xl p-3 mb-2 text-blue-200 text-sm col-span-full">🏪 Reposición de ' + (d.distribuidor||'local') + '. Cargá lo que vas preparando.</div>';
   }
   if(faltan.length){
-    html += '<p class="text-orange-400 text-xs font-bold uppercase mb-2 mt-1">⬜ Falta completar (' + faltan.length + ')</p>';
+    html += '<p class="text-orange-400 text-xs font-bold uppercase mb-1 mt-1 col-span-full">⬜ Falta completar (' + faltan.length + ')</p>';
     html += faltan.map(renderItem).join('');
   }
   if(hechos.length){
-    html += '<p class="text-neon text-xs font-bold uppercase mb-2 mt-5">✓ Completos (' + hechos.length + ')</p>';
+    html += '<p class="text-neon text-xs font-bold uppercase mb-1 mt-3 col-span-full">✓ Completos (' + hechos.length + ')</p>';
     html += hechos.map(renderItem).join('');
   }
   $('arm-items').innerHTML = html;
@@ -185,20 +182,20 @@ function renderItem(it){
   const prepMostrar = esCaja ? (prep / upc) : prep;
   const unidad = esCaja ? 'cajas' : '';
   const subinfo = esCaja ? `<p class="text-amber-400 text-xs">📦 ${cantMostrar} caja(s) × ${upc} = ${it.cantidad} unidades</p>` : '';
-  return `<div class="bg-gray-900 border ${completo?'border-neon/50 bg-neon/5':'border-gray-800'} rounded-xl p-4 mb-2">
-    <div class="flex items-center justify-between gap-3">
+  return `<div class="bg-gray-900 border ${completo?'border-neon/50 bg-neon/5':'border-gray-800'} rounded-xl p-3">
+    <div class="flex items-center justify-between gap-2">
       <div class="flex-1 min-w-0">
-        <p class="text-white font-bold">${it.nombre} ${completo?'<span class="text-neon">✓</span>':''}</p>
+        <p class="text-white font-bold text-sm">${it.nombre} ${completo?'<span class="text-neon">✓</span>':''}</p>
         <p class="text-gray-500 text-xs">Pedido: ${cantMostrar} ${unidad}${infoStock}</p>
         ${subinfo}
       </div>
-      <div class="flex items-center gap-2 flex-shrink-0">
+      <div class="flex items-center gap-1.5 flex-shrink-0">
         <input type="number" inputmode="numeric" min="0" max="${cantMostrar}" value="${prepMostrar}"
                id="cant-${idx}"
                onkeydown="if(event.key==='Enter'){setearCant(${idx})}"
-               class="w-20 bg-black border border-gray-600 focus:border-neon text-white text-center text-xl font-bold rounded-lg py-2 outline-none">
-        <span class="text-gray-600 text-sm">/ ${cantMostrar}${esCaja?' cj':''}</span>
-        <button onclick="setearCant(${idx})" class="bg-neon text-black font-bold px-4 py-2.5 rounded-lg active:scale-95">OK</button>
+               class="w-16 bg-black border border-gray-600 focus:border-neon text-white text-center text-lg font-bold rounded-lg py-1.5 outline-none">
+        <span class="text-gray-600 text-xs">/ ${cantMostrar}${esCaja?' cj':''}</span>
+        <button onclick="setearCant(${idx})" class="bg-neon text-black font-bold px-3 py-2 rounded-lg active:scale-95 text-sm">OK</button>
       </div>
     </div>
     <div class="w-full bg-gray-800 rounded-full h-1.5 mt-3 overflow-hidden"><div class="bg-neon h-1.5 transition-all" style="width:${pctItem}%"></div></div>
@@ -316,10 +313,12 @@ async function cargarHistorial(){
         : '<span class="text-xs font-bold px-2 py-1 rounded-full bg-gray-700 text-gray-300">\ud83d\ude9a Distribuidor</span>';
       const fecha = (p.fecha||'').replace('T',' ').substring(0,16);
       const montoTxt = (p.total!==null && p.total!==undefined) ? ('<p class="text-gray-400 text-sm">'+fmt(p.total)+'</p>') : '';
+      const quien = p.armado_por ? ('<p class="text-neon text-xs mt-0.5">\ud83d\udc64 Armó: '+p.armado_por+'</p>') : '';
       return '<button onclick="abrirPedido(\''+p.id+'\')" class="w-full text-left bg-gray-900 border border-gray-800 rounded-xl p-4 hover:border-gray-600 transition">'+
         '<div class="flex justify-between items-center"><div>'+
         '<p class="text-white font-bold">'+titulo+'</p>'+
         '<p class="text-gray-400 text-sm">'+p.nombre+'</p>'+
+        quien+
         '<p class="text-gray-600 text-xs mt-1">'+fecha+' \u00b7 '+p.estado+'</p>'+
         '</div><div class="text-right">'+montoTxt+badge+'</div></div></button>';
     }).join('');
