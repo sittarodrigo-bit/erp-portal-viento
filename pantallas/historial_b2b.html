@@ -41,7 +41,7 @@
     </aside>
 
     <main class="flex-1 flex flex-col overflow-hidden">
-        <header class="bg-gray-900 border-b border-gray-800 py-4 px-8 flex justify-between items-center shrink-0">
+        <header class="bg-gray-900 border-b border-gray-800 py-3 px-8 flex justify-between items-center shrink-0">
             <h2 class="text-xl font-bold text-white">Pedidos B2B</h2>
             <button onclick="abrirModalNuevo()" class="bg-neon hover:bg-yellow-300 text-black font-bold py-2 px-6 rounded-lg transition">+ Nuevo Pedido</button>
         </header>
@@ -68,17 +68,17 @@
             <button onclick="limpiarFiltros()" class="text-gray-400 hover:text-white text-sm">↻ Limpiar</button>
         </div>
 
-        <div class="flex-1 overflow-y-auto p-6">
+        <div class="flex-1 overflow-y-auto p-4">
             <div class="bg-black rounded-xl border border-gray-800 overflow-hidden">
                 <table class="w-full text-left">
                     <thead class="bg-gray-950 text-xs text-gray-400 uppercase">
                         <tr>
-                            <th class="p-4">N° Pedido</th>
-                            <th class="p-4">Fecha</th>
-                            <th class="p-4">Distribuidor</th>
-                            <th class="p-4">Importe</th>
-                            <th class="p-4">Estado</th>
-                            <th class="p-4 text-right">Acciones</th>
+                            <th class="px-3 py-2">N° Pedido</th>
+                            <th class="px-3 py-2">Fecha</th>
+                            <th class="px-3 py-2">Cliente</th>
+                            <th class="px-3 py-2">Importe</th>
+                            <th class="px-3 py-2">Estado</th>
+                            <th class="px-3 py-2 text-right">Acciones</th>
                         </tr>
                     </thead>
                     <tbody id="tabla-b2b" class="divide-y divide-gray-800 text-sm">
@@ -88,6 +88,20 @@
             </div>
         </div>
     </main>
+
+    <!-- Toast -->
+    <div id="toast" class="hidden fixed bottom-6 left-1/2 -translate-x-1/2 bg-gray-800 border border-gray-600 text-white px-5 py-3 rounded-xl shadow-2xl z-[10000] text-sm font-bold"></div>
+
+    <!-- Modal genérico para distribuidor (pago / estado cuenta / últimos pedidos / wsp / guía) -->
+    <div id="modal-dist" class="hidden fixed inset-0 bg-black/80 items-center justify-center z-50 p-4">
+        <div class="bg-gray-900 border border-gray-700 rounded-xl p-5 w-full max-w-lg shadow-2xl max-h-[88vh] overflow-y-auto">
+            <div class="flex justify-between items-center mb-4">
+                <h3 id="md-titulo" class="text-lg font-bold text-white">Título</h3>
+                <button onclick="cerrarModalDist()" class="text-gray-500 hover:text-white text-2xl">×</button>
+            </div>
+            <div id="md-cuerpo"></div>
+        </div>
+    </div>
 
     <!-- Modal Detalle -->
     <div id="modal-detalle" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
@@ -245,32 +259,81 @@
         }
 
         function crearFila(p) {
-            var fecha = new Date(p.fecha).toLocaleDateString('es-AR');
+            var fecha = fechaCorta(p.fecha);
             var color = COLORES[p.estado] || 'bg-gray-800 text-gray-400';
             var tr = document.createElement('tr');
             tr.className = 'hover:bg-gray-900 transition';
 
-            var celdas = [
-                { txt: '#' + String(p.id).padStart(4,'0'), cls: 'p-4 font-bold text-neon text-sm' },
-                { txt: fecha, cls: 'p-4 text-gray-400 text-sm' },
-                { txt: p.distribuidor, cls: 'p-4 font-bold text-white' },
-                { txt: '$ ' + parseFloat(p.total).toLocaleString('es-AR'), cls: 'p-4 text-white font-bold' }
-            ];
-            celdas.forEach(function(c) {
-                var td = document.createElement('td');
-                td.className = c.cls;
-                td.textContent = c.txt;
-                tr.appendChild(td);
-            });
+            // N° pedido
+            var tdId = document.createElement('td');
+            tdId.className = 'px-3 py-2 font-bold text-neon text-sm';
+            tdId.textContent = '#' + String(p.id).padStart(4,'0');
+            tr.appendChild(tdId);
 
-            var tdEst = document.createElement('td'); tdEst.className = 'p-4';
+            // Fecha
+            var tdFecha = document.createElement('td');
+            tdFecha.className = 'px-3 py-2 text-gray-400 text-sm';
+            tdFecha.textContent = fecha;
+            tr.appendChild(tdFecha);
+
+            // Nombre del cliente (clickeable -> menú de acciones del distribuidor)
+            var tdNom = document.createElement('td');
+            tdNom.className = 'px-3 py-2';
+            var relNom = document.createElement('div'); relNom.className = 'relative inline-block';
+            var btnNom = document.createElement('button');
+            btnNom.className = 'font-bold text-white hover:text-neon transition text-left flex items-center gap-1';
+            btnNom.innerHTML = (p.distribuidor || '—') + ' <span class="text-gray-600 text-xs">▾</span>';
+            var menuNom = document.createElement('div');
+            menuNom.className = 'menu-acciones hidden bg-gray-800 border border-gray-700 rounded-lg shadow-2xl w-48';
+            menuNom.style.zIndex = '9999';
+            function mNom(txt, cls, fn) {
+                var b = document.createElement('button');
+                b.className = 'w-full text-left px-4 py-2 text-sm hover:bg-gray-700 ' + cls;
+                b.textContent = txt;
+                b.onclick = function(e) { e.stopPropagation(); menuNom.classList.add('hidden'); fn(); };
+                return b;
+            }
+            menuNom.appendChild(mNom('💵 Realizar pago',     'text-green-400', function() { abrirPagoDist(p.id_distribuidor, p.distribuidor); }));
+            menuNom.appendChild(mNom('📊 Estado de cuenta',  'text-gray-300',  function() { abrirEstadoCuenta(p.id_distribuidor, p.distribuidor); }));
+            menuNom.appendChild(mNom('📦 Últimos pedidos',   'text-gray-300',  function() { abrirUltimosPedidos(p.id_distribuidor, p.distribuidor); }));
+            menuNom.appendChild(mNom('✏️ Editar datos',      'text-gray-300',  function() { editarDistribuidor(p.id_distribuidor); }));
+            btnNom.onclick = function(e) {
+                e.stopPropagation();
+                var abierto = !menuNom.classList.contains('hidden');
+                cerrarMenus();
+                if (abierto) return;
+                if (!p.id_distribuidor) { mostrarToast('Este pedido no tiene distribuidor asociado'); return; }
+                var r = btnNom.getBoundingClientRect();
+                menuNom.style.position = 'fixed';
+                menuNom.style.top = (r.bottom + 4) + 'px';
+                menuNom.style.left = r.left + 'px';
+                menuNom.classList.remove('hidden');
+            };
+            relNom.appendChild(btnNom); relNom.appendChild(menuNom);
+            tdNom.appendChild(relNom); tr.appendChild(tdNom);
+
+            // Importe
+            var tdImp = document.createElement('td');
+            tdImp.className = 'px-3 py-2 text-white font-bold text-sm';
+            tdImp.textContent = '$ ' + parseFloat(p.total).toLocaleString('es-AR');
+            tr.appendChild(tdImp);
+
+            // Estado
+            var tdEst = document.createElement('td'); tdEst.className = 'px-3 py-2';
             var span = document.createElement('span');
-            span.className = 'text-xs px-3 py-1 rounded-full font-bold ' + color;
+            span.className = 'text-xs px-2.5 py-1 rounded-full font-bold ' + color;
             span.textContent = p.estado;
             tdEst.appendChild(span);
+            if (p.guia_transporte) {
+                var g = document.createElement('p');
+                g.className = 'text-gray-500 text-xs mt-1';
+                g.textContent = '🚚 ' + p.guia_transporte + (p.guia_numero ? ' · ' + p.guia_numero : '');
+                tdEst.appendChild(g);
+            }
             tr.appendChild(tdEst);
 
-            var tdAcc = document.createElement('td'); tdAcc.className = 'p-4';
+            // Acciones
+            var tdAcc = document.createElement('td'); tdAcc.className = 'px-3 py-2';
             var div = document.createElement('div'); div.className = 'flex justify-end items-center gap-1';
 
             function btn(txt, cls, fn) {
@@ -278,32 +341,28 @@
                 b.className = cls; b.textContent = txt; b.onclick = fn; return b;
             }
 
-            // Botón MODIFICAR visible y directo
+            // Solo Modificar y Despachar visibles
             div.appendChild(btn('✏️ Modificar', 'text-xs bg-neon text-black font-bold px-3 py-1.5 rounded hover:bg-yellow-300 transition', function() { abrirDetalle(p.id); }));
-            div.appendChild(btn('📋 Orden', 'text-xs border border-gray-700 bg-gray-800 hover:bg-gray-700 text-gray-300 px-2 py-1.5 rounded transition', function() { abrirYAccion(p.id, 'orden'); }));
-            div.appendChild(btn('📄 Remito', 'text-xs border border-gray-700 bg-gray-800 hover:bg-gray-700 text-gray-300 px-2 py-1.5 rounded transition', function() { abrirYAccion(p.id, 'remito'); }));
-            div.appendChild(btn('🏷️ Rótulo', 'text-xs border border-yellow-800 bg-yellow-900/30 text-yellow-400 px-2 py-1.5 rounded transition', function() { abrirYAccion(p.id, 'rotulo'); }));
-
             if (p.estado !== 'Despachado' && p.estado !== 'Cancelado') {
                 div.appendChild(btn('✓ Despachar', 'text-xs bg-green-700 hover:bg-green-600 text-white font-bold px-2 py-1.5 rounded transition', function() { despacharRapido(p.id); }));
             }
 
+            // Menú de 3 puntitos (impresiones + WhatsApp + estados)
             var rel = document.createElement('div'); rel.className = 'relative';
+            var menu = document.createElement('div');
+            menu.className = 'menu-acciones hidden bg-gray-800 border border-gray-700 rounded-lg shadow-2xl w-52';
+            menu.style.zIndex = '9999';
             var btnMenu = btn('⋮', 'text-xs border border-gray-700 bg-gray-800 hover:bg-gray-700 text-gray-400 px-2 py-1.5 rounded', function(e) {
                 e.stopPropagation();
                 var yaAbierto = !menu.classList.contains('hidden');
                 cerrarMenus();
                 if (yaAbierto) return;
-                // Posicionar el menú de forma fija respecto a la pantalla, así no lo recorta nada
                 var r = btnMenu.getBoundingClientRect();
                 menu.style.position = 'fixed';
                 menu.style.top  = (r.bottom + 4) + 'px';
-                menu.style.left = (r.right - 176) + 'px';
+                menu.style.left = (r.right - 208) + 'px';
                 menu.classList.remove('hidden');
             });
-            var menu = document.createElement('div');
-            menu.className = 'menu-acciones hidden bg-gray-800 border border-gray-700 rounded-lg shadow-2xl w-44';
-            menu.style.zIndex = '9999';
 
             function mBtn(txt, cls, fn) {
                 var b = document.createElement('button');
@@ -313,13 +372,17 @@
                 return b;
             }
 
-            menu.appendChild(mBtn('👁 Ver / Modificar', 'text-gray-300', function() { abrirDetalle(p.id); }));
-            menu.appendChild(mBtn('📱 WSP Listo',      'text-gray-300', function() { wspRapido(p.id, 'preparado'); }));
-            menu.appendChild(mBtn('📱 WSP Despachado', 'text-gray-300', function() { wspRapido(p.id, 'despachado'); }));
-            menu.appendChild(mBtn('📦 Preparar',       'text-blue-400', function() { estadoRapido(p.id, 'Preparado'); }));
-            menu.appendChild(mBtn('✕ Cancelar',        'text-red-400',  function() { estadoRapido(p.id, 'Cancelado'); }));
+            menu.appendChild(mBtn('📋 Orden de compra', 'text-gray-300', function() { abrirYAccion(p.id, 'orden'); }));
+            menu.appendChild(mBtn('📄 Remito',          'text-gray-300', function() { abrirYAccion(p.id, 'remito'); }));
+            menu.appendChild(mBtn('🏷️ Rótulo / Guía',   'text-yellow-400', function() { abrirYAccion(p.id, 'rotulo'); }));
+            var hr0 = document.createElement('hr'); hr0.className = 'border-gray-700'; menu.appendChild(hr0);
+            menu.appendChild(mBtn('📱 WhatsApp...',      'text-green-400', function() { abrirMenuWsp(p); }));
+            menu.appendChild(mBtn('🚚 Cargar guía',      'text-gray-300', function() { abrirCargarGuia(p); }));
             var hr = document.createElement('hr'); hr.className = 'border-gray-700'; menu.appendChild(hr);
-            menu.appendChild(mBtn('🗑 Eliminar',       'text-red-500',  function() { eliminarRapido(p.id); }));
+            menu.appendChild(mBtn('👁 Ver / Modificar',  'text-gray-300', function() { abrirDetalle(p.id); }));
+            menu.appendChild(mBtn('📦 Preparar',         'text-blue-400', function() { estadoRapido(p.id, 'Preparado'); }));
+            menu.appendChild(mBtn('✕ Cancelar',          'text-red-400',  function() { estadoRapido(p.id, 'Cancelado'); }));
+            menu.appendChild(mBtn('🗑 Eliminar',         'text-red-500',  function() { eliminarRapido(p.id); }));
 
             rel.appendChild(btnMenu); rel.appendChild(menu);
             div.appendChild(rel); tdAcc.appendChild(div); tr.appendChild(tdAcc);
@@ -905,6 +968,192 @@
             iframe.contentWindow.focus();
             iframe.contentWindow.print();
         }
+        // ===== Helpers nuevos =====
+        function fechaCorta(f) {
+            if (!f) return '';
+            var s = String(f).replace('T',' ').split(' ')[0].split('-');
+            if (s.length < 3) return f;
+            return s[2] + '/' + s[1] + '/' + s[0];
+        }
+        function mostrarToast(msg) {
+            var t = document.getElementById('toast');
+            t.textContent = msg;
+            t.classList.remove('hidden');
+            clearTimeout(window._toastTimer);
+            window._toastTimer = setTimeout(function(){ t.classList.add('hidden'); }, 3000);
+        }
+        function cerrarModalDist() {
+            var m = document.getElementById('modal-dist');
+            m.classList.add('hidden'); m.classList.remove('flex');
+        }
+        function abrirModalDist(titulo, htmlCuerpo) {
+            document.getElementById('md-titulo').textContent = titulo;
+            document.getElementById('md-cuerpo').innerHTML = htmlCuerpo;
+            var m = document.getElementById('modal-dist');
+            m.classList.remove('hidden'); m.classList.add('flex');
+        }
+
+        // ===== Realizar pago =====
+        function abrirPagoDist(idDist, nombre) {
+            if (!idDist) { mostrarToast('Sin distribuidor'); return; }
+            var html = ''
+                + '<p class="text-gray-400 text-sm mb-3">Registrar un cobro a <b class="text-white">' + (nombre||'') + '</b></p>'
+                + '<label class="block text-gray-400 text-xs mb-1">Monto</label>'
+                + '<input id="pd-monto" type="number" class="w-full bg-gray-800 border border-gray-700 text-white rounded p-2 mb-3" placeholder="0">'
+                + '<label class="block text-gray-400 text-xs mb-1">Método</label>'
+                + '<select id="pd-metodo" class="w-full bg-gray-800 border border-gray-700 text-white rounded p-2 mb-3">'
+                + '<option>Efectivo</option><option>Transferencia</option><option>Cheque</option><option>Mercado Pago</option><option>Otro</option></select>'
+                + '<label class="block text-gray-400 text-xs mb-1">Referencia / notas (opcional)</label>'
+                + '<input id="pd-ref" class="w-full bg-gray-800 border border-gray-700 text-white rounded p-2 mb-4" placeholder="Ej: transferencia 1234">'
+                + '<button onclick="guardarPagoDist(' + idDist + ')" class="w-full bg-green-700 hover:bg-green-600 text-white font-bold py-2.5 rounded">💵 Registrar pago</button>';
+            abrirModalDist('💵 Realizar pago', html);
+        }
+        async function guardarPagoDist(idDist) {
+            var monto = parseFloat(document.getElementById('pd-monto').value);
+            if (!monto || monto <= 0) { mostrarToast('Poné un monto válido'); return; }
+            var metodo = document.getElementById('pd-metodo').value;
+            var ref = document.getElementById('pd-ref').value;
+            try {
+                var r = await fetch(API_URL + '/cobros_distribuidores/nuevo', {
+                    method:'POST', headers:{'Content-Type':'application/json'},
+                    body: JSON.stringify({ id_distribuidor: idDist, monto: monto, metodo: metodo, referencia: ref })
+                });
+                if (!r.ok) throw new Error();
+                cerrarModalDist();
+                mostrarToast('✅ Pago registrado');
+            } catch(e) { mostrarToast('No se pudo registrar el pago'); }
+        }
+
+        // ===== Estado de cuenta =====
+        async function abrirEstadoCuenta(idDist, nombre) {
+            if (!idDist) { mostrarToast('Sin distribuidor'); return; }
+            abrirModalDist('📊 Estado de cuenta', '<p class="text-gray-500">Cargando...</p>');
+            try {
+                var ec = await fetch(API_URL + '/distribuidores/' + idDist + '/estado_cuenta').then(function(r){return r.json();});
+                var deuda = parseFloat(ec.saldo_pendiente || 0);
+                var totalPed = parseFloat(ec.total_pedidos || 0);
+                var totalPag = parseFloat(ec.total_cobrado || ec.total_pagos || 0);
+                var cobros = ec.cobros || ec.pagos || [];
+                var html = ''
+                    + '<p class="text-gray-400 text-sm mb-3"><b class="text-white">' + (nombre||'') + '</b></p>'
+                    + '<div class="grid grid-cols-3 gap-2 mb-4">'
+                    + '<div class="bg-gray-800 rounded-lg p-3 text-center"><p class="text-gray-500 text-xs">Pedidos</p><p class="text-white font-bold">$ ' + totalPed.toLocaleString('es-AR') + '</p></div>'
+                    + '<div class="bg-gray-800 rounded-lg p-3 text-center"><p class="text-gray-500 text-xs">Pagado</p><p class="text-green-400 font-bold">$ ' + totalPag.toLocaleString('es-AR') + '</p></div>'
+                    + '<div class="bg-gray-800 rounded-lg p-3 text-center"><p class="text-gray-500 text-xs">Debe</p><p class="' + (deuda>0?'text-red-400':'text-gray-300') + ' font-bold">$ ' + deuda.toLocaleString('es-AR') + '</p></div>'
+                    + '</div>';
+                html += '<p class="text-gray-400 text-xs font-bold uppercase mb-2">Últimos pagos</p>';
+                if (cobros.length) {
+                    html += '<div class="space-y-1">';
+                    cobros.slice(0,10).forEach(function(c){
+                        html += '<div class="bg-gray-800 rounded px-3 py-2 flex justify-between text-sm"><span class="text-gray-400">' + fechaCorta(c.fecha) + ' · ' + (c.metodo||'') + '</span><span class="text-green-400 font-bold">$ ' + parseFloat(c.monto||0).toLocaleString('es-AR') + '</span></div>';
+                    });
+                    html += '</div>';
+                } else {
+                    html += '<p class="text-gray-600 text-sm">Sin pagos registrados.</p>';
+                }
+                abrirModalDist('📊 Estado de cuenta', html);
+            } catch(e) {
+                abrirModalDist('📊 Estado de cuenta', '<p class="text-red-400">No se pudo cargar el estado de cuenta.</p>');
+            }
+        }
+
+        // ===== Últimos pedidos =====
+        async function abrirUltimosPedidos(idDist, nombre) {
+            if (!idDist) { mostrarToast('Sin distribuidor'); return; }
+            abrirModalDist('📦 Últimos pedidos', '<p class="text-gray-500">Cargando...</p>');
+            try {
+                var lista = await fetch(API_URL + '/pedidos_b2b/historial?id_distribuidor=' + idDist).then(function(r){return r.json();});
+                var html = '<p class="text-gray-400 text-sm mb-3"><b class="text-white">' + (nombre||'') + '</b></p>';
+                if (lista.length) {
+                    html += '<div class="space-y-1">';
+                    lista.slice(0,15).forEach(function(p){
+                        var color = COLORES[p.estado] || 'bg-gray-800 text-gray-400';
+                        html += '<div class="bg-gray-800 rounded px-3 py-2 flex justify-between items-center text-sm">'
+                            + '<span class="text-gray-300">#' + String(p.id).padStart(4,'0') + ' · ' + fechaCorta(p.fecha) + '</span>'
+                            + '<span class="flex items-center gap-2"><span class="text-white font-bold">$ ' + parseFloat(p.total).toLocaleString('es-AR') + '</span>'
+                            + '<span class="text-xs px-2 py-0.5 rounded-full ' + color + '">' + p.estado + '</span></span></div>';
+                    });
+                    html += '</div>';
+                } else {
+                    html += '<p class="text-gray-600 text-sm">Sin pedidos.</p>';
+                }
+                abrirModalDist('📦 Últimos pedidos', html);
+            } catch(e) {
+                abrirModalDist('📦 Últimos pedidos', '<p class="text-red-400">No se pudieron cargar los pedidos.</p>');
+            }
+        }
+
+        // ===== Editar distribuidor =====
+        function editarDistribuidor(idDist) {
+            if (!idDist) { mostrarToast('Sin distribuidor'); return; }
+            window.location.href = '/distribuidores?editar=' + idDist;
+        }
+
+        // ===== Menú de WhatsApp =====
+        function abrirMenuWsp(p) {
+            var tel = (p.dist_telefono || '').replace(/[^0-9]/g,'');
+            var html = '<p class="text-gray-400 text-sm mb-3">Elegí el mensaje para enviar a <b class="text-white">' + (p.distribuidor||'') + '</b></p>';
+            if (!tel) html += '<p class="text-orange-400 text-xs mb-3">⚠️ Este distribuidor no tiene teléfono cargado.</p>';
+            html += '<div class="space-y-2">'
+                + '<button onclick="enviarWsp(' + p.id + ',\\'recepcion\\')" class="w-full text-left bg-gray-800 hover:bg-gray-700 rounded px-4 py-3 text-sm text-gray-200">✅ Confirmar recepción del pedido</button>'
+                + '<button onclick="enviarWsp(' + p.id + ',\\'listo\\')" class="w-full text-left bg-gray-800 hover:bg-gray-700 rounded px-4 py-3 text-sm text-gray-200">📦 Pedido listo (con importe a abonar)</button>'
+                + '<button onclick="enviarWsp(' + p.id + ',\\'cuenta\\')" class="w-full text-left bg-gray-800 hover:bg-gray-700 rounded px-4 py-3 text-sm text-gray-200">📊 Estado de cuenta</button>'
+                + '<button onclick="enviarWsp(' + p.id + ',\\'terminado\\')" class="w-full text-left bg-gray-800 hover:bg-gray-700 rounded px-4 py-3 text-sm text-gray-200">✔️ Pedido terminado</button>'
+                + '<button onclick="enviarWsp(' + p.id + ',\\'despachado\\')" class="w-full text-left bg-gray-800 hover:bg-gray-700 rounded px-4 py-3 text-sm text-gray-200">🚚 Pedido despachado (con datos de guía)</button>'
+                + '</div>';
+            abrirModalDist('📱 Enviar WhatsApp', html);
+        }
+        async function enviarWsp(idPedido, tipo) {
+            var lista = await fetch(API_URL + '/pedidos_b2b/historial').then(function(r){return r.json();});
+            var p = lista.find(function(x){ return x.id === idPedido; });
+            if (!p) { mostrarToast('No se encontró el pedido'); return; }
+            var tel = (p.dist_telefono || '').replace(/[^0-9]/g,'');
+            if (tel && !tel.startsWith('54')) tel = '54' + tel;
+            var total = parseFloat(p.total||0).toLocaleString('es-AR');
+            var msg = '';
+            if (tipo === 'recepcion')  msg = 'Hola ' + p.distribuidor + '! Recibimos tu pedido #' + String(p.id).padStart(4,'0') + '. Ya lo estamos preparando. ¡Gracias!';
+            if (tipo === 'listo')      msg = 'Hola ' + p.distribuidor + '! Tu pedido #' + String(p.id).padStart(4,'0') + ' ya está listo. Importe a abonar: $ ' + total + '.';
+            if (tipo === 'cuenta') {
+                var ec = await fetch(API_URL + '/distribuidores/' + p.id_distribuidor + '/estado_cuenta').then(function(r){return r.json();}).catch(function(){return {};});
+                var deuda = parseFloat(ec.saldo_pendiente || 0).toLocaleString('es-AR');
+                msg = 'Hola ' + p.distribuidor + '! Te paso tu estado de cuenta. Saldo pendiente: $ ' + deuda + '. ¡Gracias!';
+            }
+            if (tipo === 'terminado')  msg = 'Hola ' + p.distribuidor + '! Tu pedido #' + String(p.id).padStart(4,'0') + ' está terminado y listo para retirar/despachar.';
+            if (tipo === 'despachado') {
+                var guia = p.guia_transporte ? ('\\n🚚 Transporte: ' + p.guia_transporte + (p.guia_numero ? '\\nGuía N°: ' + p.guia_numero : '')) : '';
+                msg = 'Hola ' + p.distribuidor + '! Tu pedido #' + String(p.id).padStart(4,'0') + ' fue despachado.' + guia + '\\nImporte: $ ' + total + '.';
+            }
+            cerrarModalDist();
+            var url = 'https://wa.me/' + tel + '?text=' + encodeURIComponent(msg);
+            window.open(url, '_blank');
+        }
+
+        // ===== Cargar guía de transporte =====
+        function abrirCargarGuia(p) {
+            var html = ''
+                + '<p class="text-gray-400 text-sm mb-3">Datos de la guía para el pedido <b class="text-white">#' + String(p.id).padStart(4,'0') + '</b></p>'
+                + '<label class="block text-gray-400 text-xs mb-1">Transporte</label>'
+                + '<input id="g-transporte" value="' + (p.guia_transporte||'') + '" class="w-full bg-gray-800 border border-gray-700 text-white rounded p-2 mb-3" placeholder="Ej: Andreani, Vía Cargo...">'
+                + '<label class="block text-gray-400 text-xs mb-1">Número de guía</label>'
+                + '<input id="g-numero" value="' + (p.guia_numero||'') + '" class="w-full bg-gray-800 border border-gray-700 text-white rounded p-2 mb-4" placeholder="Ej: 123456789">'
+                + '<button onclick="guardarGuia(' + p.id + ')" class="w-full bg-neon text-black font-bold py-2.5 rounded hover:bg-yellow-300">💾 Guardar guía</button>';
+            abrirModalDist('🚚 Cargar guía de transporte', html);
+        }
+        async function guardarGuia(idPedido) {
+            var transporte = document.getElementById('g-transporte').value;
+            var numero = document.getElementById('g-numero').value;
+            try {
+                var r = await fetch(API_URL + '/pedidos_b2b/' + idPedido + '/guia', {
+                    method:'PUT', headers:{'Content-Type':'application/json'},
+                    body: JSON.stringify({ transporte: transporte, numero: numero })
+                });
+                if (!r.ok) { var e = await r.json().catch(function(){return {};}); throw new Error(e.detail||''); }
+                cerrarModalDist();
+                mostrarToast('✅ Guía guardada');
+                cargarPedidos();
+            } catch(e) { mostrarToast('No se pudo guardar: ' + (e.message||'')); }
+        }
+
     </script>
 
     <!-- Modal Vista Previa PDF -->
