@@ -59,9 +59,10 @@
                 <option value="">Todos los distribuidores</option>
             </select>
             <select id="filtro-periodo" class="bg-gray-800 border border-gray-700 text-white rounded p-2 text-sm">
-                <option value="mes" selected>Este mes</option>
-                <option value="semana">Esta semana</option>
+                <option value="pendientes_hoy" selected>📌 Para despachar + hoy</option>
                 <option value="hoy">Hoy</option>
+                <option value="semana">Esta semana</option>
+                <option value="mes">Este mes</option>
                 <option value="todo">Todo</option>
             </select>
             <button onclick="cargarPedidos()" class="bg-neon text-black font-bold px-4 py-2 rounded text-sm">Filtrar</button>
@@ -219,7 +220,7 @@
         function limpiarFiltros() {
             document.getElementById('filtro-estado').value = '';
             document.getElementById('filtro-dist').value = '';
-            document.getElementById('filtro-periodo').value = 'mes';
+            document.getElementById('filtro-periodo').value = 'pendientes_hoy';
             cargarPedidos();
         }
 
@@ -236,23 +237,37 @@
             await cargarPedidos();
         }
 
+        function fechaDesdeStr() {
+            // Devuelve la fecha 'desde' como texto YYYY-MM-DD para mandar al servidor
+            var d = fechaDesde();
+            if (!d) return '';
+            var y = d.getFullYear(), m = String(d.getMonth()+1).padStart(2,'0'), dd = String(d.getDate()).padStart(2,'0');
+            return y + '-' + m + '-' + dd;
+        }
+
         async function cargarPedidos() {
             var estado = document.getElementById('filtro-estado').value;
             var dist   = document.getElementById('filtro-dist').value;
+            var periodo = document.getElementById('filtro-periodo').value;
             var url    = API_URL + '/pedidos_b2b/historial';
             var params = [];
             if (estado) params.push('estado=' + estado);
             if (dist)   params.push('id_distribuidor=' + dist);
+            if (periodo === 'pendientes_hoy') {
+                params.push('modo=pendientes_hoy');
+            } else {
+                var desdeStr = fechaDesdeStr();
+                if (desdeStr) params.push('desde=' + desdeStr);
+            }
             if (params.length) url += '?' + params.join('&');
 
-            var lista = await fetch(url).then(function(r) { return r.json(); });
-            var desde = fechaDesde();
-            if (desde) lista = lista.filter(function(p) { return new Date(p.fecha) >= desde; });
-
             var tbody = document.getElementById('tabla-b2b');
+            tbody.innerHTML = '<tr><td colspan="6" class="px-3 py-4 text-center text-gray-500">Cargando...</td></tr>';
+            var lista = await fetch(url).then(function(r) { return r.json(); });
+
             tbody.innerHTML = '';
             if (!lista.length) {
-                tbody.innerHTML = '<tr><td colspan="6" class="p-4 text-center text-gray-500">Sin pedidos.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="6" class="px-3 py-4 text-center text-gray-500">Sin pedidos para mostrar.</td></tr>';
                 return;
             }
             lista.forEach(function(p) { tbody.appendChild(crearFila(p)); });
@@ -395,7 +410,7 @@
         document.addEventListener('click', cerrarMenus);
 
         async function cargarPedidoYItems(id) {
-            var lista = await fetch(API_URL + '/pedidos_b2b/historial').then(function(r) { return r.json(); });
+            var lista = await fetch(API_URL + '/pedidos_b2b/historial?limite=400').then(function(r) { return r.json(); });
             pedidoActual = lista.find(function(p) { return p.id === id; });
             itemsActuales = await fetch(API_URL + '/pedidos_b2b/' + id + '/detalle').then(function(r) { return r.json(); });
         }
@@ -1104,7 +1119,7 @@
             abrirModalDist('📱 Enviar WhatsApp', html);
         }
         async function enviarWsp(idPedido, tipo) {
-            var lista = await fetch(API_URL + '/pedidos_b2b/historial').then(function(r){return r.json();});
+            var lista = await fetch(API_URL + '/pedidos_b2b/historial?limite=400').then(function(r){return r.json();});
             var p = lista.find(function(x){ return x.id === idPedido; });
             if (!p) { mostrarToast('No se encontró el pedido'); return; }
             var tel = (p.dist_telefono || '').replace(/[^0-9]/g,'');
