@@ -1074,6 +1074,8 @@
                 }
             } catch(e) { alert('Error de conexión.'); }
         }
+
+        async function guardarProducto() {
             const id = document.getElementById('prod-id').value;
             const data = {
                 id_local: localActual.id,
