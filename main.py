@@ -1635,17 +1635,32 @@ def armado_detalle_pedido(id: str):
                 prep = preparados.get((r['id_producto'], sabor), 0)
                 cant = float(r['cantidad'] or 0)
                 # ¿Es alfajor? Buscar el producto de fábrica del sabor para saber unidades_por_caja
+                # Prioriza productos de categoría alfajores para evitar confusión con otros
+                # productos que coincidan con el mismo sabor (ej: trufas maicena vs alfajor maicena)
                 upc = 1
                 es_caja = False
                 termino = sabor or (r.get('nombre_producto') or '')
                 if termino:
                     try:
-                        cur.execute("""SELECT COALESCE(unidades_por_caja,1) AS upc, COALESCE(id_categoria,0) AS cat,
+                        # Intento 1: buscar en categoría alfajores específicamente
+                        cur.execute("""SELECT COALESCE(p.unidades_por_caja,1) AS upc,
                                               (SELECT nombre FROM categorias c WHERE c.id=p.id_categoria) AS catnombre
                                        FROM productos p
-                                       WHERE (LOWER(nombre)=LOWER(%s) OR LOWER(nombre) LIKE LOWER(%s)) AND COALESCE(activo,true)=true
-                                       ORDER BY LENGTH(nombre) LIMIT 1""", (termino, '%'+termino+'%'))
+                                       JOIN categorias cat ON p.id_categoria=cat.id
+                                       WHERE (LOWER(p.nombre)=LOWER(%s) OR LOWER(p.nombre) LIKE LOWER(%s))
+                                         AND LOWER(cat.nombre) LIKE '%%alfajor%%'
+                                         AND COALESCE(p.activo,true)=true
+                                       ORDER BY LENGTH(p.nombre) LIMIT 1""", (termino, '%'+termino+'%'))
                         fab = cur.fetchone()
+                        # Intento 2: si no encontró en alfajores, buscar en cualquier categoría
+                        if not fab:
+                            cur.execute("""SELECT COALESCE(unidades_por_caja,1) AS upc,
+                                                  (SELECT nombre FROM categorias c WHERE c.id=p.id_categoria) AS catnombre
+                                           FROM productos p
+                                           WHERE (LOWER(nombre)=LOWER(%s) OR LOWER(nombre) LIKE LOWER(%s))
+                                             AND COALESCE(activo,true)=true
+                                           ORDER BY LENGTH(nombre) LIMIT 1""", (termino, '%'+termino+'%'))
+                            fab = cur.fetchone()
                         if fab:
                             u = float(fab['upc'] or 1) or 1
                             catn = (fab.get('catnombre') or '').lower()
@@ -1916,15 +1931,29 @@ def armado_listo(id: str):
                 cant = float(it['cantidad'] or 0)
                 if cant <= 0:
                     continue
-                # El armado SOLO descuenta de FÁBRICA (la mercadería sale del depósito).
-                # El stock del LOCAL se suma después, cuando se confirma "Reponer" en el panel de locales.
+                # El armado SOLO descuenta de FÁBRICA.
+                # Prioriza categoría alfajores para no confundir con otros productos del mismo sabor.
                 termino = (it.get('sabor') or '').strip()
                 id_fab = None; upc = 1
                 if termino:
-                    cur.execute("SELECT id, COALESCE(unidades_por_caja,1) AS upc FROM productos WHERE LOWER(nombre)=LOWER(%s) AND COALESCE(activo,true)=true LIMIT 1", (termino,))
+                    # Intento 1: exacto en categoría alfajores
+                    cur.execute("""SELECT p.id, COALESCE(p.unidades_por_caja,1) AS upc
+                                   FROM productos p JOIN categorias cat ON p.id_categoria=cat.id
+                                   WHERE LOWER(p.nombre)=LOWER(%s) AND LOWER(cat.nombre) LIKE '%%alfajor%%'
+                                   AND COALESCE(p.activo,true)=true LIMIT 1""", (termino,))
                     fab = cur.fetchone()
+                    # Intento 2: LIKE en categoría alfajores
                     if not fab:
-                        cur.execute("SELECT id, COALESCE(unidades_por_caja,1) AS upc FROM productos WHERE LOWER(nombre) LIKE LOWER(%s) AND COALESCE(activo,true)=true ORDER BY LENGTH(nombre) LIMIT 1", ('%'+termino+'%',))
+                        cur.execute("""SELECT p.id, COALESCE(p.unidades_por_caja,1) AS upc
+                                       FROM productos p JOIN categorias cat ON p.id_categoria=cat.id
+                                       WHERE LOWER(p.nombre) LIKE LOWER(%s) AND LOWER(cat.nombre) LIKE '%%alfajor%%'
+                                       AND COALESCE(p.activo,true)=true ORDER BY LENGTH(p.nombre) LIMIT 1""", ('%'+termino+'%',))
+                        fab = cur.fetchone()
+                    # Intento 3: cualquier categoría (fallback)
+                    if not fab:
+                        cur.execute("""SELECT id, COALESCE(unidades_por_caja,1) AS upc FROM productos
+                                       WHERE LOWER(nombre) LIKE LOWER(%s) AND COALESCE(activo,true)=true
+                                       ORDER BY LENGTH(nombre) LIMIT 1""", ('%'+termino+'%',))
                         fab = cur.fetchone()
                     if fab:
                         id_fab = fab['id']
