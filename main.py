@@ -1949,16 +1949,21 @@ def armado_listo(id: str):
                                        WHERE LOWER(p.nombre) LIKE LOWER(%s) AND LOWER(cat.nombre) LIKE '%%alfajor%%'
                                        AND COALESCE(p.activo,true)=true ORDER BY LENGTH(p.nombre) LIMIT 1""", ('%'+termino+'%',))
                         fab = cur.fetchone()
-                    # Intento 3: cualquier categoría (fallback)
+                    # Intento 3: cualquier categoría (fallback) — pero NO dividir por upc
+                    # Solo buscamos el id del producto para descontar, pero la división
+                    # es siempre 1 (no sabemos si es de caja o no si no está en alfajores)
+                    es_alfajor = (fab is not None)  # ya encontró en alfajores si fab != None
                     if not fab:
                         cur.execute("""SELECT id, COALESCE(unidades_por_caja,1) AS upc FROM productos
                                        WHERE LOWER(nombre) LIKE LOWER(%s) AND COALESCE(activo,true)=true
                                        ORDER BY LENGTH(nombre) LIMIT 1""", ('%'+termino+'%',))
                         fab = cur.fetchone()
+                        es_alfajor = False  # encontrado fuera de alfajores, no dividir
                     if fab:
                         id_fab = fab['id']
                         try:
-                            upc = float(fab['upc'] or 1) or 1
+                            # Solo usar upc si encontramos en categoría alfajores
+                            upc = float(fab['upc'] or 1) or 1 if es_alfajor else 1
                         except Exception:
                             upc = 1
                 if id_fab:
