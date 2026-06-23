@@ -310,10 +310,6 @@
             </div>
         </div>
     </div>
-
-    <script>
-    <script>
-
     <script>
         const API_URL = window.location.origin + "/api";
         const usr = JSON.parse(sessionStorage.getItem('usuario') || '{}');
@@ -616,6 +612,70 @@
             return metodoMap[tipo] || [];
         }
 
+
+        var cajaData = null;
+
+        function cambiarFechaCaja(dias) {
+            var d = new Date(document.getElementById('caja-fecha').value + 'T12:00:00');
+            d.setDate(d.getDate() + dias);
+            document.getElementById('caja-fecha').value = d.toISOString().split('T')[0];
+            cargarCaja();
+        }
+
+        async function cargarCaja() {
+            var fecha = document.getElementById('caja-fecha').value;
+            var url = `${API_URL}/caja_diaria` + (fecha ? `?fecha=${fecha}` : '');
+            try {
+                var d = await fetch(url).then(r=>r.json());
+                cajaData = d;
+                document.getElementById('caja-ventas').textContent    = fmt(d.total_ventas);
+                document.getElementById('caja-cobros').textContent    = fmt(d.total_cobros);
+                document.getElementById('caja-gastos').textContent    = '- ' + fmt(d.total_gastos);
+                var res = d.resultado_neto;
+                var elRes = document.getElementById('caja-resultado');
+                elRes.textContent = fmt(res);
+                elRes.className = 'font-bold text-xl ' + (res >= 0 ? 'text-neon' : 'text-red-400');
+
+                // Detalle ventas
+                var dv = document.getElementById('caja-detalle-ventas');
+                if (d.ventas.length) {
+                    var porLocal = {};
+                    d.ventas.forEach(v => {
+                        if (!porLocal[v.local]) porLocal[v.local] = [];
+                        porLocal[v.local].push(v);
+                    });
+                    dv.innerHTML = Object.entries(porLocal).map(([loc, rows]) => {
+                        var totalLoc = rows.reduce((s,r)=>s+parseFloat(r.total||0),0);
+                        var desglose = rows.map(r=>`<span class="text-gray-500">${r.metodo_pago}: ${fmt(r.total)} (${r.tickets} tickets)</span>`).join(' · ');
+                        return `<div class="flex justify-between items-start border-b border-gray-800 pb-2">
+                            <div><p class="text-white font-bold">${loc}</p><p class="text-xs mt-0.5">${desglose}</p></div>
+                            <p class="text-green-400 font-bold shrink-0">${fmt(totalLoc)}</p></div>`;
+                    }).join('');
+                } else dv.innerHTML = '<p class="text-gray-600">Sin ventas en locales este día.</p>';
+
+                // Detalle cobros
+                var dc = document.getElementById('caja-detalle-cobros');
+                if (d.cobros.length) {
+                    dc.innerHTML = d.cobros.map(c=>`<div class="flex justify-between border-b border-gray-800 pb-2">
+                        <div><p class="text-white">${c.distribuidor||'—'}</p><p class="text-gray-500 text-xs">${c.metodo} ${c.referencia?'· '+c.referencia:''}</p></div>
+                        <p class="text-blue-400 font-bold">${fmt(c.monto)}</p></div>`).join('');
+                } else dc.innerHTML = '<p class="text-gray-600">Sin cobros de distribuidores este día.</p>';
+
+                // Detalle gastos
+                var dg = document.getElementById('caja-detalle-gastos');
+                if (d.gastos.length) {
+                    dg.innerHTML = d.gastos.map(g=>`<div class="flex justify-between border-b border-gray-800 pb-2">
+                        <div><p class="text-white">${g.concepto}</p><p class="text-gray-500 text-xs">${g.categoria||'Sin categoría'} · ${g.metodo||''}</p></div>
+                        <p class="text-red-400 font-bold">- ${fmt(g.monto)}</p></div>`).join('');
+                } else dg.innerHTML = '<p class="text-gray-600">Sin gastos cargados este día. <button onclick="nuevoGasto()" class="text-neon underline">Agregar uno</button></p>';
+
+                calcularDiferencia();
+                cargarCuentas(fecha);
+            } catch(e) {
+                console.error('Error cargando caja:', e);
+            }
+        }
+
         async function cargarCuentas(fecha) {
             try {
                 var [cuentas, mov] = await Promise.all([
@@ -706,7 +766,7 @@
             } catch(e) { alert('No se pudo guardar'); }
         }
 
-    <script>
+    
         function calcularDiferencia() {
             if (!cajaData) return;
             var efectivoReal = parseFloat(document.getElementById('caja-efectivo-real').value) || 0;
@@ -726,9 +786,13 @@
 
 
     
-</script>
 
 
+
+
+</body>
+</html>
+    </script>
 
 </body>
 </html>
