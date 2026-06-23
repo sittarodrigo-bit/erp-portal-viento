@@ -4481,6 +4481,134 @@ def gastos_eliminar_categoria(id: int):
         liberar_conexion(conn)
 
 # ---- GASTOS ----
+class CuentaTesoreria(BaseModel):
+    nombre: str
+    tipo: str
+    saldo_actual: float = 0
+    orden: Optional[int] = 0
+
+@app.get("/api/tesoreria/cuentas")
+def tesoreria_listar():
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("SELECT * FROM tesoreria_cuentas WHERE activa=true ORDER BY orden, id")
+        return fetchall_dict(cur)
+    except Exception:
+        conn.rollback()
+        return []
+    finally:
+        liberar_conexion(conn)
+
+@app.post("/api/tesoreria/cuentas")
+def tesoreria_crear(c: CuentaTesoreria):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        cur.execute("INSERT INTO tesoreria_cuentas (nombre, tipo, saldo_actual, orden) VALUES (%s,%s,%s,%s)",
+                   (c.nombre, c.tipo, c.saldo_actual, c.orden))
+        conn.commit()
+        return {"status": "ok"}
+    finally:
+        liberar_conexion(conn)
+
+@app.put("/api/tesoreria/cuentas/{id}/saldo")
+def tesoreria_actualizar_saldo(id: int, data: dict = Body(...)):
+    """Actualiza el saldo manual de una cuenta."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        cur.execute("UPDATE tesoreria_cuentas SET saldo_actual=%s, ultima_actualizacion=NOW() WHERE id=%s",
+                   (data.get('saldo', 0), id))
+        conn.commit()
+        return {"status": "ok"}
+    finally:
+        liberar_conexion(conn)
+
+@app.put("/api/tesoreria/cuentas/{id}")
+def tesoreria_editar(id: int, c: CuentaTesoreria):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        cur.execute("UPDATE tesoreria_cuentas SET nombre=%s, tipo=%s, orden=%s WHERE id=%s",
+                   (c.nombre, c.tipo, c.orden, id))
+        conn.commit()
+        return {"status": "ok"}
+    finally:
+        liberar_conexion(conn)
+
+@app.delete("/api/tesoreria/cuentas/{id}")
+def tesoreria_eliminar(id: int):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        cur.execute("UPDATE tesoreria_cuentas SET activa=false WHERE id=%s", (id,))
+        conn.commit()
+        return {"status": "ok"}
+    finally:
+        liberar_conexion(conn)
+
+@app.get("/api/tesoreria/movimientos_dia")
+def tesoreria_movimientos_dia(fecha: Optional[str] = None):
+    """Suma los movimientos del día por método de pago para cada tipo de cuenta."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        dia = fecha if fecha else None
+        mov = {}
+
+        # Ventas POS por método
+        try:
+            if dia:
+                cur.execute("SELECT metodo_pago, SUM(total) AS total FROM pos_ventas WHERE fecha::date=%s GROUP BY metodo_pago", (dia,))
+            else:
+                cur.execute("SELECT metodo_pago, SUM(total) AS total FROM pos_ventas WHERE fecha::date=CURRENT_DATE GROUP BY metodo_pago")
+            for r in fetchall_dict(cur):
+                m = (r['metodo_pago'] or '').lower()
+                mov[m] = mov.get(m, 0) + float(r['total'] or 0)
+        except Exception:
+            conn.rollback()
+
+        # Cobros de distribuidores por método
+        try:
+            if dia:
+                cur.execute("SELECT metodo, SUM(monto) AS total FROM cobros_distribuidores WHERE fecha::date=%s GROUP BY metodo", (dia,))
+            else:
+                cur.execute("SELECT metodo, SUM(monto) AS total FROM cobros_distribuidores WHERE fecha::date=CURRENT_DATE GROUP BY metodo")
+            for r in fetchall_dict(cur):
+                m = (r['metodo'] or '').lower()
+                mov[m] = mov.get(m, 0) + float(r['total'] or 0)
+        except Exception:
+            conn.rollback()
+
+        # Pagos a proveedores (egresos) por método
+        try:
+            if dia:
+                cur.execute("SELECT metodo, SUM(monto) AS total FROM pagos_proveedores WHERE fecha::date=%s GROUP BY metodo", (dia,))
+            else:
+                cur.execute("SELECT metodo, SUM(monto) AS total FROM pagos_proveedores WHERE fecha::date=CURRENT_DATE GROUP BY metodo")
+            for r in fetchall_dict(cur):
+                m = (r['metodo'] or '').lower()
+                mov[m] = mov.get(m, 0) - float(r['total'] or 0)  # egreso
+        except Exception:
+            conn.rollback()
+
+        # Gastos (egresos) por método
+        try:
+            if dia:
+                cur.execute("SELECT metodo, SUM(monto) AS total FROM gastos WHERE fecha::date=%s GROUP BY metodo", (dia,))
+            else:
+                cur.execute("SELECT metodo, SUM(monto) AS total FROM gastos WHERE fecha::date=CURRENT_DATE GROUP BY metodo")
+            for r in fetchall_dict(cur):
+                m = (r['metodo'] or '').lower()
+                mov[m] = mov.get(m, 0) - float(r['total'] or 0)  # egreso
+        except Exception:
+            conn.rollback()
+
+        return mov
+    finally:
+        liberar_conexion(conn)
+
 @app.get("/api/caja_diaria")
 def caja_diaria(fecha: Optional[str] = None):
     """Resumen del día: ventas de locales + cobros de distribuidores + gastos."""
