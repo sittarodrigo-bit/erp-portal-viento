@@ -312,6 +312,9 @@
     </div>
 
     <script>
+    <script>
+
+    <script>
         const API_URL = window.location.origin + "/api";
         const usr = JSON.parse(sessionStorage.getItem('usuario') || '{}');
         if (usr.nombre) document.getElementById('usuario-info').textContent = `${usr.nombre} ${usr.apellido} · ${usr.rol}`;
@@ -703,96 +706,7 @@
             } catch(e) { alert('No se pudo guardar'); }
         }
 
-    </script>
-
-    <!-- Modal nueva cuenta -->
-    <div id="modal-cuenta" class="hidden fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-        <div class="bg-gray-900 border border-gray-700 rounded-xl p-5 w-full max-w-sm shadow-2xl">
-            <div class="flex justify-between items-center mb-4">
-                <h3 class="text-white font-bold">💼 Nueva cuenta</h3>
-                <button onclick="cerrarModalCuenta()" class="text-gray-500 hover:text-white text-2xl">×</button>
-            </div>
-            <label class="block text-gray-400 text-xs mb-1">Nombre</label>
-            <input id="nueva-cuenta-nombre" class="w-full bg-gray-800 border border-gray-700 text-white rounded p-2 mb-3" placeholder="Ej: Banco Galicia">
-            <label class="block text-gray-400 text-xs mb-1">Tipo</label>
-            <select id="nueva-cuenta-tipo" class="w-full bg-gray-800 border border-gray-700 text-white rounded p-2 mb-3">
-                <option value="efectivo">💵 Efectivo</option>
-                <option value="banco">🏦 Banco</option>
-                <option value="mercado_pago">💙 Mercado Pago</option>
-                <option value="cheque">📄 Cheques</option>
-                <option value="echeq">📱 eCheck</option>
-                <option value="otro">💰 Otro</option>
-            </select>
-            <label class="block text-gray-400 text-xs mb-1">Saldo inicial</label>
-            <input id="nueva-cuenta-saldo" type="number" class="w-full bg-gray-800 border border-gray-700 text-white rounded p-2 mb-4 font-bold" placeholder="0">
-            <button onclick="guardarNuevaCuenta()" class="w-full bg-neon text-black font-bold py-2.5 rounded">💾 Guardar cuenta</button>
-        </div>
-    </div>
-        var cajaData = null;
-
-        function cambiarFechaCaja(dias) {
-            var d = new Date(document.getElementById('caja-fecha').value + 'T12:00:00');
-            d.setDate(d.getDate() + dias);
-            document.getElementById('caja-fecha').value = d.toISOString().split('T')[0];
-            cargarCaja();
-        }
-
-        async function cargarCaja() {
-            var fecha = document.getElementById('caja-fecha').value;
-            var url = `${API_URL}/caja_diaria` + (fecha ? `?fecha=${fecha}` : '');
-            try {
-                var d = await fetch(url).then(r=>r.json());
-                cajaData = d;
-                // KPIs
-                document.getElementById('caja-ventas').textContent    = fmt(d.total_ventas);
-                document.getElementById('caja-cobros').textContent    = fmt(d.total_cobros);
-                document.getElementById('caja-gastos').textContent    = '- ' + fmt(d.total_gastos);
-                var res = d.resultado_neto;
-                var elRes = document.getElementById('caja-resultado');
-                elRes.textContent = fmt(res);
-                elRes.className = 'font-bold text-xl ' + (res >= 0 ? 'text-neon' : 'text-red-400');
-
-                // Detalle ventas
-                var dv = document.getElementById('caja-detalle-ventas');
-                if (d.ventas.length) {
-                    var porLocal = {};
-                    d.ventas.forEach(v => {
-                        if (!porLocal[v.local]) porLocal[v.local] = [];
-                        porLocal[v.local].push(v);
-                    });
-                    dv.innerHTML = Object.entries(porLocal).map(([loc, rows]) => {
-                        var totalLoc = rows.reduce((s,r)=>s+parseFloat(r.total||0),0);
-                        var desglose = rows.map(r=>`<span class="text-gray-500">${r.metodo_pago}: ${fmt(r.total)} (${r.tickets} tickets)</span>`).join(' · ');
-                        return `<div class="flex justify-between items-start border-b border-gray-800 pb-2">
-                            <div><p class="text-white font-bold">${loc}</p><p class="text-xs mt-0.5">${desglose}</p></div>
-                            <p class="text-green-400 font-bold shrink-0">${fmt(totalLoc)}</p></div>`;
-                    }).join('');
-                } else dv.innerHTML = '<p class="text-gray-600">Sin ventas en locales este día.</p>';
-
-                // Detalle cobros
-                var dc = document.getElementById('caja-detalle-cobros');
-                if (d.cobros.length) {
-                    dc.innerHTML = d.cobros.map(c=>`<div class="flex justify-between border-b border-gray-800 pb-2">
-                        <div><p class="text-white">${c.distribuidor||'—'}</p><p class="text-gray-500 text-xs">${c.metodo} ${c.referencia?'· '+c.referencia:''}</p></div>
-                        <p class="text-blue-400 font-bold">${fmt(c.monto)}</p></div>`).join('');
-                } else dc.innerHTML = '<p class="text-gray-600">Sin cobros de distribuidores este día.</p>';
-
-                // Detalle gastos
-                var dg = document.getElementById('caja-detalle-gastos');
-                if (d.gastos.length) {
-                    dg.innerHTML = d.gastos.map(g=>`<div class="flex justify-between border-b border-gray-800 pb-2">
-                        <div><p class="text-white">${g.concepto}</p><p class="text-gray-500 text-xs">${g.categoria||'Sin categoría'} · ${g.metodo||''}</p></div>
-                        <p class="text-red-400 font-bold">- ${fmt(g.monto)}</p></div>`).join('');
-                } else dg.innerHTML = '<p class="text-gray-600">Sin gastos cargados este día. <button onclick="nuevoGasto()" class="text-neon underline">Agregar uno</button></p>';
-
-                calcularDiferencia();
-                // Cargar posición financiera
-                cargarCuentas(fecha);
-            } catch(e) {
-                console.error('Error cargando caja:', e);
-            }
-        }
-
+    <script>
         function calcularDiferencia() {
             if (!cajaData) return;
             var efectivoReal = parseFloat(document.getElementById('caja-efectivo-real').value) || 0;
@@ -809,6 +723,11 @@
         }
 
         function fmt(n) { return '$ ' + (parseFloat(n)||0).toLocaleString('es-AR'); }
+
+
+    
+</script>
+
 
 
 </body>
