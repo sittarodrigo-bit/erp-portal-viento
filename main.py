@@ -2040,7 +2040,7 @@ def historial_pedidos_b2b(estado: Optional[str] = None, id_distribuidor: Optiona
         cur = conn.cursor(cursor_factory=RealDictCursor)
         query = """
             SELECT p.id, p.fecha::text, p.total, p.estado, p.id_distribuidor, d.razon_social as distribuidor,
-                   d.telefono AS dist_telefono,
+                   d.telefono AS dist_telefono, d.cuit AS dist_cuit,
                    COALESCE(p.guia_transporte,'') AS guia_transporte, COALESCE(p.guia_numero,'') AS guia_numero
             FROM pedidos_b2b p
             LEFT JOIN distribuidores d ON p.id_distribuidor = d.id
@@ -2070,7 +2070,7 @@ def historial_pedidos_b2b(estado: Optional[str] = None, id_distribuidor: Optiona
             # Fallback si todavía no existen las columnas de guía
             q2 = """
                 SELECT p.id, p.fecha::text, p.total, p.estado, p.id_distribuidor, d.razon_social as distribuidor,
-                       d.telefono AS dist_telefono,
+                       d.telefono AS dist_telefono, d.cuit AS dist_cuit,
                        '' AS guia_transporte, '' AS guia_numero
                 FROM pedidos_b2b p
                 LEFT JOIN distribuidores d ON p.id_distribuidor = d.id
@@ -5867,6 +5867,70 @@ def afip_listar_facturas(id_local: Optional[int] = None):
         return fetchall_dict(cur)
     finally:
         liberar_conexion(conn)
+
+@app.post("/api/afip/facturar_pedido_b2b/{id_pedido}")
+def afip_facturar_pedido_b2b(id_pedido: int, data: dict = Body(...)):
+    """Emite una factura AFIP para un pedido B2B de distribuidor.
+    data: { tipo_comprobante: 1|6, doc_tipo: 80|99, doc_nro: str, id_local: int }
+    ATENCIÓN: llama a AFIP en producción real. La factura tiene CAE y es válida fiscalmente."""
+    if not afip_service:
+        raise HTTPException(status_code=503, detail="El servicio AFIP no está disponible.")
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        # Verificar que el pedido existe y no tiene factura
+        cur.execute("SELECT p.id, p.total, p.id_distribuidor, d.razon_social, d.cuit FROM pedidos_b2b p LEFT JOIN distribuidores d ON p.id_distribuidor=d.id WHERE p.id=%s", (id_pedido,))
+        ped = cur.fetchone()
+        if not ped:
+            raise HTTPException(status_code=404, detail="Pedido no encontrado.")
+        # Ver si ya tiene factura
+        try:
+            cur.execute("SELECT id FROM afip_facturas WHERE id_pedido_b2b=%s LIMIT 1", (id_pedido,))
+            ya = cur.fetchone()
+            if ya:
+                raise HTTPException(status_code=409, detail="Este pedido ya tiene una factura emitida.")
+        except HTTPException:
+            raise
+        except Exception:
+            conn.rollback()
+        total = float(ped.get('total') or 0)
+        if total <= 0:
+            raise HTTPException(status_code=400, detail="El total del pedido es 0 o inválido.")
+        tipo = int(data.get('tipo_comprobante', 6))
+        doc_tipo = int(data.get('doc_tipo', 99))
+        doc_nro = str(data.get('doc_nro') or '0')
+        id_local = int(data.get('id_local') or 1)
+        # Punto de venta según el local
+        cur.execute("SELECT punto_venta_afip FROM pos_locales WHERE id=%s", (id_local,))
+        loc = cur.fetchone()
+        pv = int(loc['punto_venta_afip']) if loc and loc.get('punto_venta_afip') else int(os.environ.get('AFIP_PUNTO_VENTA', 5))
+        # Calcular neto e IVA (IVA 21% incluido en el total)
+        neto = round(total / 1.21, 2)
+        iva  = round(total - neto, 2)
+        cond_iva = "IVA Responsable Inscripto" if tipo == 1 else "Consumidor Final"
+        resultado = afip_service.emitir_factura(
+            tipo_comprobante=tipo, doc_tipo=doc_tipo, doc_nro=doc_nro,
+            neto=neto, iva=iva, total=total, cond_iva_receptor=cond_iva, punto_venta=pv
+        )
+        # Guardar en la base
+        try:
+            cur.execute("""INSERT INTO afip_facturas (id_local, id_pedido_b2b, tipo_comprobante, numero, cae,
+                           cae_vencimiento, total, fecha) VALUES (%s,%s,%s,%s,%s,%s,%s,NOW())""",
+                       (id_local, id_pedido, tipo, resultado.get('numero'), resultado.get('cae'),
+                        resultado.get('cae_vencimiento'), total))
+            conn.commit()
+        except Exception:
+            conn.rollback()
+        return {"status": "ok", "cae": resultado.get('cae'), "numero": resultado.get('numero'),
+                "tipo": tipo, "total": total, "distribuidor": ped.get('razon_social')}
+    except HTTPException:
+        raise
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
 
 # ==============================================================================
 # LISTADO DE VENTAS CON COMPROBANTE (para reporte al contador)
