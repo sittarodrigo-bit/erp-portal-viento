@@ -3269,16 +3269,40 @@ def actualizar_proveedor(id_prov: int, data: ActualizarProveedor):
     finally:
         liberar_conexion(conn)
 
+@app.get("/api/proveedores/todos/pagos")
+def todos_pagos_proveedores(desde: Optional[str] = None, hasta: Optional[str] = None):
+    """Lista todos los pagos a proveedores, con nombre del proveedor."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        q = """SELECT pg.id, COALESCE(pg.fecha::text, NOW()::text) AS fecha,
+                      pg.monto, pg.metodo, pg.referencia, pg.notas, pg.id_orden,
+                      p.nombre AS proveedor_nombre,
+                      e.nombre AS empleado_nombre, e.apellido AS empleado_apellido
+               FROM pagos_proveedores pg
+               LEFT JOIN proveedores p ON pg.id_proveedor = p.id
+               LEFT JOIN empleados e ON pg.id_empleado = e.id
+               WHERE 1=1"""
+        params = []
+        if desde: q += " AND COALESCE(pg.fecha, NOW())::date >= %s"; params.append(desde)
+        if hasta: q += " AND COALESCE(pg.fecha, NOW())::date <= %s"; params.append(hasta)
+        q += " ORDER BY COALESCE(pg.fecha, NOW()) DESC"
+        cur.execute(q, tuple(params))
+        return fetchall_dict(cur)
+    finally:
+        liberar_conexion(conn)
+
 @app.get("/api/proveedores/{id_prov}/pagos")
 def pagos_proveedor(id_prov: int):
     conn = obtener_conexion()
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
         cur.execute("""
-            SELECT pg.id, pg.fecha::text, pg.monto, pg.metodo, pg.referencia, pg.notas, pg.id_orden,
+            SELECT pg.id, COALESCE(pg.fecha::text, NOW()::text) AS fecha,
+                   pg.monto, pg.metodo, pg.referencia, pg.notas, pg.id_orden,
                    e.nombre as empleado_nombre, e.apellido as empleado_apellido
             FROM pagos_proveedores pg LEFT JOIN empleados e ON pg.id_empleado = e.id
-            WHERE pg.id_proveedor = %s ORDER BY pg.fecha DESC
+            WHERE pg.id_proveedor = %s ORDER BY COALESCE(pg.fecha, NOW()) DESC
         """, (id_prov,))
         return fetchall_dict(cur)
     finally:
