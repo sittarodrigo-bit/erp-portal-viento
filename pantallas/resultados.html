@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<script>window.PANEL_ACTUAL = "admin";</script>
+<script src="/static/auth.js"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Estado de Resultados | Portal del Viento</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>tailwind.config={theme:{extend:{colors:{neon:'#e4fc74'}}}}</script>
+</head>
+<body class="bg-gray-950 text-gray-200 font-sans min-h-screen">
+
+<header class="bg-gray-900 border-b border-gray-800 py-3 px-6 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+        <a href="/admin" class="text-gray-500 hover:text-white text-sm">← Panel</a>
+        <h1 class="text-white font-bold text-lg">📊 Estado de Resultados</h1>
+    </div>
+    <p class="text-gray-600 text-xs hidden md:block">ALFAJORES PORTAL DEL VIENTO · CUIT 30717499014</p>
+</header>
+
+<!-- Filtros -->
+<div class="bg-gray-900 border-b border-gray-800 px-6 py-3 flex flex-wrap gap-3 items-end">
+    <div>
+        <p class="text-gray-500 text-xs mb-1">Período rápido</p>
+        <div class="flex gap-2">
+            <button onclick="setPeriodo('mes')"       class="text-xs border border-gray-700 text-gray-400 hover:text-white px-3 py-1.5 rounded">Este mes</button>
+            <button onclick="setPeriodo('mes_ant')"   class="text-xs border border-gray-700 text-gray-400 hover:text-white px-3 py-1.5 rounded">Mes anterior</button>
+            <button onclick="setPeriodo('trimestre')" class="text-xs border border-gray-700 text-gray-400 hover:text-white px-3 py-1.5 rounded">Trimestre</button>
+            <button onclick="setPeriodo('anio')"      class="text-xs border border-gray-700 text-gray-400 hover:text-white px-3 py-1.5 rounded">Este año</button>
+        </div>
+    </div>
+    <div class="flex gap-2 items-center">
+        <input type="date" id="f-desde" class="bg-gray-800 border border-gray-700 text-white rounded p-2 text-sm">
+        <span class="text-gray-500">→</span>
+        <input type="date" id="f-hasta" class="bg-gray-800 border border-gray-700 text-white rounded p-2 text-sm">
+        <button onclick="cargar()" class="bg-neon text-black font-bold px-4 py-2 rounded text-sm">🔍 Ver</button>
+    </div>
+</div>
+
+<!-- Contenido -->
+<div class="p-4 md:p-6 max-w-4xl mx-auto" id="contenido">
+    <p class="text-gray-500 text-center py-16">Elegí un período y tocá Ver.</p>
+</div>
+
+<script>
+const API_URL = window.location.origin + '/api';
+function fmt(n){ return '$ '+(parseFloat(n)||0).toLocaleString('es-AR'); }
+function hoy(){ return new Date().toISOString().split('T')[0]; }
+function primerDia(d){ return new Date(d.getFullYear(),d.getMonth(),1).toISOString().split('T')[0]; }
+
+function setPeriodo(p){
+    var h=new Date(), d, f;
+    if(p==='mes'){ d=primerDia(h); f=hoy(); }
+    else if(p==='mes_ant'){ var pa=new Date(h.getFullYear(),h.getMonth()-1,1); d=primerDia(pa); f=new Date(h.getFullYear(),h.getMonth(),0).toISOString().split('T')[0]; }
+    else if(p==='trimestre'){ var t=new Date(h.getFullYear(),h.getMonth()-2,1); d=primerDia(t); f=hoy(); }
+    else if(p==='anio'){ d=h.getFullYear()+'-01-01'; f=hoy(); }
+    document.getElementById('f-desde').value=d;
+    document.getElementById('f-hasta').value=f;
+    cargar();
+}
+
+function seccion(titulo, filas, total, colorTotal, nota){
+    if(!filas.length) return '<div class="bg-gray-900 border border-gray-800 rounded-xl p-4 mb-4"><p class="text-gray-500 font-bold mb-1">'+titulo+'</p><p class="text-gray-600 text-sm">Sin datos en este período.</p></div>';
+    var rows = filas.map(f=>{
+        var nombre = f.local||f.nombre||f.categoria||f.proveedor||'—';
+        return '<div class="flex justify-between py-1.5 border-b border-gray-800 last:border-0"><span class="text-gray-300">'+nombre+'</span><span class="text-white font-bold">'+fmt(f.total)+'</span></div>';
+    }).join('');
+    return '<div class="bg-gray-900 border border-gray-800 rounded-xl p-4 mb-4">'+
+        '<p class="text-gray-400 font-bold text-xs uppercase mb-3 tracking-widest">'+titulo+(nota?'  <span class="text-gray-600 font-normal normal-case">'+nota+'</span>':'')+'</p>'+
+        rows+
+        '<div class="flex justify-between pt-2 mt-2 border-t border-gray-700"><span class="text-white font-bold">Subtotal</span><span class="'+colorTotal+' font-bold text-lg">'+fmt(total)+'</span></div>'+
+        '</div>';
+}
+
+async function cargar(){
+    var desde=document.getElementById('f-desde').value;
+    var hasta=document.getElementById('f-hasta').value;
+    if(!desde||!hasta){ alert('Elegí un rango de fechas'); return; }
+    document.getElementById('contenido').innerHTML='<p class="text-gray-500 text-center py-16">Cargando...</p>';
+    try{
+        var d=await fetch(API_URL+'/resultados?desde='+desde+'&hasta='+hasta).then(r=>r.json());
+        var res=d.resultado;
+        var resColor=res>=0?'text-neon':'text-red-400';
+        var resBg=res>=0?'border-neon':'border-red-600';
+
+        var html='';
+
+        // Resultado destacado arriba
+        html+='<div class="bg-black border-2 '+resBg+' rounded-2xl p-6 mb-6 text-center">'+
+            '<p class="text-gray-500 text-sm mb-1">Resultado neto · '+desde+' → '+hasta+'</p>'+
+            '<p class="'+resColor+' font-bold text-4xl md:text-5xl">'+fmt(res)+'</p>'+
+            '<p class="text-gray-600 text-xs mt-2">'+(res>=0?'✅ Positivo — el negocio generó ganancia':'⚠️ Negativo — los egresos superan los ingresos')+'</p>'+
+            '</div>';
+
+        // Dos columnas
+        html+='<div class="grid md:grid-cols-2 gap-4">';
+
+        // INGRESOS
+        html+='<div>';
+        html+='<div class="flex justify-between items-center mb-3"><p class="text-green-400 font-bold uppercase text-sm tracking-widest">💰 Ingresos</p><p class="text-green-400 font-bold text-xl">'+fmt(d.ingresos.total)+'</p></div>';
+        html+=seccion('Ventas en locales', d.ingresos.ventas_local, d.ingresos.total_ventas, 'text-green-400', '');
+        html+=seccion('Cobros de distribuidores', d.ingresos.cobros_dist, d.ingresos.total_cobros, 'text-green-400', '');
+        html+='</div>';
+
+        // EGRESOS
+        html+='<div>';
+        html+='<div class="flex justify-between items-center mb-3"><p class="text-red-400 font-bold uppercase text-sm tracking-widest">💸 Egresos</p><p class="text-red-400 font-bold text-xl">'+fmt(d.egresos.total)+'</p></div>';
+        html+=seccion('Gastos por categoría', d.egresos.gastos, d.egresos.total_gastos, 'text-red-400', '');
+        html+=seccion('Pagos a proveedores', d.egresos.pagos_prov, d.egresos.total_pagos, 'text-red-400', '');
+        var todasDeudas=d.egresos.deudas_manual.concat(d.egresos.deudas_auto);
+        html+=seccion('Deudas pendientes', todasDeudas, d.egresos.total_deudas, 'text-orange-400', '(sin filtro de fecha — lo que debés hoy)');
+        html+='</div>';
+
+        html+='</div>'; // fin grid
+
+        // Tabla resumen final
+        html+='<div class="bg-gray-900 border border-gray-800 rounded-xl p-5 mt-4">'+
+            '<p class="text-white font-bold mb-4 text-center">Resumen</p>'+
+            '<div class="space-y-2">'+
+            '<div class="flex justify-between"><span class="text-gray-400">💰 Total ingresos</span><span class="text-green-400 font-bold">'+fmt(d.ingresos.total)+'</span></div>'+
+            '<div class="flex justify-between"><span class="text-gray-400">💸 Gastos</span><span class="text-red-400 font-bold">- '+fmt(d.egresos.total_gastos)+'</span></div>'+
+            '<div class="flex justify-between"><span class="text-gray-400">🏪 Pagos proveedores</span><span class="text-red-400 font-bold">- '+fmt(d.egresos.total_pagos)+'</span></div>'+
+            '<div class="flex justify-between"><span class="text-gray-400">📕 Deudas pendientes</span><span class="text-orange-400 font-bold">- '+fmt(d.egresos.total_deudas)+'</span></div>'+
+            '<div class="flex justify-between border-t border-gray-700 pt-3 mt-2"><span class="text-white font-bold text-lg">Resultado neto</span><span class="'+resColor+' font-bold text-2xl">'+fmt(res)+'</span></div>'+
+            '</div></div>';
+
+        document.getElementById('contenido').innerHTML=html;
+    }catch(e){
+        document.getElementById('contenido').innerHTML='<p class="text-red-400 text-center py-16">No se pudo cargar. '+e.message+'</p>';
+    }
+}
+
+// Arrancar con este mes
+window.addEventListener('load', function(){ setPeriodo('mes'); });
+</script>
+</body>
+</html>
