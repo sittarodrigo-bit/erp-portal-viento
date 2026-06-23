@@ -66,8 +66,8 @@
     <div class="fixed bottom-0 left-0 right-0 bg-black border-t border-gray-800 p-3" id="arm-botonera">
       <div class="max-w-5xl mx-auto flex gap-2">
         <div id="aviso-faltan" class="hidden"></div>
-        <button id="btn-parcial" onclick="despacharParcial()" class="flex-1 bg-orange-600 hover:bg-orange-500 text-white font-bold py-3 rounded-xl text-sm">📦 Despachar lo armado (finaliza)</button>
-        <button id="btn-listo" onclick="marcarListo()" class="flex-1 bg-neon text-black font-bold py-3 rounded-xl text-base disabled:bg-gray-700 disabled:text-gray-500">✓ Pedido completo</button>
+        <button id="btn-parcial" onclick="marcarParcialListo()" class="flex-1 bg-orange-600 hover:bg-orange-500 text-white font-bold py-3 rounded-xl text-sm">📦 Listo lo armado (parcial)</button>
+        <button id="btn-listo" onclick="marcarTodo()" class="flex-1 bg-neon text-black font-bold py-3 rounded-xl text-base disabled:bg-gray-700 disabled:text-gray-500">✓ Todo listo</button>
       </div>
     </div>
   </main>
@@ -264,24 +264,35 @@ function actualizarProgreso(){
 
 
 
-async function marcarListo(){
-  if(!confirm('¿Marcar el pedido #' + pedidoActual.id + ' como completo y despachado?')) return;
+async function marcarTodo(){
+  const esRepo = pedidoActual.tipo === 'reposicion';
+  var txt = esRepo ? 'reposición' : 'pedido';
+  if(!confirm('¿Marcar el ' + txt + ' como TODO LISTO?\n\nQuedará como "Preparado" esperando que lo despaches desde el panel.')) return;
   try{
-    await fetch(`${API_URL}/armado/pedidos/${pedidoActual.id}/listo`, {method:'PUT'});
-    alert('✅ Pedido despachado completo.');
+    var endpoint = esRepo
+      ? `${API_URL}/armado/pedidos/${pedidoActual.id}/listo`
+      : `${API_URL}/armado/pedidos/${pedidoActual.id}/preparado`;
+    await fetch(endpoint, {method:'PUT'});
+    alert('✅ Listo. Quedó como "Preparado" — despachalo desde el panel cuando salga.');
     volverLista(); cargarPedidos();
   }catch(e){ alert('No se pudo marcar como listo.'); }
 }
 
-async function despacharParcial(){
+async function marcarParcialListo(){
+  const esRepo = pedidoActual.tipo === 'reposicion';
   const faltan = pedidoActual.items.filter(i=>!i.completo).map(i=>'• ' + i.nombre + ': faltan ' + (i.cantidad-(i.preparado||0)) + ' de ' + i.cantidad);
-  if(!confirm('Vas a despachar lo que cargaste y FINALIZAR el armado.\n\nQueda pendiente:\n' + faltan.join('\n') + '\n\nSi después necesitás cambiar algo, reabrílo desde el panel de pedidos o de locales.\n\n¿Confirmás?')) return;
+  var txtFaltan = faltan.length ? ('\n\nQueda sin preparar:\n' + faltan.join('\n')) : '';
+  if(!confirm('¿Marcar como LISTO lo que armaste?' + txtFaltan + '\n\nQuedará como "Preparado" esperando que lo despaches desde el panel.')) return;
   try{
-    await fetch(`${API_URL}/armado/pedidos/${pedidoActual.id}/despacho_parcial`, {method:'PUT'});
-    alert('📦 Despachado lo armado. Lo que faltó quedó registrado.');
+    var endpoint = esRepo
+      ? `${API_URL}/armado/pedidos/${pedidoActual.id}/listo`
+      : `${API_URL}/armado/pedidos/${pedidoActual.id}/preparado`;
+    await fetch(endpoint, {method:'PUT'});
+    alert('📦 Listo lo armado. Quedó como "Preparado" — despachalo desde el panel cuando salga.');
     volverLista(); cargarPedidos();
-  }catch(e){ alert('No se pudo despachar parcial.'); }
+  }catch(e){ alert('No se pudo marcar.'); }
 }
+
 
 function volverLista(){
   pedidoActual = null;
