@@ -1,6 +1,9 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
+<script>window.PANEL_ACTUAL = "proveedores";</script>
+<script src="/static/auth.js"></script>
+
     <meta charset="UTF-8">
     <title>Proveedores | Portal del Viento</title>
     <script src="https://cdn.tailwindcss.com"></script>
@@ -53,6 +56,7 @@
             <button onclick="cambiarTab('proveedores')" id="tab-prov" class="py-3 text-sm font-bold tab-activa">🏪 Proveedores</button>
             <button onclick="cambiarTab('ordenes')"     id="tab-ord"  class="py-3 text-sm font-bold text-gray-400 hover:text-white">📦 Órdenes de Compra</button>
             <button onclick="cambiarTab('pagos')"       id="tab-pag"  class="py-3 text-sm font-bold text-gray-400 hover:text-white">💰 Pagos</button>
+            <button onclick="cambiarTab('deudas')"      id="tab-deu"  class="py-3 text-sm font-bold text-gray-400 hover:text-white">📕 Deudas</button>
         </div>
 
         <div id="panel-proveedores" class="flex-1 overflow-y-auto p-8">
@@ -154,7 +158,60 @@
                 </table>
             </div>
         </div>
+
+        <!-- Panel de Deudas -->
+        <div id="panel-deudas" class="hidden flex-1 overflow-y-auto p-6">
+            <div class="max-w-3xl mx-auto">
+                <div class="flex justify-between items-center mb-4">
+                    <div>
+                        <h3 class="text-white font-bold text-lg">📕 Deudas con proveedores</h3>
+                        <p class="text-gray-500 text-sm">Total a pagar: <span id="deudas-total" class="text-red-400 font-bold">$ 0</span></p>
+                    </div>
+                    <button onclick="abrirNuevaDeuda()" class="bg-neon text-black font-bold px-4 py-2 rounded-lg text-sm">+ Cargar deuda manual</button>
+                </div>
+
+                <!-- Deudas automáticas (órdenes sin pagar) -->
+                <p class="text-gray-500 text-xs font-bold uppercase mb-2 tracking-widest">📦 De órdenes de compra (automáticas)</p>
+                <div id="lista-deudas-auto" class="space-y-2 mb-6">
+                    <p class="text-gray-600 text-sm">Cargando...</p>
+                </div>
+
+                <!-- Deudas manuales -->
+                <p class="text-gray-500 text-xs font-bold uppercase mb-2 tracking-widest">✏️ Cargadas manualmente</p>
+                <div id="lista-deudas-manual" class="space-y-2">
+                    <p class="text-gray-600 text-sm">Cargando...</p>
+                </div>
+            </div>
+        </div>
+
     </main>
+
+    <!-- Modal nueva deuda manual -->
+    <div id="modal-deuda" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
+        <div class="bg-gray-900 border border-gray-700 rounded-xl p-6 w-full max-w-md shadow-2xl">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-white font-bold text-lg">📕 Nueva deuda manual</h3>
+                <button onclick="cerrarModalDeuda()" class="text-gray-500 hover:text-white text-2xl">×</button>
+            </div>
+            <label class="block text-gray-400 text-xs mb-1">Proveedor</label>
+            <select id="deu-proveedor" class="w-full bg-gray-800 border border-gray-700 text-white rounded p-2 mb-3"></select>
+            <label class="block text-gray-400 text-xs mb-1">Concepto</label>
+            <input id="deu-concepto" class="w-full bg-gray-800 border border-gray-700 text-white rounded p-2 mb-3" placeholder="Ej: Entrega de insumos 15/06">
+            <div class="grid grid-cols-2 gap-3 mb-3">
+                <div>
+                    <label class="block text-gray-400 text-xs mb-1">Monto</label>
+                    <input id="deu-monto" type="number" class="w-full bg-gray-800 border border-gray-700 text-white rounded p-2 font-bold" placeholder="0">
+                </div>
+                <div>
+                    <label class="block text-gray-400 text-xs mb-1">Fecha</label>
+                    <input id="deu-fecha" type="date" class="w-full bg-gray-800 border border-gray-700 text-white rounded p-2">
+                </div>
+            </div>
+            <label class="block text-gray-400 text-xs mb-1">Notas (opcional)</label>
+            <input id="deu-notas" class="w-full bg-gray-800 border border-gray-700 text-white rounded p-2 mb-4" placeholder="Ej: Factura #1234">
+            <button onclick="guardarDeuda()" class="w-full bg-red-700 hover:bg-red-600 text-white font-bold py-3 rounded">💾 Guardar deuda</button>
+        </div>
+    </div>
 
     <div id="modal-nuevo" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
         <div class="bg-gray-900 border border-gray-700 rounded-xl p-6 w-[480px] shadow-2xl">
@@ -341,13 +398,105 @@
         };
 
         function cambiarTab(tab) {
-            ['proveedores','ordenes','pagos'].forEach(t => {
+            ['proveedores','ordenes','pagos','deudas'].forEach(t => {
                 document.getElementById(`panel-${t}`).classList.toggle('hidden', t !== tab);
             });
             document.getElementById('tab-prov').className = tab==='proveedores' ? 'py-3 text-sm font-bold tab-activa' : 'py-3 text-sm font-bold text-gray-400 hover:text-white';
             document.getElementById('tab-ord').className  = tab==='ordenes'     ? 'py-3 text-sm font-bold tab-activa' : 'py-3 text-sm font-bold text-gray-400 hover:text-white';
             document.getElementById('tab-pag').className  = tab==='pagos'       ? 'py-3 text-sm font-bold tab-activa' : 'py-3 text-sm font-bold text-gray-400 hover:text-white';
+            document.getElementById('tab-deu').className  = tab==='deudas'      ? 'py-3 text-sm font-bold tab-activa' : 'py-3 text-sm font-bold text-gray-400 hover:text-white';
             if (tab === 'ordenes') cargarOrdenes();
+            if (tab === 'deudas') cargarDeudas();
+        }
+
+        // ===== DEUDAS =====
+        function fmt(n){ return '$ '+(parseFloat(n)||0).toLocaleString('es-AR'); }
+
+        async function cargarDeudas() {
+            try {
+                var d = await fetch(`${API_URL}/proveedores/deudas`).then(r=>r.json());
+                document.getElementById('deudas-total').textContent = fmt(d.total);
+                var auto = d.deudas.filter(x=>x.tipo==='orden');
+                var man  = d.deudas.filter(x=>x.tipo==='manual');
+                var elAuto = document.getElementById('lista-deudas-auto');
+                if (auto.length) {
+                    elAuto.innerHTML = auto.map(x=>`
+                        <div class="bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 flex justify-between items-center">
+                            <div>
+                                <p class="text-white font-bold">${x.proveedor}</p>
+                                <p class="text-gray-500 text-xs">${x.fecha} · ${x.dias} días · Orden #${x.id_ref}</p>
+                                ${x.concepto ? `<p class="text-gray-400 text-xs">${x.concepto}</p>` : ''}
+                            </div>
+                            <p class="text-red-400 font-bold text-lg">${fmt(x.monto)}</p>
+                        </div>`).join('');
+                } else elAuto.innerHTML = '<p class="text-gray-600 text-sm">Sin órdenes de compra pendientes de pago.</p>';
+
+                var elMan = document.getElementById('lista-deudas-manual');
+                if (man.length) {
+                    elMan.innerHTML = man.map(x=>`
+                        <div class="bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 flex justify-between items-center gap-3">
+                            <div class="flex-1">
+                                <p class="text-white font-bold">${x.proveedor}</p>
+                                <p class="text-gray-400 text-sm">${x.concepto}</p>
+                                <p class="text-gray-500 text-xs">${x.fecha} · ${x.dias} días</p>
+                            </div>
+                            <div class="text-right shrink-0">
+                                <p class="text-red-400 font-bold text-lg">${fmt(x.monto)}</p>
+                                <div class="flex gap-1 mt-1 justify-end">
+                                    <button onclick="pagarDeuda(${x.id_ref})" class="text-xs bg-green-800 hover:bg-green-700 text-white px-2 py-1 rounded">✓ Pagar</button>
+                                    <button onclick="eliminarDeuda(${x.id_ref})" class="text-xs bg-red-900/50 hover:bg-red-700 text-red-400 hover:text-white px-2 py-1 rounded">✕</button>
+                                </div>
+                            </div>
+                        </div>`).join('');
+                } else elMan.innerHTML = '<p class="text-gray-600 text-sm">Sin deudas manuales cargadas. <button onclick="abrirNuevaDeuda()" class="text-neon underline">Agregar una</button></p>';
+            } catch(e) {
+                document.getElementById('lista-deudas-auto').innerHTML = '<p class="text-red-400 text-sm">No se pudieron cargar las deudas.</p>';
+            }
+        }
+
+        function abrirNuevaDeuda() {
+            // Poblar select de proveedores
+            var sel = document.getElementById('deu-proveedor');
+            sel.innerHTML = proveedores.map(p=>`<option value="${p.id}">${p.nombre || p.razon_social}</option>`).join('');
+            document.getElementById('deu-concepto').value = '';
+            document.getElementById('deu-monto').value = '';
+            document.getElementById('deu-notas').value = '';
+            document.getElementById('deu-fecha').value = new Date().toISOString().split('T')[0];
+            document.getElementById('modal-deuda').classList.replace('modal-oculto','modal-visible');
+        }
+        function cerrarModalDeuda() {
+            document.getElementById('modal-deuda').classList.replace('modal-visible','modal-oculto');
+        }
+        async function guardarDeuda() {
+            var idProv = parseInt(document.getElementById('deu-proveedor').value);
+            var concepto = document.getElementById('deu-concepto').value.trim();
+            var monto = parseFloat(document.getElementById('deu-monto').value);
+            if (!concepto) { alert('Ingresá el concepto'); return; }
+            if (!monto || monto <= 0) { alert('Ingresá un monto válido'); return; }
+            var fecha = document.getElementById('deu-fecha').value;
+            var notas = document.getElementById('deu-notas').value;
+            try {
+                await fetch(`${API_URL}/proveedores/deudas`, {
+                    method:'POST', headers:{'Content-Type':'application/json'},
+                    body: JSON.stringify({id_proveedor:idProv, concepto, monto, fecha, notas})
+                });
+                cerrarModalDeuda();
+                cargarDeudas();
+            } catch(e) { alert('No se pudo guardar la deuda'); }
+        }
+        async function pagarDeuda(id) {
+            if (!confirm('¿Marcar esta deuda como pagada? Se generará un gasto automáticamente.')) return;
+            try {
+                await fetch(`${API_URL}/proveedores/deudas/${id}/pagar`, {method:'PUT'});
+                cargarDeudas();
+            } catch(e) { alert('No se pudo marcar como pagada'); }
+        }
+        async function eliminarDeuda(id) {
+            if (!confirm('¿Eliminar esta deuda?')) return;
+            try {
+                await fetch(`${API_URL}/proveedores/deudas/${id}`, {method:'DELETE'});
+                cargarDeudas();
+            } catch(e) { alert('No se pudo eliminar'); }
         }
 
         async function cargarDatos() {
