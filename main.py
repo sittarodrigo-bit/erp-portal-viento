@@ -3448,6 +3448,121 @@ def stock_bajo_insumos():
     finally:
         liberar_conexion(conn)
 
+class DeudaProveedorManual(BaseModel):
+    id_proveedor: int
+    concepto: str
+    monto: float
+    fecha: Optional[str] = None
+    notas: Optional[str] = None
+
+@app.get("/api/proveedores/deudas")
+def listar_deudas_proveedores():
+    """Lista deudas de órdenes de compra sin pagar + deudas manuales, unificadas."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        # Deudas automáticas (órdenes de compra recibidas sin pagar)
+        try:
+            cur.execute("""
+                SELECT 'orden' AS tipo, oc.id AS id_ref, p.nombre AS proveedor,
+                       oc.total AS monto, oc.fecha::text AS fecha,
+                       EXTRACT(DAY FROM NOW() - oc.fecha)::int AS dias,
+                       COALESCE(oc.notas,'') AS concepto
+                FROM ordenes_compra oc JOIN proveedores p ON oc.id_proveedor=p.id
+                WHERE oc.estado='Recibida'
+                  AND oc.id NOT IN (SELECT DISTINCT id_orden FROM pagos_proveedores WHERE id_orden IS NOT NULL)
+                ORDER BY oc.fecha ASC
+            """)
+            automaticas = fetchall_dict(cur)
+        except Exception:
+            conn.rollback()
+            automaticas = []
+        # Deudas manuales sin pagar
+        try:
+            cur.execute("""
+                SELECT 'manual' AS tipo, d.id AS id_ref, p.nombre AS proveedor,
+                       d.monto, d.fecha::text AS fecha,
+                       EXTRACT(DAY FROM NOW() - d.fecha)::int AS dias,
+                       d.concepto
+                FROM deudas_proveedores_manual d JOIN proveedores p ON d.id_proveedor=p.id
+                WHERE d.pagada=false
+                ORDER BY d.fecha ASC
+            """)
+            manuales = fetchall_dict(cur)
+        except Exception:
+            conn.rollback()
+            manuales = []
+        todas = automaticas + manuales
+        total = sum(float(d.get('monto') or 0) for d in todas)
+        return {"deudas": todas, "total": total}
+    finally:
+        liberar_conexion(conn)
+
+@app.post("/api/proveedores/deudas")
+def crear_deuda_manual(d: DeudaProveedorManual):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        if d.fecha:
+            cur.execute("INSERT INTO deudas_proveedores_manual (id_proveedor,concepto,monto,fecha,notas) VALUES (%s,%s,%s,%s,%s)",
+                       (d.id_proveedor, d.concepto, d.monto, d.fecha, d.notas))
+        else:
+            cur.execute("INSERT INTO deudas_proveedores_manual (id_proveedor,concepto,monto,notas) VALUES (%s,%s,%s,%s)",
+                       (d.id_proveedor, d.concepto, d.monto, d.notas))
+        conn.commit()
+        return {"status": "ok"}
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
+@app.put("/api/proveedores/deudas/{id}/pagar")
+def marcar_deuda_pagada(id: int):
+    """Marca una deuda manual como pagada y genera un gasto automáticamente."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("SELECT * FROM deudas_proveedores_manual WHERE id=%s", (id,))
+        d = cur.fetchone()
+        if not d:
+            raise HTTPException(status_code=404, detail="Deuda no encontrada")
+        cur.execute("UPDATE deudas_proveedores_manual SET pagada=true, fecha_pago=CURRENT_DATE WHERE id=%s", (id,))
+        # Generar gasto automático igual que el pago de proveedor
+        try:
+            cur.execute("SELECT id FROM gastos_categorias WHERE LOWER(nombre)='proveedores' LIMIT 1")
+            cat = cur.fetchone()
+            if not cat:
+                cur.execute("INSERT INTO gastos_categorias (nombre) VALUES ('Proveedores') RETURNING id")
+                cat = cur.fetchone()
+            cur.execute("SELECT nombre FROM proveedores WHERE id=%s", (d['id_proveedor'],))
+            prov = cur.fetchone()
+            concepto = 'Pago deuda: ' + (prov['nombre'] if prov else '') + ' · ' + str(d['concepto'])
+            cur.execute("INSERT INTO gastos (id_categoria, concepto, monto, notas) VALUES (%s,%s,%s,%s)",
+                       (cat['id'], concepto, d['monto'], 'Auto: pago deuda proveedor'))
+        except Exception:
+            pass
+        conn.commit()
+        return {"status": "ok"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
+@app.delete("/api/proveedores/deudas/{id}")
+def eliminar_deuda_manual(id: int):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM deudas_proveedores_manual WHERE id=%s", (id,))
+        conn.commit()
+        return {"status": "ok"}
+    finally:
+        liberar_conexion(conn)
+
 @app.get("/api/tablero/deudas_proveedores")
 def deudas_proveedores():
     conn = obtener_conexion()
@@ -5942,6 +6057,68 @@ def afip_facturar(f: FacturaAfip):
         liberar_conexion(conn)
 
     return {"status": "ok", "id": fid, **r, "neto": neto, "iva": iva, "total": total}
+
+@app.get("/contabilidad")
+def route_contabilidad():
+    return serve_html("contabilidad.html")
+
+@app.get("/api/contabilidad/exportar")
+def contabilidad_exportar(desde: Optional[str] = None, hasta: Optional[str] = None):
+    """Devuelve facturas emitidas + pagos a proveedores + gastos para exportar al contador."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        params_rango = []
+        rango_sql = ""
+        if desde: rango_sql += " AND fecha::date >= %s"; params_rango.append(desde)
+        if hasta: rango_sql += " AND fecha::date <= %s"; params_rango.append(hasta)
+
+        # Facturas emitidas AFIP
+        try:
+            q = """SELECT f.fecha::text, f.tipo_comprobante, f.numero, f.cae,
+                          l.nombre AS local, f.total
+                   FROM afip_facturas f LEFT JOIN pos_locales l ON f.id_local=l.id
+                   WHERE 1=1""" + rango_sql + " ORDER BY f.fecha DESC"
+            cur.execute(q, tuple(params_rango))
+            facturas = fetchall_dict(cur)
+        except Exception:
+            conn.rollback(); facturas = []
+
+        # Pagos a proveedores
+        try:
+            q2 = """SELECT pg.fecha::text, p.nombre AS proveedor, pg.monto,
+                           pg.metodo, pg.referencia, pg.notas
+                    FROM pagos_proveedores pg LEFT JOIN proveedores p ON pg.id_proveedor=p.id
+                    WHERE 1=1""" + rango_sql.replace('fecha', 'pg.fecha') + " ORDER BY pg.fecha DESC"
+            cur.execute(q2, tuple(params_rango))
+            pagos = fetchall_dict(cur)
+        except Exception:
+            conn.rollback(); pagos = []
+
+        # Gastos
+        try:
+            q3 = """SELECT g.fecha::text, cat.nombre AS categoria, g.concepto,
+                           g.monto, g.metodo, g.notas
+                    FROM gastos g LEFT JOIN gastos_categorias cat ON g.id_categoria=cat.id
+                    WHERE 1=1""" + rango_sql.replace('fecha', 'g.fecha') + " ORDER BY g.fecha DESC"
+            cur.execute(q3, tuple(params_rango))
+            gastos = fetchall_dict(cur)
+        except Exception:
+            conn.rollback(); gastos = []
+
+        return {
+            "desde": desde, "hasta": hasta,
+            "facturas_emitidas": facturas,
+            "pagos_proveedores": pagos,
+            "gastos": gastos,
+            "totales": {
+                "facturas": sum(float(f.get('total') or 0) for f in facturas),
+                "pagos": sum(float(p.get('monto') or 0) for p in pagos),
+                "gastos": sum(float(g.get('monto') or 0) for g in gastos),
+            }
+        }
+    finally:
+        liberar_conexion(conn)
 
 @app.get("/api/afip/facturas")
 def afip_listar_facturas(id_local: Optional[int] = None):
