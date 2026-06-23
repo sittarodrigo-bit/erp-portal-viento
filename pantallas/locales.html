@@ -447,6 +447,8 @@
         const API_URL = window.location.origin + "/api";
         const usr = JSON.parse(sessionStorage.getItem('usuario') || '{}');
         if (usr.nombre) document.getElementById('usuario-info').textContent = `${usr.nombre} ${usr.apellido} · ${usr.rol}`;
+        // Solo admin puede usar el botón Reponer directamente
+        const esAdmin = usr.rol === 'admin' || usr.rol === 'administrativo';
 
         // Menú lateral en celular
         function abrirMenu(){
@@ -1119,7 +1121,7 @@
                             <button class="text-xs border border-gray-600 text-gray-300 hover:text-white px-3 py-1.5 rounded btn-print">🖨️ Imprimir</button>
                             ${(repuesto||armada)?'':'<button class="text-xs border border-yellow-700 text-yellow-300 hover:bg-yellow-900/30 px-3 py-1.5 rounded font-bold btn-edit">✏️ Modificar</button>'}
                             ${(repuesto||habilitada||armada)?'':'<button class="text-xs bg-neon text-black hover:bg-yellow-300 px-3 py-1.5 rounded font-bold btn-hab">▶️ Habilitar para armado</button>'}
-                            ${repuesto?'':'<button class="text-xs bg-green-800 hover:bg-green-700 text-white px-3 py-1.5 rounded font-bold btn-rep">' + (armada?'✅ Confirmar reposición (sumar al local)':'Reponer (sumar stock)') + '</button>'}
+                            ${(repuesto||!esAdmin)?'':'<button class="text-xs bg-green-800 hover:bg-green-700 text-white px-3 py-1.5 rounded font-bold btn-rep">' + (armada?'✅ Confirmar reposición (sumar al local)':'Reponer (sumar stock)') + '</button>'}
                             <button class="text-xs bg-red-900/50 hover:bg-red-700 text-red-400 hover:text-white px-2 py-1.5 rounded btn-del">✕</button>
                         </div>
                     </div>
