@@ -3287,9 +3287,31 @@ def pagos_proveedor(id_prov: int):
 def registrar_pago_proveedor(pago: NuevoPagoProveedor):
     conn = obtener_conexion()
     try:
-        cur = conn.cursor()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        # 1) Registrar el pago al proveedor
         cur.execute("INSERT INTO pagos_proveedores (id_proveedor, id_orden, id_empleado, monto, metodo, referencia, notas) VALUES (%s,%s,%s,%s,%s,%s,%s)",
                     (pago.id_proveedor, pago.id_orden, pago.id_empleado, pago.monto, pago.metodo, pago.referencia, pago.notas))
+        # 2) Buscar o crear categoría "Proveedores" en gastos
+        try:
+            cur.execute("SELECT id FROM gastos_categorias WHERE LOWER(nombre)='proveedores' LIMIT 1")
+            cat = cur.fetchone()
+            if not cat:
+                cur.execute("INSERT INTO gastos_categorias (nombre) VALUES ('Proveedores') RETURNING id")
+                cat = cur.fetchone()
+            id_cat = cat['id'] if cat else None
+            # Nombre del proveedor para el concepto
+            cur.execute("SELECT nombre FROM proveedores WHERE id=%s", (pago.id_proveedor,))
+            prov = cur.fetchone()
+            concepto = 'Pago proveedor: ' + (prov['nombre'] if prov else str(pago.id_proveedor))
+            if pago.referencia:
+                concepto += ' · ' + pago.referencia
+            # 3) Insertar en gastos
+            cur.execute("""INSERT INTO gastos (id_categoria, concepto, monto, metodo, id_empleado, notas)
+                           VALUES (%s,%s,%s,%s,%s,%s)""",
+                       (id_cat, concepto, pago.monto, pago.metodo, pago.id_empleado,
+                        'Auto: pago a proveedor' + (' · ' + pago.notas if pago.notas else '')))
+        except Exception:
+            pass  # Si falla el gasto, el pago ya está registrado — no bloqueamos
         conn.commit()
         return {"status": "ok"}
     except Exception as e:
@@ -4344,6 +4366,73 @@ def gastos_eliminar_categoria(id: int):
         liberar_conexion(conn)
 
 # ---- GASTOS ----
+@app.get("/api/caja_diaria")
+def caja_diaria(fecha: Optional[str] = None):
+    """Resumen del día: ventas de locales + cobros de distribuidores + gastos."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        dia = fecha or "CURRENT_DATE"
+        param_dia = fecha if fecha else None
+
+        # Ventas por local del día
+        if param_dia:
+            cur.execute("""
+                SELECT l.nombre AS local, v.metodo_pago, SUM(v.total) AS total, COUNT(*) AS tickets
+                FROM pos_ventas v JOIN pos_locales l ON v.id_local=l.id
+                WHERE v.fecha::date = %s GROUP BY l.nombre, v.metodo_pago ORDER BY l.nombre
+            """, (param_dia,))
+        else:
+            cur.execute("""
+                SELECT l.nombre AS local, v.metodo_pago, SUM(v.total) AS total, COUNT(*) AS tickets
+                FROM pos_ventas v JOIN pos_locales l ON v.id_local=l.id
+                WHERE v.fecha::date = CURRENT_DATE GROUP BY l.nombre, v.metodo_pago ORDER BY l.nombre
+            """)
+        ventas = fetchall_dict(cur)
+        total_ventas = sum(float(r['total'] or 0) for r in ventas)
+
+        # Cobros de distribuidores del día
+        if param_dia:
+            cur.execute("""
+                SELECT d.razon_social AS distribuidor, c.metodo, c.monto, c.referencia
+                FROM cobros_distribuidores c LEFT JOIN distribuidores d ON c.id_distribuidor=d.id
+                WHERE c.fecha::date = %s ORDER BY c.fecha DESC
+            """, (param_dia,))
+        else:
+            cur.execute("""
+                SELECT d.razon_social AS distribuidor, c.metodo, c.monto, c.referencia
+                FROM cobros_distribuidores c LEFT JOIN distribuidores d ON c.id_distribuidor=d.id
+                WHERE c.fecha::date = CURRENT_DATE ORDER BY c.fecha DESC
+            """)
+        cobros = fetchall_dict(cur)
+        total_cobros = sum(float(r['monto'] or 0) for r in cobros)
+
+        # Gastos del día
+        if param_dia:
+            cur.execute("""
+                SELECT g.concepto, g.monto, g.metodo, cat.nombre AS categoria
+                FROM gastos g LEFT JOIN gastos_categorias cat ON g.id_categoria=cat.id
+                WHERE g.fecha::date = %s ORDER BY g.fecha DESC
+            """, (param_dia,))
+        else:
+            cur.execute("""
+                SELECT g.concepto, g.monto, g.metodo, cat.nombre AS categoria
+                FROM gastos g LEFT JOIN gastos_categorias cat ON g.id_categoria=cat.id
+                WHERE g.fecha::date = CURRENT_DATE ORDER BY g.fecha DESC
+            """)
+        gastos = fetchall_dict(cur)
+        total_gastos = sum(float(r['monto'] or 0) for r in gastos)
+
+        return {
+            "ventas": ventas, "total_ventas": total_ventas,
+            "cobros": cobros, "total_cobros": total_cobros,
+            "gastos": gastos, "total_gastos": total_gastos,
+            "total_ingresos": total_ventas + total_cobros,
+            "resultado_neto": total_ventas + total_cobros - total_gastos
+        }
+    finally:
+        liberar_conexion(conn)
+
 @app.get("/api/gastos")
 def gastos_listar(desde: Optional[str] = None, hasta: Optional[str] = None, id_categoria: Optional[int] = None):
     conn = obtener_conexion()
