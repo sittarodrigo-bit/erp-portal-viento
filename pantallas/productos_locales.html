@@ -1,0 +1,25 @@
+-- ============================================================
+--  Configuración de reposición: mapeo categoría fábrica → producto local
+--  Ejecutar UNA VEZ en el SQL Editor de Neon.
+-- ============================================================
+
+-- Tabla de configuración: por cada categoría de fábrica, 
+-- qué producto genérico del local se suma al confirmar reposición
+CREATE TABLE IF NOT EXISTS reposicion_config_categoria (
+    id SERIAL PRIMARY KEY,
+    id_categoria_fabrica INTEGER NOT NULL,   -- categorias.id
+    nombre_producto_local VARCHAR(200) NOT NULL,  -- nombre genérico en pos_productos
+    activa BOOLEAN DEFAULT true,
+    UNIQUE(id_categoria_fabrica)
+);
+
+-- Columnas en pos_productos para el mapeo manual (si no estaban)
+ALTER TABLE pos_productos ADD COLUMN IF NOT EXISTS id_producto_fabrica INTEGER;
+ALTER TABLE pos_productos ADD COLUMN IF NOT EXISTS unidades_por_caja_local NUMERIC(6,2) DEFAULT 1;
+
+-- Columnas en pos_reposiciones_detalle para el link directo
+ALTER TABLE pos_reposiciones_detalle ADD COLUMN IF NOT EXISTS id_producto_fabrica INTEGER;
+ALTER TABLE pos_reposiciones_detalle ADD COLUMN IF NOT EXISTS unidades_por_caja NUMERIC(6,2) DEFAULT 1;
+
+CREATE INDEX IF NOT EXISTS idx_reposicion_config_cat ON reposicion_config_categoria(id_categoria_fabrica);
+CREATE INDEX IF NOT EXISTS idx_pos_prod_fabrica ON pos_productos(id_producto_fabrica) WHERE id_producto_fabrica IS NOT NULL;
