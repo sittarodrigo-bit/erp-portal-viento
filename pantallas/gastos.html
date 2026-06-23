@@ -1,6 +1,9 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
+<script>window.PANEL_ACTUAL = "gastos";</script>
+<script src="/static/auth.js"></script>
+
     <meta charset="UTF-8">
     <title>Gastos | Portal del Viento</title>
     <script src="https://cdn.tailwindcss.com"></script>
@@ -46,12 +49,84 @@
         </header>
 
         <div class="bg-gray-900 border-b border-gray-800 px-8 flex gap-6 shrink-0">
+            <button onclick="cambiarTab('caja')" id="tab-caja" class="py-3 text-sm font-bold text-gray-400 hover:text-white">📦 Caja del día</button>
             <button onclick="cambiarTab('gastos')" id="tab-gastos" class="py-3 text-sm font-bold tab-activa">💸 Gastos</button>
             <button onclick="cambiarTab('recurrentes')" id="tab-rec" class="py-3 text-sm font-bold text-gray-400 hover:text-white">🔁 Recurrentes</button>
             <button onclick="cambiarTab('reporte')" id="tab-rep" class="py-3 text-sm font-bold text-gray-400 hover:text-white">📊 Reporte</button>
         </div>
 
         <!-- TAB GASTOS -->
+        <!-- ===== CAJA DEL DÍA ===== -->
+        <div id="panel-caja" class="hidden flex-1 overflow-y-auto p-4 md:p-6">
+            <div class="max-w-2xl mx-auto">
+                <!-- Selector de fecha -->
+                <div class="flex items-center gap-3 mb-5">
+                    <button onclick="cambiarFechaCaja(-1)" class="text-gray-400 hover:text-white px-3 py-2 border border-gray-700 rounded-lg">◀</button>
+                    <input type="date" id="caja-fecha" class="bg-gray-900 border border-gray-700 text-white rounded-lg p-2 text-sm flex-1" onchange="cargarCaja()">
+                    <button onclick="cambiarFechaCaja(1)" class="text-gray-400 hover:text-white px-3 py-2 border border-gray-700 rounded-lg">▶</button>
+                    <button onclick="cargarCaja()" class="bg-neon text-black font-bold px-4 py-2 rounded-lg text-sm">🔄</button>
+                </div>
+
+                <!-- KPIs del día -->
+                <div class="grid grid-cols-2 gap-3 mb-5">
+                    <div class="bg-black border border-green-800 rounded-xl p-4">
+                        <p class="text-gray-500 text-xs mb-1">💰 Ventas locales</p>
+                        <p id="caja-ventas" class="text-green-400 font-bold text-xl">$ 0</p>
+                    </div>
+                    <div class="bg-black border border-blue-800 rounded-xl p-4">
+                        <p class="text-gray-500 text-xs mb-1">🚚 Cobros distribuidores</p>
+                        <p id="caja-cobros" class="text-blue-400 font-bold text-xl">$ 0</p>
+                    </div>
+                    <div class="bg-black border border-red-800 rounded-xl p-4">
+                        <p class="text-gray-500 text-xs mb-1">💸 Gastos del día</p>
+                        <p id="caja-gastos" class="text-red-400 font-bold text-xl">$ 0</p>
+                    </div>
+                    <div class="bg-black border border-neon rounded-xl p-4">
+                        <p class="text-gray-500 text-xs mb-1">✅ Resultado neto</p>
+                        <p id="caja-resultado" class="text-neon font-bold text-xl">$ 0</p>
+                    </div>
+                </div>
+
+                <!-- Arqueo de efectivo -->
+                <div class="bg-gray-900 border border-gray-700 rounded-xl p-4 mb-5">
+                    <p class="text-white font-bold mb-3">🏦 Arqueo de efectivo</p>
+                    <div class="flex gap-2 items-center">
+                        <div class="flex-1">
+                            <label class="text-gray-500 text-xs block mb-1">Efectivo físico en caja</label>
+                            <input type="number" id="caja-efectivo-real" placeholder="0"
+                                class="w-full bg-black border border-gray-700 text-white rounded-lg p-2 font-bold"
+                                oninput="calcularDiferencia()">
+                        </div>
+                        <div class="flex-1">
+                            <label class="text-gray-500 text-xs block mb-1">Diferencia</label>
+                            <p id="caja-diferencia" class="text-gray-400 font-bold text-lg p-2">—</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Detalle ventas por local -->
+                <div class="bg-gray-900 border border-gray-800 rounded-xl p-4 mb-4">
+                    <p class="text-white font-bold mb-3">💰 Ventas por local</p>
+                    <div id="caja-detalle-ventas" class="space-y-2 text-sm text-gray-400">Cargando...</div>
+                </div>
+
+                <!-- Detalle cobros distribuidores -->
+                <div class="bg-gray-900 border border-gray-800 rounded-xl p-4 mb-4">
+                    <p class="text-white font-bold mb-3">🚚 Cobros de distribuidores</p>
+                    <div id="caja-detalle-cobros" class="space-y-2 text-sm text-gray-400">Cargando...</div>
+                </div>
+
+                <!-- Detalle gastos del día -->
+                <div class="bg-gray-900 border border-gray-800 rounded-xl p-4 mb-4">
+                    <div class="flex justify-between items-center mb-3">
+                        <p class="text-white font-bold">💸 Gastos del día</p>
+                        <button onclick="nuevoGasto()" class="bg-red-800 hover:bg-red-700 text-white text-xs font-bold px-3 py-1.5 rounded">+ Agregar gasto</button>
+                    </div>
+                    <div id="caja-detalle-gastos" class="space-y-2 text-sm text-gray-400">Cargando...</div>
+                </div>
+            </div>
+        </div>
+
         <div id="panel-gastos" class="flex-1 overflow-y-auto p-8">
             <div class="flex gap-3 mb-3 flex-wrap items-end">
                 <div>
@@ -232,12 +307,14 @@
         function hoyStr() { return new Date().toISOString().split('T')[0]; }
 
         function cambiarTab(tab) {
-            ['gastos','recurrentes','reporte'].forEach(t => document.getElementById('panel-'+t).classList.toggle('hidden', t!==tab));
+            ['caja','gastos','recurrentes','reporte'].forEach(t => document.getElementById('panel-'+t).classList.toggle('hidden', t!==tab));
+            document.getElementById('tab-caja').className  = tab==='caja' ? 'py-3 text-sm font-bold tab-activa' : 'py-3 text-sm font-bold text-gray-400 hover:text-white';
             document.getElementById('tab-gastos').className = tab==='gastos' ? 'py-3 text-sm font-bold tab-activa' : 'py-3 text-sm font-bold text-gray-400 hover:text-white';
             document.getElementById('tab-rec').className    = tab==='recurrentes' ? 'py-3 text-sm font-bold tab-activa' : 'py-3 text-sm font-bold text-gray-400 hover:text-white';
             document.getElementById('tab-rep').className    = tab==='reporte' ? 'py-3 text-sm font-bold tab-activa' : 'py-3 text-sm font-bold text-gray-400 hover:text-white';
             if (tab==='recurrentes') cargarRecurrentes();
             if (tab==='reporte') cargarReporte();
+            if (tab==='caja') cargarCaja();
         }
 
         async function init() {
@@ -249,7 +326,9 @@
             document.getElementById('f-hasta').value = hoyStr();
             document.getElementById('r-desde').value = primerDiaMes();
             document.getElementById('r-hasta').value = hoyStr();
-            cargarGastos();
+            // Arrancar en la caja del día
+            document.getElementById('caja-fecha').value = hoyStr();
+            cambiarTab('caja');
         }
 
         function poblarSelectsCategorias() {
@@ -503,6 +582,87 @@
         }
 
         window.onload = init;
+        // ===== CAJA DEL DÍA =====
+        var cajaData = null;
+
+        function cambiarFechaCaja(dias) {
+            var d = new Date(document.getElementById('caja-fecha').value + 'T12:00:00');
+            d.setDate(d.getDate() + dias);
+            document.getElementById('caja-fecha').value = d.toISOString().split('T')[0];
+            cargarCaja();
+        }
+
+        async function cargarCaja() {
+            var fecha = document.getElementById('caja-fecha').value;
+            var url = `${API_URL}/caja_diaria` + (fecha ? `?fecha=${fecha}` : '');
+            try {
+                var d = await fetch(url).then(r=>r.json());
+                cajaData = d;
+                // KPIs
+                document.getElementById('caja-ventas').textContent    = fmt(d.total_ventas);
+                document.getElementById('caja-cobros').textContent    = fmt(d.total_cobros);
+                document.getElementById('caja-gastos').textContent    = '- ' + fmt(d.total_gastos);
+                var res = d.resultado_neto;
+                var elRes = document.getElementById('caja-resultado');
+                elRes.textContent = fmt(res);
+                elRes.className = 'font-bold text-xl ' + (res >= 0 ? 'text-neon' : 'text-red-400');
+
+                // Detalle ventas
+                var dv = document.getElementById('caja-detalle-ventas');
+                if (d.ventas.length) {
+                    var porLocal = {};
+                    d.ventas.forEach(v => {
+                        if (!porLocal[v.local]) porLocal[v.local] = [];
+                        porLocal[v.local].push(v);
+                    });
+                    dv.innerHTML = Object.entries(porLocal).map(([loc, rows]) => {
+                        var totalLoc = rows.reduce((s,r)=>s+parseFloat(r.total||0),0);
+                        var desglose = rows.map(r=>`<span class="text-gray-500">${r.metodo_pago}: ${fmt(r.total)} (${r.tickets} tickets)</span>`).join(' · ');
+                        return `<div class="flex justify-between items-start border-b border-gray-800 pb-2">
+                            <div><p class="text-white font-bold">${loc}</p><p class="text-xs mt-0.5">${desglose}</p></div>
+                            <p class="text-green-400 font-bold shrink-0">${fmt(totalLoc)}</p></div>`;
+                    }).join('');
+                } else dv.innerHTML = '<p class="text-gray-600">Sin ventas en locales este día.</p>';
+
+                // Detalle cobros
+                var dc = document.getElementById('caja-detalle-cobros');
+                if (d.cobros.length) {
+                    dc.innerHTML = d.cobros.map(c=>`<div class="flex justify-between border-b border-gray-800 pb-2">
+                        <div><p class="text-white">${c.distribuidor||'—'}</p><p class="text-gray-500 text-xs">${c.metodo} ${c.referencia?'· '+c.referencia:''}</p></div>
+                        <p class="text-blue-400 font-bold">${fmt(c.monto)}</p></div>`).join('');
+                } else dc.innerHTML = '<p class="text-gray-600">Sin cobros de distribuidores este día.</p>';
+
+                // Detalle gastos
+                var dg = document.getElementById('caja-detalle-gastos');
+                if (d.gastos.length) {
+                    dg.innerHTML = d.gastos.map(g=>`<div class="flex justify-between border-b border-gray-800 pb-2">
+                        <div><p class="text-white">${g.concepto}</p><p class="text-gray-500 text-xs">${g.categoria||'Sin categoría'} · ${g.metodo||''}</p></div>
+                        <p class="text-red-400 font-bold">- ${fmt(g.monto)}</p></div>`).join('');
+                } else dg.innerHTML = '<p class="text-gray-600">Sin gastos cargados este día. <button onclick="nuevoGasto()" class="text-neon underline">Agregar uno</button></p>';
+
+                calcularDiferencia();
+            } catch(e) {
+                console.error('Error cargando caja:', e);
+            }
+        }
+
+        function calcularDiferencia() {
+            if (!cajaData) return;
+            var efectivoReal = parseFloat(document.getElementById('caja-efectivo-real').value) || 0;
+            if (!efectivoReal) { document.getElementById('caja-diferencia').textContent = '—'; document.getElementById('caja-diferencia').className = 'text-gray-400 font-bold text-lg p-2'; return; }
+            // Efectivo esperado = ventas en efectivo + cobros en efectivo - gastos en efectivo
+            var ventasEfectivo = cajaData.ventas.filter(v=>v.metodo_pago==='Efectivo').reduce((s,v)=>s+parseFloat(v.total||0),0);
+            var cobrosEfectivo = cajaData.cobros.filter(c=>c.metodo==='Efectivo').reduce((s,c)=>s+parseFloat(c.monto||0),0);
+            var gastosEfectivo = cajaData.gastos.filter(g=>g.metodo==='Efectivo').reduce((s,g)=>s+parseFloat(g.monto||0),0);
+            var esperado = ventasEfectivo + cobrosEfectivo - gastosEfectivo;
+            var diff = efectivoReal - esperado;
+            var el = document.getElementById('caja-diferencia');
+            el.textContent = (diff >= 0 ? '+' : '') + fmt(diff);
+            el.className = 'font-bold text-lg p-2 ' + (Math.abs(diff) < 1 ? 'text-neon' : (diff > 0 ? 'text-yellow-400' : 'text-red-400'));
+        }
+
+        function fmt(n) { return '$ ' + (parseFloat(n)||0).toLocaleString('es-AR'); }
+
     </script>
 </body>
 </html>
