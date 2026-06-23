@@ -2532,6 +2532,60 @@ def listar_fichajes(fecha: Optional[str] = None, id_empleado: Optional[int] = No
     finally:
         liberar_conexion(conn)
 
+@app.delete("/api/liquidacion/historial/{id}")
+def eliminar_pago_sueldo(id: int):
+    """Elimina un pago del historial (para corregir errores)."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM pagos_sueldo WHERE id=%s", (id,))
+        conn.commit()
+        return {"status": "ok"}
+    finally:
+        liberar_conexion(conn)
+
+@app.get("/api/liquidacion/historial")
+def historial_pagos_sueldo(id_empleado: Optional[int] = None):
+    """Historial de pagos de sueldos. Si se pasa id_empleado, filtra por ese empleado."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        q = """SELECT ps.id, ps.fecha_desde::text, ps.fecha_hasta::text,
+                      ps.total_horas, ps.pago_horas, ps.anticipos_descontados,
+                      ps.neto_pagado, ps.detalle, ps.fecha_pago::text,
+                      e.nombre AS empleado_nombre, e.apellido AS empleado_apellido
+               FROM pagos_sueldo ps JOIN empleados e ON ps.id_empleado=e.id
+               WHERE 1=1"""
+        params = []
+        if id_empleado:
+            q += " AND ps.id_empleado=%s"; params.append(id_empleado)
+        q += " ORDER BY ps.fecha_pago DESC LIMIT 200"
+        cur.execute(q, tuple(params))
+        return fetchall_dict(cur)
+    except Exception:
+        conn.rollback()
+        return []
+    finally:
+        liberar_conexion(conn)
+
+@app.get("/api/liquidacion/ultimo_pago/{id_empleado}")
+def ultimo_pago_empleado(id_empleado: int):
+    """Devuelve la fecha hasta la que se pagó por última vez a este empleado."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            cur.execute("""SELECT fecha_hasta::text, fecha_pago::text, neto_pagado
+                           FROM pagos_sueldo WHERE id_empleado=%s
+                           ORDER BY fecha_hasta DESC LIMIT 1""", (id_empleado,))
+            r = cur.fetchone()
+            return r if r else {}
+        except Exception:
+            conn.rollback()
+            return {}
+    finally:
+        liberar_conexion(conn)
+
 @app.get("/api/liquidacion/detalle")
 def liquidacion_detalle(fecha_desde: str, fecha_hasta: str):
     """Liquidación por rango de fechas: por cada empleado, el detalle día por día
@@ -2664,7 +2718,19 @@ def marcar_pagado(data: dict = Body(...)):
     conn = obtener_conexion()
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
-        # Descontar (saldar) los anticipos pendientes del empleado
+        # ANTI-DUPLICADO: verificar si ya existe un pago para este empleado en este período
+        try:
+            cur.execute("""SELECT id FROM pagos_sueldo
+                           WHERE id_empleado=%s AND fecha_desde=%s AND fecha_hasta=%s LIMIT 1""",
+                       (id_emp, desde, hasta))
+            ya_pagado = cur.fetchone()
+            if ya_pagado:
+                raise HTTPException(status_code=409,
+                    detail=f"Este período ya fue pagado (pago #{ya_pagado['id']}). Si querés corregirlo, eliminá el pago anterior desde el historial.")
+        except HTTPException:
+            raise
+        except Exception:
+            conn.rollback()  # la tabla puede no tener el campo — seguimos
         anticipos_desc = 0.0
         try:
             cur.execute("""SELECT a.id, a.monto,
