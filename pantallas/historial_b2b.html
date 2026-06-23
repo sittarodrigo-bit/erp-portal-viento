@@ -387,6 +387,7 @@
                 return b;
             }
 
+            menu.appendChild(mBtn('🧾 Facturar (AFIP)',   'text-blue-400', function() { abrirFacturar(p); }));
             menu.appendChild(mBtn('📋 Orden de compra', 'text-gray-300', function() { abrirYAccion(p.id, 'orden'); }));
             menu.appendChild(mBtn('📄 Remito',          'text-gray-300', function() { abrirYAccion(p.id, 'remito'); }));
             menu.appendChild(mBtn('🏷️ Rótulo / Guía',   'text-yellow-400', function() { abrirYAccion(p.id, 'rotulo'); }));
@@ -1176,6 +1177,65 @@
                 mostrarToast('✅ Guía guardada');
                 cargarPedidos();
             } catch(e) { mostrarToast('No se pudo guardar: ' + (e.message||'')); }
+        }
+
+        // ===== Facturación AFIP para pedidos B2B =====
+        function abrirFacturar(p) {
+            var tieneCuit = p.dist_cuit && p.dist_cuit.replace(/[^0-9]/g,'').length >= 10;
+            var tipoProp = tieneCuit ? 1 : 6;
+            var docTipoProp = tieneCuit ? 80 : 99;
+            var html = ''
+                + '<div class="bg-red-900/20 border border-red-800 rounded-lg p-3 mb-4 text-red-300 text-sm">⚠️ Esta acción emite una factura REAL en AFIP. Tiene CAE y valor fiscal. No se puede anular fácilmente.</div>'
+                + '<p class="text-gray-400 text-sm mb-3">Pedido <b class="text-white">#' + String(p.id).padStart(4,'0') + '</b> · <b class="text-white">' + (p.distribuidor||'') + '</b></p>'
+                + '<div class="grid grid-cols-2 gap-3 mb-4">'
+                + '<div><p class="text-gray-500 text-xs mb-1">Total a facturar</p><p class="text-neon font-bold text-xl">$ ' + parseFloat(p.total||0).toLocaleString('es-AR') + '</p></div>'
+                + '<div><p class="text-gray-500 text-xs mb-1">CUIT del distribuidor</p><p class="text-white font-bold">' + (p.dist_cuit || '— sin CUIT') + '</p></div>'
+                + '</div>'
+                + '<label class="block text-gray-400 text-xs mb-1">Tipo de comprobante</label>'
+                + '<select id="fac-tipo" onchange="actualizarDocTipo()" class="w-full bg-gray-800 border border-gray-700 text-white rounded p-2 mb-3">'
+                + '<option value="1" ' + (tipoProp===1?'selected':'') + '>Factura A (responsable inscripto con CUIT)</option>'
+                + '<option value="6" ' + (tipoProp===6?'selected':'') + '>Factura B (consumidor final / sin CUIT)</option>'
+                + '</select>'
+                + '<div id="fac-cuit-row" class="' + (tipoProp===6?'hidden':'') + '">'
+                + '<label class="block text-gray-400 text-xs mb-1">CUIT del receptor</label>'
+                + '<input id="fac-doc" value="' + (p.dist_cuit||'') + '" class="w-full bg-gray-800 border border-gray-700 text-white rounded p-2 mb-3" placeholder="Sin guiones, solo números">'
+                + '</div>'
+                + '<label class="block text-gray-400 text-xs mb-1">Local emisor (punto de venta)</label>'
+                + '<select id="fac-local" class="w-full bg-gray-800 border border-gray-700 text-white rounded p-2 mb-4" id="fac-local">'
+                + '<option value="1">Portalito (PV 5)</option>'
+                + '<option value="2">Sarmiento (PV 7)</option>'
+                + '</select>'
+                + '<button onclick="emitirFactura(' + p.id + ')" class="w-full bg-blue-700 hover:bg-blue-600 text-white font-bold py-3 rounded text-lg">🧾 Emitir factura en AFIP</button>';
+            abrirModalDist('🧾 Facturar pedido B2B', html);
+        }
+        function actualizarDocTipo() {
+            var tipo = document.getElementById('fac-tipo').value;
+            var row = document.getElementById('fac-cuit-row');
+            if (tipo === '1') row.classList.remove('hidden');
+            else row.classList.add('hidden');
+        }
+        async function emitirFactura(idPedido) {
+            var tipo = parseInt(document.getElementById('fac-tipo').value);
+            var docNro = (document.getElementById('fac-doc') || {value:''}).value.replace(/[^0-9]/g,'') || '0';
+            var idLocal = parseInt(document.getElementById('fac-local').value);
+            var docTipo = tipo === 1 ? 80 : 99;
+            if (tipo === 1 && docNro.length < 10) {
+                mostrarToast('⚠️ Ingresá un CUIT válido para Factura A'); return;
+            }
+            if (!confirm('¿Confirmás la emisión de la factura en AFIP?\n\nEsta acción es irreversible y tiene valor fiscal.')) return;
+            try {
+                var r = await fetch(API_URL + '/afip/facturar_pedido_b2b/' + idPedido, {
+                    method: 'POST', headers: {'Content-Type':'application/json'},
+                    body: JSON.stringify({ tipo_comprobante: tipo, doc_tipo: docTipo, doc_nro: docNro, id_local: idLocal })
+                });
+                var data = await r.json();
+                if (!r.ok) throw new Error(data.detail || 'Error al facturar');
+                cerrarModalDist();
+                mostrarToast('✅ Factura emitida · CAE: ' + data.cae);
+                cargarPedidos();
+            } catch(e) {
+                mostrarToast('❌ ' + (e.message || 'No se pudo facturar'));
+            }
         }
 
     </script>
