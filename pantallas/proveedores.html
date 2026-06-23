@@ -121,7 +121,7 @@
         <div id="panel-pagos" class="hidden flex-1 overflow-y-auto p-8">
             <div class="flex gap-4 mb-5 items-center">
                 <select id="pag-filtro-prov" class="bg-gray-900 border border-gray-700 text-white rounded p-2 text-sm flex-1">
-                    <option value="">Seleccioná un proveedor</option>
+                    <option value="">Todos los proveedores</option>
                 </select>
                 <button onclick="cargarPagos()" class="bg-neon text-black font-bold px-4 py-2 rounded text-sm hover:bg-yellow-300">Ver pagos</button>
                 <button onclick="abrirModalPago()" class="border border-gray-600 text-gray-300 hover:text-white font-bold px-4 py-2 rounded text-sm transition">+ Registrar Pago</button>
@@ -871,8 +871,10 @@
 
         async function cargarPagos() {
             const id_prov = document.getElementById('pag-filtro-prov').value;
-            if (!id_prov) { alert('Seleccioná un proveedor.'); return; }
-            const res = await fetch(`${API_URL}/proveedores/${id_prov}/pagos`);
+            const url = id_prov
+                ? `${API_URL}/proveedores/${id_prov}/pagos`
+                : `${API_URL}/proveedores/todos/pagos`;
+            const res = await fetch(url);
             const lista = await res.json();
             const tabla = document.getElementById('tabla-pagos');
             tabla.innerHTML = '';
@@ -884,14 +886,15 @@
                 const totalPag = lista.reduce((a, p) => a + parseFloat(p.monto), 0);
                 document.getElementById('pag-total').textContent = `$ ${totalPag.toLocaleString('es-AR')}`;
                 document.getElementById('pag-cant').textContent  = lista.length;
-                const ultimo = new Date(lista[0].fecha).toLocaleString('es-AR', {dateStyle:'short', timeStyle:'short'});
+                const f0 = lista[0].fecha;
+                const ultimo = f0 ? (String(f0).replace('T',' ').substring(0,16)) : '—';
                 document.getElementById('pag-ultimo').textContent = ultimo;
             } else {
                 resumen.classList.add('hidden');
             }
 
             if (!lista.length) {
-                tabla.innerHTML = '<tr><td colspan="6" class="p-4 text-center text-gray-500">Sin pagos registrados para este proveedor.</td></tr>';
+                tabla.innerHTML = '<tr><td colspan="6" class="p-4 text-center text-gray-500">Sin pagos registrados.</td></tr>';
                 return;
             }
             const metodoIcono = { Transferencia: '🏦', Efectivo: '💵', Cheque: '📝' };
