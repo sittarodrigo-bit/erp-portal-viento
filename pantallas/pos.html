@@ -271,20 +271,24 @@
 
     <!-- MODAL REPOSICIÓN -->
     <div id="modal-reposicion" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
-        <div class="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-[480px] shadow-2xl max-h-[90vh] overflow-y-auto">
-            <div class="flex justify-between items-center mb-2">
-                <h3 class="text-lg font-bold text-white">🛒 Pedir reposición</h3>
-                <button onclick="cerrarModales()" class="text-gray-500 hover:text-white text-2xl leading-none">×</button>
+        <div class="bg-gray-900 border border-gray-700 rounded-2xl p-5 w-full max-w-lg shadow-2xl max-h-[92vh] flex flex-col">
+            <div class="flex justify-between items-center mb-3 shrink-0">
+                <h3 class="text-lg font-bold text-white">🏭 Pedir reposición</h3>
+                <button onclick="cerrarModales()" class="text-gray-500 hover:text-white text-2xl">×</button>
             </div>
-            <p class="text-gray-500 text-xs mb-4">Elegí los productos del local y la cantidad que necesitás. Le llega al admin.</p>
-            <input type="text" id="repo-buscar" placeholder="🔍 Buscar producto..." oninput="renderRepoProductos()"
-                   class="w-full bg-black border border-gray-700 focus:border-neon text-white rounded-lg p-3 mb-3 text-sm outline-none">
-            <div id="repo-lista" class="space-y-1 mb-4 max-h-72 overflow-y-auto"></div>
-            <div class="bg-black border border-gray-800 rounded-lg p-3 mb-4">
-                <p class="text-xs text-gray-500 font-bold mb-1">A pedir:</p>
-                <p id="repo-resumen" class="text-gray-400 text-sm">Nada seleccionado.</p>
+            <!-- Buscador y categorías -->
+            <input type="text" id="repo-buscar" placeholder="🔍 Buscar en catálogo de fábrica..."
+                   oninput="renderRepoProductos()"
+                   class="w-full bg-black border border-gray-700 focus:border-neon text-white rounded-lg p-2.5 mb-2 text-sm outline-none shrink-0">
+            <div id="repo-cats" class="flex gap-1.5 mb-2 overflow-x-auto shrink-0 pb-1 flex-wrap"></div>
+            <!-- Catálogo -->
+            <div id="repo-lista" class="flex-1 overflow-y-auto mb-3 space-y-1"></div>
+            <!-- Carrito -->
+            <div class="bg-black border border-gray-800 rounded-lg p-3 mb-3 shrink-0 max-h-36 overflow-y-auto">
+                <p class="text-gray-500 text-xs font-bold mb-1">📋 Pedido:</p>
+                <div id="repo-resumen" class="text-sm"><p class="text-gray-600">Nada seleccionado.</p></div>
             </div>
-            <button onclick="enviarReposicion()" class="w-full bg-neon text-black font-bold py-3 rounded-xl hover:bg-yellow-300">Enviar pedido al admin</button>
+            <button onclick="enviarReposicion()" class="w-full bg-neon text-black font-bold py-3 rounded-xl shrink-0">✅ Enviar pedido al depósito</button>
         </div>
     </div>
 
@@ -1250,94 +1254,118 @@
             await cargarProductos();
         }
 
-        // ── REPOSICIÓN ──
-        var repoItems = [];   // [{id_producto, nombre, sabor, cantidad}]
+        // ── REPOSICIÓN (catálogo de fábrica, igual que distribuidores) ──
+        var repoItems = [];
+        var catalogoFabrica = [];
+        var repoCatActual = '';
 
-        function abrirModalReposicion() {
+        async function abrirModalReposicion() {
             if (!localActual) { alert('Elegí un local primero.'); return; }
-            if (!productosLocal.length) { alert('Este local no tiene productos cargados.'); return; }
             repoItems = [];
+            repoCatActual = '';
             document.getElementById('repo-buscar').value = '';
+            // Cargar catálogo completo de fábrica (sin precios, sin ocultar nada)
+            try {
+                catalogoFabrica = await fetch(API_URL + '/productos/catalogo_reposicion').then(r=>r.json());
+            } catch(e) { catalogoFabrica = []; }
+            renderRepoCategorias();
             renderRepoProductos();
             actualizarRepoResumen();
             document.getElementById('modal-reposicion').classList.replace('modal-oculto','modal-visible');
         }
 
-        function renderRepoProductos() {
-            var q = (document.getElementById('repo-buscar').value || '').toLowerCase().trim();
-            var cont = document.getElementById('repo-lista');
-            cont.innerHTML = '';
-            var lista = productosLocal.filter(function(p){ return !q || (p.nombre||'').toLowerCase().indexOf(q) !== -1; });
-            if (!lista.length) { cont.innerHTML = '<p class="text-gray-600 text-sm text-center py-4">Sin resultados.</p>'; return; }
-            lista.forEach(function(p){
-                var row = document.createElement('div');
-                row.className = 'bg-black border border-gray-800 rounded-lg px-3 py-2';
-                var tieneSabores = p.sabores && p.sabores.length;
-                // Regla "de a 12": SOLO para el producto puntual "ALFAJOR PDV UNIDAD".
-                var nombreNorm = (p.nombre||'').trim().toLowerCase();
-                var esAlfajor = (nombreNorm === 'alfajor pdv unidad');
-                var selectSabor = '';
-                if (tieneSabores) {
-                    selectSabor = '<select class="repo-sabor bg-gray-900 border border-gray-700 text-white rounded p-1.5 text-sm flex-1 mr-2">' +
-                        p.sabores.map(function(s){ return '<option value="' + (s.nombre||'').replace(/"/g,'') + '">' + s.nombre + '</option>'; }).join('') +
-                        '</select>';
-                }
-                row.innerHTML =
-                    '<div class="flex items-center gap-2">' +
-                        '<div class="flex-1 min-w-0">' +
-                            '<p class="text-white text-sm font-bold truncate">' + p.nombre + (tieneSabores?' <span class="text-blue-300 text-xs">(por sabor)</span>':'') + (esAlfajor?' <span class="text-amber-300 text-xs">(de a 12)</span>':'') + '</p>' +
-                            '<p class="text-gray-600 text-xs">Stock actual: ' + (parseFloat(p.stock)||0) + '</p>' +
-                        '</div>' +
-                        '<input type="number" min="0" step="' + (esAlfajor?'12':'1') + '" placeholder="' + (esAlfajor?'×12':'Cant.') + '" class="repo-cant w-20 bg-gray-900 border border-gray-700 text-white rounded p-1.5 text-sm text-center">' +
-                        '<button class="repo-add text-xs bg-neon text-black font-bold px-3 py-1.5 rounded">+</button>' +
-                    '</div>' +
-                    (tieneSabores ? '<div class="flex items-center mt-2">' + selectSabor + '</div>' : '');
-                var btn = row.querySelector('.repo-add');
-                btn.onclick = function(){
-                    var cant = parseFloat(row.querySelector('.repo-cant').value) || 0;
-                    if (cant <= 0) { alert('Poné una cantidad.'); return; }
-                    if (esAlfajor && cant % 12 !== 0) {
-                        alert('Los alfajores se piden de a 12 (vienen en cajas de 12).\n\nPoné 12, 24, 36, etc.');
-                        return;
-                    }
-                    var sabor = tieneSabores ? row.querySelector('.repo-sabor').value : null;
-                    repoItems.push({ id_producto: p.id, nombre: p.nombre, sabor: sabor, cantidad: cant });
-                    row.querySelector('.repo-cant').value = '';
+        function renderRepoCategorias() {
+            var cats = [...new Set(catalogoFabrica.map(p=>p.categoria))].sort();
+            var el = document.getElementById('repo-cats');
+            el.innerHTML = '<button onclick="repoCatActual=\'\'; renderRepoProductos(this)" '
+                +'class="text-xs px-3 py-1 rounded-full border border-neon text-neon shrink-0">Todos</button>'
+                + cats.map(c=>'<button onclick="repoCatActual=\''+c.replace(/'/g,"\'")+'\'; renderRepoProductos(this)" '
+                +'class="text-xs px-3 py-1 rounded-full border border-gray-700 text-gray-400 hover:text-white shrink-0">'+c+'</button>').join('');
+        }
+
+        function renderRepoProductos(btnEl) {
+            if (btnEl) {
+                document.querySelectorAll('#repo-cats button').forEach(b=>{
+                    b.className = 'text-xs px-3 py-1 rounded-full border border-gray-700 text-gray-400 hover:text-white shrink-0';
+                });
+                btnEl.className = 'text-xs px-3 py-1 rounded-full border border-neon text-neon shrink-0';
+            }
+            var q = (document.getElementById('repo-buscar').value||'').toLowerCase();
+            var lista = catalogoFabrica.filter(p =>
+                (!repoCatActual || p.categoria === repoCatActual) &&
+                (!q || (p.nombre||'').toLowerCase().includes(q))
+            );
+            var el = document.getElementById('repo-lista');
+            if (!lista.length) { el.innerHTML = '<p class="text-gray-600 text-sm text-center py-4">Sin resultados.</p>'; return; }
+            el.innerHTML = '';
+            lista.forEach(function(p) {
+                var upc = parseFloat(p.unidades_por_caja) || 1;
+                var div = document.createElement('div');
+                div.className = 'bg-black border border-gray-800 rounded-lg px-3 py-2 flex items-center gap-2';
+                div.innerHTML =
+                    '<div class="flex-1 min-w-0">'
+                    +'<p class="text-white text-sm font-bold truncate">'+p.nombre+'</p>'
+                    +'<p class="text-gray-600 text-xs">'+p.categoria+(upc>1?' · <span class="text-amber-300">×'+upc+' u/caja</span>':'')+'</p>'
+                    +'</div>'
+                    +'<input type="number" min="1" step="1" placeholder="Cant." '
+                    +'class="repo-cant w-16 bg-gray-900 border border-gray-700 text-white rounded p-1.5 text-sm text-center">'
+                    +'<button class="repo-add bg-neon text-black text-xs font-bold px-2.5 py-1.5 rounded">+</button>';
+                div.querySelector('.repo-add').onclick = function() {
+                    var cant = parseFloat(div.querySelector('.repo-cant').value) || 0;
+                    if (cant <= 0) { alert('Ingresá una cantidad.'); return; }
+                    repoItems.push({ id_producto_fabrica: p.id, nombre: p.nombre, cantidad: cant, upc: upc, categoria: p.categoria });
+                    div.querySelector('.repo-cant').value = '';
                     actualizarRepoResumen();
                 };
-                cont.appendChild(row);
+                el.appendChild(div);
             });
         }
 
         function actualizarRepoResumen() {
-            var res = document.getElementById('repo-resumen');
-            if (!repoItems.length) { res.innerHTML = 'Nada agregado.'; return; }
-            res.innerHTML = repoItems.map(function(it, idx){
-                return '<span class="inline-block bg-gray-800 rounded px-2 py-1 mr-1 mb-1 text-xs">' +
-                    it.cantidad + '× ' + it.nombre + (it.sabor ? ' · ' + it.sabor : '') +
-                    ' <button onclick="quitarRepoItem(' + idx + ')" class="text-red-400 ml-1">×</button></span>';
+            var el = document.getElementById('repo-resumen');
+            if (!repoItems.length) { el.innerHTML = '<p class="text-gray-600">Nada seleccionado.</p>'; return; }
+            el.innerHTML = repoItems.map(function(it, idx) {
+                var unidades = it.cantidad * it.upc;
+                return '<div class="flex justify-between items-center py-0.5 border-b border-gray-800 last:border-0">'
+                    +'<span class="text-gray-300 text-xs">'+it.cantidad+(it.upc>1?' caja(s) = '+unidades+' u':' u')+' × '+it.nombre+'</span>'
+                    +'<button onclick="quitarRepoItem('+idx+')" class="text-red-400 text-xs ml-2">✕</button>'
+                    +'</div>';
             }).join('');
         }
 
-        function quitarRepoItem(idx) {
-            repoItems.splice(idx, 1);
-            actualizarRepoResumen();
-        }
+        function quitarRepoItem(idx) { repoItems.splice(idx, 1); actualizarRepoResumen(); }
 
         async function enviarReposicion() {
             if (!repoItems.length) { alert('Agregá al menos un producto.'); return; }
-            var detalle = repoItems.map(function(it){
-                return { id_producto: it.id_producto, nombre_producto: it.nombre, cantidad: it.cantidad, sabor: it.sabor };
+            var detalle = repoItems.map(function(it) {
+                return {
+                    id_producto: null,
+                    id_producto_fabrica: it.id_producto_fabrica,
+                    nombre_producto: it.nombre,
+                    cantidad: it.cantidad * it.upc,  // en unidades
+                    unidades_por_caja: it.upc
+                };
             });
-            var body = { id_local: localActual.id, id_empleado: (posUsuario ? posUsuario.id_empleado : null), detalle: detalle };
+            var body = {
+                id_local: localActual.id,
+                id_empleado: posUsuario ? posUsuario.id_empleado : null,
+                detalle: detalle
+            };
             try {
-                var res = await fetch(API_URL + '/pos/reposiciones', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
-                if (res.ok) { cerrarModales(); alert('✅ Pedido de reposición enviado al admin.'); }
-                else { alert('No se pudo enviar.'); }
+                var res = await fetch(API_URL + '/pos/reposiciones', {
+                    method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body)
+                });
+                if (res.ok) {
+                    cerrarModales();
+                    alert('✅ Pedido enviado al depósito. Ya puede verse en el panel de armado.');
+                } else {
+                    var e = await res.json().catch(()=>({}));
+                    alert('No se pudo enviar: ' + (e.detail||''));
+                }
             } catch(e) { alert('Error de conexión.'); }
         }
 
-        // ── FALTANTES ──
+                // ── FALTANTES ──
         function abrirModalFaltante() {
             if (!localActual) { alert('Elegí un local primero.'); return; }
             document.getElementById('falta-desc').value = '';
