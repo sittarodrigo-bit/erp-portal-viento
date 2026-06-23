@@ -1,25 +1,260 @@
--- ============================================================
---  Configuración de reposición: mapeo categoría fábrica → producto local
---  Ejecutar UNA VEZ en el SQL Editor de Neon.
--- ============================================================
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<script>window.PANEL_ACTUAL = "admin";</script>
+<script src="/static/auth.js"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Productos de Locales | Portal del Viento</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>tailwind.config={theme:{extend:{colors:{neon:'#e4fc74'}}}}</script>
+<style>
+.text-neon{color:#e4fc74}.bg-neon{background-color:#e4fc74}.border-neon{border-color:#e4fc74}
+.tab-activa{border-bottom:2px solid #e4fc74;color:white}
+</style>
+</head>
+<body class="bg-gray-950 text-gray-200 font-sans min-h-screen">
 
--- Tabla de configuración: por cada categoría de fábrica, 
--- qué producto genérico del local se suma al confirmar reposición
-CREATE TABLE IF NOT EXISTS reposicion_config_categoria (
-    id SERIAL PRIMARY KEY,
-    id_categoria_fabrica INTEGER NOT NULL,   -- categorias.id
-    nombre_producto_local VARCHAR(200) NOT NULL,  -- nombre genérico en pos_productos
-    activa BOOLEAN DEFAULT true,
-    UNIQUE(id_categoria_fabrica)
-);
+<header class="bg-gray-900 border-b border-gray-800 py-3 px-6 flex items-center justify-between sticky top-0 z-20">
+    <div class="flex items-center gap-3">
+        <a href="/admin" class="text-gray-500 hover:text-white text-sm">← Panel</a>
+        <h1 class="text-white font-bold text-lg">🏪 Productos de Locales</h1>
+    </div>
+</header>
 
--- Columnas en pos_productos para el mapeo manual (si no estaban)
-ALTER TABLE pos_productos ADD COLUMN IF NOT EXISTS id_producto_fabrica INTEGER;
-ALTER TABLE pos_productos ADD COLUMN IF NOT EXISTS unidades_por_caja_local NUMERIC(6,2) DEFAULT 1;
+<!-- Tabs -->
+<div class="bg-gray-900 border-b border-gray-800 px-6 flex gap-6">
+    <button onclick="cambiarTab('productos')" id="tab-prod" class="py-3 text-sm font-bold tab-activa">📦 Productos</button>
+    <button onclick="cambiarTab('config')"    id="tab-cfg"  class="py-3 text-sm font-bold text-gray-400 hover:text-white">⚙️ Config reposición</button>
+</div>
 
--- Columnas en pos_reposiciones_detalle para el link directo
-ALTER TABLE pos_reposiciones_detalle ADD COLUMN IF NOT EXISTS id_producto_fabrica INTEGER;
-ALTER TABLE pos_reposiciones_detalle ADD COLUMN IF NOT EXISTS unidades_por_caja NUMERIC(6,2) DEFAULT 1;
+<main class="p-6 max-w-5xl mx-auto">
 
-CREATE INDEX IF NOT EXISTS idx_reposicion_config_cat ON reposicion_config_categoria(id_categoria_fabrica);
-CREATE INDEX IF NOT EXISTS idx_pos_prod_fabrica ON pos_productos(id_producto_fabrica) WHERE id_producto_fabrica IS NOT NULL;
+<!-- PANEL PRODUCTOS -->
+<div id="panel-productos">
+    <div class="flex flex-wrap gap-3 items-center mb-4">
+        <input type="text" id="buscar-prod" placeholder="🔍 Buscar producto..." oninput="filtrarProductos()"
+               class="bg-gray-900 border border-gray-700 text-white rounded-lg p-2 text-sm flex-1 min-w-48">
+        <select id="filtro-local" onchange="filtrarProductos()" class="bg-gray-900 border border-gray-700 text-white rounded-lg p-2 text-sm">
+            <option value="">Todos los locales</option>
+        </select>
+        <select id="filtro-cat" onchange="filtrarProductos()" class="bg-gray-900 border border-gray-700 text-white rounded-lg p-2 text-sm">
+            <option value="">Todas las categorías</option>
+        </select>
+        <p class="text-gray-500 text-xs">Los cambios de precio y categoría se aplican a todos los locales que tengan ese producto.</p>
+    </div>
+
+    <!-- Tabla agrupada por nombre de producto -->
+    <div id="tabla-productos" class="space-y-2">
+        <p class="text-gray-500 text-center py-12">Cargando...</p>
+    </div>
+</div>
+
+<!-- PANEL CONFIG REPOSICIÓN -->
+<div id="panel-config" class="hidden">
+    <div class="max-w-2xl">
+        <p class="text-gray-400 text-sm mb-5">Configurá qué categoría de fábrica descuenta a qué producto genérico del local al confirmar una reposición.</p>
+
+        <!-- Agregar nueva config -->
+        <div class="bg-gray-900 border border-gray-800 rounded-xl p-4 mb-5">
+            <p class="text-white font-bold mb-3">+ Nueva configuración</p>
+            <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
+                <div>
+                    <label class="text-gray-500 text-xs block mb-1">Categoría de fábrica</label>
+                    <select id="cfg-cat-fab" class="w-full bg-black border border-gray-700 text-white rounded p-2 text-sm">
+                        <option value="">Cargando categorías...</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="text-gray-500 text-xs block mb-1">Nombre del producto en el local (exacto)</label>
+                    <input id="cfg-nombre-local" class="w-full bg-black border border-gray-700 text-white rounded p-2 text-sm" placeholder="Ej: ALFAJOR PDV UNIDAD">
+                </div>
+            </div>
+            <button onclick="guardarConfig()" class="mt-3 bg-neon text-black font-bold px-4 py-2 rounded text-sm">💾 Guardar</button>
+        </div>
+
+        <!-- Lista de configs -->
+        <div id="lista-config" class="space-y-2">
+            <p class="text-gray-500 text-sm">Cargando configuración...</p>
+        </div>
+    </div>
+</div>
+
+</main>
+
+<!-- Modal editar producto (aplica a todos los locales) -->
+<div id="modal-edit" class="hidden fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+<div class="bg-gray-900 border border-gray-700 rounded-xl p-5 w-full max-w-md shadow-2xl">
+    <div class="flex justify-between items-center mb-4">
+        <h3 class="text-white font-bold">✏️ Editar producto</h3>
+        <button onclick="cerrarModal()" class="text-gray-500 hover:text-white text-2xl">×</button>
+    </div>
+    <p id="edit-locales-txt" class="text-gray-500 text-xs mb-3"></p>
+    <input type="hidden" id="edit-nombre-original">
+    <label class="block text-gray-400 text-xs mb-1">Nombre del producto</label>
+    <input id="edit-nombre" class="w-full bg-gray-800 border border-gray-700 text-white rounded p-2 mb-3 text-sm">
+    <div class="grid grid-cols-2 gap-3 mb-3">
+        <div>
+            <label class="block text-gray-400 text-xs mb-1">Categoría</label>
+            <input id="edit-categoria" class="w-full bg-gray-800 border border-gray-700 text-white rounded p-2 text-sm">
+        </div>
+        <div>
+            <label class="block text-gray-400 text-xs mb-1">Alerta de stock</label>
+            <input type="number" id="edit-alerta" class="w-full bg-gray-800 border border-gray-700 text-white rounded p-2 text-sm">
+        </div>
+    </div>
+    <p class="text-yellow-400 text-xs mb-4">⚠️ Este cambio aplica a todos los locales que tengan este producto.</p>
+    <button onclick="guardarEdicion()" class="w-full bg-neon text-black font-bold py-2.5 rounded">💾 Guardar en todos los locales</button>
+</div>
+</div>
+
+<script>
+const API_URL = window.location.origin + '/api';
+var todosProductos = [];
+var productosAgrupados = {};
+
+function fmt(n){ return '$ '+(parseFloat(n)||0).toLocaleString('es-AR'); }
+
+function cambiarTab(tab) {
+    document.getElementById('panel-productos').classList.toggle('hidden', tab!=='productos');
+    document.getElementById('panel-config').classList.toggle('hidden', tab!=='config');
+    document.getElementById('tab-prod').className = tab==='productos' ? 'py-3 text-sm font-bold tab-activa' : 'py-3 text-sm font-bold text-gray-400 hover:text-white';
+    document.getElementById('tab-cfg').className  = tab==='config'   ? 'py-3 text-sm font-bold tab-activa' : 'py-3 text-sm font-bold text-gray-400 hover:text-white';
+    if (tab==='config') cargarConfig();
+}
+
+async function cargarProductos() {
+    var data = await fetch(API_URL+'/pos/productos_todos_locales').then(r=>r.json()).catch(()=>[]);
+    todosProductos = data;
+
+    // Poblar filtros
+    var locales = [...new Set(data.map(p=>p.local_nombre))].sort();
+    var cats = [...new Set(data.map(p=>p.categoria||'Sin categoría'))].sort();
+    document.getElementById('filtro-local').innerHTML = '<option value="">Todos los locales</option>' +
+        locales.map(l=>'<option value="'+l+'">'+l+'</option>').join('');
+    document.getElementById('filtro-cat').innerHTML = '<option value="">Todas las categorías</option>' +
+        cats.map(c=>'<option value="'+c+'">'+c+'</option>').join('');
+
+    filtrarProductos();
+}
+
+function filtrarProductos() {
+    var q   = (document.getElementById('buscar-prod').value||'').toLowerCase();
+    var loc = document.getElementById('filtro-local').value;
+    var cat = document.getElementById('filtro-cat').value;
+
+    var filtrados = todosProductos.filter(p =>
+        (!q   || (p.nombre||'').toLowerCase().includes(q)) &&
+        (!loc || p.local_nombre === loc) &&
+        (!cat || (p.categoria||'Sin categoría') === cat)
+    );
+
+    // Agrupar por nombre de producto
+    var grupos = {};
+    filtrados.forEach(p => {
+        var key = (p.nombre||'').toLowerCase().trim();
+        if (!grupos[key]) grupos[key] = {nombre: p.nombre, categoria: p.categoria, alerta: p.stock_alerta, locales: []};
+        grupos[key].locales.push({local: p.local_nombre, stock: p.stock, id: p.id});
+    });
+
+    var el = document.getElementById('tabla-productos');
+    if (!Object.keys(grupos).length) {
+        el.innerHTML = '<p class="text-gray-500 text-center py-8">Sin productos.</p>'; return;
+    }
+
+    el.innerHTML = Object.values(grupos).sort((a,b)=>a.nombre.localeCompare(b.nombre)).map(g => {
+        var stockTotal = g.locales.reduce((s,l)=>s+parseFloat(l.stock||0),0);
+        var stockRow = g.locales.map(l=>
+            '<span class="text-xs bg-gray-800 rounded px-2 py-0.5">'+l.local+': <b>'+parseFloat(l.stock||0)+'</b></span>'
+        ).join(' ');
+        return '<div class="bg-gray-900 border border-gray-800 rounded-xl p-4 flex justify-between items-start gap-3">'+
+            '<div class="flex-1">'+
+                '<div class="flex items-center gap-2 mb-1">'+
+                    '<p class="text-white font-bold">'+g.nombre+'</p>'+
+                    (g.categoria?'<span class="text-xs bg-gray-800 text-gray-400 rounded px-2 py-0.5">'+g.categoria+'</span>':'')+
+                '</div>'+
+                '<div class="flex flex-wrap gap-1 mt-1">'+stockRow+'</div>'+
+                '<p class="text-gray-600 text-xs mt-1">Total stock: '+stockTotal+' · Alerta: '+(g.alerta||0)+'</p>'+
+            '</div>'+
+            '<button onclick="abrirEditar(\''+g.nombre.replace(/'/g,"\\'")+'\')" class="border border-gray-700 text-gray-400 hover:text-white px-3 py-1.5 rounded text-xs">✏️ Editar</button>'+
+        '</div>';
+    }).join('');
+}
+
+function abrirEditar(nombre) {
+    var prods = todosProductos.filter(p=>(p.nombre||'').toLowerCase().trim()===(nombre||'').toLowerCase().trim());
+    if (!prods.length) return;
+    var p = prods[0];
+    var localesTxt = prods.map(x=>x.local_nombre).join(', ');
+    document.getElementById('edit-nombre-original').value = nombre;
+    document.getElementById('edit-nombre').value = p.nombre;
+    document.getElementById('edit-categoria').value = p.categoria||'';
+    document.getElementById('edit-alerta').value = p.stock_alerta||0;
+    document.getElementById('edit-locales-txt').textContent = 'Aplica a: '+localesTxt+' ('+prods.length+' local'+(prods.length>1?'es':'')+')'
+    document.getElementById('modal-edit').classList.remove('hidden');
+}
+
+function cerrarModal() { document.getElementById('modal-edit').classList.add('hidden'); }
+
+async function guardarEdicion() {
+    var nombreOriginal = document.getElementById('edit-nombre-original').value;
+    var data = {
+        categoria: document.getElementById('edit-categoria').value.trim()||null,
+        stock_alerta: parseFloat(document.getElementById('edit-alerta').value)||0
+    };
+    try {
+        var r = await fetch(API_URL+'/pos/productos_todos_locales/'+encodeURIComponent(nombreOriginal), {
+            method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(data)
+        });
+        var res = await r.json();
+        cerrarModal();
+        alert('✅ Actualizado en '+res.actualizados+' local(es).');
+        cargarProductos();
+    } catch(e) { alert('Error al guardar.'); }
+}
+
+// ===== CONFIG REPOSICIÓN =====
+async function cargarConfig() {
+    // Cargar categorías de fábrica
+    var cats = await fetch(API_URL+'/productos/catalogo_reposicion').then(r=>r.json()).catch(()=>[]);
+    var catsPorId = {};
+    var catUnicas = [...new Map(cats.map(p=>[p.id_categoria, {id:p.id_categoria, nombre:p.categoria}])).values()];
+    catUnicas.sort((a,b)=>a.nombre.localeCompare(b.nombre));
+    document.getElementById('cfg-cat-fab').innerHTML = '<option value="">Elegí una categoría</option>' +
+        catUnicas.map(c=>'<option value="'+c.id+'">'+c.nombre+'</option>').join('');
+
+    // Cargar configs existentes
+    var configs = await fetch(API_URL+'/reposicion/config_categorias').then(r=>r.json()).catch(()=>[]);
+    var el = document.getElementById('lista-config');
+    if (!configs.length) { el.innerHTML = '<p class="text-gray-500 text-sm">Sin configuración todavía. Agregá una arriba.</p>'; return; }
+    el.innerHTML = configs.map(c=>
+        '<div class="bg-gray-900 border border-gray-800 rounded-xl p-3 flex justify-between items-center">'+
+        '<div><p class="text-white font-bold text-sm">'+c.nombre_categoria_fabrica+'</p>'+
+        '<p class="text-gray-400 text-xs">→ suma al producto local: <span class="text-neon">'+c.nombre_producto_local+'</span></p></div>'+
+        '<button onclick="eliminarConfig('+c.id+')" class="text-red-500 hover:text-red-400 text-xs border border-gray-700 px-2 py-1 rounded">✕</button>'+
+        '</div>'
+    ).join('');
+}
+
+async function guardarConfig() {
+    var idCat = document.getElementById('cfg-cat-fab').value;
+    var nombre = document.getElementById('cfg-nombre-local').value.trim();
+    if (!idCat || !nombre) { alert('Completá los dos campos.'); return; }
+    await fetch(API_URL+'/reposicion/config_categorias', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({id_categoria_fabrica: parseInt(idCat), nombre_producto_local: nombre})
+    });
+    document.getElementById('cfg-nombre-local').value = '';
+    cargarConfig();
+}
+
+async function eliminarConfig(id) {
+    if (!confirm('¿Eliminar esta configuración?')) return;
+    await fetch(API_URL+'/reposicion/config_categorias/'+id, {method:'DELETE'});
+    cargarConfig();
+}
+
+cargarProductos();
+</script>
+</body>
+</html>
