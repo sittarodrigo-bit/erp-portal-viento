@@ -574,6 +574,101 @@ def eliminar_categoria(id: int):
 # ==============================================================================
 # PRODUCTOS  (stock_actual, baja lógica, precios en la propia tabla)
 # ==============================================================================
+@app.get("/api/reposicion/config_categorias")
+def reposicion_config_categorias():
+    """Lista la configuración: qué categoría de fábrica → qué producto local."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            cur.execute("""
+                SELECT rc.id, rc.id_categoria_fabrica, rc.nombre_producto_local, rc.activa,
+                       c.nombre AS nombre_categoria_fabrica
+                FROM reposicion_config_categoria rc
+                JOIN categorias c ON rc.id_categoria_fabrica = c.id
+                ORDER BY c.nombre
+            """)
+            return fetchall_dict(cur)
+        except Exception:
+            conn.rollback()
+            return []
+    finally:
+        liberar_conexion(conn)
+
+@app.post("/api/reposicion/config_categorias")
+def reposicion_config_crear(data: dict = Body(...)):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        cur.execute("""INSERT INTO reposicion_config_categoria (id_categoria_fabrica, nombre_producto_local)
+                       VALUES (%s,%s) ON CONFLICT (id_categoria_fabrica)
+                       DO UPDATE SET nombre_producto_local=%s, activa=true""",
+                   (data['id_categoria_fabrica'], data['nombre_producto_local'], data['nombre_producto_local']))
+        conn.commit()
+        return {"status": "ok"}
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
+@app.delete("/api/reposicion/config_categorias/{id}")
+def reposicion_config_eliminar(id: int):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM reposicion_config_categoria WHERE id=%s", (id,))
+        conn.commit()
+        return {"status": "ok"}
+    finally:
+        liberar_conexion(conn)
+
+@app.get("/api/pos/productos_todos_locales")
+def pos_productos_todos_locales():
+    """Lista todos los productos de todos los locales para gestión centralizada."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("""
+            SELECT p.id, p.nombre, p.precio, p.categoria, p.id_local,
+                   COALESCE(p.stock,0) AS stock, COALESCE(p.stock_alerta,0) AS stock_alerta,
+                   l.nombre AS local_nombre
+            FROM pos_productos p
+            JOIN pos_locales l ON p.id_local = l.id
+            WHERE COALESCE(p.activo, true) = true
+            ORDER BY p.nombre, l.nombre
+        """)
+        return fetchall_dict(cur)
+    finally:
+        liberar_conexion(conn)
+
+@app.put("/api/pos/productos_todos_locales/{nombre_producto}")
+def pos_actualizar_producto_todos_locales(nombre_producto: str, data: dict = Body(...)):
+    """Actualiza un producto por nombre en TODOS los locales donde exista."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        campos = []
+        valores = []
+        if 'precio' in data:
+            campos.append("precio=%s"); valores.append(data['precio'])
+        if 'categoria' in data:
+            campos.append("categoria=%s"); valores.append(data['categoria'])
+        if 'stock_alerta' in data:
+            campos.append("stock_alerta=%s"); valores.append(data['stock_alerta'])
+        if not campos:
+            return {"status": "nada que actualizar"}
+        valores.append(nombre_producto)
+        cur.execute(f"UPDATE pos_productos SET {', '.join(campos)} WHERE LOWER(TRIM(nombre))=LOWER(TRIM(%s)) AND COALESCE(activo,true)=true",
+                   tuple(valores))
+        conn.commit()
+        return {"status": "ok", "actualizados": cur.rowcount}
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
 @app.get("/api/productos/catalogo_reposicion")
 def catalogo_reposicion():
     """Catálogo de fábrica para el modal de reposición del POS."""
@@ -5370,7 +5465,8 @@ def pos_reposicion_crear(r: ReposicionCreate):
     conn = obtener_conexion()
     try:
         cur = conn.cursor()
-        cur.execute("INSERT INTO pos_reposiciones (id_local, id_empleado, notas) VALUES (%s,%s,%s) RETURNING id",
+        # Estado 'habilitada' directo — va al armado sin intervención manual
+        cur.execute("INSERT INTO pos_reposiciones (id_local, id_empleado, notas, estado) VALUES (%s,%s,%s,'habilitada') RETURNING id",
                     (r.id_local, r.id_empleado, r.notas))
         rid = cur.fetchone()[0]
         for it in r.detalle:
@@ -5385,6 +5481,10 @@ def pos_reposicion_crear(r: ReposicionCreate):
                 cur.execute("INSERT INTO pos_reposiciones_detalle (id_reposicion, id_producto, nombre_producto, cantidad, sabor) VALUES (%s,%s,%s,%s,%s)",
                             (rid, it.id_producto, it.nombre_producto, it.cantidad, it.sabor))
         conn.commit()
+        try:
+            crear_notificacion("reposicion", "Nueva reposición de local", f"Local #{r.id_local} - {len(r.detalle)} productos")
+        except Exception:
+            pass
         return {"id": rid}
     except Exception as e:
         conn.rollback()
@@ -7205,6 +7305,10 @@ def route_pos_login():
 def route_gastos():
     return serve_html("gastos.html")
 
+
+@app.get("/productos-locales")
+def route_productos_locales():
+    return serve_html("productos_locales.html")
 
 @app.get("/locales")
 def route_locales():
