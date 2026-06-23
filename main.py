@@ -282,6 +282,7 @@ class NuevoPagoProveedor(BaseModel):
     metodo: str
     referencia: Optional[str] = None
     notas: Optional[str] = None
+    fecha: Optional[str] = None  # si no se manda, se usa NOW()
 
 class DatosEmpresa(BaseModel):
     nombre: str
@@ -3289,8 +3290,12 @@ def registrar_pago_proveedor(pago: NuevoPagoProveedor):
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
         # 1) Registrar el pago al proveedor
-        cur.execute("INSERT INTO pagos_proveedores (id_proveedor, id_orden, id_empleado, monto, metodo, referencia, notas) VALUES (%s,%s,%s,%s,%s,%s,%s)",
-                    (pago.id_proveedor, pago.id_orden, pago.id_empleado, pago.monto, pago.metodo, pago.referencia, pago.notas))
+        if pago.fecha:
+            cur.execute("INSERT INTO pagos_proveedores (id_proveedor, id_orden, id_empleado, monto, metodo, referencia, notas, fecha) VALUES (%s,%s,%s,%s,%s,%s,%s,%s)",
+                        (pago.id_proveedor, pago.id_orden, pago.id_empleado, pago.monto, pago.metodo, pago.referencia, pago.notas, pago.fecha))
+        else:
+            cur.execute("INSERT INTO pagos_proveedores (id_proveedor, id_orden, id_empleado, monto, metodo, referencia, notas) VALUES (%s,%s,%s,%s,%s,%s,%s)",
+                        (pago.id_proveedor, pago.id_orden, pago.id_empleado, pago.monto, pago.metodo, pago.referencia, pago.notas))
         # 2) Buscar o crear categoría "Proveedores" en gastos
         try:
             cur.execute("SELECT id FROM gastos_categorias WHERE LOWER(nombre)='proveedores' LIMIT 1")
