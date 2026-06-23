@@ -19,6 +19,15 @@
   </header>
 
   <main class="p-6 max-w-5xl mx-auto">
+
+    <!-- Pestañas -->
+    <div class="flex gap-4 mb-5 border-b border-gray-800">
+        <button onclick="cambiarTabLiq('liquidacion')" id="tab-liq" class="py-2 text-sm font-bold border-b-2 border-neon text-white">💵 Liquidación</button>
+        <button onclick="cambiarTabLiq('historial')"   id="tab-hist" class="py-2 text-sm font-bold text-gray-400 hover:text-white border-b-2 border-transparent">📋 Historial de pagos</button>
+    </div>
+
+    <!-- PANEL LIQUIDACIÓN -->
+    <div id="panel-liquidacion">
     <!-- Selector de fechas -->
     <div class="bg-black border border-gray-800 rounded-2xl p-5 mb-6">
       <div class="flex flex-wrap gap-4 items-end">
@@ -42,6 +51,24 @@
     <div id="contenido">
       <p class="text-gray-500 text-center py-16">Elegí un rango de fechas y tocá Calcular.</p>
     </div>
+    </div><!-- fin panel-liquidacion -->
+
+    <!-- PANEL HISTORIAL -->
+    <div id="panel-historial" class="hidden">
+        <div class="flex justify-between items-center mb-4">
+            <p class="text-white font-bold">Historial de pagos de sueldos</p>
+            <button onclick="cargarHistorial()" class="border border-gray-700 text-gray-400 hover:text-white px-3 py-1.5 rounded text-sm">🔄 Actualizar</button>
+        </div>
+        <div class="mb-3">
+            <select id="hist-empleado" onchange="cargarHistorial()" class="bg-gray-900 border border-gray-700 text-white rounded-lg p-2 text-sm">
+                <option value="">Todos los empleados</option>
+            </select>
+        </div>
+        <div id="tabla-historial">
+            <p class="text-gray-500 text-center py-8">Cargando historial...</p>
+        </div>
+    </div>
+
   </main>
 
 <script>
@@ -292,6 +319,59 @@ function imprimirPlanilla(){
 
 // Rango inicial: esta semana
 rangoRapido('semana');
+
+// ===== PESTAÑAS =====
+function cambiarTabLiq(tab) {
+    document.getElementById('panel-liquidacion').classList.toggle('hidden', tab !== 'liquidacion');
+    document.getElementById('panel-historial').classList.toggle('hidden', tab !== 'historial');
+    document.getElementById('tab-liq').className  = tab==='liquidacion' ? 'py-2 text-sm font-bold border-b-2 border-neon text-white' : 'py-2 text-sm font-bold text-gray-400 hover:text-white border-b-2 border-transparent';
+    document.getElementById('tab-hist').className = tab==='historial'   ? 'py-2 text-sm font-bold border-b-2 border-neon text-white' : 'py-2 text-sm font-bold text-gray-400 hover:text-white border-b-2 border-transparent';
+    if (tab === 'historial') cargarHistorial();
+}
+
+// ===== HISTORIAL DE PAGOS =====
+async function cargarHistorial() {
+    var idEmp = (document.getElementById('hist-empleado') || {}).value || '';
+    var url = API_URL + '/liquidacion/historial' + (idEmp ? '?id_empleado=' + idEmp : '');
+    var lista = await fetch(url).then(r=>r.json()).catch(()=>[]);
+    var el = document.getElementById('tabla-historial');
+    if (!lista.length) {
+        el.innerHTML = '<p class="text-gray-500 text-center py-8">Sin pagos registrados todavía.</p>';
+        return;
+    }
+    el.innerHTML = '<div class="space-y-3">' + lista.map(p => {
+        var nombre = (p.empleado_apellido||'') + ', ' + (p.empleado_nombre||'');
+        var desde = (p.fecha_desde||'').split(' ')[0].split('-').reverse().join('/');
+        var hasta = (p.fecha_hasta||'').split(' ')[0].split('-').reverse().join('/');
+        var fpago = (p.fecha_pago||'').split(' ')[0].split('-').reverse().join('/');
+        return '<div class="bg-gray-900 border border-gray-800 rounded-xl p-4 flex justify-between items-start">' +
+            '<div><p class="text-white font-bold">' + nombre + '</p>' +
+            '<p class="text-gray-400 text-sm">Período: ' + desde + ' → ' + hasta + '</p>' +
+            '<p class="text-gray-500 text-xs">Pagado el ' + fpago + ' · ' + parseFloat(p.total_horas||0).toFixed(1) + ' hs</p></div>' +
+            '<div class="text-right">' +
+            '<p class="text-neon font-bold text-lg">$ ' + parseFloat(p.neto_pagado||0).toLocaleString("es-AR") + '</p>' +
+            (parseFloat(p.anticipos_descontados||0) > 0 ? '<p class="text-orange-400 text-xs">Anticipos: - $ ' + parseFloat(p.anticipos_descontados).toLocaleString("es-AR") + '</p>' : '') +
+            '<button onclick="eliminarPagoHistorial(' + p.id + ')" class="text-xs text-red-500 hover:text-red-400 mt-1">✕ Eliminar</button>' +
+            '</div></div>';
+    }).join('') + '</div>';
+}
+
+async function eliminarPagoHistorial(id) {
+    if (!confirm('¿Eliminar este pago del historial?\n\nEsto NO devuelve el dinero ni revierte los anticipos — solo elimina el registro para poder volver a liquidar ese período.')) return;
+    await fetch(API_URL + '/liquidacion/historial/' + id, {method:'DELETE'});
+    cargarHistorial();
+}
+
+// Poblar select de empleados en historial
+(async function initHistorial() {
+    try {
+        var emps = await fetch(API_URL + '/empleados').then(r=>r.json());
+        var activos = emps.filter(e=>e.activo);
+        var sel = document.getElementById('hist-empleado');
+        if (sel) sel.innerHTML = '<option value="">Todos los empleados</option>' +
+            activos.map(e=>'<option value="'+e.id+'">'+e.apellido+', '+e.nombre+'</option>').join('');
+    } catch(e) {}
+})();
 </script>
 </body>
 </html>
