@@ -6186,6 +6186,72 @@ def afip_facturar(f: FacturaAfip):
 
     return {"status": "ok", "id": fid, **r, "neto": neto, "iva": iva, "total": total}
 
+@app.get("/resultados")
+def route_resultados():
+    return serve_html("resultados.html")
+
+@app.get("/api/resultados")
+def estado_resultados(desde: Optional[str] = None, hasta: Optional[str] = None):
+    """Estado de resultados: ingresos - egresos = resultado neto."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        rango = []
+        cond = " WHERE 1=1"
+        if desde: cond += " AND fecha::date >= %s"; rango.append(desde)
+        if hasta: cond += " AND fecha::date <= %s"; rango.append(hasta)
+
+        # 1) Ventas locales
+        try:
+            cur.execute("SELECT l.nombre AS local, SUM(v.total) AS total FROM pos_ventas v JOIN pos_locales l ON v.id_local=l.id" + cond + " GROUP BY l.nombre ORDER BY l.nombre", tuple(rango))
+            ventas_local = fetchall_dict(cur)
+        except Exception: conn.rollback(); ventas_local = []
+
+        # 2) Cobros distribuidores
+        try:
+            cur.execute("SELECT d.razon_social AS nombre, SUM(c.monto) AS total FROM cobros_distribuidores c LEFT JOIN distribuidores d ON c.id_distribuidor=d.id" + cond.replace('fecha','c.fecha') + " GROUP BY d.razon_social ORDER BY total DESC", tuple(rango))
+            cobros_dist = fetchall_dict(cur)
+        except Exception: conn.rollback(); cobros_dist = []
+
+        # 3) Gastos por categoría
+        try:
+            cur.execute("SELECT COALESCE(cat.nombre,'Sin categoría') AS categoria, SUM(g.monto) AS total FROM gastos g LEFT JOIN gastos_categorias cat ON g.id_categoria=cat.id" + cond.replace('fecha','g.fecha') + " GROUP BY cat.nombre ORDER BY total DESC", tuple(rango))
+            gastos_cat = fetchall_dict(cur)
+        except Exception: conn.rollback(); gastos_cat = []
+
+        # 4) Pagos a proveedores
+        try:
+            cur.execute("SELECT p.nombre AS proveedor, SUM(pg.monto) AS total FROM pagos_proveedores pg LEFT JOIN proveedores p ON pg.id_proveedor=p.id" + cond.replace('fecha','pg.fecha') + " GROUP BY p.nombre ORDER BY total DESC", tuple(rango))
+            pagos_prov = fetchall_dict(cur)
+        except Exception: conn.rollback(); pagos_prov = []
+
+        # 5) Deudas pendientes (sin filtro de fecha — son las que aún deben)
+        try:
+            cur.execute("SELECT p.nombre AS proveedor, SUM(d.monto) AS total FROM deudas_proveedores_manual d JOIN proveedores p ON d.id_proveedor=p.id WHERE d.pagada=false GROUP BY p.nombre ORDER BY total DESC")
+            deudas_manual = fetchall_dict(cur)
+        except Exception: conn.rollback(); deudas_manual = []
+        try:
+            cur.execute("SELECT p.nombre AS proveedor, SUM(oc.total) AS total FROM ordenes_compra oc JOIN proveedores p ON oc.id_proveedor=p.id WHERE oc.estado='Recibida' AND oc.id NOT IN (SELECT DISTINCT id_orden FROM pagos_proveedores WHERE id_orden IS NOT NULL) GROUP BY p.nombre ORDER BY total DESC")
+            deudas_auto = fetchall_dict(cur)
+        except Exception: conn.rollback(); deudas_auto = []
+
+        tv = sum(float(r['total'] or 0) for r in ventas_local)
+        tc = sum(float(r['total'] or 0) for r in cobros_dist)
+        tg = sum(float(r['total'] or 0) for r in gastos_cat)
+        tp = sum(float(r['total'] or 0) for r in pagos_prov)
+        td = sum(float(r['total'] or 0) for r in deudas_manual + deudas_auto)
+        ti = tv + tc
+        te = tg + tp + td
+
+        return {
+            "desde": desde, "hasta": hasta,
+            "ingresos": {"ventas_local": ventas_local, "cobros_dist": cobros_dist, "total_ventas": tv, "total_cobros": tc, "total": ti},
+            "egresos":  {"gastos": gastos_cat, "pagos_prov": pagos_prov, "deudas_manual": deudas_manual, "deudas_auto": deudas_auto, "total_gastos": tg, "total_pagos": tp, "total_deudas": td, "total": te},
+            "resultado": ti - te
+        }
+    finally:
+        liberar_conexion(conn)
+
 @app.get("/contabilidad")
 def route_contabilidad():
     return serve_html("contabilidad.html")
