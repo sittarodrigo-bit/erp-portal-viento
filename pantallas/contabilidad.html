@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<script>window.PANEL_ACTUAL = "admin";</script>
+<script src="/static/auth.js"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Contabilidad | Portal del Viento</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script>tailwind.config={theme:{extend:{colors:{neon:'#e4fc74'}}}}</script>
+<style>.tab-activa{border-bottom:2px solid #e4fc74;color:white;}</style>
+</head>
+<body class="bg-gray-950 text-gray-200 font-sans h-screen flex flex-col">
+
+  <header class="bg-gray-900 border-b border-gray-800 py-3 px-6 flex items-center justify-between shrink-0">
+    <div class="flex items-center gap-3">
+      <a href="/admin" class="text-gray-500 hover:text-white text-sm">← Volver</a>
+      <h1 class="text-white font-bold">📊 Contabilidad</h1>
+    </div>
+    <p class="text-gray-600 text-xs">ALFAJORES PORTAL DEL VIENTO · CUIT 30717499014</p>
+  </header>
+
+  <!-- Filtros -->
+  <div class="bg-gray-900 border-b border-gray-800 px-6 py-3 flex flex-wrap gap-3 items-center shrink-0">
+    <div class="flex items-center gap-2">
+      <label class="text-gray-500 text-xs">Período:</label>
+      <select id="sel-periodo" onchange="cambiarPeriodo()" class="bg-gray-800 border border-gray-700 text-white rounded p-2 text-sm">
+        <option value="mes_actual">Este mes</option>
+        <option value="mes_anterior">Mes anterior</option>
+        <option value="libre">Rango libre</option>
+      </select>
+    </div>
+    <div id="rango-libre" class="hidden flex items-center gap-2">
+      <input type="date" id="f-desde" class="bg-gray-800 border border-gray-700 text-white rounded p-2 text-sm">
+      <span class="text-gray-500 text-xs">→</span>
+      <input type="date" id="f-hasta" class="bg-gray-800 border border-gray-700 text-white rounded p-2 text-sm">
+    </div>
+    <button onclick="cargar()" class="bg-neon text-black font-bold px-4 py-2 rounded text-sm">🔍 Cargar</button>
+    <button onclick="exportarExcel()" class="bg-green-700 hover:bg-green-600 text-white font-bold px-4 py-2 rounded text-sm">📥 Exportar Excel</button>
+    <div id="resumen-header" class="ml-auto text-right hidden">
+      <p class="text-gray-500 text-xs" id="periodo-txt"></p>
+    </div>
+  </div>
+
+  <!-- Pestañas -->
+  <div class="bg-gray-900 border-b border-gray-800 px-6 flex gap-6 shrink-0">
+    <button onclick="cambiarTab('facturas')" id="tab-fact" class="py-3 text-sm font-bold tab-activa">🧾 Facturas emitidas</button>
+    <button onclick="cambiarTab('pagos')"    id="tab-pag"  class="py-3 text-sm font-bold text-gray-400 hover:text-white">💸 Pagos a proveedores</button>
+    <button onclick="cambiarTab('gastos')"   id="tab-gas"  class="py-3 text-sm font-bold text-gray-400 hover:text-white">💰 Gastos</button>
+    <button onclick="cambiarTab('resumen')"  id="tab-res"  class="py-3 text-sm font-bold text-gray-400 hover:text-white">📊 Resumen</button>
+  </div>
+
+  <!-- Contenido -->
+  <main class="flex-1 overflow-y-auto p-6">
+
+    <!-- Facturas emitidas -->
+    <div id="panel-facturas">
+      <div class="flex justify-between items-center mb-3">
+        <p class="text-white font-bold">Facturas emitidas (AFIP)</p>
+        <p class="text-neon font-bold" id="total-facturas">$ 0</p>
+      </div>
+      <table class="w-full text-left text-sm">
+        <thead class="text-gray-500 text-xs uppercase border-b border-gray-800">
+          <tr><th class="px-3 py-2">Fecha</th><th class="px-3 py-2">Tipo</th><th class="px-3 py-2">N° Factura</th><th class="px-3 py-2">CAE</th><th class="px-3 py-2">Local</th><th class="px-3 py-2 text-right">Total</th></tr>
+        </thead>
+        <tbody id="tabla-facturas" class="divide-y divide-gray-800">
+          <tr><td colspan="6" class="px-3 py-4 text-center text-gray-500">Seleccioná un período y tocá Cargar.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Pagos a proveedores -->
+    <div id="panel-pagos" class="hidden">
+      <div class="flex justify-between items-center mb-3">
+        <p class="text-white font-bold">Pagos a proveedores</p>
+        <p class="text-red-400 font-bold" id="total-pagos">$ 0</p>
+      </div>
+      <table class="w-full text-left text-sm">
+        <thead class="text-gray-500 text-xs uppercase border-b border-gray-800">
+          <tr><th class="px-3 py-2">Fecha</th><th class="px-3 py-2">Proveedor</th><th class="px-3 py-2">Referencia</th><th class="px-3 py-2">Método</th><th class="px-3 py-2 text-right">Monto</th></tr>
+        </thead>
+        <tbody id="tabla-pagos" class="divide-y divide-gray-800">
+          <tr><td colspan="5" class="px-3 py-4 text-center text-gray-500">Seleccioná un período y tocá Cargar.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Gastos -->
+    <div id="panel-gastos" class="hidden">
+      <div class="flex justify-between items-center mb-3">
+        <p class="text-white font-bold">Gastos</p>
+        <p class="text-red-400 font-bold" id="total-gastos">$ 0</p>
+      </div>
+      <table class="w-full text-left text-sm">
+        <thead class="text-gray-500 text-xs uppercase border-b border-gray-800">
+          <tr><th class="px-3 py-2">Fecha</th><th class="px-3 py-2">Categoría</th><th class="px-3 py-2">Concepto</th><th class="px-3 py-2">Método</th><th class="px-3 py-2 text-right">Monto</th></tr>
+        </thead>
+        <tbody id="tabla-gastos" class="divide-y divide-gray-800">
+          <tr><td colspan="5" class="px-3 py-4 text-center text-gray-500">Seleccioná un período y tocá Cargar.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Resumen -->
+    <div id="panel-resumen" class="hidden max-w-md">
+      <p class="text-white font-bold mb-4">📊 Resumen del período</p>
+      <div class="space-y-3" id="resumen-cont">
+        <p class="text-gray-500 text-sm">Cargá un período primero.</p>
+      </div>
+    </div>
+
+  </main>
+
+  <script>
+    const API_URL = window.location.origin + '/api';
+    var datos = null;
+
+    function fmt(n){ return '$ '+(parseFloat(n)||0).toLocaleString('es-AR'); }
+    function fechaCorta(f){ if(!f) return ''; var s=String(f).split(' ')[0].split('-'); return s.length<3?f:s[2]+'/'+s[1]+'/'+s[0]; }
+    function hoy(){ return new Date().toISOString().split('T')[0]; }
+    function primerDiaMes(d){ var x=d||new Date(); return new Date(x.getFullYear(),x.getMonth(),1).toISOString().split('T')[0]; }
+
+    function cambiarPeriodo(){
+      var p = document.getElementById('sel-periodo').value;
+      document.getElementById('rango-libre').classList.toggle('hidden', p!=='libre');
+    }
+
+    function getRango(){
+      var p = document.getElementById('sel-periodo').value;
+      if(p==='mes_actual') return {desde: primerDiaMes(), hasta: hoy()};
+      if(p==='mes_anterior'){
+        var hd=new Date(); hd.setDate(1); hd.setMonth(hd.getMonth()-1);
+        var fin=new Date(hd.getFullYear(),hd.getMonth()+1,0);
+        return {desde: hd.toISOString().split('T')[0], hasta: fin.toISOString().split('T')[0]};
+      }
+      return {desde: document.getElementById('f-desde').value, hasta: document.getElementById('f-hasta').value};
+    }
+
+    function cambiarTab(tab){
+      ['facturas','pagos','gastos','resumen'].forEach(t=>{
+        document.getElementById('panel-'+t).classList.toggle('hidden', t!==tab);
+      });
+      ['fact','pag','gas','res'].forEach((id,i)=>{
+        var tabs=['facturas','pagos','gastos','resumen'];
+        document.getElementById('tab-'+id).className = tab===tabs[i] ? 'py-3 text-sm font-bold tab-activa' : 'py-3 text-sm font-bold text-gray-400 hover:text-white';
+      });
+    }
+
+    async function cargar(){
+      var {desde, hasta} = getRango();
+      if(!desde||!hasta){ alert('Seleccioná un rango de fechas'); return; }
+      var url = `${API_URL}/contabilidad/exportar?desde=${desde}&hasta=${hasta}`;
+      var r = await fetch(url).then(x=>x.json());
+      datos = r;
+      var periodoTxt = `${fechaCorta(desde)} → ${fechaCorta(hasta)}`;
+      document.getElementById('periodo-txt').textContent = periodoTxt;
+      document.getElementById('resumen-header').classList.remove('hidden');
+
+      // Facturas
+      document.getElementById('total-facturas').textContent = fmt(r.totales.facturas);
+      var tf = document.getElementById('tabla-facturas');
+      if(r.facturas_emitidas.length){
+        var tipos = {1:'Factura A', 6:'Factura B', 11:'Factura C'};
+        tf.innerHTML = r.facturas_emitidas.map(f=>`<tr class="hover:bg-gray-900">
+          <td class="px-3 py-2 text-gray-400">${fechaCorta(f.fecha)}</td>
+          <td class="px-3 py-2">${tipos[f.tipo_comprobante]||('Tipo '+f.tipo_comprobante)}</td>
+          <td class="px-3 py-2 text-neon font-bold">#${f.numero||'—'}</td>
+          <td class="px-3 py-2 text-gray-500 text-xs">${f.cae||'—'}</td>
+          <td class="px-3 py-2">${f.local||'—'}</td>
+          <td class="px-3 py-2 text-right font-bold text-white">${fmt(f.total)}</td>
+        </tr>`).join('');
+      } else tf.innerHTML = '<tr><td colspan="6" class="px-3 py-4 text-center text-gray-500">Sin facturas emitidas en este período.</td></tr>';
+
+      // Pagos
+      document.getElementById('total-pagos').textContent = fmt(r.totales.pagos);
+      var tp = document.getElementById('tabla-pagos');
+      if(r.pagos_proveedores.length){
+        tp.innerHTML = r.pagos_proveedores.map(p=>`<tr class="hover:bg-gray-900">
+          <td class="px-3 py-2 text-gray-400">${fechaCorta(p.fecha)}</td>
+          <td class="px-3 py-2 text-white">${p.proveedor||'—'}</td>
+          <td class="px-3 py-2 text-gray-400">${p.referencia||p.notas||'—'}</td>
+          <td class="px-3 py-2 text-gray-400">${p.metodo||'—'}</td>
+          <td class="px-3 py-2 text-right font-bold text-red-400">${fmt(p.monto)}</td>
+        </tr>`).join('');
+      } else tp.innerHTML = '<tr><td colspan="5" class="px-3 py-4 text-center text-gray-500">Sin pagos a proveedores en este período.</td></tr>';
+
+      // Gastos
+      document.getElementById('total-gastos').textContent = fmt(r.totales.gastos);
+      var tg = document.getElementById('tabla-gastos');
+      if(r.gastos.length){
+        tg.innerHTML = r.gastos.map(g=>`<tr class="hover:bg-gray-900">
+          <td class="px-3 py-2 text-gray-400">${fechaCorta(g.fecha)}</td>
+          <td class="px-3 py-2">${g.categoria||'Sin categoría'}</td>
+          <td class="px-3 py-2 text-white">${g.concepto||'—'}</td>
+          <td class="px-3 py-2 text-gray-400">${g.metodo||'—'}</td>
+          <td class="px-3 py-2 text-right font-bold text-red-400">${fmt(g.monto)}</td>
+        </tr>`).join('');
+      } else tg.innerHTML = '<tr><td colspan="5" class="px-3 py-4 text-center text-gray-500">Sin gastos en este período.</td></tr>';
+
+      // Resumen
+      var totalEgresos = r.totales.pagos + r.totales.gastos;
+      var resultado = r.totales.facturas - totalEgresos;
+      document.getElementById('resumen-cont').innerHTML = `
+        <div class="bg-gray-900 border border-gray-800 rounded-xl p-4 space-y-3">
+          <div class="flex justify-between"><span class="text-gray-400">🧾 Facturas emitidas</span><span class="text-neon font-bold">${fmt(r.totales.facturas)}</span></div>
+          <div class="flex justify-between border-t border-gray-800 pt-3"><span class="text-gray-400">💸 Pagos a proveedores</span><span class="text-red-400 font-bold">- ${fmt(r.totales.pagos)}</span></div>
+          <div class="flex justify-between"><span class="text-gray-400">💰 Gastos</span><span class="text-red-400 font-bold">- ${fmt(r.totales.gastos)}</span></div>
+          <div class="flex justify-between border-t border-gray-800 pt-3"><span class="text-white font-bold">✅ Resultado</span><span class="font-bold text-xl ${resultado>=0?'text-neon':'text-red-400'}">${fmt(resultado)}</span></div>
+        </div>
+        <p class="text-gray-600 text-xs">Período: ${periodoTxt} · ${r.facturas_emitidas.length} facturas · ${r.pagos_proveedores.length} pagos · ${r.gastos.length} gastos</p>`;
+    }
+
+    function exportarExcel(){
+      if(!datos){ alert('Primero cargá un período.'); return; }
+      var {desde, hasta} = getRango();
+      var wb = XLSX.utils.book_new();
+
+      // Hoja 1: Facturas emitidas
+      var tipos = {1:'Factura A', 6:'Factura B', 11:'Factura C'};
+      var fact = [['Fecha','Tipo','N° Factura','CAE','Local','Total']].concat(
+        datos.facturas_emitidas.map(f=>[fechaCorta(f.fecha), tipos[f.tipo_comprobante]||'Tipo '+f.tipo_comprobante, f.numero||'', f.cae||'', f.local||'', parseFloat(f.total||0)])
+      );
+      fact.push(['','','','','TOTAL', datos.totales.facturas]);
+      var ws1 = XLSX.utils.aoa_to_sheet(fact);
+      ws1['!cols'] = [{wch:12},{wch:12},{wch:12},{wch:22},{wch:15},{wch:14}];
+      XLSX.utils.book_append_sheet(wb, ws1, 'Facturas emitidas');
+
+      // Hoja 2: Pagos a proveedores
+      var pag = [['Fecha','Proveedor','Referencia','Método','Monto']].concat(
+        datos.pagos_proveedores.map(p=>[fechaCorta(p.fecha), p.proveedor||'', p.referencia||p.notas||'', p.metodo||'', parseFloat(p.monto||0)])
+      );
+      pag.push(['','','','TOTAL', datos.totales.pagos]);
+      var ws2 = XLSX.utils.aoa_to_sheet(pag);
+      ws2['!cols'] = [{wch:12},{wch:25},{wch:20},{wch:15},{wch:14}];
+      XLSX.utils.book_append_sheet(wb, ws2, 'Pagos proveedores');
+
+      // Hoja 3: Gastos
+      var gas = [['Fecha','Categoría','Concepto','Método','Monto']].concat(
+        datos.gastos.map(g=>[fechaCorta(g.fecha), g.categoria||'', g.concepto||'', g.metodo||'', parseFloat(g.monto||0)])
+      );
+      gas.push(['','','','TOTAL', datos.totales.gastos]);
+      var ws3 = XLSX.utils.aoa_to_sheet(gas);
+      ws3['!cols'] = [{wch:12},{wch:18},{wch:30},{wch:15},{wch:14}];
+      XLSX.utils.book_append_sheet(wb, ws3, 'Gastos');
+
+      // Hoja 4: Resumen
+      var res = [
+        ['RESUMEN CONTABLE - PORTAL DEL VIENTO'],
+        ['Período', `${fechaCorta(desde)} → ${fechaCorta(hasta)}`],
+        ['CUIT', '30717499014'],
+        [''],
+        ['Concepto','Monto'],
+        ['Facturas emitidas (ingresos)', datos.totales.facturas],
+        ['Pagos a proveedores (egresos)', datos.totales.pagos],
+        ['Gastos (egresos)', datos.totales.gastos],
+        ['RESULTADO NETO', datos.totales.facturas - datos.totales.pagos - datos.totales.gastos],
+      ];
+      var ws4 = XLSX.utils.aoa_to_sheet(res);
+      ws4['!cols'] = [{wch:35},{wch:18}];
+      XLSX.utils.book_append_sheet(wb, ws4, 'Resumen');
+
+      var nombre = `ContabilidadPortalViento_${desde}_${hasta}.xlsx`;
+      XLSX.writeFile(wb, nombre);
+    }
+
+    // Inicializar con el mes actual
+    document.getElementById('f-desde').value = primerDiaMes();
+    document.getElementById('f-hasta').value = hoy();
+  </script>
+</body>
+</html>
