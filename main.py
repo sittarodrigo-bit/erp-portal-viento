@@ -1738,8 +1738,7 @@ def armado_detalle_pedido(id: str):
                 raise HTTPException(status_code=404, detail="Reposición no encontrada")
 
             # Detalle: traer producto de fábrica con su categoría, stock y unidades por caja
-            cur.execute("""SELECT d.id_producto, d.nombre_producto, d.cantidad, d.sabor,
-                                  d.id_producto_fabrica,
+            cur.execute("""SELECT d.id_producto_fabrica, d.nombre_producto, d.cantidad,
                                   COALESCE(d.unidades_por_caja, 1) AS unidades_por_caja,
                                   pf.nombre AS nombre_fabrica,
                                   COALESCE(pf.stock_actual, 0) AS stock_fabrica,
@@ -1775,11 +1774,11 @@ def armado_detalle_pedido(id: str):
                 stock_fab = float(d.get('stock_fabrica') or 0)
                 prep = preparados.get(id_fab, 0)
                 items.append({
-                    "id_producto": d['id_producto'],
+                    "id_producto": None,
                     "id_producto_fabrica": id_fab,
                     "nombre": nombre,
                     "sku": "",
-                    "sabor": d.get('sabor') or '',
+                    "sabor": "",
                     "cantidad": cant,
                     "stock": stock_fab,
                     "preparado": prep,
@@ -5406,11 +5405,9 @@ def locales_mas_vendidos(id_local: int, desde: Optional[str] = None, hasta: Opti
 # REPOSICIONES (el cajero pide stock de productos del local)
 # ==============================================================================
 class ReposicionItem(BaseModel):
-    id_producto: Optional[int] = None
-    id_producto_fabrica: Optional[int] = None  # link directo al producto de fábrica
-    nombre_producto: str
-    cantidad: float
-    sabor: Optional[str] = None
+    id_producto_fabrica: int           # producto del catálogo de fábrica
+    nombre_producto: Optional[str] = None
+    cantidad: float                    # cantidad pedida EN UNIDADES
     unidades_por_caja: Optional[float] = 1
 
 class ReposicionCreate(BaseModel):
@@ -5424,21 +5421,14 @@ def pos_reposicion_crear(r: ReposicionCreate):
     conn = obtener_conexion()
     try:
         cur = conn.cursor()
-        # Estado 'habilitada' directo — va al armado sin intervención manual
         cur.execute("INSERT INTO pos_reposiciones (id_local, id_empleado, notas, estado) VALUES (%s,%s,%s,'habilitada') RETURNING id",
                     (r.id_local, r.id_empleado, r.notas))
         rid = cur.fetchone()[0]
         for it in r.detalle:
-            try:
-                cur.execute("""INSERT INTO pos_reposiciones_detalle
-                               (id_reposicion, id_producto, nombre_producto, cantidad, sabor, id_producto_fabrica, unidades_por_caja)
-                               VALUES (%s,%s,%s,%s,%s,%s,%s)""",
-                            (rid, it.id_producto, it.nombre_producto, it.cantidad, it.sabor,
-                             it.id_producto_fabrica, it.unidades_por_caja or 1))
-            except Exception:
-                conn.rollback()
-                cur.execute("INSERT INTO pos_reposiciones_detalle (id_reposicion, id_producto, nombre_producto, cantidad, sabor) VALUES (%s,%s,%s,%s,%s)",
-                            (rid, it.id_producto, it.nombre_producto, it.cantidad, it.sabor))
+            cur.execute("""INSERT INTO pos_reposiciones_detalle
+                           (id_reposicion, id_producto_fabrica, nombre_producto, cantidad, unidades_por_caja)
+                           VALUES (%s,%s,%s,%s,%s)""",
+                        (rid, it.id_producto_fabrica, it.nombre_producto, it.cantidad, it.unidades_por_caja or 1))
         conn.commit()
         try:
             crear_notificacion("reposicion", "Nueva reposición de local", f"Local #{r.id_local} - {len(r.detalle)} productos")
@@ -5463,8 +5453,10 @@ def locales_reposicion_editar(id: int, data: ReposicionEditar):
         cur = conn.cursor()
         cur.execute("DELETE FROM pos_reposiciones_detalle WHERE id_reposicion=%s", (id,))
         for it in data.detalle:
-            cur.execute("INSERT INTO pos_reposiciones_detalle (id_reposicion, id_producto, nombre_producto, cantidad, sabor) VALUES (%s,%s,%s,%s,%s)",
-                        (id, it.id_producto, it.nombre_producto, it.cantidad, it.sabor))
+            cur.execute("""INSERT INTO pos_reposiciones_detalle
+                           (id_reposicion, id_producto_fabrica, nombre_producto, cantidad, unidades_por_caja)
+                           VALUES (%s,%s,%s,%s,%s)""",
+                        (id, it.id_producto_fabrica, it.nombre_producto, it.cantidad, it.unidades_por_caja or 1))
         if data.notas is not None:
             cur.execute("UPDATE pos_reposiciones SET notas=%s WHERE id=%s", (data.notas, id))
         conn.commit()
@@ -5496,8 +5488,8 @@ def locales_reposiciones(id_local: Optional[int] = None, estado: Optional[str] =
         cur.execute(q, tuple(params))
         reps = fetchall_dict(cur)
         for rep in reps:
-            cur.execute("""SELECT d.id_producto, d.nombre_producto, d.cantidad, d.sabor,
-                                  d.id_producto_fabrica, COALESCE(d.unidades_por_caja,1) AS unidades_por_caja,
+            cur.execute("""SELECT d.id_producto_fabrica, d.nombre_producto, d.cantidad,
+                                  COALESCE(d.unidades_por_caja,1) AS unidades_por_caja,
                                   pf.nombre AS nombre_fabrica
                            FROM pos_reposiciones_detalle d
                            LEFT JOIN productos pf ON d.id_producto_fabrica = pf.id
