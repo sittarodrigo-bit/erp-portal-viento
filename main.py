@@ -2074,13 +2074,17 @@ def armado_listo(id: str):
             # Tomar lo PREPARADO por el empleado con el link directo a fábrica
             try:
                 cur.execute("""SELECT pr.id_producto, COALESCE(pr.sabor,'') AS sabor, pr.cantidad,
-                                      rd.id_producto_fabrica,
+                                      COALESCE(pr.id_producto_fabrica, rd.id_producto_fabrica) AS id_producto_fabrica,
                                       COALESCE(rd.unidades_por_caja, 1) AS unidades_por_caja
                                FROM preparacion_reposicion pr
                                LEFT JOIN pos_reposiciones_detalle rd
                                  ON rd.id_reposicion = pr.id_reposicion
-                                AND rd.id_producto = pr.id_producto
-                                AND COALESCE(rd.sabor,'') = COALESCE(pr.sabor,'')
+                                AND (
+                                    (rd.id_producto IS NOT NULL AND rd.id_producto = pr.id_producto)
+                                    OR
+                                    (rd.id_producto IS NULL AND pr.id_producto IS NULL
+                                     AND rd.id_producto_fabrica = pr.id_producto_fabrica)
+                                )
                                WHERE pr.id_reposicion=%s""", (rid,))
                 preparado = fetchall_dict(cur)
             except Exception:
@@ -5675,11 +5679,16 @@ def locales_reposicion_reponer(id: int):
         hay_armado = False
         try:
             cur.execute("""SELECT pr.id_producto, COALESCE(pr.sabor,'') AS sabor, pr.cantidad,
-                                  rd.id_producto_fabrica
+                                  COALESCE(pr.id_producto_fabrica, rd.id_producto_fabrica) AS id_producto_fabrica
                            FROM preparacion_reposicion pr
                            LEFT JOIN pos_reposiciones_detalle rd
                              ON rd.id_reposicion = pr.id_reposicion
-                            AND (rd.id_producto = pr.id_producto OR (rd.id_producto IS NULL AND pr.id_producto IS NULL))
+                            AND (
+                                (rd.id_producto IS NOT NULL AND rd.id_producto = pr.id_producto)
+                                OR
+                                (rd.id_producto IS NULL AND pr.id_producto IS NULL
+                                 AND rd.id_producto_fabrica = pr.id_producto_fabrica)
+                            )
                            WHERE pr.id_reposicion=%s""", (id,))
             for a in fetchall_dict(cur):
                 cant_arm = float(a['cantidad'] or 0)
