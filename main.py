@@ -671,7 +671,8 @@ def pos_actualizar_producto_todos_locales(nombre_producto: str, data: dict = Bod
 
 @app.get("/api/productos/catalogo_reposicion")
 def catalogo_reposicion():
-    """Catálogo de fábrica para el modal de reposición del POS."""
+    """Catálogo de fábrica para el modal de reposición del POS.
+    Excluye categorías que no aplican al flujo de reposición de locales."""
     conn = obtener_conexion()
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
@@ -683,6 +684,7 @@ def catalogo_reposicion():
             FROM productos p
             LEFT JOIN categorias c ON p.id_categoria = c.id
             WHERE COALESCE(p.activo, true) = true
+              AND LOWER(COALESCE(c.nombre,'')) NOT IN ('6 unidades', 'linea 50g')
             ORDER BY c.nombre, p.nombre
         """)
         return fetchall_dict(cur)
