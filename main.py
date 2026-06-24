@@ -1878,17 +1878,15 @@ def armado_iniciar(id: str):
         liberar_conexion(conn)
 
 class SetearCantidad(BaseModel):
-    id_producto: int
-    cantidad: float          # cantidad final preparada (la que se escribe)
+    id_producto: Optional[int] = None
+    id_producto_fabrica: Optional[int] = None  # para el nuevo flujo del catálogo de fábrica
+    cantidad: float
     preparado_por: Optional[str] = None
     sabor: Optional[str] = None
 
 @app.post("/api/armado/pedidos/{id}/setear_cantidad")
 def armado_setear_cantidad(id: str, data: SetearCantidad):
-    """Setea la cantidad preparada de un ítem. Para pedidos B2B ajusta el stock
-    por la diferencia. Para reposiciones (prefijo 'r') solo guarda lo preparado
-    (el stock se descuenta una sola vez al despachar)."""
-    # --- Reposición de local ---
+    """Setea la cantidad preparada de un ítem."""
     if isinstance(id, str) and id.startswith('r'):
         try:
             rid = int(id[1:])
@@ -1898,26 +1896,42 @@ def armado_setear_cantidad(id: str, data: SetearCantidad):
         conn = obtener_conexion()
         try:
             cur = conn.cursor()
-            # Verificar que el ítem exista en la reposición y traer la cantidad pedida
-            cur.execute("SELECT cantidad FROM pos_reposiciones_detalle WHERE id_reposicion=%s AND id_producto=%s AND COALESCE(sabor,'')=%s",
-                        (rid, data.id_producto, sabor))
+            # Traer la cantidad pedida — buscar por id_producto O por id_producto_fabrica
+            if data.id_producto:
+                cur.execute("SELECT cantidad, id_producto_fabrica FROM pos_reposiciones_detalle WHERE id_reposicion=%s AND id_producto=%s AND COALESCE(sabor,'')=%s",
+                            (rid, data.id_producto, sabor))
+            elif data.id_producto_fabrica:
+                cur.execute("SELECT cantidad, id_producto_fabrica FROM pos_reposiciones_detalle WHERE id_reposicion=%s AND id_producto_fabrica=%s",
+                            (rid, data.id_producto_fabrica))
+            else:
+                raise HTTPException(status_code=400, detail="Falta id_producto o id_producto_fabrica")
             it = cur.fetchone()
             if not it:
                 raise HTTPException(status_code=404, detail="Producto no está en la reposición")
             pedido_cant = float(it[0] or 0)
+            id_fab_real = data.id_producto_fabrica or it[1]
             nueva = float(data.cantidad or 0)
             if nueva < 0: nueva = 0
             if nueva > pedido_cant: nueva = pedido_cant
             try:
-                cur.execute("""INSERT INTO preparacion_reposicion (id_reposicion, id_producto, sabor, cantidad, preparado_por)
-                               VALUES (%s,%s,%s,%s,%s)
-                               ON CONFLICT (id_reposicion, id_producto, sabor)
-                               DO UPDATE SET cantidad=EXCLUDED.cantidad, preparado_por=EXCLUDED.preparado_por""",
-                            (rid, data.id_producto, sabor, nueva, data.preparado_por))
+                if data.id_producto:
+                    cur.execute("""INSERT INTO preparacion_reposicion (id_reposicion, id_producto, id_producto_fabrica, sabor, cantidad, preparado_por)
+                                   VALUES (%s,%s,%s,%s,%s,%s)
+                                   ON CONFLICT (id_reposicion, id_producto, COALESCE(sabor,''))
+                                   WHERE id_producto IS NOT NULL
+                                   DO UPDATE SET cantidad=EXCLUDED.cantidad, preparado_por=EXCLUDED.preparado_por""",
+                                (rid, data.id_producto, id_fab_real, sabor, nueva, data.preparado_por))
+                else:
+                    cur.execute("""INSERT INTO preparacion_reposicion (id_reposicion, id_producto, id_producto_fabrica, sabor, cantidad, preparado_por)
+                                   VALUES (%s,NULL,%s,%s,%s,%s)
+                                   ON CONFLICT (id_reposicion, id_producto_fabrica, COALESCE(sabor,''))
+                                   WHERE id_producto_fabrica IS NOT NULL AND id_producto IS NULL
+                                   DO UPDATE SET cantidad=EXCLUDED.cantidad, preparado_por=EXCLUDED.preparado_por""",
+                                (rid, id_fab_real, sabor, nueva, data.preparado_por))
                 conn.commit()
             except Exception:
                 conn.rollback()
-                raise HTTPException(status_code=400, detail="Falta correr CREAR_PREPARACION_REPOSICION.sql en la base.")
+                raise HTTPException(status_code=400, detail="Falta correr ACTUALIZAR_PREPARACION_REPOSICION.sql en la base.")
             return {"status": "ok", "cantidad": nueva}
         except HTTPException:
             raise
@@ -5655,23 +5669,41 @@ def locales_reposicion_reponer(id: int):
             conn.rollback()
 
         # Cantidades armadas por el empleado (si las hay)
-        armado = {}
+        # Indexado por (id_producto, sabor) Y por (id_producto_fabrica, sabor)
+        armado_by_prod = {}
+        armado_by_fab = {}
         hay_armado = False
         try:
-            cur.execute("SELECT id_producto, COALESCE(sabor,'') AS sabor, cantidad FROM preparacion_reposicion WHERE id_reposicion=%s", (id,))
+            cur.execute("""SELECT pr.id_producto, COALESCE(pr.sabor,'') AS sabor, pr.cantidad,
+                                  rd.id_producto_fabrica
+                           FROM preparacion_reposicion pr
+                           LEFT JOIN pos_reposiciones_detalle rd
+                             ON rd.id_reposicion = pr.id_reposicion
+                            AND (rd.id_producto = pr.id_producto OR (rd.id_producto IS NULL AND pr.id_producto IS NULL))
+                           WHERE pr.id_reposicion=%s""", (id,))
             for a in fetchall_dict(cur):
-                armado[(a['id_producto'], a['sabor'] or '')] = float(a['cantidad'] or 0)
+                cant_arm = float(a['cantidad'] or 0)
+                key_prod = (a['id_producto'], a['sabor'] or '')
+                armado_by_prod[key_prod] = cant_arm
+                if a.get('id_producto_fabrica'):
+                    armado_by_fab[a['id_producto_fabrica']] = cant_arm
                 hay_armado = True
         except Exception:
             conn.rollback()
 
         no_descontados = []
         for it in items:
-            # Cantidad real: lo armado si existe; si no, lo pedido.
+            id_fab = it.get('id_producto_fabrica')
+            # Cantidad real: lo que el empleado armó
+            cant = 0
             if hay_armado:
-                cant = armado.get((it['id_producto'], (it.get('sabor') or '')), 0)
-                # Para ítems nuevos (sin id_producto del local), usar la cantidad del detalle
-                if cant == 0 and not it['id_producto']:
+                if it['id_producto']:
+                    cant = armado_by_prod.get((it['id_producto'], (it.get('sabor') or '')), 0)
+                elif id_fab:
+                    # Nuevo flujo: buscar por id_producto_fabrica
+                    cant = armado_by_fab.get(id_fab, 0)
+                # Si no encontró nada armado, usar lo pedido (fallback solo si no pasó por armado)
+                if cant == 0 and not fabrica_ya_descontada:
                     cant = float(it['cantidad'] or 0)
             else:
                 cant = float(it['cantidad'] or 0)
