@@ -1736,7 +1736,7 @@ def armado_detalle_pedido(id: str):
             cab = cur.fetchone()
             if not cab:
                 raise HTTPException(status_code=404, detail="Reposición no encontrada")
-            cur.execute("SELECT id_producto, nombre_producto, cantidad, sabor FROM pos_reposiciones_detalle WHERE id_reposicion=%s", (rid,))
+            cur.execute("SELECT id_producto, nombre_producto, cantidad, sabor, id_producto_fabrica, COALESCE(unidades_por_caja,1) AS unidades_por_caja FROM pos_reposiciones_detalle WHERE id_reposicion=%s", (rid,))
             detalle = fetchall_dict(cur)
             # Cuánto ya se preparó de cada ítem
             preparados = {}
@@ -1754,40 +1754,63 @@ def armado_detalle_pedido(id: str):
                     nombre += ' · ' + sabor
                 prep = preparados.get((r['id_producto'], sabor), 0)
                 cant = float(r['cantidad'] or 0)
-                # ¿Es alfajor? Buscar el producto de fábrica del sabor para saber unidades_por_caja
-                # Prioriza productos de categoría alfajores para evitar confusión con otros
-                # productos que coincidan con el mismo sabor (ej: trufas maicena vs alfajor maicena)
+
                 upc = 1
                 es_caja = False
-                nombre_prod = (r.get('nombre_producto') or '').lower()
-                termino = (sabor or '').strip()
-                # Solo convertir a cajas si el producto del local ES un alfajor
-                # (no si es trufa, dulce de leche, bombas, etc.)
-                es_prod_alfajor = 'alfajor' in nombre_prod
-                if termino and es_prod_alfajor:
+                id_prod_fab = r.get('id_producto_fabrica')
+
+                if id_prod_fab:
+                    # Nuevo flujo: tiene ID directo de fábrica → traer upc y categoría
                     try:
-                        # Buscar en categoría alfajores por sabor
                         cur.execute("""SELECT COALESCE(p.unidades_por_caja,1) AS upc,
-                                              (SELECT nombre FROM categorias c WHERE c.id=p.id_categoria) AS catnombre
+                                              p.stock_actual,
+                                              LOWER(COALESCE(c.nombre,'')) AS catnombre
                                        FROM productos p
-                                       JOIN categorias cat ON p.id_categoria=cat.id
-                                       WHERE LOWER(p.nombre) LIKE LOWER(%s)
-                                         AND LOWER(cat.nombre) LIKE '%%alfajor%%'
-                                         AND COALESCE(p.activo,true)=true
-                                       ORDER BY LENGTH(p.nombre) LIMIT 1""", ('%'+termino+'%',))
+                                       LEFT JOIN categorias c ON p.id_categoria=c.id
+                                       WHERE p.id=%s LIMIT 1""", (id_prod_fab,))
                         fab = cur.fetchone()
                         if fab:
                             u = float(fab['upc'] or 1) or 1
-                            catn = (fab.get('catnombre') or '').lower()
+                            catn = fab.get('catnombre') or ''
+                            stock_fab = float(fab.get('stock_actual') or 0)
                             if u >= 2 and 'alfajor' in catn:
                                 upc = u; es_caja = True
                     except Exception:
                         conn.rollback()
+                        stock_fab = 0
+                else:
+                    # Flujo viejo: buscar por sabor
+                    nombre_prod = (r.get('nombre_producto') or '').lower()
+                    termino = (sabor or '').strip()
+                    es_prod_alfajor = 'alfajor' in nombre_prod
+                    stock_fab = 0
+                    if termino and es_prod_alfajor:
+                        try:
+                            cur.execute("""SELECT COALESCE(p.unidades_por_caja,1) AS upc,
+                                                  p.stock_actual,
+                                                  (SELECT nombre FROM categorias c WHERE c.id=p.id_categoria) AS catnombre
+                                           FROM productos p
+                                           JOIN categorias cat ON p.id_categoria=cat.id
+                                           WHERE LOWER(p.nombre) LIKE LOWER(%s)
+                                             AND LOWER(cat.nombre) LIKE '%%alfajor%%'
+                                             AND COALESCE(p.activo,true)=true
+                                           ORDER BY LENGTH(p.nombre) LIMIT 1""", ('%'+termino+'%',))
+                            fab = cur.fetchone()
+                            if fab:
+                                u = float(fab['upc'] or 1) or 1
+                                catn = (fab.get('catnombre') or '').lower()
+                                stock_fab = float(fab.get('stock_actual') or 0)
+                                if u >= 2 and 'alfajor' in catn:
+                                    upc = u; es_caja = True
+                        except Exception:
+                            conn.rollback()
+
                 items.append({
                     "id_producto": r['id_producto'], "nombre": nombre, "sku": "", "sabor": sabor,
-                    "cantidad": cant, "stock": 0,
+                    "cantidad": cant, "stock": stock_fab,  # stock del depósito de fábrica
                     "preparado": prep, "completo": prep >= cant and cant > 0,
-                    "unidades_por_caja": upc, "es_caja": es_caja
+                    "unidades_por_caja": upc, "es_caja": es_caja,
+                    "id_producto_fabrica": id_prod_fab
                 })
             estado_txt = 'En preparación' if cab['estado'] == 'en_preparacion' else 'Pendiente'
             return {"id": "r"+str(cab['id']), "estado": estado_txt,
@@ -5539,7 +5562,7 @@ def locales_reposiciones(id_local: Optional[int] = None, estado: Optional[str] =
         cur.execute(q, tuple(params))
         reps = fetchall_dict(cur)
         for rep in reps:
-            cur.execute("SELECT id_producto, nombre_producto, cantidad, sabor FROM pos_reposiciones_detalle WHERE id_reposicion=%s", (rep['id'],))
+            cur.execute("SELECT id_producto, nombre_producto, cantidad, sabor, id_producto_fabrica, COALESCE(unidades_por_caja,1) AS unidades_por_caja FROM pos_reposiciones_detalle WHERE id_reposicion=%s", (rep['id'],))
             det = fetchall_dict(cur)
             # Traer lo que el empleado armó (preparado), para reflejarlo en el remito
             preparado = {}
