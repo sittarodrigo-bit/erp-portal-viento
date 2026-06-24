@@ -176,7 +176,7 @@ function renderItem(it){
   const esRepo = pedidoActual.tipo === 'reposicion';
   const esCaja = esRepo && it.es_caja && it.unidades_por_caja >= 2;
   const upc = it.unidades_por_caja || 12;
-  const infoStock = esRepo ? '' : ' · Stock: ' + it.stock;
+  const infoStock = it.stock > 0 ? ' · Stock depósito: ' + it.stock + (esCaja ? ' cj' : ' u') : '';
   // En modo caja: mostramos cajas en vez de unidades
   const cantMostrar = esCaja ? (it.cantidad / upc) : it.cantidad;
   const prepMostrar = esCaja ? (prep / upc) : prep;
