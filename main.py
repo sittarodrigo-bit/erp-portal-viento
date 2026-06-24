@@ -4193,8 +4193,7 @@ def pos_registrar_venta(venta: PosVenta):
     conn = obtener_conexion()
     try:
         cur = conn.cursor()
-        # ANTI-DUPLICADO: si ya se registró una venta con esta misma llave única,
-        # devolvemos la existente en vez de crear otra (doble clic o reintento de red).
+        # ANTI-DUPLICADO nivel 1: chequeo rápido por ref_unica
         if venta.ref_unica:
             try:
                 cur.execute("SELECT id FROM pos_ventas WHERE ref_unica=%s LIMIT 1", (venta.ref_unica,))
@@ -4202,7 +4201,7 @@ def pos_registrar_venta(venta: PosVenta):
                 if ya:
                     return {"id_venta": ya[0], "duplicada": True}
             except Exception:
-                conn.rollback()  # la columna puede no existir todavía; seguimos normal
+                conn.rollback()
         # Determinar método a guardar en la venta: si hay varios pagos, "Mixto"
         pagos = venta.pagos or []
         pagos = [p for p in pagos if p.monto and p.monto > 0]
@@ -4211,11 +4210,24 @@ def pos_registrar_venta(venta: PosVenta):
             metodo_guardar = "Mixto"
         elif len(pagos) == 1:
             metodo_guardar = pagos[0].metodo_pago
+        # ANTI-DUPLICADO nivel 2: el INSERT puede fallar por la restricción UNIQUE
+        # en ref_unica (si dos requests llegan casi simultáneos). En ese caso,
+        # devolvemos la venta que sí se guardó en vez de crear otra.
         try:
             cur.execute("INSERT INTO pos_ventas (id_caja, id_local, metodo_pago, total, id_empleado, nombre_cajero, ref_unica) VALUES (%s,%s,%s,%s,%s,%s,%s) RETURNING id",
                         (venta.id_caja, venta.id_local, metodo_guardar, venta.total, venta.id_empleado, venta.nombre_cajero, venta.ref_unica))
-        except Exception:
+        except Exception as e_dup:
             conn.rollback()
+            # ¿Fue por la restricción única? Buscar la venta existente y devolverla.
+            if venta.ref_unica:
+                try:
+                    cur.execute("SELECT id FROM pos_ventas WHERE ref_unica=%s LIMIT 1", (venta.ref_unica,))
+                    ya = cur.fetchone()
+                    if ya:
+                        return {"id_venta": ya[0], "duplicada": True}
+                except Exception:
+                    conn.rollback()
+            # Si no fue por duplicado, intentar el INSERT sin ref_unica (compatibilidad)
             try:
                 cur.execute("INSERT INTO pos_ventas (id_caja, id_local, metodo_pago, total, id_empleado, nombre_cajero) VALUES (%s,%s,%s,%s,%s,%s) RETURNING id",
                             (venta.id_caja, venta.id_local, metodo_guardar, venta.total, venta.id_empleado, venta.nombre_cajero))
