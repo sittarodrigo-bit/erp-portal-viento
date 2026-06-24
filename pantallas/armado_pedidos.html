@@ -176,22 +176,31 @@ function renderItem(it){
   const esRepo = pedidoActual.tipo === 'reposicion';
   const esCaja = esRepo && it.es_caja && it.unidades_por_caja >= 2;
   const upc = it.unidades_por_caja || 12;
-  const infoStock = it.stock > 0 ? ' · Stock depósito: ' + it.stock + (esCaja ? ' cj' : ' u') : '';
-  // En modo caja: mostramos cajas en vez de unidades
+  // Stock disponible en el depósito de fábrica (en cajas si es caja, unidades si no)
+  const stockDisp = esCaja ? (it.stock) : it.stock;  // it.stock ya viene en cajas para alfajores de fábrica
   const cantMostrar = esCaja ? (it.cantidad / upc) : it.cantidad;
   const prepMostrar = esCaja ? (prep / upc) : prep;
   const unidad = esCaja ? 'cajas' : '';
   const subinfo = esCaja ? `<p class="text-amber-400 text-xs">📦 ${cantMostrar} caja(s) × ${upc} = ${it.cantidad} unidades</p>` : '';
+  // Stock disponible y proyectado
+  const unidadCorta = esCaja ? 'cj' : 'u';
+  const quedaria = stockDisp - prepMostrar;
+  const colorStock = quedaria < 0 ? 'text-red-400' : (quedaria === 0 ? 'text-amber-400' : 'text-gray-400');
+  const stockLinea = it.stock !== undefined && it.stock !== null
+    ? `<p class="text-xs"><span class="text-gray-500">Depósito: </span><span class="text-white font-bold">${stockDisp} ${unidadCorta}</span> <span class="${colorStock}" id="queda-${idx}">→ quedarían ${quedaria} ${unidadCorta}</span></p>`
+    : '';
   return `<div class="bg-gray-900 border ${completo?'border-neon/50 bg-neon/5':'border-gray-800'} rounded-xl p-3">
     <div class="flex items-center justify-between gap-2">
       <div class="flex-1 min-w-0">
         <p class="text-white font-bold text-sm">${it.nombre} ${completo?'<span class="text-neon">✓</span>':''}</p>
-        <p class="text-gray-500 text-xs">Pedido: ${cantMostrar} ${unidad}${infoStock}</p>
+        <p class="text-gray-500 text-xs">Pedido: ${cantMostrar} ${unidad}</p>
+        ${stockLinea}
         ${subinfo}
       </div>
       <div class="flex items-center gap-1.5 flex-shrink-0">
         <input type="number" inputmode="numeric" min="0" max="${cantMostrar}" value="${prepMostrar}"
                id="cant-${idx}"
+               oninput="actualizarQueda(${idx})"
                onkeydown="if(event.key==='Enter'){setearCant(${idx})}"
                class="w-16 bg-black border border-gray-600 focus:border-neon text-white text-center text-lg font-bold rounded-lg py-1.5 outline-none">
         <span class="text-gray-600 text-xs">/ ${cantMostrar}${esCaja?' cj':''}</span>
@@ -201,6 +210,24 @@ function renderItem(it){
     <div class="w-full bg-gray-800 rounded-full h-1.5 mt-3 overflow-hidden"><div class="bg-neon h-1.5 transition-all" style="width:${pctItem}%"></div></div>
   </div>`;
 }
+
+// Actualiza el "quedarían X" en tiempo real mientras el empleado tipea (sin tocar la base)
+function actualizarQueda(idx){
+  const it = pedidoActual.items[idx];
+  if(!it || it.stock === undefined || it.stock === null) return;
+  const esRepo = pedidoActual.tipo === 'reposicion';
+  const esCaja = esRepo && it.es_caja && it.unidades_por_caja >= 2;
+  const val = parseFloat(document.getElementById('cant-'+idx).value) || 0;
+  const stockDisp = it.stock;
+  const quedaria = stockDisp - val;
+  const unidadCorta = esCaja ? 'cj' : 'u';
+  const el = document.getElementById('queda-'+idx);
+  if(el){
+    el.textContent = '→ quedarían ' + quedaria + ' ' + unidadCorta;
+    el.className = quedaria < 0 ? 'text-red-400' : (quedaria === 0 ? 'text-amber-400' : 'text-gray-400');
+  }
+}
+
 
 async function setearCant(idx){
   const it = pedidoActual.items[idx];
