@@ -1339,7 +1339,6 @@
             if (!repoItems.length) { alert('Agregá al menos un producto.'); return; }
             var detalle = repoItems.map(function(it) {
                 return {
-                    id_producto: null,
                     id_producto_fabrica: it.id_producto_fabrica,
                     nombre_producto: it.nombre,
                     cantidad: it.cantidad * it.upc,  // en unidades
