@@ -228,7 +228,7 @@ async function setearCant(idx){
   if(!esRepo) it.stock = Math.max(0, it.stock - diff);
   renderArmado();
   try{
-    const body = { id_producto: it.id_producto, cantidad: valor, preparado_por: armadoPor };
+    const body = { id_producto: it.id_producto, id_producto_fabrica: it.id_producto_fabrica || null, cantidad: valor, preparado_por: armadoPor };
     if(esRepo) body.sabor = it.sabor || '';
     const r = await fetch(`${API_URL}/armado/pedidos/${pedidoActual.id}/setear_cantidad`, {
       method:'POST', headers:{'Content-Type':'application/json'},
