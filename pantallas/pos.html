@@ -897,7 +897,10 @@
             document.getElementById('cobro-vuelto').textContent = '$ ' + (vuelto > 0 ? vuelto.toLocaleString('es-AR') : '0');
         }
 
+        var procesandoVenta = false;
         async function confirmarVenta() {
+            // Barrera inmediata: si ya hay una venta procesándose, ignorar el segundo toque
+            if (procesandoVenta) return;
             var pagos = null;
             var metodoPrincipal = metodoSel;
             if (modoDividido) {
@@ -910,6 +913,7 @@
             } else {
                 if (!metodoSel) { alert('Elegí un método de pago.'); return; }
             }
+            procesandoVenta = true;
             var btn = document.getElementById('btn-confirmar-venta');
             btn.disabled = true; btn.textContent = 'Procesando...';
             var total = totalCarrito();
@@ -924,26 +928,26 @@
                     ventaParaFacturar = { id_venta: r.id_venta, total: total, metodo: metodoPrincipal, detalle: detalle };
                     carrito = [];
                     refVentaActual = null;   // listo para la próxima venta (nueva llave)
+                    procesandoVenta = false;
                     renderCarrito();
                     cerrarModales();
-                    // Mostramos la pregunta de inmediato (no esperamos a recargar la caja)
                     abrirModalComprobante(total);
-                    // Refrescamos caja y productos en segundo plano, sin bloquear
                     verificarCaja();
                 } else {
                     var e = await res.json();
                     var msg = e.detail;
                     if (Array.isArray(msg)) {
-                        // Error de validación de FastAPI: extraer los mensajes legibles
                         msg = msg.map(function(x){ return (x.loc ? x.loc.join('.') + ': ' : '') + (x.msg || JSON.stringify(x)); }).join(' | ');
                     } else if (typeof msg === 'object' && msg !== null) {
                         msg = JSON.stringify(msg);
                     }
                     alert('❌ ' + (msg || 'Error al registrar'));
+                    procesandoVenta = false;
                     btn.disabled = false; btn.textContent = '✓ Confirmar e imprimir ticket';
                 }
             } catch(err) {
                 alert('❌ Error de conexión.');
+                procesandoVenta = false;
                 btn.disabled = false; btn.textContent = '✓ Confirmar e imprimir ticket';
             }
         }
