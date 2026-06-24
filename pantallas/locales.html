@@ -1151,29 +1151,36 @@
             lista.forEach(r => {
                 const dt = r.fecha ? new Date(r.fecha.replace(' ','T')).toLocaleString('es-AR',{dateStyle:'short',timeStyle:'short'}) : '';
                 const repuesto = r.estado==='repuesto';
+                const despachada = r.estado==='despachada';
                 const armada = r.estado==='armada';
                 const habilitada = r.estado==='habilitada' || r.estado==='en_preparacion';
                 const emp = r.empleado_apellido ? `${r.empleado_apellido}, ${r.empleado_nombre}` : '';
-                const items = (r.detalle||[]).map(d=>`${d.cantidad}× ${d.nombre_producto}${d.sabor?' ('+d.sabor+')':''}`).join(', ');
+                // Mostrar lo ARMADO si existe, si no lo pedido
+                const items = (r.detalle||[]).map(d=>{
+                    var cantMostrar = (d.armado !== null && d.armado !== undefined) ? d.armado : d.cantidad;
+                    var nombre = d.nombre_fabrica || d.nombre_producto;
+                    return `${cantMostrar}× ${nombre}`;
+                }).join(', ');
                 let estadoTxt;
                 if (repuesto) estadoTxt = '<span class="text-green-400 text-xs">· ✅ repuesto</span>';
-                else if (armada) estadoTxt = '<span class="text-orange-400 text-xs">· 📦 armada — falta confirmar reposición</span>';
+                else if (despachada) estadoTxt = '<span class="text-cyan-400 text-xs">· 🚚 despachado — falta reponer al local</span>';
+                else if (armada) estadoTxt = '<span class="text-orange-400 text-xs">· 📦 terminado — falta despachar</span>';
                 else if (r.estado==='en_preparacion') estadoTxt = '<span class="text-blue-400 text-xs">· 🔧 armando</span>';
-                else if (habilitada) estadoTxt = '<span class="text-neon text-xs">· ✅ habilitada para armado</span>';
+                else if (habilitada) estadoTxt = '<span class="text-neon text-xs">· ✅ en armado</span>';
                 else estadoTxt = '<span class="text-yellow-400 text-xs">· ⏳ pendiente</span>';
                 const div = document.createElement('div');
-                div.className = 'rounded-lg px-4 py-3 border ' + (repuesto?'bg-black border-gray-800 opacity-60':(habilitada?'bg-green-900/10 border-green-800':'bg-yellow-900/10 border-yellow-800'));
+                div.className = 'rounded-lg px-4 py-3 border ' + (repuesto?'bg-black border-gray-800 opacity-60':(despachada?'bg-cyan-900/10 border-cyan-800':(armada?'bg-orange-900/10 border-orange-800':'bg-yellow-900/10 border-yellow-800')));
                 div.innerHTML = `
-                    <div class="flex items-center justify-between">
+                    <div class="flex items-center justify-between flex-wrap gap-2">
                         <div>
                             <p class="font-bold text-white">Pedido #${String(r.id).padStart(3,'0')} ${estadoTxt}</p>
                             <p class="text-gray-500 text-xs">${dt} ${emp?'· '+emp:''}</p>
                         </div>
-                        <div class="flex gap-1">
-                            <button class="text-xs border border-gray-600 text-gray-300 hover:text-white px-3 py-1.5 rounded btn-print">🖨️ Imprimir</button>
-                            ${(repuesto||armada)?'':'<button class="text-xs border border-yellow-700 text-yellow-300 hover:bg-yellow-900/30 px-3 py-1.5 rounded font-bold btn-edit">✏️ Modificar</button>'}
-                            ${(repuesto||habilitada||armada)?'':'<button class="text-xs bg-neon text-black hover:bg-yellow-300 px-3 py-1.5 rounded font-bold btn-hab">▶️ Habilitar para armado</button>'}
-                            ${(repuesto||!esAdmin)?'':'<button class="text-xs bg-green-800 hover:bg-green-700 text-white px-3 py-1.5 rounded font-bold btn-rep">' + (armada?'✅ Confirmar reposición (sumar al local)':'Reponer (sumar stock)') + '</button>'}
+                        <div class="flex gap-1 flex-wrap">
+                            <button class="text-xs border border-gray-600 text-gray-300 hover:text-white px-3 py-1.5 rounded btn-print">🖨️</button>
+                            ${(repuesto||armada||despachada)?'':'<button class="text-xs border border-yellow-700 text-yellow-300 hover:bg-yellow-900/30 px-3 py-1.5 rounded font-bold btn-edit">✏️ Modificar</button>'}
+                            ${(armada && esAdmin)?'<button class="text-xs bg-cyan-700 hover:bg-cyan-600 text-white px-3 py-1.5 rounded font-bold btn-desp">🚚 Despachar</button>':''}
+                            ${(despachada && esAdmin)?'<button class="text-xs bg-green-700 hover:bg-green-600 text-white px-3 py-1.5 rounded font-bold btn-rep">✅ Repuesto (sumar al local)</button>':''}
                             <button class="text-xs bg-red-900/50 hover:bg-red-700 text-red-400 hover:text-white px-2 py-1.5 rounded btn-del">✕</button>
                         </div>
                     </div>
@@ -1190,14 +1197,29 @@
                         cargarReposiciones();
                     }
                 };
+                const desp = div.querySelector('.btn-desp');
+                if (desp) desp.onclick = async () => {
+                    if (confirm('🚚 DESPACHAR\n\nEsto descuenta del stock de FÁBRICA lo que el empleado armó (en cajas).\n\n¿Confirmás?')) {
+                        try {
+                            const res = await fetch(`${API_URL}/locales/reposiciones/${r.id}/despachar`, {method:'PUT'});
+                            const data = await res.json().catch(()=>({}));
+                            if (!res.ok) { alert('No se pudo: ' + (data.detail||'')); }
+                            else { alert('🚚 Despachado. Se descontó de fábrica.\n\nAhora podés marcar "Repuesto" para sumar al local.'); }
+                        } catch(e) {}
+                        cargarReposiciones();
+                    }
+                };
                 const rep = div.querySelector('.btn-rep');
                 if (rep) rep.onclick = async () => {
-                    if (confirm('¿Marcar como repuesto?\n\nSe sumará al stock del local y se descontará del stock de fábrica según el sabor de cada producto.')) {
+                    if (confirm('✅ REPUESTO\n\nEsto suma al stock del LOCAL lo que el empleado armó.\n\n¿Confirmás?')) {
                         try {
                             const res = await fetch(`${API_URL}/locales/reposiciones/${r.id}/reponer`, {method:'PUT'});
                             const data = await res.json().catch(()=>({}));
-                            if (data && data.aviso) {
-                                alert('✅ Repuesto.\n\n⚠️ ' + data.aviso + '\n\nRevisá que esos productos existan en la fábrica con un nombre que incluya el sabor.');
+                            if (!res.ok) { alert('No se pudo: ' + (data.detail||'')); }
+                            else if (data && data.aviso) {
+                                alert('✅ Repuesto.\n\n⚠️ ' + data.aviso + '\n\nConfigurá el mapeo de categorías en Productos de Locales.');
+                            } else {
+                                alert('✅ Repuesto. Se sumó al stock del local.');
                             }
                         } catch(e) {}
                         cargarReposiciones();
