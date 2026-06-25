@@ -969,8 +969,15 @@
 
         async function cargarFicha() {
             // Cargar el catálogo de insumos PRIMERO (antes de poblar selectores)
-            if (!fichaInsumos.length) {
-                fichaInsumos = await fetch(`${API_URL}/insumos`).then(r=>r.json()).catch(()=>[]);
+            try {
+                var rIns = await fetch(`${API_URL}/insumos`);
+                var dataIns = await rIns.json();
+                // El endpoint puede devolver un array directo o un objeto con .insumos
+                fichaInsumos = Array.isArray(dataIns) ? dataIns : (dataIns.insumos || dataIns.data || []);
+                console.log('Insumos cargados en ficha:', fichaInsumos.length, fichaInsumos);
+            } catch(e) {
+                console.error('Error cargando insumos:', e);
+                fichaInsumos = [];
             }
             var d = await fetch(`${API_URL}/proveedores/${fichaProvId}/cuenta`).then(r=>r.json());
             document.getElementById('ficha-nombre').textContent = d.proveedor.nombre;
@@ -1011,11 +1018,17 @@
                 </div>`).join('') : '<p class="text-gray-600 text-sm">Sin insumos asignados.</p>';
 
             // Poblar selector de insumos (los que el proveedor NO tiene aún)
-            var yaTiene = d.insumos.map(x=>x.id_insumo);
+            var yaTiene = (d.insumos || []).map(x=>x.id_insumo);
             var disponibles = fichaInsumos.filter(i=>!yaTiene.includes(i.id));
-            document.getElementById('ficha-sel-insumo').innerHTML = disponibles.length
-                ? disponibles.map(i=>`<option value="${i.id}">${i.nombre}</option>`).join('')
-                : '<option value="">— Ya están todos asignados —</option>';
+            var sel = document.getElementById('ficha-sel-insumo');
+            if (!fichaInsumos.length) {
+                sel.innerHTML = '<option value="">⚠️ No hay insumos en el sistema</option>';
+            } else if (!disponibles.length) {
+                sel.innerHTML = '<option value="">— Ya están todos asignados —</option>';
+            } else {
+                sel.innerHTML = '<option value="">Elegí un insumo...</option>' +
+                    disponibles.map(i=>`<option value="${i.id}">${i.nombre || i.descripcion || ('Insumo #'+i.id)}</option>`).join('');
+            }
         }
 
         async function guardarDeudaInicial() {
