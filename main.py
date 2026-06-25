@@ -3765,18 +3765,29 @@ def proveedor_cuenta(id_prov: int):
             conn.rollback(); facturas = []
         total_facturas = sum(float(f['total'] or 0) for f in facturas)
 
-        # Pagos
+        # Pagos: directos al proveedor O asociados a órdenes de ese proveedor
         try:
-            cur.execute("""SELECT id, COALESCE(fecha::text, NOW()::text) AS fecha, monto, metodo, referencia
-                           FROM pagos_proveedores WHERE id_proveedor=%s ORDER BY COALESCE(fecha,NOW()) DESC""", (id_prov,))
+            cur.execute("""SELECT pg.id, COALESCE(pg.fecha::text, NOW()::text) AS fecha,
+                                  pg.monto, pg.metodo, pg.referencia
+                           FROM pagos_proveedores pg
+                           WHERE pg.id_proveedor=%s
+                              OR pg.id_orden IN (SELECT id FROM ordenes_compra WHERE id_proveedor=%s)
+                           ORDER BY COALESCE(pg.fecha,NOW()) DESC""", (id_prov, id_prov))
             pagos = fetchall_dict(cur)
         except Exception:
-            conn.rollback(); pagos = []
+            conn.rollback()
+            # Fallback: solo por id_proveedor
+            try:
+                cur.execute("""SELECT id, COALESCE(fecha::text, NOW()::text) AS fecha, monto, metodo, referencia
+                               FROM pagos_proveedores WHERE id_proveedor=%s ORDER BY COALESCE(fecha,NOW()) DESC""", (id_prov,))
+                pagos = fetchall_dict(cur)
+            except Exception:
+                conn.rollback(); pagos = []
         total_pagos = sum(float(p['monto'] or 0) for p in pagos)
 
         # Insumos que suministra
         try:
-            cur.execute("""SELECT pi.id, pi.id_insumo, pi.precio_referencia, i.nombre AS insumo_nombre, i.unidad
+            cur.execute("""SELECT pi.id, pi.id_insumo, pi.precio_referencia, i.nombre AS insumo_nombre, i.unidad_medida AS unidad
                            FROM proveedor_insumos pi LEFT JOIN insumos i ON pi.id_insumo=i.id
                            WHERE pi.id_proveedor=%s ORDER BY i.nombre""", (id_prov,))
             insumos = fetchall_dict(cur)
