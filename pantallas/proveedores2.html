@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<script>window.PANEL_ACTUAL = "admin";</script>
+<script src="/static/auth.js"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Proveedores | Portal del Viento</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<script>tailwind.config={theme:{extend:{colors:{neon:'#e4fc74'}}}}</script>
+<style>
+.text-neon{color:#e4fc74}.bg-neon{background-color:#e4fc74}.border-neon{border-color:#e4fc74}
+.tab-on{border-bottom:2px solid #e4fc74;color:white}
+.modal-bg{background:rgba(0,0,0,.85)}
+</style>
+</head>
+<body class="bg-gray-950 text-gray-200 font-sans min-h-screen">
+
+<header class="bg-gray-900 border-b border-gray-800 py-3 px-5 flex items-center justify-between sticky top-0 z-20">
+  <div class="flex items-center gap-3">
+    <a href="/admin" class="text-gray-500 hover:text-white text-sm">← Panel</a>
+    <h1 class="text-white font-bold text-lg">🏭 Proveedores</h1>
+  </div>
+</header>
+
+<!-- Pestañas -->
+<div class="bg-gray-900 border-b border-gray-800 px-5 flex gap-5 text-sm overflow-x-auto">
+  <button onclick="tab('dash')"     id="t-dash" class="py-3 font-bold tab-on whitespace-nowrap">📊 Resumen</button>
+  <button onclick="tab('prov')"     id="t-prov" class="py-3 font-bold text-gray-400 hover:text-white whitespace-nowrap">🏪 Proveedores</button>
+  <button onclick="tab('ins')"      id="t-ins"  class="py-3 font-bold text-gray-400 hover:text-white whitespace-nowrap">📦 Insumos</button>
+  <button onclick="tab('ord')"      id="t-ord"  class="py-3 font-bold text-gray-400 hover:text-white whitespace-nowrap">📋 Órdenes</button>
+</div>
+
+<main class="p-5 max-w-6xl mx-auto">
+
+<!-- ===== DASHBOARD ===== -->
+<section id="s-dash">
+  <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+    <div class="bg-gradient-to-br from-red-900/40 to-gray-900 border border-red-800/50 rounded-2xl p-5">
+      <p class="text-gray-400 text-xs uppercase font-bold">Deuda total a proveedores</p>
+      <p id="d-deuda" class="text-3xl font-bold text-red-400 mt-2">$ 0</p>
+    </div>
+    <div class="bg-gradient-to-br from-yellow-900/30 to-gray-900 border border-yellow-800/50 rounded-2xl p-5">
+      <p class="text-gray-400 text-xs uppercase font-bold">Órdenes pendientes</p>
+      <p id="d-ordenes" class="text-3xl font-bold text-yellow-400 mt-2">0</p>
+    </div>
+    <div class="bg-gradient-to-br from-blue-900/30 to-gray-900 border border-blue-800/50 rounded-2xl p-5">
+      <p class="text-gray-400 text-xs uppercase font-bold">Facturas este mes</p>
+      <p id="d-facturas" class="text-3xl font-bold text-blue-400 mt-2">$ 0</p>
+      <p id="d-facturas-cant" class="text-gray-500 text-xs mt-1"></p>
+    </div>
+  </div>
+  <h3 class="text-white font-bold mb-3">Últimos movimientos</h3>
+  <div id="d-movimientos" class="space-y-2"></div>
+</section>
+
+<!-- ===== PROVEEDORES ===== -->
+<section id="s-prov" class="hidden">
+  <div class="flex flex-wrap gap-3 items-center mb-4">
+    <input id="buscar-prov" oninput="renderProv()" placeholder="🔍 Buscar proveedor..."
+           class="bg-gray-900 border border-gray-700 text-white rounded-lg p-2 text-sm flex-1 min-w-48">
+    <button onclick="abrirProv()" class="bg-neon text-black font-bold px-4 py-2 rounded-lg text-sm">+ Nuevo proveedor</button>
+  </div>
+  <div id="lista-prov" class="space-y-2"></div>
+</section>
+
+<!-- ===== INSUMOS ===== -->
+<section id="s-ins" class="hidden">
+  <div class="flex flex-wrap gap-3 items-center mb-4">
+    <input id="buscar-ins" oninput="renderIns()" placeholder="🔍 Buscar insumo..."
+           class="bg-gray-900 border border-gray-700 text-white rounded-lg p-2 text-sm flex-1 min-w-48">
+    <button onclick="abrirIns()" class="bg-neon text-black font-bold px-4 py-2 rounded-lg text-sm">+ Nuevo insumo</button>
+  </div>
+  <div id="lista-ins" class="space-y-2"></div>
+</section>
+
+<!-- ===== ÓRDENES ===== -->
+<section id="s-ord" class="hidden">
+  <div class="flex flex-wrap gap-3 items-center mb-4">
+    <h3 class="text-white font-bold flex-1">Órdenes de pedido</h3>
+    <button onclick="abrirOrden()" class="bg-neon text-black font-bold px-4 py-2 rounded-lg text-sm">+ Nueva orden</button>
+  </div>
+  <div id="lista-ord" class="space-y-2"></div>
+</section>
+
+</main>
+
+<!-- MODAL PROVEEDOR -->
+<div id="m-prov" class="hidden fixed inset-0 modal-bg z-50 overflow-y-auto p-4">
+  <div class="bg-gray-900 border border-gray-700 rounded-2xl max-w-lg mx-auto my-4 p-5">
+    <div class="flex justify-between items-center mb-4">
+      <h3 id="m-prov-titulo" class="text-white font-bold text-lg">Nuevo proveedor</h3>
+      <button onclick="cerrar('m-prov')" class="text-gray-500 hover:text-white text-2xl">×</button>
+    </div>
+    <input type="hidden" id="p-id">
+    <div class="space-y-3">
+      <div><label class="text-gray-500 text-xs">Razón social *</label>
+        <input id="p-razon" class="w-full bg-gray-800 border border-gray-700 text-white rounded p-2 text-sm"></div>
+      <div class="grid grid-cols-2 gap-3">
+        <div><label class="text-gray-500 text-xs">CUIT</label>
+          <input id="p-cuit" class="w-full bg-gray-800 border border-gray-700 text-white rounded p-2 text-sm"></div>
+        <div><label class="text-gray-500 text-xs">Contacto</label>
+          <input id="p-contacto" class="w-full bg-gray-800 border border-gray-700 text-white rounded p-2 text-sm"></div>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div><label class="text-gray-500 text-xs">Teléfono</label>
+          <input id="p-tel" class="w-full bg-gray-800 border border-gray-700 text-white rounded p-2 text-sm"></div>
+        <div><label class="text-gray-500 text-xs">Email</label>
+          <input id="p-email" class="w-full bg-gray-800 border border-gray-700 text-white rounded p-2 text-sm"></div>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div><label class="text-gray-500 text-xs">Categoría</label>
+          <select id="p-categoria" class="w-full bg-gray-800 border border-gray-700 text-white rounded p-2 text-sm">
+            <option>Materia prima</option><option>Packaging</option><option>Logística</option><option>Servicios</option>
+          </select></div>
+        <div><label class="text-gray-500 text-xs">Días de plazo de pago</label>
+          <input type="number" id="p-plazo" value="0" class="w-full bg-gray-800 border border-gray-700 text-white rounded p-2 text-sm"></div>
+      </div>
+      <div><label class="text-gray-500 text-xs">Deuda inicial</label>
+        <input type="number" id="p-deuda" value="0" class="w-full bg-gray-800 border border-gray-700 text-white rounded p-2 text-sm"></div>
+    </div>
+    <button onclick="guardarProv()" class="w-full bg-neon text-black font-bold py-2.5 rounded mt-4">💾 Guardar</button>
+  </div>
+</div>
+
+<!-- MODAL INSUMO -->
+<div id="m-ins" class="hidden fixed inset-0 modal-bg z-50 overflow-y-auto p-4">
+  <div class="bg-gray-900 border border-gray-700 rounded-2xl max-w-md mx-auto my-4 p-5">
+    <div class="flex justify-between items-center mb-4">
+      <h3 id="m-ins-titulo" class="text-white font-bold text-lg">Nuevo insumo</h3>
+      <button onclick="cerrar('m-ins')" class="text-gray-500 hover:text-white text-2xl">×</button>
+    </div>
+    <input type="hidden" id="i-id">
+    <div class="space-y-3">
+      <div><label class="text-gray-500 text-xs">Nombre del insumo *</label>
+        <input id="i-nombre" class="w-full bg-gray-800 border border-gray-700 text-white rounded p-2 text-sm"></div>
+      <div><label class="text-gray-500 text-xs">Proveedor</label>
+        <select id="i-proveedor" class="w-full bg-gray-800 border border-gray-700 text-white rounded p-2 text-sm"></select></div>
+      <div class="grid grid-cols-2 gap-3">
+        <div><label class="text-gray-500 text-xs">Unidad</label>
+          <select id="i-unidad" class="w-full bg-gray-800 border border-gray-700 text-white rounded p-2 text-sm">
+            <option>Kg</option><option>Litros</option><option>Unidades</option><option>Gramos</option><option>Cajas</option>
+          </select></div>
+        <div><label class="text-gray-500 text-xs">Último precio</label>
+          <input type="number" id="i-precio" value="0" class="w-full bg-gray-800 border border-gray-700 text-white rounded p-2 text-sm"></div>
+      </div>
+    </div>
+    <button onclick="guardarIns()" class="w-full bg-neon text-black font-bold py-2.5 rounded mt-4">💾 Guardar</button>
+  </div>
+</div>
+
+<!-- MODAL FICHA / CUENTA CORRIENTE -->
+<div id="m-ficha" class="hidden fixed inset-0 modal-bg z-50 overflow-y-auto p-4">
+  <div class="bg-gray-900 border border-gray-700 rounded-2xl max-w-3xl mx-auto my-4">
+    <div class="sticky top-0 bg-gray-900 border-b border-gray-800 p-5 rounded-t-2xl flex justify-between items-start">
+      <div>
+        <h2 id="f-nombre" class="text-white font-bold text-xl">Proveedor</h2>
+        <p id="f-datos" class="text-gray-500 text-sm"></p>
+      </div>
+      <div class="text-right">
+        <p class="text-gray-500 text-xs">Saldo</p>
+        <p id="f-saldo" class="font-bold text-2xl">$ 0</p>
+        <button onclick="cerrar('m-ficha')" class="text-gray-500 hover:text-white text-sm mt-1">✕ Cerrar</button>
+      </div>
+    </div>
+    <!-- Botones registrar -->
+    <div class="p-5 border-b border-gray-800 flex gap-2 flex-wrap">
+      <button onclick="abrirMov('factura')" class="bg-red-800 hover:bg-red-700 text-white font-bold px-4 py-2 rounded text-sm">+ Factura</button>
+      <button onclick="abrirMov('pago')" class="bg-green-800 hover:bg-green-700 text-white font-bold px-4 py-2 rounded text-sm">+ Pago</button>
+      <button onclick="abrirMov('remito')" class="bg-blue-800 hover:bg-blue-700 text-white font-bold px-4 py-2 rounded text-sm">+ Remito</button>
+    </div>
+    <!-- Insumos del proveedor -->
+    <div class="p-5 border-b border-gray-800">
+      <p class="text-gray-400 text-xs font-bold uppercase mb-2">Insumos que provee</p>
+      <div id="f-insumos" class="flex flex-wrap gap-2"></div>
+    </div>
+    <!-- Historial cuenta corriente -->
+    <div class="p-5">
+      <p class="text-gray-400 text-xs font-bold uppercase mb-3">Historial de cuenta corriente</p>
+      <div id="f-historial" class="space-y-1"></div>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL MOVIMIENTO -->
+<div id="m-mov" class="hidden fixed inset-0 modal-bg z-[60] overflow-y-auto p-4">
+  <div class="bg-gray-900 border border-gray-700 rounded-2xl max-w-md mx-auto my-4 p-5">
+    <div class="flex justify-between items-center mb-4">
+      <h3 id="m-mov-titulo" class="text-white font-bold text-lg">Nueva factura</h3>
+      <button onclick="cerrar('m-mov')" class="text-gray-500 hover:text-white text-2xl">×</button>
+    </div>
+    <input type="hidden" id="mv-tipo">
+    <div class="space-y-3">
+      <div class="grid grid-cols-2 gap-3">
+        <div><label class="text-gray-500 text-xs" id="mv-num-label">N° factura</label>
+          <input id="mv-numero" class="w-full bg-gray-800 border border-gray-700 text-white rounded p-2 text-sm"></div>
+        <div><label class="text-gray-500 text-xs">Fecha</label>
+          <input type="date" id="mv-fecha" class="w-full bg-gray-800 border border-gray-700 text-white rounded p-2 text-sm"></div>
+      </div>
+      <div id="mv-monto-wrap"><label class="text-gray-500 text-xs">Monto</label>
+        <input type="number" id="mv-monto" class="w-full bg-gray-800 border border-gray-700 text-white rounded p-2 text-sm"></div>
+      <div id="mv-metodo-wrap" class="hidden"><label class="text-gray-500 text-xs">Método de pago</label>
+        <select id="mv-metodo" class="w-full bg-gray-800 border border-gray-700 text-white rounded p-2 text-sm">
+          <option>Transferencia</option><option>Cheque</option><option>Efectivo</option><option>Mercado Pago</option>
+        </select></div>
+      <div id="mv-concepto-wrap"><label class="text-gray-500 text-xs">Concepto</label>
+        <input id="mv-concepto" class="w-full bg-gray-800 border border-gray-700 text-white rounded p-2 text-sm"></div>
+      <div id="mv-remito-wrap" class="hidden"><label class="text-gray-500 text-xs">Artículos recibidos</label>
+        <textarea id="mv-remito" rows="3" class="w-full bg-gray-800 border border-gray-700 text-white rounded p-2 text-sm"></textarea></div>
+    </div>
+    <button onclick="guardarMov()" class="w-full bg-neon text-black font-bold py-2.5 rounded mt-4">💾 Guardar</button>
+  </div>
+</div>
+
+<!-- MODAL ORDEN -->
+<div id="m-orden" class="hidden fixed inset-0 modal-bg z-50 overflow-y-auto p-4">
+  <div class="bg-gray-900 border border-gray-700 rounded-2xl max-w-2xl mx-auto my-4 p-5">
+    <div class="flex justify-between items-center mb-4">
+      <h3 class="text-white font-bold text-lg">📋 Nueva orden de pedido</h3>
+      <button onclick="cerrar('m-orden')" class="text-gray-500 hover:text-white text-2xl">×</button>
+    </div>
+    <div class="mb-3">
+      <label class="text-gray-500 text-xs">Proveedor</label>
+      <select id="o-proveedor" onchange="cargarInsumosProveedor()" class="w-full bg-gray-800 border border-gray-700 text-white rounded p-2 text-sm"></select>
+    </div>
+    <p class="text-gray-400 text-sm font-bold mb-2">Insumos</p>
+    <div id="o-items" class="space-y-2 mb-2"></div>
+    <button onclick="agregarItemOrden()" class="text-neon text-sm mb-3">+ Agregar insumo</button>
+    <div class="flex justify-between items-center border-t border-gray-700 pt-3 mb-4">
+      <span class="text-gray-400">Total estimado</span>
+      <span id="o-total" class="text-neon font-bold text-xl">$ 0</span>
+    </div>
+    <button onclick="guardarOrden()" class="w-full bg-neon text-black font-bold py-2.5 rounded">💾 Crear orden</button>
+  </div>
+</div>
+
+<script>
+const API = window.location.origin + '/api';
+var proveedores = [], insumos = [], fichaId = null, fichaInsumosProv = [];
+function $(id){ return document.getElementById(id); }
+function $m(n){ return '$ '+(parseFloat(n)||0).toLocaleString('es-AR'); }
+function cerrar(id){ $(id).classList.add('hidden'); }
+
+function tab(t){
+  ['dash','prov','ins','ord'].forEach(x=>{
+    $('s-'+x).classList.toggle('hidden', x!==t);
+    $('t-'+x).className = x===t ? 'py-3 font-bold tab-on whitespace-nowrap' : 'py-3 font-bold text-gray-400 hover:text-white whitespace-nowrap';
+  });
+  if(t==='dash') cargarDash();
+  if(t==='prov') cargarProv();
+  if(t==='ins') cargarIns();
+  if(t==='ord') cargarOrd();
+}
+
+// ===== DASHBOARD =====
+async function cargarDash(){
+  var d = await fetch(API+'/prov2/dashboard').then(r=>r.json());
+  $('d-deuda').textContent = $m(d.deuda_total);
+  $('d-ordenes').textContent = d.ordenes_pendientes;
+  $('d-facturas').textContent = $m(d.facturas_mes);
+  $('d-facturas-cant').textContent = d.facturas_mes_cant + ' factura(s)';
+  var emoji = {factura:'🧾', pago:'💸', remito:'📦'};
+  $('d-movimientos').innerHTML = d.movimientos.length ? d.movimientos.map(m=>`
+    <div class="bg-gray-900 border border-gray-800 rounded-lg p-3 flex justify-between items-center">
+      <div><p class="text-white text-sm">${emoji[m.tipo]||''} ${m.razon_social}</p>
+      <p class="text-gray-500 text-xs">${m.fecha} · ${m.tipo}${m.numero?' '+m.numero:''}</p></div>
+      <p class="${m.tipo==='pago'?'text-green-400':(m.tipo==='factura'?'text-red-400':'text-gray-400')} font-bold">${m.tipo==='remito'?'—':$m(m.monto)}</p>
+    </div>`).join('') : '<p class="text-gray-600 text-sm">Sin movimientos.</p>';
+}
+
+// ===== PROVEEDORES =====
+async function cargarProv(){
+  proveedores = await fetch(API+'/prov2/proveedores').then(r=>r.json()).catch(()=>[]);
+  renderProv();
+}
+function renderProv(){
+  var q = ($('buscar-prov').value||'').toLowerCase();
+  var lista = proveedores.filter(p=>(p.razon_social||'').toLowerCase().includes(q));
+  $('lista-prov').innerHTML = lista.length ? lista.map(p=>`
+    <div class="bg-gray-900 border border-gray-800 rounded-xl p-4 flex justify-between items-center">
+      <div class="flex-1 cursor-pointer" onclick="abrirFicha(${p.id})">
+        <div class="flex items-center gap-2"><p class="text-white font-bold">${p.razon_social}</p>
+        <span class="text-xs bg-gray-800 text-gray-400 rounded px-2 py-0.5">${p.categoria||''}</span></div>
+        <p class="text-gray-500 text-xs">${p.cuit?'CUIT '+p.cuit+' · ':''}${p.telefono||''}</p>
+      </div>
+      <div class="text-right mr-3">
+        <p class="text-gray-500 text-xs">Saldo</p>
+        <p class="${p.saldo>0?'text-red-400':'text-green-400'} font-bold">${$m(p.saldo)}</p>
+      </div>
+      <div class="flex gap-1">
+        <button onclick="abrirFicha(${p.id})" class="text-xs bg-blue-700 hover:bg-blue-600 text-white px-3 py-1.5 rounded font-bold">Ver</button>
+        <button onclick="editarProv(${p.id})" class="text-xs border border-gray-700 text-gray-400 hover:text-white px-3 py-1.5 rounded">✏️</button>
+        <button onclick="eliminarProv(${p.id})" class="text-xs bg-red-900/50 text-red-400 px-2 py-1.5 rounded">✕</button>
+      </div>
+    </div>`).join('') : '<p class="text-gray-600 text-center py-8">Sin proveedores. Tocá "+ Nuevo proveedor".</p>';
+}
+function abrirProv(){
+  $('m-prov-titulo').textContent = 'Nuevo proveedor';
+  ['p-id','p-razon','p-cuit','p-contacto','p-tel','p-email'].forEach(x=>$(x).value='');
+  $('p-categoria').value='Materia prima'; $('p-plazo').value=0; $('p-deuda').value=0;
+  $('m-prov').classList.remove('hidden');
+}
+function editarProv(id){
+  var p = proveedores.find(x=>x.id===id); if(!p) return;
+  $('m-prov-titulo').textContent = 'Editar proveedor';
+  $('p-id').value=p.id; $('p-razon').value=p.razon_social||''; $('p-cuit').value=p.cuit||'';
+  $('p-contacto').value=p.contacto||''; $('p-tel').value=p.telefono||''; $('p-email').value=p.email||'';
+  $('p-categoria').value=p.categoria||'Materia prima'; $('p-plazo').value=p.dias_plazo||0; $('p-deuda').value=p.deuda_inicial||0;
+  $('m-prov').classList.remove('hidden');
+}
+async function guardarProv(){
+  var razon = $('p-razon').value.trim();
+  if(!razon){ alert('Poné la razón social.'); return; }
+  var body = {
+    razon_social: razon, cuit: $('p-cuit').value.trim(), contacto: $('p-contacto').value.trim(),
+    telefono: $('p-tel').value.trim(), email: $('p-email').value.trim(),
+    categoria: $('p-categoria').value, dias_plazo: parseInt($('p-plazo').value)||0,
+    deuda_inicial: parseFloat($('p-deuda').value)||0
+  };
+  var id = $('p-id').value;
+  await fetch(API+'/prov2/proveedores'+(id?'/'+id:''), {
+    method: id?'PUT':'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)
+  });
+  cerrar('m-prov'); cargarProv();
+}
+async function eliminarProv(id){
+  if(!confirm('¿Eliminar este proveedor?')) return;
+  await fetch(API+'/prov2/proveedores/'+id, {method:'DELETE'});
+  cargarProv();
+}
+
+// ===== INSUMOS =====
+async function cargarIns(){
+  insumos = await fetch(API+'/prov2/insumos').then(r=>r.json()).catch(()=>[]);
+  if(!proveedores.length) proveedores = await fetch(API+'/prov2/proveedores').then(r=>r.json()).catch(()=>[]);
+  renderIns();
+}
+function renderIns(){
+  var q = ($('buscar-ins').value||'').toLowerCase();
+  var lista = insumos.filter(i=>(i.nombre||'').toLowerCase().includes(q));
+  $('lista-ins').innerHTML = lista.length ? lista.map(i=>`
+    <div class="bg-gray-900 border border-gray-800 rounded-xl p-4 flex justify-between items-center">
+      <div><p class="text-white font-bold">${i.nombre}</p>
+      <p class="text-gray-500 text-xs">${i.proveedor_nombre||'Sin proveedor'} · ${i.unidad}</p></div>
+      <div class="text-right mr-3"><p class="text-white font-bold">${$m(i.ultimo_precio)}</p>
+      <p class="text-gray-600 text-xs">${i.fecha_precio||''}</p></div>
+      <div class="flex gap-1">
+        <button onclick="editarIns(${i.id})" class="text-xs border border-gray-700 text-gray-400 hover:text-white px-3 py-1.5 rounded">✏️</button>
+        <button onclick="eliminarIns(${i.id})" class="text-xs bg-red-900/50 text-red-400 px-2 py-1.5 rounded">✕</button>
+      </div>
+    </div>`).join('') : '<p class="text-gray-600 text-center py-8">Sin insumos. Tocá "+ Nuevo insumo".</p>';
+}
+function pobProvSelect(sel, idSel){
+  sel.innerHTML = '<option value="">— Sin proveedor —</option>' +
+    proveedores.map(p=>`<option value="${p.id}" ${idSel==p.id?'selected':''}>${p.razon_social}</option>`).join('');
+}
+function abrirIns(){
+  $('m-ins-titulo').textContent='Nuevo insumo';
+  $('i-id').value=''; $('i-nombre').value=''; $('i-precio').value=0; $('i-unidad').value='Kg';
+  pobProvSelect($('i-proveedor'), null);
+  $('m-ins').classList.remove('hidden');
+}
+function editarIns(id){
+  var i = insumos.find(x=>x.id===id); if(!i) return;
+  $('m-ins-titulo').textContent='Editar insumo';
+  $('i-id').value=i.id; $('i-nombre').value=i.nombre||''; $('i-precio').value=i.ultimo_precio||0;
+  $('i-unidad').value=i.unidad||'Kg';
+  pobProvSelect($('i-proveedor'), i.id_proveedor);
+  $('m-ins').classList.remove('hidden');
+}
+async function guardarIns(){
+  var nombre = $('i-nombre').value.trim();
+  if(!nombre){ alert('Poné el nombre del insumo.'); return; }
+  var body = {
+    nombre: nombre, id_proveedor: $('i-proveedor').value? parseInt($('i-proveedor').value):null,
+    unidad: $('i-unidad').value, ultimo_precio: parseFloat($('i-precio').value)||0
+  };
+  var id = $('i-id').value;
+  await fetch(API+'/prov2/insumos'+(id?'/'+id:''), {
+    method:id?'PUT':'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)
+  });
+  cerrar('m-ins'); cargarIns();
+}
+async function eliminarIns(id){
+  if(!confirm('¿Eliminar este insumo?')) return;
+  await fetch(API+'/prov2/insumos/'+id, {method:'DELETE'});
+  cargarIns();
+}
+
+// ===== FICHA / CUENTA CORRIENTE =====
+async function abrirFicha(id){
+  fichaId = id;
+  $('m-ficha').classList.remove('hidden');
+  var d = await fetch(API+'/prov2/proveedores/'+id+'/cuenta').then(r=>r.json());
+  $('f-nombre').textContent = d.proveedor.razon_social;
+  $('f-datos').textContent = [d.proveedor.cuit?'CUIT '+d.proveedor.cuit:'', d.proveedor.telefono, d.proveedor.email].filter(Boolean).join(' · ');
+  var s = $('f-saldo'); s.textContent = $m(d.saldo);
+  s.className = 'font-bold text-2xl ' + (d.saldo>0?'text-red-400':'text-green-400');
+  // Insumos
+  $('f-insumos').innerHTML = d.insumos.length ? d.insumos.map(i=>
+    `<span class="text-xs bg-gray-800 text-gray-300 rounded px-2 py-1">${i.nombre} · ${$m(i.ultimo_precio)}</span>`
+  ).join('') : '<span class="text-gray-600 text-sm">Sin insumos asignados.</span>';
+  // Historial
+  var emoji = {factura:'🧾', pago:'💸', remito:'📦', saldo_inicial:'🏁'};
+  $('f-historial').innerHTML = d.historial.length ? d.historial.map(h=>`
+    <div class="bg-black border border-gray-800 rounded-lg p-3 flex justify-between items-center">
+      <div class="flex-1"><p class="text-white text-sm">${emoji[h.tipo]||''} ${h.concepto||h.tipo}${h.numero?' · '+h.numero:''}</p>
+      <p class="text-gray-500 text-xs">${h.fecha||''}${h.metodo?' · '+h.metodo:''}</p>
+      ${h.detalle_remito?`<p class="text-gray-400 text-xs mt-1">${h.detalle_remito}</p>`:''}</div>
+      <div class="text-right">
+        <p class="${h.tipo==='pago'?'text-green-400':(h.tipo==='factura'?'text-red-400':'text-gray-500')} text-sm">
+          ${h.tipo==='remito'?'—':(h.tipo==='pago'?'-':'+')+$m(h.monto).replace('$ ','$')}</p>
+        <p class="text-gray-400 text-xs">Saldo: ${$m(h.saldo)}</p>
+        ${h.id?`<button onclick="eliminarMov(${h.id})" class="text-red-500 text-xs">✕</button>`:''}
+      </div>
+    </div>`).join('') : '<p class="text-gray-600 text-sm">Sin movimientos.</p>';
+}
+
+function abrirMov(tipo){
+  $('mv-tipo').value = tipo;
+  var titulos = {factura:'Nueva factura', pago:'Nuevo pago', remito:'Nuevo remito'};
+  $('m-mov-titulo').textContent = titulos[tipo];
+  $('mv-numero').value=''; $('mv-monto').value=''; $('mv-concepto').value=''; $('mv-remito').value='';
+  $('mv-fecha').value = new Date().toISOString().split('T')[0];
+  // Mostrar/ocultar campos según tipo
+  $('mv-metodo-wrap').classList.toggle('hidden', tipo!=='pago');
+  $('mv-monto-wrap').classList.toggle('hidden', tipo==='remito');
+  $('mv-concepto-wrap').classList.toggle('hidden', tipo==='remito');
+  $('mv-remito-wrap').classList.toggle('hidden', tipo!=='remito');
+  $('mv-num-label').textContent = tipo==='factura'?'N° factura':(tipo==='pago'?'N° comprobante':'N° remito');
+  $('m-mov').classList.remove('hidden');
+}
+async function guardarMov(){
+  var tipo = $('mv-tipo').value;
+  var body = {
+    id_proveedor: fichaId, tipo: tipo,
+    fecha: $('mv-fecha').value, numero: $('mv-numero').value.trim(),
+    monto: tipo==='remito'?0:(parseFloat($('mv-monto').value)||0),
+    concepto: $('mv-concepto').value.trim(),
+    metodo: tipo==='pago'?$('mv-metodo').value:null,
+    detalle_remito: tipo==='remito'?$('mv-remito').value.trim():null
+  };
+  if(tipo!=='remito' && body.monto<=0){ alert('Poné un monto.'); return; }
+  await fetch(API+'/prov2/movimientos', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
+  cerrar('m-mov'); abrirFicha(fichaId);
+}
+async function eliminarMov(id){
+  if(!confirm('¿Eliminar este movimiento?')) return;
+  await fetch(API+'/prov2/movimientos/'+id, {method:'DELETE'});
+  abrirFicha(fichaId);
+}
+
+// ===== ÓRDENES =====
+var ordenItems = [];
+async function cargarOrd(){
+  var ordenes = await fetch(API+'/prov2/ordenes').then(r=>r.json()).catch(()=>[]);
+  var colores = {'Borrador':'gray','Enviada':'blue','Recibida parcialmente':'yellow','Completada':'green'};
+  $('lista-ord').innerHTML = ordenes.length ? ordenes.map(o=>{
+    var c = colores[o.estado]||'gray';
+    return `<div class="bg-gray-900 border border-gray-800 rounded-xl p-4 flex justify-between items-center">
+      <div><p class="text-white font-bold">Orden #${String(o.id).padStart(3,'0')} · ${o.proveedor_nombre}</p>
+      <p class="text-gray-500 text-xs">${o.fecha} · <span class="text-${c}-400">${o.estado}</span></p></div>
+      <div class="text-right mr-3"><p class="text-white font-bold">${$m(o.total_estimado)}</p></div>
+      <div class="flex gap-1">
+        <button onclick="exportarOrdenPDF(${o.id})" class="text-xs bg-neon text-black font-bold px-3 py-1.5 rounded">📄 PDF</button>
+        <select onchange="cambiarEstadoOrden(${o.id}, this.value)" class="text-xs bg-gray-800 border border-gray-700 text-white rounded px-2 py-1">
+          ${['Borrador','Enviada','Recibida parcialmente','Completada'].map(e=>`<option ${e===o.estado?'selected':''}>${e}</option>`).join('')}
+        </select>
+        <button onclick="eliminarOrden(${o.id})" class="text-xs bg-red-900/50 text-red-400 px-2 py-1.5 rounded">✕</button>
+      </div>
+    </div>`;
+  }).join('') : '<p class="text-gray-600 text-center py-8">Sin órdenes. Tocá "+ Nueva orden".</p>';
+}
+async function abrirOrden(){
+  if(!proveedores.length) proveedores = await fetch(API+'/prov2/proveedores').then(r=>r.json()).catch(()=>[]);
+  pobProvSelect($('o-proveedor'), null);
+  $('o-proveedor').insertAdjacentHTML('afterbegin','<option value="">Elegí un proveedor</option>');
+  ordenItems = [];
+  renderOrdenItems();
+  $('m-orden').classList.remove('hidden');
+}
+async function cargarInsumosProveedor(){
+  var idProv = $('o-proveedor').value;
+  if(!idProv){ return; }
+  if(!insumos.length) insumos = await fetch(API+'/prov2/insumos').then(r=>r.json()).catch(()=>[]);
+  renderOrdenItems();
+}
+function agregarItemOrden(){
+  ordenItems.push({id_insumo:null, nombre_insumo:'', cantidad:1, precio_unitario:0});
+  renderOrdenItems();
+}
+function renderOrdenItems(){
+  var idProv = $('o-proveedor').value;
+  var insumosProv = idProv ? insumos.filter(i=>i.id_proveedor==idProv) : insumos;
+  var opts = '<option value="">— Elegir insumo —</option>' + insumosProv.map(i=>`<option value="${i.id}" data-precio="${i.ultimo_precio}">${i.nombre}</option>`).join('');
+  $('o-items').innerHTML = ordenItems.map((it,idx)=>`
+    <div class="flex gap-2 items-center">
+      <select onchange="setOrdenInsumo(${idx}, this)" class="bg-gray-800 border border-gray-700 text-white rounded p-1.5 text-xs flex-1">${opts}</select>
+      <input type="number" value="${it.cantidad}" oninput="setOrdenItem(${idx},'cantidad',this.value)" placeholder="Cant" class="w-16 bg-gray-800 border border-gray-700 text-white rounded p-1.5 text-sm text-center">
+      <input type="number" value="${it.precio_unitario}" oninput="setOrdenItem(${idx},'precio_unitario',this.value)" placeholder="Precio" class="w-24 bg-gray-800 border border-gray-700 text-white rounded p-1.5 text-sm text-right">
+      <button onclick="quitarItemOrden(${idx})" class="text-red-500 text-xs">✕</button>
+    </div>`).join('');
+  // Re-seleccionar
+  document.querySelectorAll('#o-items > div').forEach((row,idx)=>{
+    if(ordenItems[idx].id_insumo) row.querySelector('select').value = ordenItems[idx].id_insumo;
+  });
+  actualizarTotalOrden();
+}
+function setOrdenInsumo(idx, sel){
+  var opt = sel.options[sel.selectedIndex];
+  ordenItems[idx].id_insumo = sel.value? parseInt(sel.value):null;
+  ordenItems[idx].nombre_insumo = sel.value? opt.textContent : '';
+  var precio = opt.getAttribute('data-precio');
+  if(precio && !ordenItems[idx].precio_unitario) ordenItems[idx].precio_unitario = parseFloat(precio)||0;
+  renderOrdenItems();
+}
+function setOrdenItem(idx, campo, val){ ordenItems[idx][campo]=parseFloat(val)||0; actualizarTotalOrden(); }
+function quitarItemOrden(idx){ ordenItems.splice(idx,1); renderOrdenItems(); }
+function actualizarTotalOrden(){
+  var t = ordenItems.reduce((s,it)=>s+(it.cantidad*it.precio_unitario),0);
+  $('o-total').textContent = $m(t);
+}
+async function guardarOrden(){
+  var idProv = $('o-proveedor').value;
+  if(!idProv){ alert('Elegí un proveedor.'); return; }
+  var items = ordenItems.filter(it=>it.nombre_insumo && it.cantidad>0);
+  if(!items.length){ alert('Agregá al menos un insumo.'); return; }
+  await fetch(API+'/prov2/ordenes', {method:'POST', headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({id_proveedor:parseInt(idProv), estado:'Borrador', items:items})});
+  cerrar('m-orden'); cargarOrd();
+}
+async function cambiarEstadoOrden(id, estado){
+  await fetch(API+'/prov2/ordenes/'+id+'/estado', {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({estado:estado})});
+  cargarOrd();
+}
+async function eliminarOrden(id){
+  if(!confirm('¿Eliminar esta orden?')) return;
+  await fetch(API+'/prov2/ordenes/'+id, {method:'DELETE'});
+  cargarOrd();
+}
+async function exportarOrdenPDF(id){
+  var d = await fetch(API+'/prov2/ordenes/'+id).then(r=>r.json());
+  var o = d.orden;
+  var doc = new jspdf.jsPDF();
+  doc.setFontSize(18); doc.text('ORDEN DE PEDIDO', 14, 20);
+  doc.setFontSize(11);
+  doc.text('Orden #'+String(o.id).padStart(3,'0'), 14, 30);
+  doc.text('Fecha: '+o.fecha, 14, 36);
+  doc.text('Proveedor: '+o.proveedor_nombre, 14, 42);
+  if(o.proveedor_cuit) doc.text('CUIT: '+o.proveedor_cuit, 14, 48);
+  var filas = d.items.map(it=>[it.nombre_insumo, it.cantidad, $m(it.precio_unitario), $m(it.subtotal)]);
+  doc.autoTable({ startY: 56, head:[['Insumo','Cantidad','Precio Unit.','Subtotal']], body:filas,
+    foot:[['','','TOTAL', $m(o.total_estimado)]], theme:'striped', headStyles:{fillColor:[40,40,40]} });
+  doc.save('Orden_'+String(o.id).padStart(3,'0')+'_'+o.proveedor_nombre.replace(/\s/g,'_')+'.pdf');
+}
+
+// Init
+cargarDash();
+</script>
+</body>
+</html>
