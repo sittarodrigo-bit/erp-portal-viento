@@ -7316,6 +7316,357 @@ def route_produccion():
 def route_produccion_panel():
     return serve_html("portal_produccion.html")
 
+# ============================================================
+#  MÓDULO PROVEEDORES 2.0 — Endpoints
+# ============================================================
+
+# ---- Dashboard ----
+@app.get("/api/prov2/dashboard")
+def prov2_dashboard():
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        # Deuda total = suma de (deuda_inicial + facturas - pagos) de todos los proveedores
+        cur.execute("""
+            SELECT COALESCE(SUM(
+                p.deuda_inicial
+                + COALESCE((SELECT SUM(monto) FROM prov2_movimientos m WHERE m.id_proveedor=p.id AND m.tipo='factura'),0)
+                - COALESCE((SELECT SUM(monto) FROM prov2_movimientos m WHERE m.id_proveedor=p.id AND m.tipo='pago'),0)
+            ),0) AS deuda_total
+            FROM prov2_proveedores p WHERE p.activo=true
+        """)
+        deuda_total = float(cur.fetchone()['deuda_total'] or 0)
+        # Órdenes pendientes (no completadas)
+        cur.execute("SELECT COUNT(*) AS c FROM prov2_ordenes WHERE estado <> 'Completada'")
+        ordenes_pendientes = cur.fetchone()['c']
+        # Facturas este mes
+        cur.execute("""SELECT COALESCE(SUM(monto),0) AS total, COUNT(*) AS cant
+                       FROM prov2_movimientos
+                       WHERE tipo='factura' AND date_trunc('month', fecha)=date_trunc('month', CURRENT_DATE)""")
+        fila = cur.fetchone()
+        facturas_mes = float(fila['total'] or 0)
+        facturas_mes_cant = fila['cant']
+        # Últimos movimientos (pagos y remitos recientes)
+        cur.execute("""SELECT m.tipo, m.fecha::text, m.monto, m.numero, m.concepto,
+                              p.razon_social
+                       FROM prov2_movimientos m
+                       JOIN prov2_proveedores p ON m.id_proveedor=p.id
+                       ORDER BY m.fecha DESC, m.id DESC LIMIT 15""")
+        movimientos = fetchall_dict(cur)
+        return {
+            "deuda_total": deuda_total,
+            "ordenes_pendientes": ordenes_pendientes,
+            "facturas_mes": facturas_mes,
+            "facturas_mes_cant": facturas_mes_cant,
+            "movimientos": movimientos
+        }
+    finally:
+        liberar_conexion(conn)
+
+# ---- Proveedores ----
+@app.get("/api/prov2/proveedores")
+def prov2_listar():
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("""
+            SELECT p.*,
+                (p.deuda_inicial
+                 + COALESCE((SELECT SUM(monto) FROM prov2_movimientos m WHERE m.id_proveedor=p.id AND m.tipo='factura'),0)
+                 - COALESCE((SELECT SUM(monto) FROM prov2_movimientos m WHERE m.id_proveedor=p.id AND m.tipo='pago'),0)
+                ) AS saldo
+            FROM prov2_proveedores p WHERE p.activo=true ORDER BY p.razon_social
+        """)
+        return fetchall_dict(cur)
+    finally:
+        liberar_conexion(conn)
+
+class Prov2Proveedor(BaseModel):
+    razon_social: str
+    cuit: Optional[str] = None
+    contacto: Optional[str] = None
+    telefono: Optional[str] = None
+    email: Optional[str] = None
+    categoria: str = 'Materia prima'
+    dias_plazo: int = 0
+    deuda_inicial: float = 0
+    notas: Optional[str] = None
+
+@app.post("/api/prov2/proveedores")
+def prov2_crear(p: Prov2Proveedor):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        cur.execute("""INSERT INTO prov2_proveedores (razon_social, cuit, contacto, telefono, email, categoria, dias_plazo, deuda_inicial, notas)
+                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
+                    (p.razon_social, p.cuit, p.contacto, p.telefono, p.email, p.categoria, p.dias_plazo, p.deuda_inicial, p.notas))
+        rid = cur.fetchone()[0]
+        conn.commit()
+        return {"id": rid}
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
+@app.put("/api/prov2/proveedores/{id}")
+def prov2_editar(id: int, p: Prov2Proveedor):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        cur.execute("""UPDATE prov2_proveedores SET razon_social=%s, cuit=%s, contacto=%s, telefono=%s,
+                       email=%s, categoria=%s, dias_plazo=%s, deuda_inicial=%s, notas=%s WHERE id=%s""",
+                    (p.razon_social, p.cuit, p.contacto, p.telefono, p.email, p.categoria, p.dias_plazo, p.deuda_inicial, p.notas, id))
+        conn.commit()
+        return {"status": "ok"}
+    finally:
+        liberar_conexion(conn)
+
+@app.delete("/api/prov2/proveedores/{id}")
+def prov2_eliminar(id: int):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        cur.execute("UPDATE prov2_proveedores SET activo=false WHERE id=%s", (id,))
+        conn.commit()
+        return {"status": "ok"}
+    finally:
+        liberar_conexion(conn)
+
+# ---- Insumos ----
+@app.get("/api/prov2/insumos")
+def prov2_insumos_listar():
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("""SELECT i.*, p.razon_social AS proveedor_nombre
+                       FROM prov2_insumos i LEFT JOIN prov2_proveedores p ON i.id_proveedor=p.id
+                       WHERE i.activo=true ORDER BY i.nombre""")
+        return fetchall_dict(cur)
+    finally:
+        liberar_conexion(conn)
+
+class Prov2Insumo(BaseModel):
+    nombre: str
+    id_proveedor: Optional[int] = None
+    unidad: str = 'u'
+    ultimo_precio: float = 0
+
+@app.post("/api/prov2/insumos")
+def prov2_insumo_crear(i: Prov2Insumo):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        cur.execute("""INSERT INTO prov2_insumos (nombre, id_proveedor, unidad, ultimo_precio, fecha_precio)
+                       VALUES (%s,%s,%s,%s,CURRENT_DATE) RETURNING id""",
+                    (i.nombre, i.id_proveedor, i.unidad, i.ultimo_precio))
+        rid = cur.fetchone()[0]
+        conn.commit()
+        return {"id": rid}
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
+@app.put("/api/prov2/insumos/{id}")
+def prov2_insumo_editar(id: int, i: Prov2Insumo):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        # Si cambió el precio, actualizar la fecha
+        cur.execute("SELECT ultimo_precio FROM prov2_insumos WHERE id=%s", (id,))
+        row = cur.fetchone()
+        precio_cambio = row and float(row[0] or 0) != float(i.ultimo_precio)
+        if precio_cambio:
+            cur.execute("""UPDATE prov2_insumos SET nombre=%s, id_proveedor=%s, unidad=%s,
+                           ultimo_precio=%s, fecha_precio=CURRENT_DATE WHERE id=%s""",
+                        (i.nombre, i.id_proveedor, i.unidad, i.ultimo_precio, id))
+        else:
+            cur.execute("""UPDATE prov2_insumos SET nombre=%s, id_proveedor=%s, unidad=%s WHERE id=%s""",
+                        (i.nombre, i.id_proveedor, i.unidad, id))
+        conn.commit()
+        return {"status": "ok"}
+    finally:
+        liberar_conexion(conn)
+
+@app.delete("/api/prov2/insumos/{id}")
+def prov2_insumo_eliminar(id: int):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        cur.execute("UPDATE prov2_insumos SET activo=false WHERE id=%s", (id,))
+        conn.commit()
+        return {"status": "ok"}
+    finally:
+        liberar_conexion(conn)
+
+# ---- Cuenta corriente (ficha del proveedor) ----
+@app.get("/api/prov2/proveedores/{id}/cuenta")
+def prov2_cuenta(id: int):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("SELECT * FROM prov2_proveedores WHERE id=%s", (id,))
+        prov = cur.fetchone()
+        if not prov:
+            raise HTTPException(status_code=404, detail="Proveedor no encontrado")
+        # Movimientos cronológicos
+        cur.execute("""SELECT id, tipo, fecha::text, numero, monto, concepto, metodo, detalle_remito
+                       FROM prov2_movimientos WHERE id_proveedor=%s ORDER BY fecha ASC, id ASC""", (id,))
+        movs = fetchall_dict(cur)
+        # Calcular saldo línea por línea (arranca en deuda_inicial)
+        saldo = float(prov['deuda_inicial'] or 0)
+        historial = []
+        if saldo != 0:
+            historial.append({"tipo": "saldo_inicial", "fecha": "", "numero": "", "concepto": "Deuda inicial",
+                              "monto": saldo, "saldo": saldo})
+        for m in movs:
+            monto = float(m['monto'] or 0)
+            if m['tipo'] == 'factura':
+                saldo += monto
+            elif m['tipo'] == 'pago':
+                saldo -= monto
+            # remito no afecta saldo
+            m['saldo'] = saldo
+            historial.append(m)
+        # Insumos del proveedor
+        cur.execute("SELECT * FROM prov2_insumos WHERE id_proveedor=%s AND activo=true ORDER BY nombre", (id,))
+        insumos = fetchall_dict(cur)
+        return {"proveedor": prov, "historial": historial, "saldo": saldo, "insumos": insumos}
+    finally:
+        liberar_conexion(conn)
+
+class Prov2Movimiento(BaseModel):
+    id_proveedor: int
+    tipo: str               # factura, pago, remito
+    fecha: Optional[str] = None
+    numero: Optional[str] = None
+    monto: float = 0
+    concepto: Optional[str] = None
+    metodo: Optional[str] = None
+    detalle_remito: Optional[str] = None
+
+@app.post("/api/prov2/movimientos")
+def prov2_movimiento_crear(m: Prov2Movimiento):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        cur.execute("""INSERT INTO prov2_movimientos (id_proveedor, tipo, fecha, numero, monto, concepto, metodo, detalle_remito)
+                       VALUES (%s,%s,COALESCE(%s,CURRENT_DATE),%s,%s,%s,%s,%s) RETURNING id""",
+                    (m.id_proveedor, m.tipo, m.fecha, m.numero, m.monto, m.concepto, m.metodo, m.detalle_remito))
+        rid = cur.fetchone()[0]
+        conn.commit()
+        return {"id": rid}
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
+@app.delete("/api/prov2/movimientos/{id}")
+def prov2_movimiento_eliminar(id: int):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM prov2_movimientos WHERE id=%s", (id,))
+        conn.commit()
+        return {"status": "ok"}
+    finally:
+        liberar_conexion(conn)
+
+# ---- Órdenes de pedido ----
+@app.get("/api/prov2/ordenes")
+def prov2_ordenes_listar():
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("""SELECT o.*, p.razon_social AS proveedor_nombre
+                       FROM prov2_ordenes o JOIN prov2_proveedores p ON o.id_proveedor=p.id
+                       ORDER BY o.fecha DESC, o.id DESC""")
+        return fetchall_dict(cur)
+    finally:
+        liberar_conexion(conn)
+
+@app.get("/api/prov2/ordenes/{id}")
+def prov2_orden_detalle(id: int):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("""SELECT o.*, p.razon_social AS proveedor_nombre, p.cuit AS proveedor_cuit,
+                              p.telefono AS proveedor_telefono, p.email AS proveedor_email
+                       FROM prov2_ordenes o JOIN prov2_proveedores p ON o.id_proveedor=p.id WHERE o.id=%s""", (id,))
+        orden = cur.fetchone()
+        if not orden:
+            raise HTTPException(status_code=404, detail="Orden no encontrada")
+        cur.execute("SELECT * FROM prov2_orden_items WHERE id_orden=%s ORDER BY id", (id,))
+        items = fetchall_dict(cur)
+        return {"orden": orden, "items": items}
+    finally:
+        liberar_conexion(conn)
+
+class Prov2OrdenItem(BaseModel):
+    id_insumo: Optional[int] = None
+    nombre_insumo: str
+    cantidad: float = 1
+    precio_unitario: float = 0
+
+class Prov2Orden(BaseModel):
+    id_proveedor: int
+    fecha: Optional[str] = None
+    estado: str = 'Borrador'
+    notas: Optional[str] = None
+    items: List[Prov2OrdenItem] = []
+
+@app.post("/api/prov2/ordenes")
+def prov2_orden_crear(o: Prov2Orden):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        total = sum(it.cantidad * it.precio_unitario for it in o.items)
+        cur.execute("""INSERT INTO prov2_ordenes (id_proveedor, fecha, estado, total_estimado, notas)
+                       VALUES (%s,COALESCE(%s,CURRENT_DATE),%s,%s,%s) RETURNING id""",
+                    (o.id_proveedor, o.fecha, o.estado, total, o.notas))
+        oid = cur.fetchone()[0]
+        for it in o.items:
+            sub = it.cantidad * it.precio_unitario
+            cur.execute("""INSERT INTO prov2_orden_items (id_orden, id_insumo, nombre_insumo, cantidad, precio_unitario, subtotal)
+                           VALUES (%s,%s,%s,%s,%s,%s)""",
+                        (oid, it.id_insumo, it.nombre_insumo, it.cantidad, it.precio_unitario, sub))
+        conn.commit()
+        return {"id": oid, "total": total}
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
+@app.put("/api/prov2/ordenes/{id}/estado")
+def prov2_orden_estado(id: int, data: dict = Body(...)):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        cur.execute("UPDATE prov2_ordenes SET estado=%s WHERE id=%s", (data.get('estado'), id))
+        conn.commit()
+        return {"status": "ok"}
+    finally:
+        liberar_conexion(conn)
+
+@app.delete("/api/prov2/ordenes/{id}")
+def prov2_orden_eliminar(id: int):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM prov2_ordenes WHERE id=%s", (id,))
+        conn.commit()
+        return {"status": "ok"}
+    finally:
+        liberar_conexion(conn)
+
+@app.get("/proveedores2")
+def route_proveedores2():
+    return serve_html("proveedores2.html")
+
 @app.get("/proveedores")
 def route_proveedores():
     return serve_html("proveedores.html")
