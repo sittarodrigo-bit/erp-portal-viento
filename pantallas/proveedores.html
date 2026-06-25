@@ -553,6 +553,10 @@
                         </td>
                         <td class="p-4 text-center text-gray-300">${p.cant_ordenes}</td>
                         <td class="p-4 text-right flex justify-end gap-2">
+                            <button onclick="abrirFichaProveedor(${p.id})"
+                                class="text-xs bg-blue-700 hover:bg-blue-600 text-white font-bold px-3 py-1 rounded transition">
+                                💳 Cuenta
+                            </button>
                             <button onclick="abrirModalEditar(${p.id})"
                                 class="text-xs border border-gray-700 bg-gray-800 hover:border-gray-500 px-3 py-1 rounded text-gray-400 hover:text-white transition">
                                 Editar
@@ -937,6 +941,271 @@
         }
 
         window.onload = cargarDatos;
+        // ===== FICHA CUENTA CORRIENTE =====
+        var fichaProvId = null;
+        var fichaInsumos = [];
+
+        function f$(n){ return '$ '+(parseFloat(n)||0).toLocaleString('es-AR'); }
+
+        async function abrirFichaProveedor(id) {
+            fichaProvId = id;
+            document.getElementById('modal-ficha').classList.remove('hidden');
+            fichaTab('resumen');
+            await cargarFicha();
+        }
+        function cerrarFicha() { document.getElementById('modal-ficha').classList.add('hidden'); }
+
+        function fichaTab(tab) {
+            ['resumen','facturas','pagos','insumos'].forEach(t=>{
+                document.getElementById('fpanel-'+t).classList.toggle('hidden', t!==tab);
+            });
+            var map = {resumen:'res', facturas:'fac', pagos:'pag', insumos:'ins'};
+            Object.entries(map).forEach(([t,s])=>{
+                document.getElementById('ftab-'+s).className = t===tab
+                    ? 'py-3 font-bold border-b-2 border-neon text-white'
+                    : 'py-3 font-bold border-b-2 border-transparent text-gray-400 hover:text-white';
+            });
+        }
+
+        async function cargarFicha() {
+            var d = await fetch(`${API_URL}/proveedores/${fichaProvId}/cuenta`).then(r=>r.json());
+            document.getElementById('ficha-nombre').textContent = d.proveedor.nombre;
+            document.getElementById('ficha-cuit').textContent = d.proveedor.cuit ? ('CUIT: '+d.proveedor.cuit) : '';
+            var saldoEl = document.getElementById('ficha-saldo');
+            saldoEl.textContent = f$(d.saldo);
+            saldoEl.className = 'font-bold text-2xl ' + (d.saldo > 0 ? 'text-red-400' : 'text-green-400');
+            document.getElementById('ficha-deuda-inicial').value = d.deuda_inicial || 0;
+            document.getElementById('ficha-total-fact').textContent = f$(d.total_facturas);
+            document.getElementById('ficha-total-pagos').textContent = f$(d.total_pagos);
+
+            // Facturas
+            var lf = document.getElementById('ficha-lista-facturas');
+            lf.innerHTML = d.facturas.length ? d.facturas.map(fc=>`
+                <div class="bg-black border border-gray-800 rounded-lg p-3 flex justify-between items-center">
+                    <div><p class="text-white font-bold">${fc.tipo} ${fc.numero||'s/n'}</p>
+                    <p class="text-gray-500 text-xs">${fc.fecha}${fc.fecha_vencimiento?' · vence '+fc.fecha_vencimiento:''}</p></div>
+                    <div class="text-right"><p class="text-red-400 font-bold">${f$(fc.total)}</p>
+                    <button onclick="eliminarFactura(${fc.id})" class="text-red-500 text-xs">✕ eliminar</button></div>
+                </div>`).join('') : '<p class="text-gray-600 text-sm">Sin facturas cargadas.</p>';
+
+            // Pagos
+            var lp = document.getElementById('ficha-lista-pagos');
+            lp.innerHTML = d.pagos.length ? d.pagos.map(pg=>`
+                <div class="bg-black border border-gray-800 rounded-lg p-3 flex justify-between items-center">
+                    <div><p class="text-white">${(pg.fecha||'').split(' ')[0]}</p>
+                    <p class="text-gray-500 text-xs">${pg.metodo||''} ${pg.referencia?'· '+pg.referencia:''}</p></div>
+                    <p class="text-green-400 font-bold">${f$(pg.monto)}</p>
+                </div>`).join('') : '<p class="text-gray-600 text-sm">Sin pagos registrados.</p>';
+
+            // Insumos
+            var li = document.getElementById('ficha-lista-insumos');
+            li.innerHTML = d.insumos.length ? d.insumos.map(ins=>`
+                <div class="bg-black border border-gray-800 rounded-lg p-3 flex justify-between items-center">
+                    <div><p class="text-white">${ins.insumo_nombre||'Insumo #'+ins.id_insumo}</p>
+                    ${ins.precio_referencia?`<p class="text-gray-500 text-xs">Precio ref: ${f$(ins.precio_referencia)}</p>`:''}</div>
+                    <button onclick="quitarInsumoProv(${ins.id})" class="text-red-500 text-xs">✕</button>
+                </div>`).join('') : '<p class="text-gray-600 text-sm">Sin insumos asignados.</p>';
+
+            // Poblar selector de insumos
+            if (!fichaInsumos.length) {
+                fichaInsumos = await fetch(`${API_URL}/insumos`).then(r=>r.json()).catch(()=>[]);
+            }
+            var yaTiene = d.insumos.map(x=>x.id_insumo);
+            document.getElementById('ficha-sel-insumo').innerHTML = fichaInsumos
+                .filter(i=>!yaTiene.includes(i.id))
+                .map(i=>`<option value="${i.id}">${i.nombre}</option>`).join('');
+        }
+
+        async function guardarDeudaInicial() {
+            var v = parseFloat(document.getElementById('ficha-deuda-inicial').value) || 0;
+            await fetch(`${API_URL}/proveedores/${fichaProvId}/deuda_inicial`, {
+                method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({deuda_inicial: v})
+            });
+            cargarFicha();
+        }
+
+        async function agregarInsumoProv() {
+            var idIns = document.getElementById('ficha-sel-insumo').value;
+            if (!idIns) return;
+            await fetch(`${API_URL}/proveedores/${fichaProvId}/insumos`, {
+                method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({id_insumo: parseInt(idIns)})
+            });
+            cargarFicha();
+        }
+        async function quitarInsumoProv(id) {
+            await fetch(`${API_URL}/proveedores/insumos/${id}`, {method:'DELETE'});
+            cargarFicha();
+        }
+        async function eliminarFactura(id) {
+            if (!confirm('¿Eliminar esta factura?')) return;
+            await fetch(`${API_URL}/proveedores/facturas/${id}`, {method:'DELETE'});
+            cargarFicha();
+        }
+
+        // ===== NUEVA FACTURA =====
+        var facItems = [];
+        function abrirNuevaFactura() {
+            facItems = [{descripcion:'', cantidad:1, precio_unitario:0, id_insumo:null}];
+            document.getElementById('fac-numero').value = '';
+            document.getElementById('fac-fecha').value = new Date().toISOString().split('T')[0];
+            document.getElementById('fac-venc').value = '';
+            renderFacItems();
+            document.getElementById('modal-factura').classList.remove('hidden');
+        }
+        function cerrarModalFactura() { document.getElementById('modal-factura').classList.add('hidden'); }
+        function agregarItemFactura() {
+            facItems.push({descripcion:'', cantidad:1, precio_unitario:0, id_insumo:null});
+            renderFacItems();
+        }
+        function renderFacItems() {
+            var insumosOpts = '<option value="">— Libre —</option>' + fichaInsumos.map(i=>`<option value="${i.id}">${i.nombre}</option>`).join('');
+            document.getElementById('fac-items').innerHTML = facItems.map((it,idx)=>`
+                <div class="flex gap-2 items-center">
+                    <select onchange="setItemInsumo(${idx}, this.value)" class="bg-gray-800 border border-gray-700 text-white rounded p-1.5 text-xs w-32">${insumosOpts}</select>
+                    <input value="${it.descripcion}" oninput="setItem(${idx},'descripcion',this.value)" placeholder="Descripción" class="flex-1 bg-gray-800 border border-gray-700 text-white rounded p-1.5 text-sm">
+                    <input type="number" value="${it.cantidad}" oninput="setItem(${idx},'cantidad',this.value)" placeholder="Cant" class="w-16 bg-gray-800 border border-gray-700 text-white rounded p-1.5 text-sm text-center">
+                    <input type="number" value="${it.precio_unitario}" oninput="setItem(${idx},'precio_unitario',this.value)" placeholder="Precio" class="w-24 bg-gray-800 border border-gray-700 text-white rounded p-1.5 text-sm text-right">
+                    <button onclick="quitarItemFactura(${idx})" class="text-red-500 text-xs">✕</button>
+                </div>`).join('');
+            actualizarTotalFactura();
+        }
+        function setItem(idx, campo, val) {
+            facItems[idx][campo] = (campo==='descripcion') ? val : (parseFloat(val)||0);
+            if (campo!=='descripcion') actualizarTotalFactura();
+        }
+        function setItemInsumo(idx, idIns) {
+            facItems[idx].id_insumo = idIns ? parseInt(idIns) : null;
+            if (idIns) {
+                var ins = fichaInsumos.find(i=>i.id==idIns);
+                if (ins && !facItems[idx].descripcion) {
+                    facItems[idx].descripcion = ins.nombre;
+                    renderFacItems();
+                }
+            }
+        }
+        function quitarItemFactura(idx) { facItems.splice(idx,1); renderFacItems(); }
+        function actualizarTotalFactura() {
+            var total = facItems.reduce((s,it)=>s + (it.cantidad*it.precio_unitario), 0);
+            document.getElementById('fac-total').textContent = f$(total);
+        }
+        async function guardarFactura() {
+            var items = facItems.filter(it=>it.descripcion && it.precio_unitario>0);
+            if (!items.length) { alert('Agregá al menos un ítem con descripción y precio.'); return; }
+            var body = {
+                id_proveedor: fichaProvId,
+                numero: document.getElementById('fac-numero').value,
+                tipo: document.getElementById('fac-tipo').value,
+                fecha: document.getElementById('fac-fecha').value,
+                fecha_vencimiento: document.getElementById('fac-venc').value || null,
+                items: items
+            };
+            await fetch(`${API_URL}/proveedores/facturas`, {
+                method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)
+            });
+            cerrarModalFactura();
+            cargarFicha();
+        }
+
     </script>
+<!-- MODAL FICHA CUENTA CORRIENTE -->
+<div id="modal-ficha" class="hidden fixed inset-0 bg-black/85 z-50 overflow-y-auto p-4">
+  <div class="bg-gray-900 border border-gray-700 rounded-2xl max-w-3xl mx-auto my-4 shadow-2xl">
+    <!-- Header con saldo -->
+    <div class="sticky top-0 bg-gray-900 border-b border-gray-800 p-5 rounded-t-2xl flex justify-between items-start z-10">
+      <div>
+        <h2 id="ficha-nombre" class="text-white font-bold text-xl">Proveedor</h2>
+        <p id="ficha-cuit" class="text-gray-500 text-sm"></p>
+      </div>
+      <div class="text-right">
+        <p class="text-gray-500 text-xs">Saldo pendiente</p>
+        <p id="ficha-saldo" class="font-bold text-2xl">$ 0</p>
+        <button onclick="cerrarFicha()" class="text-gray-500 hover:text-white text-sm mt-1">✕ Cerrar</button>
+      </div>
+    </div>
+
+    <!-- Tabs de la ficha -->
+    <div class="border-b border-gray-800 px-5 flex gap-5 text-sm">
+      <button onclick="fichaTab('resumen')"  id="ftab-res" class="py-3 font-bold border-b-2 border-neon text-white">Resumen</button>
+      <button onclick="fichaTab('facturas')" id="ftab-fac" class="py-3 font-bold border-b-2 border-transparent text-gray-400 hover:text-white">Facturas</button>
+      <button onclick="fichaTab('pagos')"    id="ftab-pag" class="py-3 font-bold border-b-2 border-transparent text-gray-400 hover:text-white">Pagos</button>
+      <button onclick="fichaTab('insumos')"  id="ftab-ins" class="py-3 font-bold border-b-2 border-transparent text-gray-400 hover:text-white">Insumos</button>
+    </div>
+
+    <div class="p-5">
+      <!-- RESUMEN -->
+      <div id="fpanel-resumen">
+        <div class="grid grid-cols-3 gap-3 mb-4">
+          <div class="bg-black border border-gray-800 rounded-xl p-3">
+            <p class="text-gray-500 text-xs">Deuda inicial</p>
+            <div class="flex items-center gap-1">
+              <span class="text-white">$</span>
+              <input type="number" id="ficha-deuda-inicial" class="bg-transparent text-white font-bold text-lg w-full outline-none" onblur="guardarDeudaInicial()">
+            </div>
+          </div>
+          <div class="bg-black border border-gray-800 rounded-xl p-3">
+            <p class="text-gray-500 text-xs">+ Facturas</p>
+            <p id="ficha-total-fact" class="text-red-400 font-bold text-lg">$ 0</p>
+          </div>
+          <div class="bg-black border border-gray-800 rounded-xl p-3">
+            <p class="text-gray-500 text-xs">- Pagos</p>
+            <p id="ficha-total-pagos" class="text-green-400 font-bold text-lg">$ 0</p>
+          </div>
+        </div>
+        <p class="text-gray-500 text-xs">El saldo se calcula como: deuda inicial + facturas - pagos.</p>
+      </div>
+
+      <!-- FACTURAS -->
+      <div id="fpanel-facturas" class="hidden">
+        <button onclick="abrirNuevaFactura()" class="bg-neon text-black font-bold px-4 py-2 rounded text-sm mb-3">+ Nueva factura</button>
+        <div id="ficha-lista-facturas" class="space-y-2"></div>
+      </div>
+
+      <!-- PAGOS -->
+      <div id="fpanel-pagos" class="hidden">
+        <div id="ficha-lista-pagos" class="space-y-2"></div>
+      </div>
+
+      <!-- INSUMOS -->
+      <div id="fpanel-insumos" class="hidden">
+        <div class="flex gap-2 mb-3">
+          <select id="ficha-sel-insumo" class="flex-1 bg-gray-800 border border-gray-700 text-white rounded p-2 text-sm"></select>
+          <button onclick="agregarInsumoProv()" class="bg-neon text-black font-bold px-4 py-2 rounded text-sm">+ Agregar</button>
+        </div>
+        <div id="ficha-lista-insumos" class="space-y-2"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL NUEVA FACTURA -->
+<div id="modal-factura" class="hidden fixed inset-0 bg-black/85 z-[60] overflow-y-auto p-4">
+  <div class="bg-gray-900 border border-gray-700 rounded-2xl max-w-2xl mx-auto my-4 shadow-2xl p-5">
+    <div class="flex justify-between items-center mb-4">
+      <h3 class="text-white font-bold text-lg">📄 Nueva factura</h3>
+      <button onclick="cerrarModalFactura()" class="text-gray-500 hover:text-white text-2xl">×</button>
+    </div>
+    <div class="grid grid-cols-2 gap-3 mb-3">
+      <div><label class="text-gray-500 text-xs">Número</label>
+        <input id="fac-numero" class="w-full bg-gray-800 border border-gray-700 text-white rounded p-2 text-sm" placeholder="0001-00001234"></div>
+      <div><label class="text-gray-500 text-xs">Tipo</label>
+        <select id="fac-tipo" class="w-full bg-gray-800 border border-gray-700 text-white rounded p-2 text-sm">
+          <option>A</option><option>B</option><option>C</option><option value="X">Remito</option>
+        </select></div>
+      <div><label class="text-gray-500 text-xs">Fecha</label>
+        <input type="date" id="fac-fecha" class="w-full bg-gray-800 border border-gray-700 text-white rounded p-2 text-sm"></div>
+      <div><label class="text-gray-500 text-xs">Vencimiento</label>
+        <input type="date" id="fac-venc" class="w-full bg-gray-800 border border-gray-700 text-white rounded p-2 text-sm"></div>
+    </div>
+    <p class="text-gray-400 text-sm font-bold mb-2">Ítems</p>
+    <div id="fac-items" class="space-y-2 mb-2"></div>
+    <button onclick="agregarItemFactura()" class="text-neon text-sm mb-3">+ Agregar ítem</button>
+    <div class="flex justify-between items-center border-t border-gray-700 pt-3 mb-4">
+      <span class="text-gray-400">Total</span>
+      <span id="fac-total" class="text-neon font-bold text-xl">$ 0</span>
+    </div>
+    <button onclick="guardarFactura()" class="w-full bg-neon text-black font-bold py-2.5 rounded">💾 Guardar factura</button>
+  </div>
+</div>
+
 </body>
 </html>
