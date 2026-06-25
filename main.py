@@ -3742,6 +3742,161 @@ def eliminar_deuda_manual(id: int):
     finally:
         liberar_conexion(conn)
 
+# ===== CUENTA CORRIENTE DE PROVEEDORES =====
+
+@app.get("/api/proveedores/{id_prov}/cuenta")
+def proveedor_cuenta(id_prov: int):
+    """Ficha completa: saldo (deuda inicial + facturas - pagos), facturas, pagos, insumos."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        # Datos del proveedor + deuda inicial
+        cur.execute("SELECT id, nombre, COALESCE(deuda_inicial,0) AS deuda_inicial, cuit, telefono, email FROM proveedores WHERE id=%s", (id_prov,))
+        prov = cur.fetchone()
+        if not prov:
+            raise HTTPException(status_code=404, detail="Proveedor no encontrado")
+
+        # Facturas
+        try:
+            cur.execute("""SELECT id, numero, tipo, fecha::text, fecha_vencimiento::text, total, notas
+                           FROM proveedor_facturas WHERE id_proveedor=%s ORDER BY fecha DESC, id DESC""", (id_prov,))
+            facturas = fetchall_dict(cur)
+        except Exception:
+            conn.rollback(); facturas = []
+        total_facturas = sum(float(f['total'] or 0) for f in facturas)
+
+        # Pagos
+        try:
+            cur.execute("""SELECT id, COALESCE(fecha::text, NOW()::text) AS fecha, monto, metodo, referencia
+                           FROM pagos_proveedores WHERE id_proveedor=%s ORDER BY COALESCE(fecha,NOW()) DESC""", (id_prov,))
+            pagos = fetchall_dict(cur)
+        except Exception:
+            conn.rollback(); pagos = []
+        total_pagos = sum(float(p['monto'] or 0) for p in pagos)
+
+        # Insumos que suministra
+        try:
+            cur.execute("""SELECT pi.id, pi.id_insumo, pi.precio_referencia, i.nombre AS insumo_nombre, i.unidad
+                           FROM proveedor_insumos pi LEFT JOIN insumos i ON pi.id_insumo=i.id
+                           WHERE pi.id_proveedor=%s ORDER BY i.nombre""", (id_prov,))
+            insumos = fetchall_dict(cur)
+        except Exception:
+            conn.rollback(); insumos = []
+
+        deuda_inicial = float(prov['deuda_inicial'] or 0)
+        saldo = deuda_inicial + total_facturas - total_pagos
+
+        return {
+            "proveedor": prov,
+            "deuda_inicial": deuda_inicial,
+            "facturas": facturas, "total_facturas": total_facturas,
+            "pagos": pagos, "total_pagos": total_pagos,
+            "insumos": insumos,
+            "saldo": saldo
+        }
+    finally:
+        liberar_conexion(conn)
+
+@app.put("/api/proveedores/{id_prov}/deuda_inicial")
+def proveedor_set_deuda_inicial(id_prov: int, data: dict = Body(...)):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        cur.execute("UPDATE proveedores SET deuda_inicial=%s WHERE id=%s", (data.get('deuda_inicial', 0), id_prov))
+        conn.commit()
+        return {"status": "ok"}
+    finally:
+        liberar_conexion(conn)
+
+class FacturaItem(BaseModel):
+    id_insumo: Optional[int] = None
+    descripcion: str
+    cantidad: float = 1
+    precio_unitario: float = 0
+
+class FacturaProveedor(BaseModel):
+    id_proveedor: int
+    numero: Optional[str] = None
+    tipo: str = 'A'
+    fecha: Optional[str] = None
+    fecha_vencimiento: Optional[str] = None
+    notas: Optional[str] = None
+    items: List[FacturaItem] = []
+
+@app.post("/api/proveedores/facturas")
+def crear_factura_proveedor(f: FacturaProveedor):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        total = sum(it.cantidad * it.precio_unitario for it in f.items)
+        cur.execute("""INSERT INTO proveedor_facturas (id_proveedor, numero, tipo, fecha, fecha_vencimiento, total, notas)
+                       VALUES (%s,%s,%s,COALESCE(%s,CURRENT_DATE),%s,%s,%s) RETURNING id""",
+                    (f.id_proveedor, f.numero, f.tipo, f.fecha, f.fecha_vencimiento, total, f.notas))
+        id_fact = cur.fetchone()[0]
+        for it in f.items:
+            sub = it.cantidad * it.precio_unitario
+            cur.execute("""INSERT INTO proveedor_factura_items (id_factura, id_insumo, descripcion, cantidad, precio_unitario, subtotal)
+                           VALUES (%s,%s,%s,%s,%s,%s)""",
+                        (id_fact, it.id_insumo, it.descripcion, it.cantidad, it.precio_unitario, sub))
+        conn.commit()
+        return {"id": id_fact, "total": total}
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
+@app.get("/api/proveedores/facturas/{id_factura}/items")
+def factura_items(id_factura: int):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("""SELECT fi.*, i.nombre AS insumo_nombre
+                       FROM proveedor_factura_items fi LEFT JOIN insumos i ON fi.id_insumo=i.id
+                       WHERE fi.id_factura=%s""", (id_factura,))
+        return fetchall_dict(cur)
+    finally:
+        liberar_conexion(conn)
+
+@app.delete("/api/proveedores/facturas/{id_factura}")
+def eliminar_factura(id_factura: int):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM proveedor_facturas WHERE id=%s", (id_factura,))
+        conn.commit()
+        return {"status": "ok"}
+    finally:
+        liberar_conexion(conn)
+
+@app.post("/api/proveedores/{id_prov}/insumos")
+def agregar_insumo_proveedor(id_prov: int, data: dict = Body(...)):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        cur.execute("""INSERT INTO proveedor_insumos (id_proveedor, id_insumo, precio_referencia)
+                       VALUES (%s,%s,%s) ON CONFLICT (id_proveedor, id_insumo)
+                       DO UPDATE SET precio_referencia=EXCLUDED.precio_referencia""",
+                    (id_prov, data['id_insumo'], data.get('precio_referencia')))
+        conn.commit()
+        return {"status": "ok"}
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
+@app.delete("/api/proveedores/insumos/{id}")
+def quitar_insumo_proveedor(id: int):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM proveedor_insumos WHERE id=%s", (id,))
+        conn.commit()
+        return {"status": "ok"}
+    finally:
+        liberar_conexion(conn)
+
 @app.get("/api/tablero/deudas_proveedores")
 def deudas_proveedores():
     conn = obtener_conexion()
