@@ -968,6 +968,10 @@
         }
 
         async function cargarFicha() {
+            // Cargar el catálogo de insumos PRIMERO (antes de poblar selectores)
+            if (!fichaInsumos.length) {
+                fichaInsumos = await fetch(`${API_URL}/insumos`).then(r=>r.json()).catch(()=>[]);
+            }
             var d = await fetch(`${API_URL}/proveedores/${fichaProvId}/cuenta`).then(r=>r.json());
             document.getElementById('ficha-nombre').textContent = d.proveedor.nombre;
             document.getElementById('ficha-cuit').textContent = d.proveedor.cuit ? ('CUIT: '+d.proveedor.cuit) : '';
@@ -1006,14 +1010,12 @@
                     <button onclick="quitarInsumoProv(${ins.id})" class="text-red-500 text-xs">✕</button>
                 </div>`).join('') : '<p class="text-gray-600 text-sm">Sin insumos asignados.</p>';
 
-            // Poblar selector de insumos
-            if (!fichaInsumos.length) {
-                fichaInsumos = await fetch(`${API_URL}/insumos`).then(r=>r.json()).catch(()=>[]);
-            }
+            // Poblar selector de insumos (los que el proveedor NO tiene aún)
             var yaTiene = d.insumos.map(x=>x.id_insumo);
-            document.getElementById('ficha-sel-insumo').innerHTML = fichaInsumos
-                .filter(i=>!yaTiene.includes(i.id))
-                .map(i=>`<option value="${i.id}">${i.nombre}</option>`).join('');
+            var disponibles = fichaInsumos.filter(i=>!yaTiene.includes(i.id));
+            document.getElementById('ficha-sel-insumo').innerHTML = disponibles.length
+                ? disponibles.map(i=>`<option value="${i.id}">${i.nombre}</option>`).join('')
+                : '<option value="">— Ya están todos asignados —</option>';
         }
 
         async function guardarDeudaInicial() {
@@ -1026,11 +1028,41 @@
 
         async function agregarInsumoProv() {
             var idIns = document.getElementById('ficha-sel-insumo').value;
-            if (!idIns) return;
+            if (!idIns) { alert('Elegí un insumo o creá uno nuevo.'); return; }
             await fetch(`${API_URL}/proveedores/${fichaProvId}/insumos`, {
                 method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({id_insumo: parseInt(idIns)})
             });
             cargarFicha();
+        }
+
+        async function crearYAsignarInsumo() {
+            var nombre = document.getElementById('nuevo-insumo-nombre').value.trim();
+            var unidad = document.getElementById('nuevo-insumo-unidad').value.trim() || 'u';
+            if (!nombre) { alert('Escribí el nombre del insumo.'); return; }
+            try {
+                // 1) Crear el insumo
+                var res = await fetch(`${API_URL}/insumos_nuevo`, {
+                    method:'POST', headers:{'Content-Type':'application/json'},
+                    body: JSON.stringify({
+                        nombre: nombre, unidad_medida: unidad, stock_minimo: 0,
+                        costo_unitario: 0, cantidad_por_presentacion: 1, costo_por_bulto: 0,
+                        id_proveedor: fichaProvId
+                    })
+                });
+                if (!res.ok) { alert('No se pudo crear el insumo.'); return; }
+                // 2) Recargar catálogo de insumos
+                fichaInsumos = await fetch(`${API_URL}/insumos`).then(r=>r.json()).catch(()=>[]);
+                // 3) Buscar el insumo recién creado por nombre y asignarlo
+                var nuevo = fichaInsumos.find(i => (i.nombre||'').toLowerCase().trim() === nombre.toLowerCase());
+                if (nuevo) {
+                    await fetch(`${API_URL}/proveedores/${fichaProvId}/insumos`, {
+                        method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({id_insumo: nuevo.id})
+                    });
+                }
+                document.getElementById('nuevo-insumo-nombre').value = '';
+                document.getElementById('nuevo-insumo-unidad').value = '';
+                cargarFicha();
+            } catch(e) { alert('Error al crear el insumo.'); }
         }
         async function quitarInsumoProv(id) {
             await fetch(`${API_URL}/proveedores/insumos/${id}`, {method:'DELETE'});
@@ -1167,9 +1199,14 @@
 
       <!-- INSUMOS -->
       <div id="fpanel-insumos" class="hidden">
-        <div class="flex gap-2 mb-3">
+        <div class="flex gap-2 mb-2">
           <select id="ficha-sel-insumo" class="flex-1 bg-gray-800 border border-gray-700 text-white rounded p-2 text-sm"></select>
-          <button onclick="agregarInsumoProv()" class="bg-neon text-black font-bold px-4 py-2 rounded text-sm">+ Agregar</button>
+          <button onclick="agregarInsumoProv()" class="bg-neon text-black font-bold px-4 py-2 rounded text-sm">+ Asignar</button>
+        </div>
+        <div class="flex gap-2 mb-3 items-center">
+          <input id="nuevo-insumo-nombre" placeholder="O creá un insumo nuevo..." class="flex-1 bg-gray-800 border border-gray-700 text-white rounded p-2 text-sm">
+          <input id="nuevo-insumo-unidad" placeholder="Unidad (kg, lt, u)" class="w-32 bg-gray-800 border border-gray-700 text-white rounded p-2 text-sm">
+          <button onclick="crearYAsignarInsumo()" class="border border-neon text-neon font-bold px-4 py-2 rounded text-sm">Crear y asignar</button>
         </div>
         <div id="ficha-lista-insumos" class="space-y-2"></div>
       </div>
