@@ -968,33 +968,49 @@
         }
 
         async function cargarFicha() {
-            // Cargar el catálogo de insumos PRIMERO (antes de poblar selectores)
+            // 1) Cargar el catálogo de insumos
             try {
                 var rIns = await fetch(`${API_URL}/insumos`);
                 var dataIns = await rIns.json();
-                // El endpoint puede devolver un array directo o un objeto con .insumos
                 fichaInsumos = Array.isArray(dataIns) ? dataIns : (dataIns.insumos || dataIns.data || []);
                 console.log('Insumos cargados en ficha:', fichaInsumos.length, fichaInsumos);
             } catch(e) {
                 console.error('Error cargando insumos:', e);
                 fichaInsumos = [];
             }
-            var d = await fetch(`${API_URL}/proveedores/${fichaProvId}/cuenta`).then(r=>r.json());
-            document.getElementById('ficha-nombre').textContent = d.proveedor.nombre;
+
+            // 2) Poblar el selector de insumos YA (no depende de la cuenta)
+            poblarSelectorInsumos([]);
+
+            // 3) Cargar la cuenta del proveedor
+            var d = {};
+            try {
+                d = await fetch(`${API_URL}/proveedores/${fichaProvId}/cuenta`).then(r=>r.json());
+            } catch(e) {
+                console.error('Error cargando cuenta:', e);
+                d = {};
+            }
+            // Asegurar que todo sea array/objeto válido
+            d.facturas = Array.isArray(d.facturas) ? d.facturas : [];
+            d.pagos = Array.isArray(d.pagos) ? d.pagos : [];
+            d.insumos = Array.isArray(d.insumos) ? d.insumos : [];
+            d.proveedor = d.proveedor || {};
+
+            document.getElementById('ficha-nombre').textContent = d.proveedor.nombre || 'Proveedor';
             document.getElementById('ficha-cuit').textContent = d.proveedor.cuit ? ('CUIT: '+d.proveedor.cuit) : '';
             var saldoEl = document.getElementById('ficha-saldo');
-            saldoEl.textContent = f$(d.saldo);
-            saldoEl.className = 'font-bold text-2xl ' + (d.saldo > 0 ? 'text-red-400' : 'text-green-400');
+            saldoEl.textContent = f$(d.saldo || 0);
+            saldoEl.className = 'font-bold text-2xl ' + ((d.saldo||0) > 0 ? 'text-red-400' : 'text-green-400');
             document.getElementById('ficha-deuda-inicial').value = d.deuda_inicial || 0;
-            document.getElementById('ficha-total-fact').textContent = f$(d.total_facturas);
-            document.getElementById('ficha-total-pagos').textContent = f$(d.total_pagos);
+            document.getElementById('ficha-total-fact').textContent = f$(d.total_facturas || 0);
+            document.getElementById('ficha-total-pagos').textContent = f$(d.total_pagos || 0);
 
             // Facturas
             var lf = document.getElementById('ficha-lista-facturas');
             lf.innerHTML = d.facturas.length ? d.facturas.map(fc=>`
                 <div class="bg-black border border-gray-800 rounded-lg p-3 flex justify-between items-center">
-                    <div><p class="text-white font-bold">${fc.tipo} ${fc.numero||'s/n'}</p>
-                    <p class="text-gray-500 text-xs">${fc.fecha}${fc.fecha_vencimiento?' · vence '+fc.fecha_vencimiento:''}</p></div>
+                    <div><p class="text-white font-bold">${fc.tipo||''} ${fc.numero||'s/n'}</p>
+                    <p class="text-gray-500 text-xs">${fc.fecha||''}${fc.fecha_vencimiento?' · vence '+fc.fecha_vencimiento:''}</p></div>
                     <div class="text-right"><p class="text-red-400 font-bold">${f$(fc.total)}</p>
                     <button onclick="eliminarFactura(${fc.id})" class="text-red-500 text-xs">✕ eliminar</button></div>
                 </div>`).join('') : '<p class="text-gray-600 text-sm">Sin facturas cargadas.</p>';
@@ -1008,7 +1024,7 @@
                     <p class="text-green-400 font-bold">${f$(pg.monto)}</p>
                 </div>`).join('') : '<p class="text-gray-600 text-sm">Sin pagos registrados.</p>';
 
-            // Insumos
+            // Insumos asignados
             var li = document.getElementById('ficha-lista-insumos');
             li.innerHTML = d.insumos.length ? d.insumos.map(ins=>`
                 <div class="bg-black border border-gray-800 rounded-lg p-3 flex justify-between items-center">
@@ -1017,10 +1033,15 @@
                     <button onclick="quitarInsumoProv(${ins.id})" class="text-red-500 text-xs">✕</button>
                 </div>`).join('') : '<p class="text-gray-600 text-sm">Sin insumos asignados.</p>';
 
-            // Poblar selector de insumos (los que el proveedor NO tiene aún)
-            var yaTiene = (d.insumos || []).map(x=>x.id_insumo);
-            var disponibles = fichaInsumos.filter(i=>!yaTiene.includes(i.id));
+            // 4) Re-poblar el selector excluyendo los ya asignados
+            poblarSelectorInsumos(d.insumos);
+        }
+
+        function poblarSelectorInsumos(asignados) {
             var sel = document.getElementById('ficha-sel-insumo');
+            if (!sel) { console.error('No existe el selector ficha-sel-insumo'); return; }
+            var yaTiene = (asignados || []).map(x=>parseInt(x.id_insumo));
+            var disponibles = fichaInsumos.filter(i=>!yaTiene.includes(parseInt(i.id)));
             if (!fichaInsumos.length) {
                 sel.innerHTML = '<option value="">⚠️ No hay insumos en el sistema</option>';
             } else if (!disponibles.length) {
