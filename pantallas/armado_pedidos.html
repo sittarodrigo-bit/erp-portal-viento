@@ -299,10 +299,15 @@ async function marcarTodo(){
     var endpoint = esRepo
       ? `${API_URL}/armado/pedidos/${pedidoActual.id}/listo`
       : `${API_URL}/armado/pedidos/${pedidoActual.id}/preparado`;
-    await fetch(endpoint, {method:'PUT'});
+    var res = await fetch(endpoint, {method:'PUT'});
+    if(!res.ok){
+      var e = await res.json().catch(()=>({}));
+      alert('No se pudo marcar: ' + (e.detail || res.status));
+      return;
+    }
     alert('✅ Listo. Quedó como "Preparado" — despachalo desde el panel cuando salga.');
     volverLista(); cargarPedidos();
-  }catch(e){ alert('No se pudo marcar como listo.'); }
+  }catch(e){ alert('No se pudo marcar como listo: ' + e.message); }
 }
 
 async function marcarParcialListo(){
@@ -314,10 +319,15 @@ async function marcarParcialListo(){
     var endpoint = esRepo
       ? `${API_URL}/armado/pedidos/${pedidoActual.id}/listo`
       : `${API_URL}/armado/pedidos/${pedidoActual.id}/preparado`;
-    await fetch(endpoint, {method:'PUT'});
+    var res = await fetch(endpoint, {method:'PUT'});
+    if(!res.ok){
+      var e = await res.json().catch(()=>({}));
+      alert('No se pudo marcar: ' + (e.detail || res.status));
+      return;
+    }
     alert('📦 Listo lo armado. Quedó como "Preparado" — despachalo desde el panel cuando salga.');
     volverLista(); cargarPedidos();
-  }catch(e){ alert('No se pudo marcar.'); }
+  }catch(e){ alert('No se pudo marcar: ' + e.message); }
 }
 
 
