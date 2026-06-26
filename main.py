@@ -2263,21 +2263,30 @@ def actualizar_pedido(id: int, payload: PedidoUpdate):
         cur.execute("SELECT estado FROM pedidos_b2b WHERE id=%s", (id,))
         er = cur.fetchone()
         estado_actual = er[0] if er else None
-        ABIERTOS = ('Pendiente', 'En preparación')
-        # Solo se puede editar un pedido ABIERTO. Si está Terminado/Despachado,
-        # hay que revertirlo primero (eso devuelve el stock preparado).
-        if estado_actual is not None and estado_actual not in ABIERTOS:
-            raise HTTPException(status_code=409, detail="Para editar este pedido primero revertilo a 'Pendiente' o 'En preparación' (eso devuelve el stock).")
-        # Si tenía ítems preparados (estaba en preparación a medias), devolver ese stock
-        # y limpiar los tildes, porque las cantidades pueden cambiar al editar.
+        # Estados editables: ahora incluye 'Preparado'. NO se puede editar si ya está despachado/cancelado.
+        NO_EDITABLES = ('Despachado', 'Despachado parcial', 'Cancelado')
+        if estado_actual in NO_EDITABLES:
+            raise HTTPException(status_code=409, detail="No se puede editar un pedido ya despachado o cancelado.")
+
+        # Qué productos quedan en el pedido nuevo
+        ids_nuevos = set(item.id_producto for item in payload.detalle if item.cantidad > 0)
+
+        # Traer lo que ya estaba preparado para conservarlo
+        preparado_previo = {}
         try:
             cur.execute("SELECT id_producto, cantidad FROM preparacion_items WHERE id_pedido = %s", (id,))
             for v in cur.fetchall():
-                cur.execute("UPDATE productos SET stock_actual = COALESCE(stock_actual,0) + %s WHERE id = %s", (v[1], v[0]))
-            cur.execute("DELETE FROM preparacion_items WHERE id_pedido = %s", (id,))
+                preparado_previo[v[0]] = float(v[1] or 0)
         except Exception:
             conn.rollback()
-        # Reescribir el detalle del pedido (esto NO toca stock: el stock se mueve al armar)
+
+        # Para los productos QUITADOS del pedido: devolver su stock preparado y borrarlos de preparación
+        for id_prod, cant_prep in list(preparado_previo.items()):
+            if id_prod not in ids_nuevos and cant_prep > 0:
+                cur.execute("UPDATE productos SET stock_actual = COALESCE(stock_actual,0) + %s WHERE id = %s", (cant_prep, id_prod))
+                cur.execute("DELETE FROM preparacion_items WHERE id_pedido = %s AND id_producto = %s", (id, id_prod))
+
+        # Reescribir el detalle del pedido (el stock se mueve al armar, no acá)
         cur.execute("DELETE FROM detalle_pedidos_b2b WHERE id_pedido = %s", (id,))
         cur.execute("UPDATE pedidos_b2b SET total = %s WHERE id = %s", (payload.total, id))
         for item in payload.detalle:
@@ -2286,9 +2295,18 @@ def actualizar_pedido(id: int, payload: PedidoUpdate):
                     INSERT INTO detalle_pedidos_b2b (id_pedido, id_producto, cantidad, precio_unitario)
                     VALUES (%s,%s,%s,%s)
                 """, (id, item.id_producto, item.cantidad, item.precio_unitario))
-        # Si estaba "En preparación", al editar vuelve a "Pendiente" para re-armar limpio
-        if estado_actual == 'En preparación':
-            cur.execute("UPDATE pedidos_b2b SET estado='Pendiente' WHERE id=%s", (id,))
+                # Si lo preparado supera la nueva cantidad pedida, ajustar (devolver el excedente)
+                if item.id_producto in preparado_previo:
+                    prep = preparado_previo[item.id_producto]
+                    if prep > item.cantidad:
+                        exceso = prep - item.cantidad
+                        cur.execute("UPDATE productos SET stock_actual = COALESCE(stock_actual,0) + %s WHERE id = %s", (exceso, item.id_producto))
+                        cur.execute("UPDATE preparacion_items SET cantidad = %s WHERE id_pedido = %s AND id_producto = %s", (item.cantidad, id, item.id_producto))
+
+        # El pedido vuelve a "En preparación" (no a Pendiente) para conservar lo armado
+        # y que el empleado solo complete lo nuevo.
+        if estado_actual in ('Preparado', 'En preparación'):
+            cur.execute("UPDATE pedidos_b2b SET estado='En preparación' WHERE id=%s", (id,))
         conn.commit()
         return {"status": "ok"}
     except HTTPException:
@@ -5678,6 +5696,18 @@ def locales_reposicion_editar(id: int, data: ReposicionEditar):
     conn = obtener_conexion()
     try:
         cur = conn.cursor()
+        # Productos que quedan en la reposición nueva
+        ids_nuevos = set(it.id_producto_fabrica for it in data.detalle)
+        # Limpiar lo preparado de los productos QUITADOS (los que ya no están)
+        try:
+            cur.execute("SELECT id_producto_fabrica FROM preparacion_reposicion WHERE id_reposicion=%s", (id,))
+            for row in cur.fetchall():
+                if row[0] not in ids_nuevos:
+                    cur.execute("DELETE FROM preparacion_reposicion WHERE id_reposicion=%s AND id_producto_fabrica=%s", (id, row[0]))
+        except Exception:
+            conn.rollback()
+        # Reescribir el detalle. Lo preparado de los productos que SIGUEN se conserva
+        # (preparacion_reposicion se indexa por id_producto_fabrica, no se toca).
         cur.execute("DELETE FROM pos_reposiciones_detalle WHERE id_reposicion=%s", (id,))
         for it in data.detalle:
             cur.execute("""INSERT INTO pos_reposiciones_detalle
@@ -5686,6 +5716,8 @@ def locales_reposicion_editar(id: int, data: ReposicionEditar):
                         (id, it.id_producto_fabrica, it.nombre_producto, it.cantidad, it.unidades_por_caja or 1))
         if data.notas is not None:
             cur.execute("UPDATE pos_reposiciones SET notas=%s WHERE id=%s", (data.notas, id))
+        # Si estaba 'armada', vuelve a 'en_preparacion' para que el empleado complete lo nuevo
+        cur.execute("UPDATE pos_reposiciones SET estado='en_preparacion' WHERE id=%s AND estado='armada'", (id,))
         conn.commit()
         return {"status": "ok"}
     except Exception as e:
