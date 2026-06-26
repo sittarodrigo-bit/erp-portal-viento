@@ -25,7 +25,8 @@
 <!-- Tabs -->
 <div class="bg-gray-900 border-b border-gray-800 px-6 flex gap-6">
     <button onclick="cambiarTab('productos')" id="tab-prod" class="py-3 text-sm font-bold tab-activa">📦 Productos</button>
-    <button onclick="cambiarTab('config')"    id="tab-cfg"  class="py-3 text-sm font-bold text-gray-400 hover:text-white">⚙️ Config reposición</button>
+    <button onclick="cambiarTab('mapeo')"   id="tab-map"  class="py-3 text-sm font-bold text-gray-400 hover:text-white">🔗 Mapeo reposición</button>
+    <button onclick="cambiarTab('config')"    id="tab-cfg"  class="py-3 text-sm font-bold text-gray-400 hover:text-white">⚙️ Config categorías</button>
 </div>
 
 <main class="p-6 max-w-5xl mx-auto">
@@ -80,9 +81,35 @@
     </div>
 </div>
 
+<!-- PANEL MAPEO REPOSICIÓN -->
+<div id="panel-mapeo" class="hidden">
+    <div class="flex flex-wrap gap-3 items-center mb-4">
+        <label class="text-gray-400 text-sm">Local:</label>
+        <select id="mapeo-local" onchange="cargarMapeo()" class="bg-gray-900 border border-gray-700 text-white rounded-lg p-2 text-sm"></select>
+        <p class="text-gray-500 text-xs flex-1">Mostrá cómo cada producto de fábrica suma al local en las reposiciones. Podés corregir cualquiera.</p>
+    </div>
+    <div id="mapeo-lista" class="space-y-2">
+        <p class="text-gray-500 text-center py-8">Elegí un local para ver el mapeo.</p>
+    </div>
+</div>
+
 </main>
 
-<!-- Modal editar producto (aplica a todos los locales) -->
+<!-- Modal corregir mapeo -->
+<div id="modal-mapeo" class="hidden fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+<div class="bg-gray-900 border border-gray-700 rounded-xl p-5 w-full max-w-md shadow-2xl">
+    <div class="flex justify-between items-center mb-4">
+        <h3 class="text-white font-bold">🔗 Corregir mapeo</h3>
+        <button onclick="cerrarModalMapeo()" class="text-gray-500 hover:text-white text-2xl">×</button>
+    </div>
+    <input type="hidden" id="map-id-fabrica">
+    <p class="text-gray-400 text-sm mb-1">Producto de fábrica:</p>
+    <p id="map-nombre-fabrica" class="text-white font-bold mb-4"></p>
+    <label class="block text-gray-400 text-xs mb-1">Sumar al producto del local:</label>
+    <select id="map-destino" class="w-full bg-gray-800 border border-gray-700 text-white rounded p-2 text-sm mb-4"></select>
+    <button onclick="guardarMapeoManual()" class="w-full bg-neon text-black font-bold py-2.5 rounded">💾 Guardar corrección</button>
+</div>
+</div>
 <div id="modal-edit" class="hidden fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
 <div class="bg-gray-900 border border-gray-700 rounded-xl p-5 w-full max-w-md shadow-2xl">
     <div class="flex justify-between items-center mb-4">
@@ -117,10 +144,93 @@ function fmt(n){ return '$ '+(parseFloat(n)||0).toLocaleString('es-AR'); }
 
 function cambiarTab(tab) {
     document.getElementById('panel-productos').classList.toggle('hidden', tab!=='productos');
+    document.getElementById('panel-mapeo').classList.toggle('hidden', tab!=='mapeo');
     document.getElementById('panel-config').classList.toggle('hidden', tab!=='config');
     document.getElementById('tab-prod').className = tab==='productos' ? 'py-3 text-sm font-bold tab-activa' : 'py-3 text-sm font-bold text-gray-400 hover:text-white';
-    document.getElementById('tab-cfg').className  = tab==='config'   ? 'py-3 text-sm font-bold tab-activa' : 'py-3 text-sm font-bold text-gray-400 hover:text-white';
+    document.getElementById('tab-map').className  = tab==='mapeo'     ? 'py-3 text-sm font-bold tab-activa' : 'py-3 text-sm font-bold text-gray-400 hover:text-white';
+    document.getElementById('tab-cfg').className  = tab==='config'    ? 'py-3 text-sm font-bold tab-activa' : 'py-3 text-sm font-bold text-gray-400 hover:text-white';
     if (tab==='config') cargarConfig();
+    if (tab==='mapeo') initMapeo();
+}
+
+// ===== MAPEO REPOSICIÓN =====
+var mapeoLocales = [];
+var mapeoProductosLocal = [];
+
+async function initMapeo() {
+    if (!mapeoLocales.length) {
+        mapeoLocales = await fetch(API_URL+'/pos/locales').then(r=>r.json()).catch(()=>[]);
+        document.getElementById('mapeo-local').innerHTML = '<option value="">Elegí un local</option>' +
+            mapeoLocales.map(l=>'<option value="'+l.id+'">'+l.nombre+'</option>').join('');
+    }
+}
+
+async function cargarMapeo() {
+    var idLocal = document.getElementById('mapeo-local').value;
+    if (!idLocal) { document.getElementById('mapeo-lista').innerHTML = '<p class="text-gray-500 text-center py-8">Elegí un local.</p>'; return; }
+    var el = document.getElementById('mapeo-lista');
+    el.innerHTML = '<p class="text-gray-500 text-center py-8">Cargando...</p>';
+    var d = await fetch(API_URL+'/reposicion/diagnostico_mapeo?id_local='+idLocal).then(r=>r.json());
+    mapeoProductosLocal = d.productos_local || [];
+
+    // Agrupar por categoría de fábrica
+    var porCat = {};
+    d.mapeos.forEach(m=>{
+        var cat = m.categoria_fabrica || 'sin categoría';
+        if (!porCat[cat]) porCat[cat] = [];
+        porCat[cat].push(m);
+    });
+
+    var sinMapear = d.mapeos.filter(m=>m.razon==='SIN MAPEAR').length;
+    var html = '';
+    if (sinMapear) {
+        html += '<div class="bg-orange-900/20 border border-orange-700 rounded-xl p-3 mb-3">'+
+            '<p class="text-orange-300 font-bold text-sm">⚠️ '+sinMapear+' producto(s) sin mapear</p>'+
+            '<p class="text-gray-400 text-xs">No van a sumar al local. Corregilos abajo.</p></div>';
+    }
+
+    html += Object.keys(porCat).sort().map(cat=>{
+        var items = porCat[cat].map(m=>{
+            var colorRazon = m.razon==='SIN MAPEAR' ? 'text-red-400'
+                : (m.razon.indexOf('Manual')>=0 ? 'text-neon' : 'text-green-400');
+            var destinoTxt = m.destino_nombre
+                ? '→ <span class="text-white font-bold">'+m.destino_nombre+'</span>'
+                : '<span class="text-red-400">→ SIN DESTINO</span>';
+            return '<div class="bg-gray-900 border '+(m.razon==='SIN MAPEAR'?'border-red-800':'border-gray-800')+' rounded-lg p-3 flex justify-between items-center">'+
+                '<div class="flex-1 min-w-0">'+
+                    '<p class="text-gray-300 text-sm truncate">'+m.nombre_fabrica+'</p>'+
+                    '<p class="text-xs">'+destinoTxt+' <span class="'+colorRazon+'">('+m.razon+')</span></p>'+
+                '</div>'+
+                '<button onclick="abrirCorregirMapeo('+m.id_producto_fabrica+', \''+m.nombre_fabrica.replace(/'/g,"\\'")+'\')" '+
+                'class="text-xs border border-gray-700 text-gray-400 hover:text-white px-3 py-1.5 rounded ml-2 shrink-0">✏️ Corregir</button>'+
+            '</div>';
+        }).join('');
+        return '<div class="mb-4"><p class="text-neon font-bold text-sm uppercase mb-2">'+cat+'</p>'+items+'</div>';
+    }).join('');
+
+    el.innerHTML = html || '<p class="text-gray-500 text-center py-8">No hay productos de fábrica.</p>';
+}
+
+function abrirCorregirMapeo(idFabrica, nombreFabrica) {
+    document.getElementById('map-id-fabrica').value = idFabrica;
+    document.getElementById('map-nombre-fabrica').textContent = nombreFabrica;
+    document.getElementById('map-destino').innerHTML = '<option value="">— Elegí un producto del local —</option>' +
+        mapeoProductosLocal.map(p=>'<option value="'+p.id+'">'+p.nombre+(p.cat?' ('+p.cat+')':'')+'</option>').join('');
+    document.getElementById('modal-mapeo').classList.remove('hidden');
+}
+function cerrarModalMapeo() { document.getElementById('modal-mapeo').classList.add('hidden'); }
+
+async function guardarMapeoManual() {
+    var idFabrica = document.getElementById('map-id-fabrica').value;
+    var idLocal = document.getElementById('mapeo-local').value;
+    var idDestino = document.getElementById('map-destino').value;
+    if (!idDestino) { alert('Elegí el producto del local.'); return; }
+    await fetch(API_URL+'/reposicion/override_mapeo', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({id_producto_fabrica: parseInt(idFabrica), id_local: parseInt(idLocal), id_producto_local: parseInt(idDestino)})
+    });
+    cerrarModalMapeo();
+    cargarMapeo();
 }
 
 async function cargarProductos() {
