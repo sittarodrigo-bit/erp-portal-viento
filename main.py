@@ -574,6 +574,130 @@ def eliminar_categoria(id: int):
 # ==============================================================================
 # PRODUCTOS  (stock_actual, baja lógica, precios en la propia tabla)
 # ==============================================================================
+@app.get("/api/reposicion/diagnostico_mapeo")
+def reposicion_diagnostico_mapeo(id_local: int):
+    """Muestra, para cada producto de fábrica, a qué producto del local sumaría
+    y por qué razón. No ejecuta nada, solo simula el mapeo."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        # Config manual
+        config = {}
+        try:
+            cur.execute("SELECT id_categoria_fabrica, nombre_producto_local FROM reposicion_config_categoria WHERE activa=true")
+            for c in fetchall_dict(cur):
+                config[c['id_categoria_fabrica']] = c['nombre_producto_local']
+        except Exception:
+            conn.rollback()
+
+        # Productos de fábrica (catálogo de reposición)
+        cur.execute("""SELECT p.id, p.nombre AS nombre_fabrica, p.id_categoria,
+                              LOWER(COALESCE(c.nombre,'')) AS cat_nombre
+                       FROM productos p LEFT JOIN categorias c ON p.id_categoria=c.id
+                       WHERE COALESCE(p.activo,true)=true
+                         AND LOWER(COALESCE(c.nombre,'')) NOT IN ('6 unidades','linea 50g')
+                       ORDER BY c.nombre, p.nombre""")
+        productos_fabrica = fetchall_dict(cur)
+
+        # Productos del local
+        cur.execute("""SELECT id, nombre, LOWER(TRIM(COALESCE(categoria,''))) AS cat
+                       FROM pos_productos WHERE id_local=%s AND COALESCE(activo,true)=true""", (id_local,))
+        productos_local = fetchall_dict(cur)
+
+        def palabras_comunes(a, b):
+            sa = set(w for w in (a or '').lower().split() if len(w) > 2)
+            sb = set(w for w in (b or '').lower().split() if len(w) > 2)
+            return len(sa & sb)
+
+        # Overrides manuales
+        overrides = {}
+        try:
+            cur.execute("SELECT id_producto_fabrica, id_producto_local FROM reposicion_override_producto WHERE id_local=%s", (id_local,))
+            for o in fetchall_dict(cur):
+                overrides[o['id_producto_fabrica']] = o['id_producto_local']
+        except Exception:
+            conn.rollback()
+
+        resultado = []
+        for pf in productos_fabrica:
+            id_cat = pf.get('id_categoria')
+            cat_nombre = (pf.get('cat_nombre') or '').strip()
+            nombre_fab = pf.get('nombre_fabrica') or ''
+            destino = None; razon = None
+
+            # PASO 0: override
+            if pf['id'] in overrides:
+                destino = next((p for p in productos_local if p['id'] == overrides[pf['id']]), None)
+                if destino: razon = "✋ Manual (vos lo elegiste)"
+            # PASO 1: por categoría
+            if not destino and cat_nombre:
+                candidatos = [p for p in productos_local if p['cat'] == cat_nombre]
+                if len(candidatos) == 1:
+                    destino = candidatos[0]; razon = "Categoría coincide (único)"
+                elif len(candidatos) > 1:
+                    mejor = None; ms = -1
+                    for p in candidatos:
+                        sc = palabras_comunes(nombre_fab, p['nombre'])
+                        if sc > ms: ms = sc; mejor = p
+                    destino = mejor or candidatos[0]; razon = "Categoría + nombre parecido"
+            # PASO 2: config manual
+            if not destino and id_cat and id_cat in config:
+                p = next((x for x in productos_local if x['nombre'].lower().strip() == config[id_cat].lower().strip()), None)
+                if p: destino = p; razon = "Config manual"
+            # PASO 3: alfajores
+            if not destino and 'alfajor' in cat_nombre:
+                p = next((x for x in productos_local if x['nombre'].lower().strip() == 'alfajor pdv unidad'), None)
+                if p: destino = p; razon = "Default alfajores"
+            # PASO 4: nombre parecido global
+            if not destino and nombre_fab:
+                mejor = None; ms = 0
+                for p in productos_local:
+                    sc = palabras_comunes(nombre_fab, p['nombre'])
+                    if sc > ms: ms = sc; mejor = p
+                if mejor and ms >= 1:
+                    destino = mejor; razon = "Nombre parecido"
+
+            resultado.append({
+                "id_producto_fabrica": pf['id'],
+                "nombre_fabrica": nombre_fab,
+                "categoria_fabrica": cat_nombre,
+                "id_categoria_fabrica": id_cat,
+                "destino_id": destino['id'] if destino else None,
+                "destino_nombre": destino['nombre'] if destino else None,
+                "razon": razon or "SIN MAPEAR"
+            })
+        return {"productos_local": productos_local, "mapeos": resultado}
+    finally:
+        liberar_conexion(conn)
+
+@app.post("/api/reposicion/override_mapeo")
+def reposicion_override_mapeo(data: dict = Body(...)):
+    """Guarda un override manual: este producto de fábrica → este producto del local.
+    Usa la tabla de config pero por producto puntual (categoría especial)."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        # Guardar en una tabla de overrides por producto de fábrica
+        try:
+            cur.execute("""CREATE TABLE IF NOT EXISTS reposicion_override_producto (
+                id SERIAL PRIMARY KEY,
+                id_producto_fabrica INTEGER NOT NULL,
+                id_local INTEGER NOT NULL,
+                id_producto_local INTEGER NOT NULL,
+                UNIQUE(id_producto_fabrica, id_local))""")
+            cur.execute("""INSERT INTO reposicion_override_producto (id_producto_fabrica, id_local, id_producto_local)
+                           VALUES (%s,%s,%s)
+                           ON CONFLICT (id_producto_fabrica, id_local)
+                           DO UPDATE SET id_producto_local=EXCLUDED.id_producto_local""",
+                        (data['id_producto_fabrica'], data['id_local'], data['id_producto_local']))
+            conn.commit()
+        except Exception as e:
+            conn.rollback()
+            raise HTTPException(status_code=500, detail=str(e))
+        return {"status": "ok"}
+    finally:
+        liberar_conexion(conn)
+
 @app.get("/api/reposicion/config_categorias")
 def reposicion_config_categorias():
     """Lista la configuración: qué categoría de fábrica → qué producto local."""
@@ -5873,14 +5997,35 @@ def locales_reposicion_reponer(id: int):
         except Exception:
             conn.rollback()
 
-        # Traer lo ARMADO con la categoría del producto de fábrica
+        # Traer lo ARMADO con la categoría Y el nombre del producto de fábrica
         cur.execute("""SELECT pr.id_producto_fabrica, pr.cantidad,
-                              pf.id_categoria, LOWER(COALESCE(cf.nombre,'')) AS cat_nombre
+                              pf.id_categoria, pf.nombre AS nombre_fabrica,
+                              LOWER(COALESCE(cf.nombre,'')) AS cat_nombre
                        FROM preparacion_reposicion pr
                        LEFT JOIN productos pf ON pr.id_producto_fabrica = pf.id
                        LEFT JOIN categorias cf ON pf.id_categoria = cf.id
                        WHERE pr.id_reposicion=%s AND pr.id_producto_fabrica IS NOT NULL""", (id,))
         armado = fetchall_dict(cur)
+
+        # Traer TODOS los productos del local una sola vez (para buscar por categoría/nombre)
+        cur.execute("""SELECT id, nombre, LOWER(TRIM(COALESCE(categoria,''))) AS cat
+                       FROM pos_productos WHERE id_local=%s AND COALESCE(activo,true)=true""", (id_local,))
+        productos_local = fetchall_dict(cur)
+
+        def palabras_comunes(a, b):
+            """Cuenta palabras en común entre dos nombres (para medir parecido)."""
+            sa = set(w for w in (a or '').lower().split() if len(w) > 2)
+            sb = set(w for w in (b or '').lower().split() if len(w) > 2)
+            return len(sa & sb)
+
+        # Overrides manuales por producto (tienen prioridad sobre todo)
+        overrides = {}
+        try:
+            cur.execute("SELECT id_producto_fabrica, id_producto_local FROM reposicion_override_producto WHERE id_local=%s", (id_local,))
+            for o in fetchall_dict(cur):
+                overrides[o['id_producto_fabrica']] = o['id_producto_local']
+        except Exception:
+            conn.rollback()
 
         sumados = 0
         no_mapeados = []
@@ -5888,30 +6033,60 @@ def locales_reposicion_reponer(id: int):
             cant_unid = float(a['cantidad'] or 0)  # en unidades
             if cant_unid <= 0:
                 continue
+            id_fab = a.get('id_producto_fabrica')
             id_cat = a.get('id_categoria')
-            cat_nombre = a.get('cat_nombre') or ''
+            cat_nombre = (a.get('cat_nombre') or '').strip()
+            nombre_fab = a.get('nombre_fabrica') or ''
 
-            # Determinar el nombre del producto local destino
-            nombre_local = None
-            if id_cat and id_cat in config:
+            id_destino = None
+
+            # ── PASO 0: Override manual por producto (máxima prioridad) ──
+            if id_fab in overrides:
+                # Verificar que ese producto del local exista
+                if any(p['id'] == overrides[id_fab] for p in productos_local):
+                    id_destino = overrides[id_fab]
+
+            # ── PASO 1: Coincidencia por CATEGORÍA (fábrica BOMBAS = local BOMBAS) ──
+            if not id_destino and cat_nombre:
+                candidatos_cat = [p for p in productos_local if p['cat'] == cat_nombre]
+                if len(candidatos_cat) == 1:
+                    # Un solo producto en esa categoría → directo
+                    id_destino = candidatos_cat[0]['id']
+                elif len(candidatos_cat) > 1:
+                    # Varios productos en la categoría → el de nombre más parecido al de fábrica
+                    mejor = None; mejor_score = -1
+                    for p in candidatos_cat:
+                        sc = palabras_comunes(nombre_fab, p['nombre'])
+                        if sc > mejor_score:
+                            mejor_score = sc; mejor = p
+                    id_destino = (mejor or candidatos_cat[0])['id']
+
+            # ── PASO 2: Config manual (por si la categoría no coincide) ──
+            if not id_destino and id_cat and id_cat in config:
                 nombre_local = config[id_cat]
-            elif 'alfajor' in cat_nombre:
-                nombre_local = 'ALFAJOR PDV UNIDAD'  # default para alfajores
+                p = next((x for x in productos_local if x['nombre'].lower().strip() == nombre_local.lower().strip()), None)
+                if p: id_destino = p['id']
 
-            if not nombre_local:
-                no_mapeados.append(cat_nombre or 'sin categoría')
-                continue
+            # ── PASO 3: Default alfajores ──
+            if not id_destino and 'alfajor' in cat_nombre:
+                p = next((x for x in productos_local if x['nombre'].lower().strip() == 'alfajor pdv unidad'), None)
+                if p: id_destino = p['id']
 
-            # Buscar ese producto en el local y sumar
-            cur.execute("""SELECT id FROM pos_productos
-                           WHERE id_local=%s AND LOWER(TRIM(nombre))=LOWER(TRIM(%s))
-                           AND COALESCE(activo,true)=true LIMIT 1""", (id_local, nombre_local))
-            prod = cur.fetchone()
-            if prod:
-                cur.execute("UPDATE pos_productos SET stock = COALESCE(stock,0) + %s WHERE id=%s", (cant_unid, prod['id']))
+            # ── PASO 4: Búsqueda global por nombre parecido (último recurso) ──
+            if not id_destino and nombre_fab:
+                mejor = None; mejor_score = 0
+                for p in productos_local:
+                    sc = palabras_comunes(nombre_fab, p['nombre'])
+                    if sc > mejor_score:
+                        mejor_score = sc; mejor = p
+                if mejor and mejor_score >= 1:
+                    id_destino = mejor['id']
+
+            if id_destino:
+                cur.execute("UPDATE pos_productos SET stock = COALESCE(stock,0) + %s WHERE id=%s", (cant_unid, id_destino))
                 sumados += 1
             else:
-                no_mapeados.append(nombre_local + ' (no existe en el local)')
+                no_mapeados.append(nombre_fab or cat_nombre or 'sin categoría')
 
         cur.execute("UPDATE pos_reposiciones SET estado='repuesto' WHERE id=%s", (id,))
         conn.commit()
