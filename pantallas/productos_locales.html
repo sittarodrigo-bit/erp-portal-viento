@@ -215,25 +215,46 @@ async function guardarEdicion() {
 
 // ===== CONFIG REPOSICIÓN =====
 async function cargarConfig() {
-    // Cargar categorías de fábrica
-    var cats = await fetch(API_URL+'/productos/catalogo_reposicion').then(r=>r.json()).catch(()=>[]);
-    var catsPorId = {};
-    var catUnicas = [...new Map(cats.map(p=>[p.id_categoria, {id:p.id_categoria, nombre:p.categoria}])).values()];
+    // Cargar TODAS las categorías de fábrica (sin exclusiones)
+    var cats = await fetch(API_URL+'/categorias').then(r=>r.json()).catch(()=>[]);
+    var catUnicas = cats.map(c=>({id:c.id, nombre:c.nombre}));
     catUnicas.sort((a,b)=>a.nombre.localeCompare(b.nombre));
     document.getElementById('cfg-cat-fab').innerHTML = '<option value="">Elegí una categoría</option>' +
         catUnicas.map(c=>'<option value="'+c.id+'">'+c.nombre+'</option>').join('');
 
     // Cargar configs existentes
     var configs = await fetch(API_URL+'/reposicion/config_categorias').then(r=>r.json()).catch(()=>[]);
+    var idsConfigurados = configs.map(c=>c.id_categoria_fabrica);
+
     var el = document.getElementById('lista-config');
-    if (!configs.length) { el.innerHTML = '<p class="text-gray-500 text-sm">Sin configuración todavía. Agregá una arriba.</p>'; return; }
-    el.innerHTML = configs.map(c=>
-        '<div class="bg-gray-900 border border-gray-800 rounded-xl p-3 flex justify-between items-center">'+
-        '<div><p class="text-white font-bold text-sm">'+c.nombre_categoria_fabrica+'</p>'+
-        '<p class="text-gray-400 text-xs">→ suma al producto local: <span class="text-neon">'+c.nombre_producto_local+'</span></p></div>'+
-        '<button onclick="eliminarConfig('+c.id+')" class="text-red-500 hover:text-red-400 text-xs border border-gray-700 px-2 py-1 rounded">✕</button>'+
-        '</div>'
-    ).join('');
+    var html = '';
+
+    // Mostrar categorías SIN mapear (aviso arriba)
+    var sinMapear = catUnicas.filter(c=>!idsConfigurados.includes(c.id));
+    if (sinMapear.length) {
+        html += '<div class="bg-orange-900/20 border border-orange-700 rounded-xl p-3 mb-3">'+
+            '<p class="text-orange-300 font-bold text-sm mb-2">⚠️ Categorías sin mapear ('+sinMapear.length+')</p>'+
+            '<p class="text-gray-400 text-xs mb-2">Estos productos NO van a sumar al local en las reposiciones hasta que los configures:</p>'+
+            sinMapear.map(c=>'<span class="inline-block bg-orange-900/40 text-orange-300 text-xs rounded px-2 py-1 mr-1 mb-1">'+c.nombre+'</span>').join('')+
+            '</div>';
+    } else if (catUnicas.length) {
+        html += '<div class="bg-green-900/20 border border-green-700 rounded-xl p-3 mb-3">'+
+            '<p class="text-green-300 text-sm">✅ Todas las categorías están mapeadas.</p></div>';
+    }
+
+    // Lista de configuradas
+    if (configs.length) {
+        html += configs.map(c=>
+            '<div class="bg-gray-900 border border-gray-800 rounded-xl p-3 flex justify-between items-center">'+
+            '<div><p class="text-white font-bold text-sm">'+c.nombre_categoria_fabrica+'</p>'+
+            '<p class="text-gray-400 text-xs">→ suma al producto local: <span class="text-neon">'+c.nombre_producto_local+'</span></p></div>'+
+            '<button onclick="eliminarConfig('+c.id+')" class="text-red-500 hover:text-red-400 text-xs border border-gray-700 px-2 py-1 rounded">✕</button>'+
+            '</div>'
+        ).join('');
+    } else {
+        html += '<p class="text-gray-500 text-sm">Sin configuración todavía. Agregá una arriba.</p>';
+    }
+    el.innerHTML = html;
 }
 
 async function guardarConfig() {
