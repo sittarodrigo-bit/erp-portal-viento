@@ -2011,6 +2011,50 @@ def armado_ajustar_cantidad(id: int, data: AjusteCantidad):
     finally:
         liberar_conexion(conn)
 
+@app.put("/api/armado/pedidos/{id}/preparado")
+def armado_preparado(id: str):
+    """El empleado marca el pedido B2B como PREPARADO (terminado de armar).
+    Sale de la lista de pendientes. El admin lo despacha después desde el panel.
+    Para reposiciones (prefijo 'r') redirige a la lógica de 'armada'."""
+    # --- Reposición de local ---
+    if isinstance(id, str) and id.startswith('r'):
+        try:
+            rid = int(id[1:])
+        except ValueError:
+            raise HTTPException(status_code=400, detail="ID inválido")
+        conn = obtener_conexion()
+        try:
+            cur = conn.cursor()
+            cur.execute("UPDATE pos_reposiciones SET estado='armada' WHERE id=%s", (rid,))
+            conn.commit()
+            return {"status": "ok", "estado": "armada"}
+        except Exception as e:
+            conn.rollback()
+            raise HTTPException(status_code=500, detail=str(e))
+        finally:
+            liberar_conexion(conn)
+
+    # --- Pedido B2B de distribuidor ---
+    try:
+        id = int(id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="ID inválido")
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        cur.execute("UPDATE pedidos_b2b SET estado='Preparado' WHERE id=%s", (id,))
+        conn.commit()
+        try:
+            crear_notificacion("pedido", "Pedido preparado por depósito", "Pedido #" + str(id))
+        except Exception:
+            pass
+        return {"status": "ok", "estado": "Preparado"}
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
 @app.put("/api/armado/pedidos/{id}/listo")
 def armado_listo(id: str):
     """El empleado marca la reposición/pedido como TERMINADO.
@@ -2047,13 +2091,18 @@ def armado_listo(id: str):
     conn = obtener_conexion()
     try:
         cur = conn.cursor()
-        cur.execute("UPDATE pedidos_b2b SET estado='Despachado' WHERE id=%s", (id,))
+        # El armado deja el pedido TERMINADO ('Preparado'). El admin lo despacha
+        # después desde el panel de pedidos B2B.
+        cur.execute("UPDATE pedidos_b2b SET estado='Preparado' WHERE id=%s", (id,))
         conn.commit()
         try:
-            crear_notificacion("pedido", "Pedido armado y despachado", "Pedido #" + str(id))
+            crear_notificacion("pedido", "Pedido terminado por depósito", "Pedido #" + str(id))
         except Exception:
             pass
-        return {"status": "ok"}
+        return {"status": "ok", "estado": "Preparado"}
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
     finally:
         liberar_conexion(conn)
 
