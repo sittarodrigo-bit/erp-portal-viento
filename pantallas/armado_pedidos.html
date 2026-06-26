@@ -294,18 +294,15 @@ function actualizarProgreso(){
 async function marcarTodo(){
   const esRepo = pedidoActual.tipo === 'reposicion';
   var txt = esRepo ? 'reposición' : 'pedido';
-  if(!confirm('¿Marcar el ' + txt + ' como TODO LISTO?\n\nQuedará como "Preparado" esperando que lo despaches desde el panel.')) return;
+  if(!confirm('¿Marcar el ' + txt + ' como TODO LISTO?')) return;
   try{
-    var endpoint = esRepo
-      ? `${API_URL}/armado/pedidos/${pedidoActual.id}/listo`
-      : `${API_URL}/armado/pedidos/${pedidoActual.id}/preparado`;
-    var res = await fetch(endpoint, {method:'PUT'});
+    var res = await fetch(`${API_URL}/armado/pedidos/${pedidoActual.id}/listo`, {method:'PUT'});
     if(!res.ok){
       var e = await res.json().catch(()=>({}));
       alert('No se pudo marcar: ' + (e.detail || res.status));
       return;
     }
-    alert('✅ Listo. Quedó como "Preparado" — despachalo desde el panel cuando salga.');
+    alert('✅ Listo.');
     volverLista(); cargarPedidos();
   }catch(e){ alert('No se pudo marcar como listo: ' + e.message); }
 }
@@ -314,18 +311,15 @@ async function marcarParcialListo(){
   const esRepo = pedidoActual.tipo === 'reposicion';
   const faltan = pedidoActual.items.filter(i=>!i.completo).map(i=>'• ' + i.nombre + ': faltan ' + (i.cantidad-(i.preparado||0)) + ' de ' + i.cantidad);
   var txtFaltan = faltan.length ? ('\n\nQueda sin preparar:\n' + faltan.join('\n')) : '';
-  if(!confirm('¿Marcar como LISTO lo que armaste?' + txtFaltan + '\n\nQuedará como "Preparado" esperando que lo despaches desde el panel.')) return;
+  if(!confirm('¿Marcar como LISTO lo que armaste?' + txtFaltan) ) return;
   try{
-    var endpoint = esRepo
-      ? `${API_URL}/armado/pedidos/${pedidoActual.id}/listo`
-      : `${API_URL}/armado/pedidos/${pedidoActual.id}/preparado`;
-    var res = await fetch(endpoint, {method:'PUT'});
+    var res = await fetch(`${API_URL}/armado/pedidos/${pedidoActual.id}/listo`, {method:'PUT'});
     if(!res.ok){
       var e = await res.json().catch(()=>({}));
       alert('No se pudo marcar: ' + (e.detail || res.status));
       return;
     }
-    alert('📦 Listo lo armado. Quedó como "Preparado" — despachalo desde el panel cuando salga.');
+    alert('📦 Listo lo armado.');
     volverLista(); cargarPedidos();
   }catch(e){ alert('No se pudo marcar: ' + e.message); }
 }
