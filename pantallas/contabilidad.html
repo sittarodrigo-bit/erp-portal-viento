@@ -8,6 +8,7 @@
 <title>Contabilidad | Portal del Viento</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script>tailwind.config={theme:{extend:{colors:{neon:'#e4fc74'}}}}</script>
 <style>.tab-activa{border-bottom:2px solid #e4fc74;color:white;}</style>
 </head>
@@ -56,18 +57,34 @@
 
     <!-- Facturas emitidas -->
     <div id="panel-facturas">
-      <div class="flex justify-between items-center mb-3">
+      <div class="flex flex-wrap justify-between items-center mb-3 gap-3">
         <p class="text-white font-bold">Facturas emitidas (AFIP)</p>
+        <div class="flex items-center gap-2">
+          <label class="text-gray-500 text-xs">Punto de venta:</label>
+          <select id="filtro-pv" onchange="renderFacturas()" class="bg-gray-900 border border-gray-700 text-white rounded p-1.5 text-sm">
+            <option value="">Todos</option>
+          </select>
+        </div>
         <p class="text-neon font-bold" id="total-facturas">$ 0</p>
       </div>
-      <table class="w-full text-left text-sm">
+      <div class="overflow-x-auto">
+      <table class="w-full text-left text-sm min-w-[800px]">
         <thead class="text-gray-500 text-xs uppercase border-b border-gray-800">
-          <tr><th class="px-3 py-2">Fecha</th><th class="px-3 py-2">Tipo</th><th class="px-3 py-2">N° Factura</th><th class="px-3 py-2">CAE</th><th class="px-3 py-2">Local</th><th class="px-3 py-2 text-right">Total</th></tr>
+          <tr>
+            <th class="px-3 py-2">Fecha</th>
+            <th class="px-3 py-2">Comprobante</th>
+            <th class="px-3 py-2">Cliente</th>
+            <th class="px-3 py-2 text-right">Neto</th>
+            <th class="px-3 py-2 text-right">IVA 21%</th>
+            <th class="px-3 py-2 text-right">Total</th>
+            <th class="px-3 py-2 text-center">PDF</th>
+          </tr>
         </thead>
         <tbody id="tabla-facturas" class="divide-y divide-gray-800">
-          <tr><td colspan="6" class="px-3 py-4 text-center text-gray-500">Seleccioná un período y tocá Cargar.</td></tr>
+          <tr><td colspan="7" class="px-3 py-4 text-center text-gray-500">Cargando...</td></tr>
         </tbody>
       </table>
+      </div>
     </div>
 
     <!-- Pagos a proveedores -->
@@ -115,6 +132,8 @@
   <script>
     const API_URL = window.location.origin + '/api';
     var datos = null;
+    var facturasData = [];
+    var empresaDatos = null;
 
     function fmt(n){ return '$ '+(parseFloat(n)||0).toLocaleString('es-AR'); }
     function fechaCorta(f){ if(!f) return ''; var s=String(f).split(' ')[0].split('-'); return s.length<3?f:s[2]+'/'+s[1]+'/'+s[0]; }
@@ -157,20 +176,15 @@
       document.getElementById('periodo-txt').textContent = periodoTxt;
       document.getElementById('resumen-header').classList.remove('hidden');
 
-      // Facturas
-      document.getElementById('total-facturas').textContent = fmt(r.totales.facturas);
-      var tf = document.getElementById('tabla-facturas');
-      if(r.facturas_emitidas.length){
-        var tipos = {1:'Factura A', 6:'Factura B', 11:'Factura C'};
-        tf.innerHTML = r.facturas_emitidas.map(f=>`<tr class="hover:bg-gray-900">
-          <td class="px-3 py-2 text-gray-400">${fechaCorta(f.fecha)}</td>
-          <td class="px-3 py-2">${tipos[f.tipo_comprobante]||('Tipo '+f.tipo_comprobante)}</td>
-          <td class="px-3 py-2 text-neon font-bold">#${f.numero||'—'}</td>
-          <td class="px-3 py-2 text-gray-500 text-xs">${f.cae||'—'}</td>
-          <td class="px-3 py-2">${f.local||'—'}</td>
-          <td class="px-3 py-2 text-right font-bold text-white">${fmt(f.total)}</td>
-        </tr>`).join('');
-      } else tf.innerHTML = '<tr><td colspan="6" class="px-3 py-4 text-center text-gray-500">Sin facturas emitidas en este período.</td></tr>';
+      // Facturas (endpoint propio con datos completos: neto, iva, PV, cliente)
+      facturasData = await fetch(`${API_URL}/afip/facturas?desde=${desde}&hasta=${hasta}`).then(x=>x.json()).catch(()=>[]);
+      // Poblar filtro de puntos de venta
+      var pvs = [...new Set(facturasData.map(f=>f.punto_venta).filter(Boolean))].sort((a,b)=>a-b);
+      var selPV = document.getElementById('filtro-pv');
+      var pvActual = selPV.value;
+      selPV.innerHTML = '<option value="">Todos</option>' + pvs.map(pv=>`<option value="${pv}">PV ${String(pv).padStart(4,'0')}</option>`).join('');
+      selPV.value = pvActual;
+      renderFacturas();
 
       // Pagos
       document.getElementById('total-pagos').textContent = fmt(r.totales.pagos);
@@ -267,6 +281,131 @@
     // Inicializar con el mes actual
     document.getElementById('f-desde').value = primerDiaMes();
     document.getElementById('f-hasta').value = hoy();
+    // Cargar automáticamente al abrir
+    cargar();
+
+    // ===== FACTURAS: render con filtro PV + IVA discriminado =====
+    function renderFacturas() {
+      var pvFiltro = document.getElementById('filtro-pv').value;
+      var lista = pvFiltro ? facturasData.filter(f=>String(f.punto_venta)===pvFiltro) : facturasData;
+      var tipos = {1:'Factura A', 6:'Factura B', 11:'Factura C'};
+      var totalSum = lista.reduce((s,f)=>s+parseFloat(f.total||0),0);
+      document.getElementById('total-facturas').textContent = fmt(totalSum);
+      var tf = document.getElementById('tabla-facturas');
+      if(!lista.length){
+        tf.innerHTML = '<tr><td colspan="7" class="px-3 py-4 text-center text-gray-500">Sin facturas en este período.</td></tr>';
+        return;
+      }
+      tf.innerHTML = lista.map((f,idx)=>{
+        // Si neto/iva no están guardados, calcularlos del total (IVA 21% incluido)
+        var total = parseFloat(f.total||0);
+        var neto = f.neto!=null ? parseFloat(f.neto) : Math.round(total/1.21*100)/100;
+        var iva = f.iva!=null ? parseFloat(f.iva) : Math.round((total-neto)*100)/100;
+        var comp = (tipos[f.tipo_comprobante]||('Tipo '+f.tipo_comprobante));
+        var nro = (f.punto_venta?String(f.punto_venta).padStart(4,'0'):'----')+'-'+(f.numero?String(f.numero).padStart(8,'0'):'--------');
+        var cliente = f.cliente_b2b || (f.id_pedido_b2b?'Distribuidor':'Consumidor Final');
+        return `<tr class="hover:bg-gray-900">
+          <td class="px-3 py-2 text-gray-400">${fechaCorta(f.fecha)}</td>
+          <td class="px-3 py-2"><span class="text-white">${comp}</span><br><span class="text-neon text-xs font-mono">${nro}</span></td>
+          <td class="px-3 py-2 text-gray-300 text-xs">${cliente}</td>
+          <td class="px-3 py-2 text-right text-gray-400">${fmt(neto)}</td>
+          <td class="px-3 py-2 text-right text-gray-400">${fmt(iva)}</td>
+          <td class="px-3 py-2 text-right font-bold text-white">${fmt(total)}</td>
+          <td class="px-3 py-2 text-center"><button onclick="descargarFacturaPDF(${idx})" class="bg-blue-700 hover:bg-blue-600 text-white text-xs font-bold px-2.5 py-1 rounded">📄 PDF</button></td>
+        </tr>`;
+      }).join('');
+      // Guardar la lista filtrada para el PDF
+      window._facturasFiltradas = lista;
+    }
+
+    async function descargarFacturaPDF(idx) {
+      var lista = window._facturasFiltradas || facturasData;
+      var f = lista[idx];
+      if(!f) return;
+      if(!empresaDatos){
+        empresaDatos = await fetch(`${API_URL}/afip/empresa`).then(r=>r.json()).catch(()=>({}));
+      }
+      var tipos = {1:'A', 6:'B', 11:'C'};
+      var tipoLetra = tipos[f.tipo_comprobante]||'B';
+      var total = parseFloat(f.total||0);
+      var neto = f.neto!=null ? parseFloat(f.neto) : Math.round(total/1.21*100)/100;
+      var iva = f.iva!=null ? parseFloat(f.iva) : Math.round((total-neto)*100)/100;
+      var nro = (f.punto_venta?String(f.punto_venta).padStart(4,'0'):'0000')+'-'+(f.numero?String(f.numero).padStart(8,'0'):'00000000');
+      var cliente = f.cliente_b2b || 'Consumidor Final';
+      var clienteCuit = f.cliente_cuit || (f.doc_nro && f.doc_nro!=='0' ? f.doc_nro : '');
+
+      var doc = new jspdf.jsPDF();
+      var W = 210;
+
+      // Marco
+      doc.setDrawColor(0); doc.setLineWidth(0.3);
+      doc.rect(8, 8, W-16, 280);
+
+      // Letra del comprobante (recuadro central arriba)
+      doc.rect(W/2-8, 8, 16, 16);
+      doc.setFontSize(22); doc.setFont(undefined,'bold');
+      doc.text(tipoLetra, W/2, 20, {align:'center'});
+      doc.setFontSize(7); doc.setFont(undefined,'normal');
+      doc.text('COD '+String(f.tipo_comprobante||6).padStart(2,'0'), W/2, 23, {align:'center'});
+
+      // Datos empresa (izquierda)
+      doc.setFontSize(15); doc.setFont(undefined,'bold');
+      doc.text(empresaDatos.razon_social||'Portal del Viento', 14, 18);
+      doc.setFontSize(8); doc.setFont(undefined,'normal');
+      doc.text('CUIT: '+(empresaDatos.cuit||''), 14, 26);
+      doc.text(empresaDatos.iva||'IVA Responsable Inscripto', 14, 30);
+      doc.text(empresaDatos.direccion||'', 14, 34);
+
+      // Datos comprobante (derecha)
+      doc.setFontSize(11); doc.setFont(undefined,'bold');
+      doc.text('FACTURA '+tipoLetra, W-14, 16, {align:'right'});
+      doc.setFontSize(9); doc.setFont(undefined,'normal');
+      doc.text('N°: '+nro, W-14, 24, {align:'right'});
+      doc.text('Fecha: '+fechaCorta(f.fecha), W-14, 30, {align:'right'});
+
+      // Línea
+      doc.line(8, 40, W-8, 40);
+
+      // Datos cliente
+      doc.setFontSize(9); doc.setFont(undefined,'bold');
+      doc.text('Cliente:', 14, 48);
+      doc.setFont(undefined,'normal');
+      doc.text(cliente, 32, 48);
+      if(clienteCuit){ doc.text('CUIT/DNI: '+clienteCuit, 14, 54); }
+
+      doc.line(8, 60, W-8, 60);
+
+      // Detalle (encabezado)
+      doc.setFont(undefined,'bold'); doc.setFontSize(8);
+      doc.text('Descripción', 14, 68);
+      doc.text('Importe', W-14, 68, {align:'right'});
+      doc.line(8, 71, W-8, 71);
+
+      // Item único (el total del pedido/venta)
+      doc.setFont(undefined,'normal');
+      doc.text(f.id_pedido_b2b ? ('Pedido mayorista #'+f.id_pedido_b2b) : 'Venta de productos', 14, 79);
+      doc.text(fmt(neto), W-14, 79, {align:'right'});
+
+      // Totales (abajo derecha)
+      var yT = 240;
+      doc.line(W-90, yT-4, W-8, yT-4);
+      doc.setFontSize(9);
+      doc.text('Neto Gravado:', W-90, yT); doc.text(fmt(neto), W-14, yT, {align:'right'});
+      doc.text('IVA 21%:', W-90, yT+6); doc.text(fmt(iva), W-14, yT+6, {align:'right'});
+      doc.setFont(undefined,'bold'); doc.setFontSize(11);
+      doc.text('TOTAL:', W-90, yT+15); doc.text(fmt(total), W-14, yT+15, {align:'right'});
+
+      // CAE (pie)
+      doc.setFont(undefined,'normal'); doc.setFontSize(9);
+      doc.line(8, 268, W-8, 268);
+      doc.setFont(undefined,'bold');
+      doc.text('CAE N°: '+(f.cae||'—'), 14, 276);
+      doc.setFont(undefined,'normal');
+      if(f.cae_vto) doc.text('Vto. CAE: '+f.cae_vto, 14, 281);
+
+      var nombreArchivo = 'Factura_'+tipoLetra+'_'+nro.replace(/-/g,'_')+'.pdf';
+      doc.save(nombreArchivo);
+    }
   </script>
 </body>
 </html>
