@@ -7068,7 +7068,7 @@ def afip_facturar_pedido_b2b(id_pedido: int, data: dict = Body(...)):
         iva  = round(total - neto, 2)
         cond_iva = "IVA Responsable Inscripto" if tipo == 1 else "Consumidor Final"
         resultado = afip_service.emitir_factura(
-            tipo_comprobante=tipo, doc_tipo=doc_tipo, doc_nro=doc_nro,
+            tipo_cbte=tipo, doc_tipo=doc_tipo, doc_nro=doc_nro,
             neto=neto, iva=iva, total=total, cond_iva_receptor=cond_iva, punto_venta=pv
         )
         # Guardar en la base
@@ -7076,7 +7076,7 @@ def afip_facturar_pedido_b2b(id_pedido: int, data: dict = Body(...)):
             cur.execute("""INSERT INTO afip_facturas (id_local, id_pedido_b2b, tipo_comprobante, numero, cae,
                            cae_vencimiento, total, fecha) VALUES (%s,%s,%s,%s,%s,%s,%s,NOW())""",
                        (id_local, id_pedido, tipo, resultado.get('numero'), resultado.get('cae'),
-                        resultado.get('cae_vencimiento'), total))
+                        resultado.get('cae_vto'), total))
             conn.commit()
         except Exception:
             conn.rollback()
