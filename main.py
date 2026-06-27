@@ -7075,15 +7075,22 @@ def afip_facturar_pedido_b2b(id_pedido: int, data: dict = Body(...)):
             tipo_cbte=tipo, doc_tipo=doc_tipo, doc_nro=doc_nro,
             neto=neto, iva=iva, total=total, cond_iva_receptor=cond_iva, punto_venta=pv
         )
-        # Guardar en la base
+        # Guardar en la base (mismas columnas que el POS: cae_vto, estado, entorno)
         try:
-            cur.execute("""INSERT INTO afip_facturas (id_local, id_pedido_b2b, tipo_comprobante, numero, cae,
-                           cae_vencimiento, total, fecha) VALUES (%s,%s,%s,%s,%s,%s,%s,NOW())""",
-                       (id_local, id_pedido, tipo, resultado.get('numero'), resultado.get('cae'),
-                        resultado.get('cae_vto'), total))
+            cur.execute("""INSERT INTO afip_facturas
+                           (id_local, id_pedido_b2b, punto_venta, tipo_comprobante, numero,
+                            doc_tipo, doc_nro, neto, iva, total, cae, cae_vto, estado, entorno, fecha)
+                           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'emitida',%s,NOW())""",
+                       (id_local, id_pedido, pv, tipo, resultado.get('numero'),
+                        doc_tipo, doc_nro, neto, iva, total,
+                        resultado.get('cae'), resultado.get('cae_vto'), resultado.get('entorno')))
             conn.commit()
-        except Exception:
+        except Exception as e_guardar:
             conn.rollback()
+            # NO tragar el error: la factura se emitió en AFIP pero no se guardó.
+            # Avisar para no perder el registro fiscal.
+            raise HTTPException(status_code=500,
+                detail=f"⚠️ La factura se emitió en AFIP (CAE {resultado.get('cae')}) pero NO se pudo guardar: {e_guardar}. Anotá el CAE.")
         return {"status": "ok", "cae": resultado.get('cae'), "numero": resultado.get('numero'),
                 "tipo": tipo, "total": total, "distribuidor": ped.get('razon_social')}
     except HTTPException:
