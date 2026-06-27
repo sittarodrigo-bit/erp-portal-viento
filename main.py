@@ -7057,7 +7057,10 @@ def afip_facturar_pedido_b2b(id_pedido: int, data: dict = Body(...)):
             raise HTTPException(status_code=400, detail="El total del pedido es 0 o inválido.")
         tipo = int(data.get('tipo_comprobante', 6))
         doc_tipo = int(data.get('doc_tipo', 99))
-        doc_nro = str(data.get('doc_nro') or '0')
+        # Limpiar el CUIT/DNI: quitar guiones, puntos y espacios (AFIP espera solo números)
+        doc_nro = str(data.get('doc_nro') or '0').replace('-', '').replace('.', '').replace(' ', '').strip()
+        if not doc_nro or not doc_nro.isdigit():
+            doc_nro = '0'
         id_local = int(data.get('id_local') or 1)
         # Punto de venta según el local
         cur.execute("SELECT punto_venta_afip FROM pos_locales WHERE id=%s", (id_local,))
@@ -7066,7 +7069,8 @@ def afip_facturar_pedido_b2b(id_pedido: int, data: dict = Body(...)):
         # Calcular neto e IVA (IVA 21% incluido en el total)
         neto = round(total / 1.21, 2)
         iva  = round(total - neto, 2)
-        cond_iva = "IVA Responsable Inscripto" if tipo == 1 else "Consumidor Final"
+        # CondicionIVAReceptorId: código numérico que espera AFIP (1=RI, 5=Consumidor Final)
+        cond_iva = 1 if tipo == 1 else 5
         resultado = afip_service.emitir_factura(
             tipo_cbte=tipo, doc_tipo=doc_tipo, doc_nro=doc_nro,
             neto=neto, iva=iva, total=total, cond_iva_receptor=cond_iva, punto_venta=pv
