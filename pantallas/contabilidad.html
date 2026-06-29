@@ -58,7 +58,10 @@
     <!-- Facturas emitidas -->
     <div id="panel-facturas">
       <div class="flex flex-wrap justify-between items-center mb-3 gap-3">
-        <p class="text-white font-bold">Facturas emitidas (AFIP)</p>
+        <div class="flex items-center gap-3">
+          <p class="text-white font-bold">Facturas emitidas (AFIP)</p>
+          <button onclick="abrirFacturaManual()" class="text-xs border border-gray-600 text-gray-300 hover:text-white px-3 py-1.5 rounded">+ Cargar factura ya emitida</button>
+        </div>
         <div class="flex items-center gap-2">
           <label class="text-gray-500 text-xs">Punto de venta:</label>
           <select id="filtro-pv" onchange="renderFacturas()" class="bg-gray-900 border border-gray-700 text-white rounded p-1.5 text-sm">
@@ -406,6 +409,106 @@
       var nombreArchivo = 'Factura_'+tipoLetra+'_'+nro.replace(/-/g,'_')+'.pdf';
       doc.save(nombreArchivo);
     }
+    // ===== CARGAR FACTURA YA EMITIDA =====
+    async function abrirFacturaManual() {
+      document.getElementById('fm-fecha').value = hoy();
+      ['fm-pv','fm-numero','fm-doc','fm-total','fm-neto','fm-iva','fm-cae'].forEach(x=>document.getElementById(x).value='');
+      document.getElementById('fm-cae-vto').value='';
+      // Poblar locales
+      var locales = await fetch(`${API_URL}/pos/locales`).then(r=>r.json()).catch(()=>[]);
+      document.getElementById('fm-local').innerHTML = '<option value="">—</option>' +
+        locales.map(l=>`<option value="${l.id}">${l.nombre}</option>`).join('');
+      document.getElementById('modal-fac-manual').classList.remove('hidden');
+    }
+    function cerrarFacturaManual(){ document.getElementById('modal-fac-manual').classList.add('hidden'); }
+    function calcFacManual(){
+      var total = parseFloat(document.getElementById('fm-total').value)||0;
+      var neto = Math.round(total/1.21*100)/100;
+      var iva = Math.round((total-neto)*100)/100;
+      document.getElementById('fm-neto').value = neto.toFixed(2);
+      document.getElementById('fm-iva').value = iva.toFixed(2);
+    }
+    async function guardarFacturaManual(){
+      var total = parseFloat(document.getElementById('fm-total').value)||0;
+      var numero = document.getElementById('fm-numero').value;
+      var cae = document.getElementById('fm-cae').value.trim();
+      if(!total || !numero){ alert('Cargá al menos el número de factura y el total.'); return; }
+      var body = {
+        tipo_comprobante: parseInt(document.getElementById('fm-tipo').value),
+        fecha: document.getElementById('fm-fecha').value || null,
+        punto_venta: parseInt(document.getElementById('fm-pv').value)||null,
+        numero: parseInt(numero),
+        doc_nro: document.getElementById('fm-doc').value.trim() || '0',
+        doc_tipo: document.getElementById('fm-doc').value.trim() ? 80 : 99,
+        id_local: document.getElementById('fm-local').value ? parseInt(document.getElementById('fm-local').value) : null,
+        total: total,
+        neto: parseFloat(document.getElementById('fm-neto').value)||null,
+        iva: parseFloat(document.getElementById('fm-iva').value)||null,
+        cae: cae || null,
+        cae_vto: document.getElementById('fm-cae-vto').value || null
+      };
+      try {
+        var res = await fetch(`${API_URL}/afip/factura_manual`, {
+          method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)
+        });
+        if(res.ok){
+          cerrarFacturaManual();
+          alert('✅ Factura cargada.');
+          cargar();
+        } else {
+          var e = await res.json();
+          alert('No se pudo cargar: ' + (e.detail||''));
+        }
+      } catch(e){ alert('Error de conexión.'); }
+    }
   </script>
+<!-- MODAL CARGAR FACTURA YA EMITIDA -->
+<div id="modal-fac-manual" class="hidden fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4 overflow-y-auto">
+  <div class="bg-gray-900 border border-gray-700 rounded-2xl max-w-lg w-full my-4 p-5">
+    <div class="flex justify-between items-center mb-2">
+      <h3 class="text-white font-bold text-lg">📄 Cargar factura ya emitida</h3>
+      <button onclick="cerrarFacturaManual()" class="text-gray-500 hover:text-white text-2xl">×</button>
+    </div>
+    <p class="text-gray-500 text-xs mb-4">Para facturas que emitiste en AFIP pero no quedaron en el sistema. Sacá los datos de AFIP/ARCA. Esto NO emite nada nuevo, solo registra el dato.</p>
+    <div class="space-y-3">
+      <div class="grid grid-cols-2 gap-3">
+        <div><label class="text-gray-500 text-xs">Tipo de comprobante</label>
+          <select id="fm-tipo" class="w-full bg-gray-800 border border-gray-700 text-white rounded p-2 text-sm">
+            <option value="1">Factura A</option><option value="6" selected>Factura B</option><option value="11">Factura C</option>
+          </select></div>
+        <div><label class="text-gray-500 text-xs">Fecha</label>
+          <input type="date" id="fm-fecha" class="w-full bg-gray-800 border border-gray-700 text-white rounded p-2 text-sm"></div>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div><label class="text-gray-500 text-xs">Punto de venta</label>
+          <input type="number" id="fm-pv" placeholder="Ej: 5" class="w-full bg-gray-800 border border-gray-700 text-white rounded p-2 text-sm"></div>
+        <div><label class="text-gray-500 text-xs">N° de factura</label>
+          <input type="number" id="fm-numero" placeholder="Ej: 1234" class="w-full bg-gray-800 border border-gray-700 text-white rounded p-2 text-sm"></div>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div><label class="text-gray-500 text-xs">CUIT/DNI cliente</label>
+          <input id="fm-doc" placeholder="30717499014" class="w-full bg-gray-800 border border-gray-700 text-white rounded p-2 text-sm"></div>
+        <div><label class="text-gray-500 text-xs">Local (opcional)</label>
+          <select id="fm-local" class="w-full bg-gray-800 border border-gray-700 text-white rounded p-2 text-sm"><option value="">—</option></select></div>
+      </div>
+      <div><label class="text-gray-500 text-xs">Total de la factura</label>
+        <input type="number" id="fm-total" oninput="calcFacManual()" placeholder="Total con IVA" class="w-full bg-gray-800 border border-gray-700 text-white rounded p-2 text-sm"></div>
+      <div class="grid grid-cols-2 gap-3">
+        <div><label class="text-gray-500 text-xs">Neto (auto)</label>
+          <input type="number" id="fm-neto" class="w-full bg-gray-800 border border-gray-700 text-gray-400 rounded p-2 text-sm"></div>
+        <div><label class="text-gray-500 text-xs">IVA 21% (auto)</label>
+          <input type="number" id="fm-iva" class="w-full bg-gray-800 border border-gray-700 text-gray-400 rounded p-2 text-sm"></div>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div><label class="text-gray-500 text-xs">CAE</label>
+          <input id="fm-cae" placeholder="Número de CAE" class="w-full bg-gray-800 border border-gray-700 text-white rounded p-2 text-sm"></div>
+        <div><label class="text-gray-500 text-xs">Vto. CAE</label>
+          <input type="date" id="fm-cae-vto" class="w-full bg-gray-800 border border-gray-700 text-white rounded p-2 text-sm"></div>
+      </div>
+    </div>
+    <button onclick="guardarFacturaManual()" class="w-full bg-neon text-black font-bold py-2.5 rounded mt-4">💾 Guardar factura</button>
+  </div>
+</div>
+
 </body>
 </html>
