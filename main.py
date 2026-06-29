@@ -7454,11 +7454,18 @@ def cierres_pendientes_retiro(id_local: Optional[int] = None):
                                WHERE estado='cerrada' AND COALESCE(retirado,false)=false
                                ORDER BY fecha_cierre DESC""")
             lista = fetchall_dict(cur)
-            return {"cantidad": len(lista), "cierres": lista}
+            total_efectivo = sum(float(c.get('total_efectivo') or 0) for c in lista)
+            total_general = sum(float(c.get('monto_cierre') or 0) for c in lista)
+            return {
+                "cantidad": len(lista),
+                "cierres": lista,
+                "total_efectivo": total_efectivo,
+                "total_general": total_general
+            }
         except Exception:
             conn.rollback()
             # Si la columna retirado no existe todavía, no hay pendientes
-            return {"cantidad": 0, "cierres": []}
+            return {"cantidad": 0, "cierres": [], "total_efectivo": 0, "total_general": 0}
     finally:
         liberar_conexion(conn)
 
