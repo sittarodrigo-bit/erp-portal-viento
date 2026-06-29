@@ -8071,9 +8071,15 @@ def distribuidores_metricas():
         # Crédito total en calle (deuda de pedidos despachados no pagados)
         credito_calle = 0
         try:
-            cur.execute("""SELECT COALESCE(SUM(total),0) AS t FROM pedidos_b2b
-                           WHERE estado IN ('Despachado','Despachado parcial')""")
+            cur.execute("""
+                SELECT COALESCE(SUM(total),0) -
+                       COALESCE((SELECT SUM(monto) FROM cobros_distribuidores), 0) AS t
+                FROM pedidos_b2b
+                WHERE estado IN ('Despachado','Despachado parcial')
+            """)
             credito_calle = float(cur.fetchone()['t'] or 0)
+            if credito_calle < 0:
+                credito_calle = 0
         except Exception:
             conn.rollback()
         # Seguimientos pendientes
@@ -8118,9 +8124,15 @@ def distribuidores_kpis():
         # Crédito total en calle (deuda de pedidos despachados no pagados)
         credito_calle = 0
         try:
-            cur.execute("""SELECT COALESCE(SUM(total),0) AS t FROM pedidos_b2b
-                           WHERE estado IN ('Despachado','Despachado parcial')""")
+            cur.execute("""
+                SELECT COALESCE(SUM(total),0) -
+                       COALESCE((SELECT SUM(monto) FROM cobros_distribuidores), 0) AS t
+                FROM pedidos_b2b
+                WHERE estado IN ('Despachado','Despachado parcial')
+            """)
             credito_calle = float(cur.fetchone()['t'] or 0)
+            if credito_calle < 0:
+                credito_calle = 0
         except Exception:
             conn.rollback()
         # Seguimientos pendientes
@@ -8139,7 +8151,8 @@ def distribuidores_kpis():
             "activos": activos,
             "nuevos_mes": nuevos_mes,
             "credito_calle": credito_calle,
-            "seguimientos": seguimientos
+            "seguimientos": seguimientos,
+            "version_calculo": "v2_resta_cobros"
         }
     finally:
         liberar_conexion(conn)
