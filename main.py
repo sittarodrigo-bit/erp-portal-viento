@@ -7013,19 +7013,102 @@ def contabilidad_exportar(desde: Optional[str] = None, hasta: Optional[str] = No
     finally:
         liberar_conexion(conn)
 
+@app.post("/api/afip/factura_manual")
+def afip_factura_manual(data: dict = Body(...)):
+    """Carga una factura que YA se emitió en AFIP pero no quedó guardada en el sistema.
+    No emite nada nuevo: solo registra el dato fiscal que ya existe."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        total = float(data.get('total') or 0)
+        neto = data.get('neto')
+        iva = data.get('iva')
+        # Si no mandan neto/iva, calcularlos del total (IVA 21% incluido)
+        if neto is None or iva is None:
+            neto = round(total / 1.21, 2)
+            iva = round(total - neto, 2)
+        # Anti-duplicado: misma factura (PV + número + tipo) no se carga dos veces
+        try:
+            cur.execute("""SELECT id FROM afip_facturas
+                           WHERE punto_venta=%s AND numero=%s AND tipo_comprobante=%s LIMIT 1""",
+                        (data.get('punto_venta'), data.get('numero'), data.get('tipo_comprobante')))
+            if cur.fetchone():
+                raise HTTPException(status_code=409, detail="Esa factura (mismo PV, número y tipo) ya está cargada.")
+        except HTTPException:
+            raise
+        except Exception:
+            conn.rollback()
+        cur.execute("""INSERT INTO afip_facturas
+                       (id_local, id_pedido_b2b, punto_venta, tipo_comprobante, numero,
+                        doc_tipo, doc_nro, neto, iva, total, cae, cae_vto, estado, entorno, fecha)
+                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'emitida','manual',COALESCE(%s::timestamptz, NOW()))
+                       RETURNING id""",
+                    (data.get('id_local'), data.get('id_pedido_b2b'), data.get('punto_venta'),
+                     data.get('tipo_comprobante', 6), data.get('numero'),
+                     data.get('doc_tipo', 99), str(data.get('doc_nro') or '0'),
+                     neto, iva, total, data.get('cae'), data.get('cae_vto'),
+                     data.get('fecha')))
+        fid = cur.fetchone()[0]
+        conn.commit()
+        return {"id": fid, "status": "ok"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
 @app.get("/api/afip/facturas")
-def afip_listar_facturas(id_local: Optional[int] = None):
+def afip_listar_facturas(id_local: Optional[int] = None, punto_venta: Optional[int] = None,
+                          desde: Optional[str] = None, hasta: Optional[str] = None):
     conn = obtener_conexion()
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
-        q = "SELECT * FROM afip_facturas WHERE 1=1"
+        q = """SELECT f.*, l.nombre AS local_nombre,
+                      COALESCE(d.razon_social, '') AS cliente_b2b,
+                      COALESCE(d.cuit, '') AS cliente_cuit
+               FROM afip_facturas f
+               LEFT JOIN pos_locales l ON f.id_local = l.id
+               LEFT JOIN pedidos_b2b p ON f.id_pedido_b2b = p.id
+               LEFT JOIN distribuidores d ON p.id_distribuidor = d.id
+               WHERE 1=1"""
         params = []
-        if id_local: q += " AND id_local=%s"; params.append(id_local)
-        q += " ORDER BY fecha DESC LIMIT 200"
+        if id_local: q += " AND f.id_local=%s"; params.append(id_local)
+        if punto_venta: q += " AND f.punto_venta=%s"; params.append(punto_venta)
+        if desde: q += " AND f.fecha::date >= %s"; params.append(desde)
+        if hasta: q += " AND f.fecha::date <= %s"; params.append(hasta)
+        q += " ORDER BY f.fecha DESC LIMIT 500"
         cur.execute(q, tuple(params))
         return fetchall_dict(cur)
     finally:
         liberar_conexion(conn)
+
+@app.get("/api/afip/puntos_venta")
+def afip_puntos_venta():
+    """Lista los puntos de venta que tienen facturas, para el filtro."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("""SELECT DISTINCT f.punto_venta,
+                              (SELECT nombre FROM pos_locales WHERE id = f.id_local LIMIT 1) AS local
+                       FROM afip_facturas f WHERE f.punto_venta IS NOT NULL
+                       ORDER BY f.punto_venta""")
+        return fetchall_dict(cur)
+    finally:
+        liberar_conexion(conn)
+
+@app.get("/api/afip/empresa")
+def afip_datos_empresa():
+    """Datos fiscales de la empresa para el PDF de factura."""
+    return {
+        "razon_social": os.environ.get("EMPRESA_RAZON_SOCIAL", "ALFAJORES PORTAL DEL VIENTO SAS"),
+        "cuit": os.environ.get("AFIP_CUIT", "30717499014"),
+        "direccion": os.environ.get("EMPRESA_DIRECCION", "Mendoza, Argentina"),
+        "iva": os.environ.get("EMPRESA_COND_IVA", "IVA Responsable Inscripto"),
+        "ingresos_brutos": os.environ.get("EMPRESA_IIBB", ""),
+        "inicio_actividades": os.environ.get("EMPRESA_INICIO", "")
+    }
 
 @app.post("/api/afip/facturar_pedido_b2b/{id_pedido}")
 def afip_facturar_pedido_b2b(id_pedido: int, data: dict = Body(...)):
