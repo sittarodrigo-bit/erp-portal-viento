@@ -1,6 +1,9 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
+<script>window.PANEL_ACTUAL = "distribuidores";</script>
+<script src="/static/auth.js"></script>
+
     <meta charset="UTF-8">
     <title>Distribuidores | Portal del Viento</title>
     <script src="https://cdn.tailwindcss.com"></script>
@@ -57,6 +60,9 @@
         </div>
 
         <div id="panel-lista" class="flex-1 overflow-y-auto p-8">
+            <!-- Seguimiento post-entrega -->
+            <div id="seguimiento-entregas" class="hidden mb-5"></div>
+
             <div class="mb-4 flex items-center gap-3">
                 <input type="text" id="buscar-cliente" placeholder="🔍 Buscar cliente por nombre, CUIT, localidad..."
                        class="flex-1 bg-black border border-neon text-white rounded-lg p-3 text-sm outline-none"
@@ -739,9 +745,55 @@
 
         window.onload = function() {
             cargarDistribuidores();
+            cargarSeguimientoEntregas();
             // Verificación automática de pagos MP en segundo plano al abrir el panel
             sincronizarPagosMP(false);
         };
+
+        // ── SEGUIMIENTO POST-ENTREGA ──────────────────────────────────────
+        async function cargarSeguimientoEntregas() {
+            try {
+                var r = await fetch(`${API_URL}/distribuidores/seguimiento_entregas`).then(x=>x.json());
+                var cont = document.getElementById('seguimiento-entregas');
+                if (!r || !r.cantidad) { cont.classList.add('hidden'); return; }
+                cont.classList.remove('hidden');
+                var items = r.pedidos.map(function(p){
+                    var dias = p.dias_desde_entrega;
+                    var textoTiempo = dias === 1 ? 'hace 1 día' : 'hace ' + dias + ' días';
+                    // Armar el link de WhatsApp
+                    var tel = (p.telefono||'').replace(/\D/g,'');
+                    if (tel && !tel.startsWith('54')) tel = '54' + tel;
+                    var nombre = p.razon_social || 'Cliente';
+                    var localidad = p.localidad || 'destino';
+                    var msg = '¡Hola ' + nombre + '! Vimos que tu último pedido ya fue entregado. ¿Llegó todo en orden? Queremos asegurarnos de que la mercadería haya llegado en perfectas condiciones a ' + localidad + '.';
+                    var waLink = 'https://wa.me/' + tel + '?text=' + encodeURIComponent(msg);
+                    var btnWa = tel
+                        ? '<a href="' + waLink + '" target="_blank" class="bg-green-700 hover:bg-green-600 text-white text-xs font-bold px-3 py-1.5 rounded whitespace-nowrap">💬 Seguimiento WhatsApp</a>'
+                        : '<span class="text-gray-600 text-xs">Sin teléfono</span>';
+                    return '<div class="bg-black border border-blue-900/50 rounded-lg p-3 flex flex-wrap items-center justify-between gap-2 mb-2">' +
+                        '<div class="flex-1 min-w-0">' +
+                            '<p class="text-white text-sm font-bold">Pedido #' + p.id + ' · ' + nombre + '</p>' +
+                            '<p class="text-gray-400 text-xs">Entregado ' + textoTiempo + ' · ' + (p.localidad||'') + ' · $' + (parseFloat(p.total)||0).toLocaleString('es-AR') + '</p>' +
+                        '</div>' +
+                        '<div class="flex gap-2 items-center">' +
+                            btnWa +
+                            '<button onclick="marcarSeguimientoHecho(' + p.id + ')" class="border border-gray-700 text-gray-400 hover:text-white text-xs px-3 py-1.5 rounded whitespace-nowrap">✓ Hecho</button>' +
+                        '</div>' +
+                    '</div>';
+                }).join('');
+                cont.innerHTML = '<div class="bg-blue-900/15 border border-blue-700 rounded-xl p-4">' +
+                    '<div class="flex items-center justify-between mb-3">' +
+                        '<p class="text-blue-300 font-bold">📦 Seguimiento de entregas (' + r.cantidad + ')</p>' +
+                    '</div>' +
+                    '<p class="text-gray-400 text-xs mb-3">Pedidos entregados que conviene seguir con el cliente para confirmar que llegó todo bien.</p>' +
+                    items + '</div>';
+            } catch(e) {}
+        }
+
+        async function marcarSeguimientoHecho(idPedido) {
+            await fetch(`${API_URL}/distribuidores/seguimiento/${idPedido}/hecho`, {method:'PUT'});
+            cargarSeguimientoEntregas();
+        }
 
         // ── IMPORTAR / EXPORTAR CLIENTES ──────────────────────────────────
         async function exportarClientes() {
