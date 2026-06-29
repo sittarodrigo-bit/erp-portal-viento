@@ -2275,10 +2275,10 @@ def armado_despacho_parcial(id: str):
             nota = "Faltó entregar: " + ", ".join([(f['nombre'] or '?') + " x" + str(int(f['falta'])) for f in faltantes])
         # Recalcular el total del pedido a lo realmente entregado (para que la deuda sea correcta)
         try:
-            cur.execute("UPDATE pedidos_b2b SET estado='Despachado parcial', total=%s WHERE id=%s", (nuevo_total, id))
+            cur.execute("UPDATE pedidos_b2b SET estado='Despachado parcial', total=%s, fecha_entrega=COALESCE(fecha_entrega, NOW()) WHERE id=%s", (nuevo_total, id))
         except Exception:
             conn.rollback()
-            cur.execute("UPDATE pedidos_b2b SET estado='Despachado parcial' WHERE id=%s", (id,))
+            cur.execute("UPDATE pedidos_b2b SET estado='Despachado parcial', total=%s WHERE id=%s", (nuevo_total, id))
         conn.commit()
         try:
             crear_notificacion("pedido", "Pedido despachado PARCIAL", "Pedido #" + str(id) + ". " + nota)
@@ -2476,7 +2476,15 @@ def cambiar_estado_pedido(id: int, estado: str):
             except Exception:
                 conn.rollback()
 
-        cur.execute("UPDATE pedidos_b2b SET estado = %s WHERE id = %s", (estado, id))
+        # Registrar la fecha de entrega cuando pasa a Despachado (para seguimiento post-entrega)
+        if estado in ('Despachado', 'Despachado parcial') and estado_previo not in ('Despachado', 'Despachado parcial'):
+            try:
+                cur.execute("UPDATE pedidos_b2b SET estado = %s, fecha_entrega = NOW() WHERE id = %s", (estado, id))
+            except Exception:
+                conn.rollback()
+                cur.execute("UPDATE pedidos_b2b SET estado = %s WHERE id = %s", (estado, id))
+        else:
+            cur.execute("UPDATE pedidos_b2b SET estado = %s WHERE id = %s", (estado, id))
         conn.commit()
         return {"status": "ok", "estado": estado, "estado_previo": estado_previo}
     except Exception as e:
@@ -8031,6 +8039,51 @@ def route_proveedores2():
 @app.get("/proveedores")
 def route_proveedores():
     return serve_html("proveedores.html")
+
+@app.get("/api/distribuidores/seguimiento_entregas")
+def distribuidores_seguimiento_entregas():
+    """Pedidos entregados hace 24h o más, sin seguimiento hecho.
+    Para hacer el control post-entrega con el cliente."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            cur.execute("""
+                SELECT p.id, p.fecha_entrega::text, p.total, p.estado,
+                       d.razon_social, d.telefono, d.localidad,
+                       EXTRACT(EPOCH FROM (NOW() - p.fecha_entrega))/3600 AS horas_desde_entrega
+                FROM pedidos_b2b p
+                JOIN distribuidores d ON p.id_distribuidor = d.id
+                WHERE p.estado IN ('Despachado', 'Despachado parcial')
+                  AND p.fecha_entrega IS NOT NULL
+                  AND COALESCE(p.seguimiento_hecho, false) = false
+                  AND p.fecha_entrega <= NOW() - INTERVAL '24 hours'
+                  AND p.fecha_entrega >= NOW() - INTERVAL '15 days'
+                ORDER BY p.fecha_entrega ASC
+            """)
+            pedidos = fetchall_dict(cur)
+            # Calcular días para cada uno
+            for p in pedidos:
+                horas = float(p.get('horas_desde_entrega') or 0)
+                p['dias_desde_entrega'] = int(horas // 24)
+            return {"cantidad": len(pedidos), "pedidos": pedidos}
+        except Exception:
+            conn.rollback()
+            return {"cantidad": 0, "pedidos": []}
+    finally:
+        liberar_conexion(conn)
+
+@app.put("/api/distribuidores/seguimiento/{id_pedido}/hecho")
+def marcar_seguimiento_hecho(id_pedido: int):
+    """Marca el seguimiento post-entrega como hecho (sale de la lista de pendientes)."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        cur.execute("UPDATE pedidos_b2b SET seguimiento_hecho = true WHERE id = %s", (id_pedido,))
+        conn.commit()
+        return {"status": "ok"}
+    finally:
+        liberar_conexion(conn)
 
 @app.get("/distribuidores")
 def route_distribuidores():
