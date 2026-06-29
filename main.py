@@ -4207,6 +4207,54 @@ class PosVenta(BaseModel):
     ref_unica: Optional[str] = None   # llave única generada por el POS para evitar duplicados
 
 # ---- LOCALES ----
+@app.get("/api/pos/analisis_horarios")
+def pos_analisis_horarios(id_local: Optional[int] = None, desde: Optional[str] = None, hasta: Optional[str] = None):
+    """Mapa de calor de ventas: día de la semana × hora del día.
+    Devuelve tickets y monto por cada celda. Opcional filtrar por local y rango de fechas."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        # EXTRACT(DOW) → 0=domingo .. 6=sábado ; EXTRACT(HOUR) → 0..23
+        q = """
+            SELECT EXTRACT(DOW FROM fecha)::int AS dia_semana,
+                   EXTRACT(HOUR FROM fecha)::int AS hora,
+                   COUNT(*) AS tickets,
+                   COALESCE(SUM(total),0) AS monto
+            FROM pos_ventas
+            WHERE 1=1
+        """
+        params = []
+        if id_local: q += " AND id_local=%s"; params.append(id_local)
+        if desde: q += " AND fecha::date >= %s"; params.append(desde)
+        if hasta: q += " AND fecha::date <= %s"; params.append(hasta)
+        q += " GROUP BY dia_semana, hora ORDER BY dia_semana, hora"
+        cur.execute(q, tuple(params))
+        celdas = fetchall_dict(cur)
+
+        # Totales por hora y por día (para los rankings)
+        por_hora = {}
+        por_dia = {}
+        total_tickets = 0
+        total_monto = 0.0
+        for c in celdas:
+            h = c['hora']; d = c['dia_semana']
+            t = int(c['tickets']); m = float(c['monto'])
+            por_hora.setdefault(h, {'tickets':0, 'monto':0.0})
+            por_hora[h]['tickets'] += t; por_hora[h]['monto'] += m
+            por_dia.setdefault(d, {'tickets':0, 'monto':0.0})
+            por_dia[d]['tickets'] += t; por_dia[d]['monto'] += m
+            total_tickets += t; total_monto += m
+
+        return {
+            "celdas": celdas,
+            "por_hora": por_hora,
+            "por_dia": por_dia,
+            "total_tickets": total_tickets,
+            "total_monto": total_monto
+        }
+    finally:
+        liberar_conexion(conn)
+
 @app.get("/api/pos/locales")
 def pos_listar_locales():
     conn = obtener_conexion()
@@ -8292,6 +8340,10 @@ def route_productos_locales():
 @app.get("/locales")
 def route_locales():
     return serve_html("locales.html")
+
+@app.get("/analisis-horarios")
+def route_analisis_horarios():
+    return serve_html("analisis_horarios.html")
 
 @app.get("/carga-stock")
 def route_carga_stock():
