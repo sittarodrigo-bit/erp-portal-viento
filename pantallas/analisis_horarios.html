@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<script>window.PANEL_ACTUAL = "admin";</script>
+<script src="/static/auth.js"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Análisis de Horarios | Portal del Viento</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+.text-neon{color:#e4fc74}.bg-neon{background-color:#e4fc74}
+.celda{transition:transform .1s} .celda:hover{transform:scale(1.15);z-index:5;position:relative}
+</style>
+</head>
+<body class="bg-gray-950 text-gray-200 min-h-screen">
+
+<header class="bg-gray-900 border-b border-gray-800 py-3 px-5 flex items-center justify-between sticky top-0 z-20">
+  <div class="flex items-center gap-3">
+    <a href="/locales" class="text-gray-500 hover:text-white text-sm">← Locales</a>
+    <h1 class="text-white font-bold text-lg">🕐 Análisis de Horarios</h1>
+  </div>
+</header>
+
+<main class="p-5 max-w-6xl mx-auto">
+
+  <!-- Filtros -->
+  <div class="flex flex-wrap gap-3 items-end mb-5 bg-gray-900 border border-gray-800 rounded-xl p-4">
+    <div>
+      <label class="text-gray-500 text-xs block mb-1">Local</label>
+      <select id="sel-local" onchange="cargar()" class="bg-gray-950 border border-gray-700 text-white rounded-lg p-2 text-sm min-w-[180px]">
+        <option value="">Todos los locales</option>
+      </select>
+    </div>
+    <div>
+      <label class="text-gray-500 text-xs block mb-1">Métrica</label>
+      <select id="sel-metrica" onchange="render()" class="bg-gray-950 border border-gray-700 text-white rounded-lg p-2 text-sm">
+        <option value="tickets">Cantidad de tickets</option>
+        <option value="monto">Monto facturado ($)</option>
+      </select>
+    </div>
+    <div>
+      <label class="text-gray-500 text-xs block mb-1">Desde</label>
+      <input type="date" id="f-desde" onchange="cargar()" class="bg-gray-950 border border-gray-700 text-white rounded-lg p-2 text-sm">
+    </div>
+    <div>
+      <label class="text-gray-500 text-xs block mb-1">Hasta</label>
+      <input type="date" id="f-hasta" onchange="cargar()" class="bg-gray-950 border border-gray-700 text-white rounded-lg p-2 text-sm">
+    </div>
+    <button onclick="cargar()" class="bg-neon text-black font-bold px-4 py-2 rounded-lg text-sm">🔍 Actualizar</button>
+  </div>
+
+  <!-- Resumen -->
+  <div id="resumen" class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5"></div>
+
+  <!-- Mapa de calor -->
+  <div class="bg-gray-900 border border-gray-800 rounded-xl p-4 mb-5 overflow-x-auto">
+    <h3 class="text-white font-bold mb-3">Mapa de calor — día × hora</h3>
+    <div id="heatmap" class="min-w-[700px]"></div>
+    <div class="flex items-center gap-2 mt-3 text-xs text-gray-500">
+      <span>Menos</span>
+      <div class="flex gap-0.5">
+        <div class="w-5 h-3 rounded" style="background:#1a202c"></div>
+        <div class="w-5 h-3 rounded" style="background:#3d4b1f"></div>
+        <div class="w-5 h-3 rounded" style="background:#6b7d2e"></div>
+        <div class="w-5 h-3 rounded" style="background:#a3bd3f"></div>
+        <div class="w-5 h-3 rounded" style="background:#e4fc74"></div>
+      </div>
+      <span>Más</span>
+    </div>
+  </div>
+
+  <!-- Rankings -->
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+    <div class="bg-gray-900 border border-gray-800 rounded-xl p-4">
+      <h3 class="text-white font-bold mb-3">🏆 Mejores horarios</h3>
+      <div id="rank-horas"></div>
+    </div>
+    <div class="bg-gray-900 border border-gray-800 rounded-xl p-4">
+      <h3 class="text-white font-bold mb-3">📅 Mejores días</h3>
+      <div id="rank-dias"></div>
+    </div>
+  </div>
+
+</main>
+
+<script>
+const API = window.location.origin + '/api';
+var datos = null;
+const DIAS = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
+const DIAS_CORTO = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+// Horario comercial típico (se ajusta si hay ventas fuera de rango)
+var HORA_MIN = 8, HORA_MAX = 22;
+
+function $(id){ return document.getElementById(id); }
+function fmtMonto(n){ return '$' + (parseFloat(n)||0).toLocaleString('es-AR'); }
+
+async function initLocales(){
+  var locales = await fetch(API+'/pos/locales').then(r=>r.json()).catch(()=>[]);
+  $('sel-local').innerHTML = '<option value="">Todos los locales</option>' +
+    locales.map(l=>'<option value="'+l.id+'">'+l.nombre+'</option>').join('');
+}
+
+async function cargar(){
+  var idLocal = $('sel-local').value;
+  var desde = $('f-desde').value;
+  var hasta = $('f-hasta').value;
+  var url = API+'/pos/analisis_horarios?';
+  if(idLocal) url += 'id_local='+idLocal+'&';
+  if(desde) url += 'desde='+desde+'&';
+  if(hasta) url += 'hasta='+hasta;
+  datos = await fetch(url).then(r=>r.json()).catch(()=>null);
+  render();
+}
+
+function render(){
+  if(!datos){ return; }
+  var metrica = $('sel-metrica').value; // 'tickets' o 'monto'
+
+  // Resumen
+  $('resumen').innerHTML =
+    tarjeta('Tickets totales', datos.total_tickets.toLocaleString('es-AR'), 'text-blue-400') +
+    tarjeta('Facturación total', fmtMonto(datos.total_monto), 'text-neon') +
+    tarjeta('Ticket promedio', fmtMonto(datos.total_tickets ? datos.total_monto/datos.total_tickets : 0), 'text-purple-400') +
+    tarjeta('Franjas con venta', datos.celdas.length, 'text-orange-400');
+
+  // Determinar rango horario real (mínimo y máximo con ventas)
+  var horasConVenta = datos.celdas.map(c=>c.hora);
+  if(horasConVenta.length){
+    HORA_MIN = Math.min(HORA_MIN, Math.min(...horasConVenta));
+    HORA_MAX = Math.max(HORA_MAX, Math.max(...horasConVenta));
+  }
+
+  // Armar matriz [dia][hora]
+  var matriz = {};
+  var maxVal = 0;
+  datos.celdas.forEach(c=>{
+    var v = metrica==='tickets' ? parseInt(c.tickets) : parseFloat(c.monto);
+    matriz[c.dia_semana+'_'+c.hora] = v;
+    if(v > maxVal) maxVal = v;
+  });
+
+  // Construir tabla del heatmap
+  var html = '<table class="border-collapse w-full"><thead><tr><th class="text-gray-500 text-xs p-1 text-left">Día</th>';
+  for(var h=HORA_MIN; h<=HORA_MAX; h++){
+    html += '<th class="text-gray-500 text-xs p-1 text-center" style="min-width:32px">'+h+'</th>';
+  }
+  html += '</tr></thead><tbody>';
+  // Orden: Lunes a Domingo (1..6, luego 0)
+  var ordenDias = [1,2,3,4,5,6,0];
+  ordenDias.forEach(d=>{
+    html += '<tr><td class="text-gray-300 text-xs p-1 font-bold whitespace-nowrap">'+DIAS_CORTO[d]+'</td>';
+    for(var h=HORA_MIN; h<=HORA_MAX; h++){
+      var v = matriz[d+'_'+h] || 0;
+      var color = colorCelda(v, maxVal);
+      var titulo = DIAS[d]+' '+h+'hs: '+(metrica==='tickets'? v+' tickets' : fmtMonto(v));
+      html += '<td class="p-0.5"><div class="celda rounded text-center text-[9px] font-bold" style="background:'+color+';height:26px;line-height:26px;color:'+(v>maxVal*0.5?'#000':'#666')+'" title="'+titulo+'">'+(v||'')+'</div></td>';
+    }
+    html += '</tr>';
+  });
+  html += '</tbody></table>';
+  $('heatmap').innerHTML = html;
+
+  // Rankings
+  renderRankings(metrica);
+}
+
+function colorCelda(v, max){
+  if(!v || !max) return '#1a202c';
+  var r = v/max;
+  if(r < 0.2) return '#2d3a16';
+  if(r < 0.4) return '#3d4b1f';
+  if(r < 0.6) return '#6b7d2e';
+  if(r < 0.8) return '#a3bd3f';
+  return '#e4fc74';
+}
+
+function tarjeta(label, valor, color){
+  return '<div class="bg-gray-900 border border-gray-800 rounded-xl p-3">'+
+    '<p class="text-gray-500 text-xs">'+label+'</p>'+
+    '<p class="'+color+' text-xl font-bold mt-1">'+valor+'</p></div>';
+}
+
+function renderRankings(metrica){
+  // Horas
+  var horas = Object.keys(datos.por_hora).map(h=>({
+    hora: parseInt(h),
+    val: metrica==='tickets' ? datos.por_hora[h].tickets : datos.por_hora[h].monto
+  })).sort((a,b)=>b.val-a.val).slice(0,6);
+  var maxH = horas.length ? horas[0].val : 1;
+  $('rank-horas').innerHTML = horas.map((x,i)=>barraRank(
+    (x.hora)+':00 a '+(x.hora+1)+':00',
+    metrica==='tickets'? x.val+' tickets' : fmtMonto(x.val),
+    x.val/maxH, i)).join('') || '<p class="text-gray-600 text-sm">Sin datos.</p>';
+
+  // Días
+  var dias = Object.keys(datos.por_dia).map(d=>({
+    dia: parseInt(d),
+    val: metrica==='tickets' ? datos.por_dia[d].tickets : datos.por_dia[d].monto
+  })).sort((a,b)=>b.val-a.val);
+  var maxD = dias.length ? dias[0].val : 1;
+  $('rank-dias').innerHTML = dias.map((x,i)=>barraRank(
+    DIAS[x.dia],
+    metrica==='tickets'? x.val+' tickets' : fmtMonto(x.val),
+    x.val/maxD, i)).join('') || '<p class="text-gray-600 text-sm">Sin datos.</p>';
+}
+
+function barraRank(label, valor, ratio, idx){
+  var medalla = idx===0?'🥇':idx===1?'🥈':idx===2?'🥉':'&nbsp;&nbsp;';
+  return '<div class="mb-2">'+
+    '<div class="flex justify-between text-xs mb-1"><span class="text-gray-300">'+medalla+' '+label+'</span><span class="text-white font-bold">'+valor+'</span></div>'+
+    '<div class="bg-gray-800 rounded-full h-2"><div class="bg-neon h-2 rounded-full" style="width:'+(ratio*100)+'%"></div></div>'+
+    '</div>';
+}
+
+// Init
+(async function(){
+  await initLocales();
+  // Por defecto: últimos 90 días
+  var hoy = new Date();
+  var atras = new Date(); atras.setDate(hoy.getDate()-90);
+  $('f-hasta').value = hoy.toISOString().split('T')[0];
+  $('f-desde').value = atras.toISOString().split('T')[0];
+  cargar();
+})();
+</script>
+</body>
+</html>
