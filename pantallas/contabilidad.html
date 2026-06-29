@@ -9,6 +9,7 @@
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script>tailwind.config={theme:{extend:{colors:{neon:'#e4fc74'}}}}</script>
 <style>.tab-activa{border-bottom:2px solid #e4fc74;color:white;}</style>
 </head>
@@ -321,6 +322,28 @@
       window._facturasFiltradas = lista;
     }
 
+    // Genera el QR oficial de AFIP y devuelve su dataURL
+    function generarQrAfip(datosQr) {
+      return new Promise(function(resolve){
+        var jsonQr = {
+          ver: 1, fecha: datosQr.fecha, cuit: parseInt(datosQr.cuit_emisor),
+          ptoVta: parseInt(datosQr.pto_vta), tipoCmp: parseInt(datosQr.tipo_cmp),
+          nroCmp: parseInt(datosQr.nro_cmp), importe: parseFloat(datosQr.importe),
+          moneda: "PES", ctz: 1, tipoDocRec: parseInt(datosQr.tipo_doc_rec) || 99,
+          nroDocRec: parseInt(datosQr.nro_doc_rec) || 0, tipoCodAut: "E", codAut: parseInt(datosQr.cae)
+        };
+        var b64 = btoa(JSON.stringify(jsonQr));
+        var urlQr = "https://www.afip.gob.ar/fe/qr/?p=" + b64;
+        var temp = document.createElement('div');
+        new QRCode(temp, { text: urlQr, width: 120, height: 120, correctLevel: QRCode.CorrectLevel.M });
+        setTimeout(function(){
+          var img = temp.querySelector('img') || temp.querySelector('canvas');
+          if(img.tagName==='CANVAS'){ resolve(img.toDataURL('image/png')); }
+          else { resolve(img.src); }
+        }, 250);
+      });
+    }
+
     async function descargarFacturaPDF(idx) {
       var lista = window._facturasFiltradas || facturasData;
       var f = lista[idx];
@@ -333,78 +356,116 @@
       var total = parseFloat(f.total||0);
       var neto = f.neto!=null ? parseFloat(f.neto) : Math.round(total/1.21*100)/100;
       var iva = f.iva!=null ? parseFloat(f.iva) : Math.round((total-neto)*100)/100;
-      var nro = (f.punto_venta?String(f.punto_venta).padStart(4,'0'):'0000')+'-'+(f.numero?String(f.numero).padStart(8,'0'):'00000000');
+      var pvNum = f.punto_venta || 0;
+      var nroNum = f.numero || 0;
+      var nro = String(pvNum).padStart(4,'0')+'-'+String(nroNum).padStart(8,'0');
       var cliente = f.cliente_b2b || 'Consumidor Final';
       var clienteCuit = f.cliente_cuit || (f.doc_nro && f.doc_nro!=='0' ? f.doc_nro : '');
+      var fechaFmt = (f.fecha||'').split('T')[0].split(' ')[0];
 
       var doc = new jspdf.jsPDF();
       var W = 210;
 
-      // Marco
+      // ENCABEZADO
       doc.setDrawColor(0); doc.setLineWidth(0.3);
-      doc.rect(8, 8, W-16, 280);
-
-      // Letra del comprobante (recuadro central arriba)
-      doc.rect(W/2-8, 8, 16, 16);
-      doc.setFontSize(22); doc.setFont(undefined,'bold');
-      doc.text(tipoLetra, W/2, 20, {align:'center'});
+      doc.rect(8, 8, W-16, 32);
+      doc.rect(W/2-9, 8, 18, 18);
+      doc.setFontSize(26); doc.setFont(undefined,'bold');
+      doc.text(tipoLetra, W/2, 22, {align:'center'});
       doc.setFontSize(7); doc.setFont(undefined,'normal');
-      doc.text('COD '+String(f.tipo_comprobante||6).padStart(2,'0'), W/2, 23, {align:'center'});
+      doc.text('COD. '+String(f.tipo_comprobante||6).padStart(2,'0'), W/2, 25.5, {align:'center'});
+      doc.line(W/2, 8, W/2, 40);
 
-      // Datos empresa (izquierda)
-      doc.setFontSize(15); doc.setFont(undefined,'bold');
-      doc.text(empresaDatos.razon_social||'Portal del Viento', 14, 18);
+      doc.setFontSize(13); doc.setFont(undefined,'bold');
+      doc.text(empresaDatos.razon_social||'Portal del Viento', 12, 16);
+      doc.setFontSize(7); doc.setFont(undefined,'normal');
+      doc.text('Razon Social: '+(empresaDatos.razon_social||''), 12, 22);
+      doc.text('Domicilio: '+(empresaDatos.direccion||''), 12, 26);
+      doc.text('Cond. IVA: '+(empresaDatos.iva||'IVA Responsable Inscripto'), 12, 30);
+
+      doc.setFontSize(13); doc.setFont(undefined,'bold');
+      doc.text('FACTURA', W-12, 15, {align:'right'});
       doc.setFontSize(8); doc.setFont(undefined,'normal');
-      doc.text('CUIT: '+(empresaDatos.cuit||''), 14, 26);
-      doc.text(empresaDatos.iva||'IVA Responsable Inscripto', 14, 30);
-      doc.text(empresaDatos.direccion||'', 14, 34);
-
-      // Datos comprobante (derecha)
-      doc.setFontSize(11); doc.setFont(undefined,'bold');
-      doc.text('FACTURA '+tipoLetra, W-14, 16, {align:'right'});
-      doc.setFontSize(9); doc.setFont(undefined,'normal');
-      doc.text('N°: '+nro, W-14, 24, {align:'right'});
-      doc.text('Fecha: '+fechaCorta(f.fecha), W-14, 30, {align:'right'});
-
-      // Línea
-      doc.line(8, 40, W-8, 40);
-
-      // Datos cliente
-      doc.setFontSize(9); doc.setFont(undefined,'bold');
-      doc.text('Cliente:', 14, 48);
-      doc.setFont(undefined,'normal');
-      doc.text(cliente, 32, 48);
-      if(clienteCuit){ doc.text('CUIT/DNI: '+clienteCuit, 14, 54); }
-
-      doc.line(8, 60, W-8, 60);
-
-      // Detalle (encabezado)
-      doc.setFont(undefined,'bold'); doc.setFontSize(8);
-      doc.text('Descripción', 14, 68);
-      doc.text('Importe', W-14, 68, {align:'right'});
-      doc.line(8, 71, W-8, 71);
-
-      // Item único (el total del pedido/venta)
-      doc.setFont(undefined,'normal');
-      doc.text(f.id_pedido_b2b ? ('Pedido mayorista #'+f.id_pedido_b2b) : 'Venta de productos', 14, 79);
-      doc.text(fmt(neto), W-14, 79, {align:'right'});
-
-      // Totales (abajo derecha)
-      var yT = 240;
-      doc.line(W-90, yT-4, W-8, yT-4);
-      doc.setFontSize(9);
-      doc.text('Neto Gravado:', W-90, yT); doc.text(fmt(neto), W-14, yT, {align:'right'});
-      doc.text('IVA 21%:', W-90, yT+6); doc.text(fmt(iva), W-14, yT+6, {align:'right'});
-      doc.setFont(undefined,'bold'); doc.setFontSize(11);
-      doc.text('TOTAL:', W-90, yT+15); doc.text(fmt(total), W-14, yT+15, {align:'right'});
-
-      // CAE (pie)
-      doc.setFont(undefined,'normal'); doc.setFontSize(9);
-      doc.line(8, 268, W-8, 268);
+      doc.text('Punto de Venta: '+String(pvNum).padStart(4,'0')+'   Comp. Nro: '+String(nroNum).padStart(8,'0'), W-12, 22, {align:'right'});
+      doc.text('Fecha de Emision: '+fechaFmt, W-12, 27, {align:'right'});
       doc.setFont(undefined,'bold');
-      doc.text('CAE N°: '+(f.cae||'—'), 14, 276);
+      doc.text('CUIT: '+(empresaDatos.cuit||''), W-12, 32, {align:'right'});
+      if(empresaDatos.ingresos_brutos) doc.text('IIBB: '+empresaDatos.ingresos_brutos, W-12, 36, {align:'right'});
+
+      // CLIENTE
+      var yC = 46;
+      doc.rect(8, yC-4, W-16, 22);
+      doc.setFontSize(8);
+      if(clienteCuit){
+        doc.setFont(undefined,'bold'); doc.text('CUIT:', 12, yC);
+        doc.setFont(undefined,'normal'); doc.text(clienteCuit, 26, yC);
+        doc.setFont(undefined,'bold'); doc.text('Cond. IVA:', W/2, yC);
+        doc.setFont(undefined,'normal'); doc.text(tipoLetra==='A'?'IVA Responsable Inscripto':'Consumidor Final', W/2+22, yC);
+      } else {
+        doc.setFont(undefined,'bold'); doc.text('Cond. IVA:', 12, yC);
+        doc.setFont(undefined,'normal'); doc.text('Consumidor Final', 32, yC);
+      }
+      doc.setFont(undefined,'bold'); doc.text('Cliente:', 12, yC+6);
+      doc.setFont(undefined,'normal'); doc.text(cliente, 26, yC+6);
+      if(f.cliente_direccion){
+        doc.setFont(undefined,'bold'); doc.text('Domicilio:', 12, yC+12);
+        doc.setFont(undefined,'normal');
+        var domic = [f.cliente_direccion, f.cliente_localidad, f.cliente_provincia].filter(Boolean).join(', ');
+        doc.text(domic, 30, yC+12);
+      }
+
+      // DETALLE
+      var yD = 74;
+      doc.setFillColor(230,230,230);
+      doc.rect(8, yD, W-16, 7, 'F');
+      doc.setFont(undefined,'bold'); doc.setFontSize(8);
+      doc.text('Descripcion', 12, yD+5);
+      doc.text('Cantidad', 110, yD+5, {align:'right'});
+      doc.text('P. Unit.', 145, yD+5, {align:'right'});
+      doc.text('Subtotal', W-12, yD+5, {align:'right'});
+      doc.line(8, yD+7, W-8, yD+7);
       doc.setFont(undefined,'normal');
-      if(f.cae_vto) doc.text('Vto. CAE: '+f.cae_vto, 14, 281);
+      var descItem = f.id_pedido_b2b ? ('Pedido mayorista #'+f.id_pedido_b2b) : 'Venta de productos';
+      doc.text(descItem, 12, yD+14);
+      doc.text('1', 110, yD+14, {align:'right'});
+      doc.text(fmt(neto), 145, yD+14, {align:'right'});
+      doc.text(fmt(neto), W-12, yD+14, {align:'right'});
+
+      // TOTALES
+      var yT = 200;
+      doc.line(W-95, yT-4, W-8, yT-4);
+      doc.setFontSize(9);
+      if(tipoLetra==='A'){
+        doc.text('Importe Neto Gravado:', W-95, yT); doc.text(fmt(neto), W-12, yT, {align:'right'});
+        doc.text('IVA 21%:', W-95, yT+6); doc.text(fmt(iva), W-12, yT+6, {align:'right'});
+      } else {
+        doc.text('Subtotal:', W-95, yT); doc.text(fmt(total), W-12, yT, {align:'right'});
+      }
+      doc.setFont(undefined,'bold'); doc.setFontSize(12);
+      doc.text('Importe Total: '+fmt(total), W-12, yT+16, {align:'right'});
+
+      // QR + CAE
+      var yQR = 250;
+      doc.setDrawColor(0); doc.line(8, yQR-4, W-8, yQR-4);
+      try {
+        var qrData = await generarQrAfip({
+          fecha: fechaFmt, cuit_emisor: (empresaDatos.cuit||'0').replace(/\D/g,''),
+          pto_vta: pvNum, tipo_cmp: f.tipo_comprobante||6, nro_cmp: nroNum,
+          importe: total, tipo_doc_rec: f.doc_tipo||99,
+          nro_doc_rec: (clienteCuit||'0').replace(/\D/g,''), cae: (f.cae||'0').replace(/\D/g,'')
+        });
+        doc.addImage(qrData, 'PNG', 12, yQR, 32, 32);
+      } catch(e){ console.error('QR error:', e); }
+
+      doc.setFontSize(7); doc.setFont(undefined,'normal');
+      doc.text('Comprobante Autorizado', 50, yQR+6);
+      doc.setFont(undefined,'bold'); doc.setFontSize(10);
+      doc.text('CAE N: '+(f.cae||'-'), 50, yQR+14);
+      doc.setFont(undefined,'normal'); doc.setFontSize(8);
+      if(f.cae_vto){
+        var vto = (f.cae_vto||'').split('T')[0].split(' ')[0];
+        doc.text('Fecha de Vto. de CAE: '+vto, 50, yQR+20);
+      }
 
       var nombreArchivo = 'Factura_'+tipoLetra+'_'+nro.replace(/-/g,'_')+'.pdf';
       doc.save(nombreArchivo);
