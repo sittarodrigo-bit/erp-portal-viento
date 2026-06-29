@@ -60,30 +60,68 @@
         </div>
 
         <div id="panel-lista" class="flex-1 overflow-y-auto p-8">
+            <!-- KPIs -->
+            <div class="grid grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
+                <div class="bg-black border border-gray-800 rounded-xl p-4 flex justify-between items-center">
+                    <div><p class="text-gray-500 text-xs uppercase font-bold">Distribuidores activos</p>
+                    <p id="kpi-activos" class="text-2xl font-bold text-white mt-1">—</p></div>
+                    <div class="text-2xl text-green-400 bg-green-900/20 rounded-full p-3">👥</div>
+                </div>
+                <div class="bg-black border border-gray-800 rounded-xl p-4 flex justify-between items-center">
+                    <div><p class="text-gray-500 text-xs uppercase font-bold">Nuevos este mes</p>
+                    <p id="kpi-nuevos" class="text-2xl font-bold text-blue-400 mt-1">—</p></div>
+                    <div class="text-2xl text-blue-400 bg-blue-900/20 rounded-full p-3">➕</div>
+                </div>
+                <div class="bg-black border border-gray-800 rounded-xl p-4 flex justify-between items-center">
+                    <div><p class="text-gray-500 text-xs uppercase font-bold">Crédito en calle</p>
+                    <p id="kpi-credito" class="text-2xl font-bold text-yellow-400 mt-1">—</p></div>
+                    <div class="text-2xl text-yellow-400 bg-yellow-900/20 rounded-full p-3">💰</div>
+                </div>
+                <div class="bg-black border border-gray-800 rounded-xl p-4 flex justify-between items-center">
+                    <div><p class="text-gray-500 text-xs uppercase font-bold">Seguimientos pendientes</p>
+                    <p id="kpi-seguimientos" class="text-2xl font-bold text-orange-400 mt-1">—</p></div>
+                    <div class="text-2xl text-orange-400 bg-orange-900/20 rounded-full p-3">🔔</div>
+                </div>
+            </div>
+
             <!-- Seguimiento post-entrega -->
             <div id="seguimiento-entregas" class="hidden mb-5"></div>
 
-            <div class="mb-4 flex items-center gap-3">
-                <input type="text" id="buscar-cliente" placeholder="🔍 Buscar cliente por nombre, CUIT, localidad..."
-                       class="flex-1 bg-black border border-neon text-white rounded-lg p-3 text-sm outline-none"
+            <!-- Filtros -->
+            <div class="bg-black border border-gray-800 rounded-xl p-4 flex flex-wrap gap-3 items-center mb-4">
+                <input type="text" id="buscar-cliente" placeholder="🔍 Buscar por nombre, CUIT, localidad..."
+                       class="flex-1 min-w-[250px] bg-gray-950 border border-gray-700 text-white rounded-lg p-2.5 text-sm outline-none"
                        oninput="filtrarClientes()">
+                <select id="filtro-localidad" onchange="filtrarClientes()" class="bg-gray-950 border border-gray-700 text-white rounded-lg p-2.5 text-sm">
+                    <option value="">Todas las localidades</option>
+                </select>
+                <select id="filtro-estado" onchange="filtrarClientes()" class="bg-gray-950 border border-gray-700 text-white rounded-lg p-2.5 text-sm">
+                    <option value="">Todos los estados</option>
+                    <option value="aprobado">Aprobados</option>
+                    <option value="pendiente">Pendientes</option>
+                </select>
+                <select id="orden-clientes" onchange="cargarDistribuidores()" class="bg-gray-950 border border-gray-700 text-white rounded-lg p-2.5 text-sm">
+                    <option value="recientes">Más recientes</option>
+                    <option value="nombre">Nombre (A-Z)</option>
+                </select>
                 <span id="contador-clientes" class="text-gray-500 text-xs whitespace-nowrap"></span>
             </div>
-            <div class="bg-black rounded-xl border border-gray-800 overflow-hidden">
-                <table class="w-full text-left">
+            <div class="bg-black rounded-xl border border-gray-800 overflow-x-auto">
+                <table class="w-full text-left min-w-[900px]">
                     <thead class="bg-gray-950 text-xs text-gray-400 uppercase border-b border-gray-800">
                         <tr>
                             <th class="p-4">Distribuidor</th>
                             <th class="p-4">CUIT / DNI</th>
                             <th class="p-4">Teléfono</th>
                             <th class="p-4">Localidad</th>
+                            <th class="p-4">Registrado</th>
                             <th class="p-4">Crédito</th>
                             <th class="p-4">Estado</th>
                             <th class="p-4 text-right">Acciones</th>
                         </tr>
                     </thead>
                     <tbody id="tabla-distribuidores" class="divide-y divide-gray-800 text-sm">
-                        <tr><td colspan="7" class="p-4 text-center text-gray-500">Cargando...</td></tr>
+                        <tr><td colspan="8" class="p-4 text-center text-gray-500">Cargando...</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -485,16 +523,60 @@
             if (tab === 'cuenta')    poblarSelectCuenta();
         }
 
+        var _todosDistribuidores = [];
+
+        async function cargarKpisDistribuidores() {
+            try {
+                var k = await fetch(API_URL + '/distribuidores/kpis').then(r=>r.json());
+                document.getElementById('kpi-activos').textContent = k.activos;
+                document.getElementById('kpi-nuevos').textContent = k.nuevos_mes;
+                document.getElementById('kpi-credito').textContent = '$ ' + (parseFloat(k.credito_calle)||0).toLocaleString('es-AR');
+                document.getElementById('kpi-seguimientos').textContent = k.seguimientos;
+            } catch(e) {}
+        }
+
+        function esNuevo(fechaRegistro) {
+            if (!fechaRegistro) return false;
+            var f = new Date(fechaRegistro);
+            var dias = (Date.now() - f.getTime()) / (1000*60*60*24);
+            return dias <= 7;
+        }
+
+        function linkWhatsApp(tel, mensaje) {
+            var t = (tel||'').replace(/\D/g,'');
+            if (t && !t.startsWith('54')) t = '54' + t;
+            return 'https://wa.me/' + t + '?text=' + encodeURIComponent(mensaje);
+        }
+
         async function cargarDistribuidores() {
+            cargarKpisDistribuidores();
             var res   = await fetch(API_URL + '/distribuidores_lista');
             var lista = await res.json();
+            _todosDistribuidores = lista;
+
+            // Ordenamiento
+            var orden = document.getElementById('orden-clientes') ? document.getElementById('orden-clientes').value : 'recientes';
+            if (orden === 'recientes') {
+                lista.sort(function(a,b){ return new Date(b.fecha_registro||0) - new Date(a.fecha_registro||0); });
+            } else {
+                lista.sort(function(a,b){ return (a.razon_social||'').localeCompare(b.razon_social||''); });
+            }
+
+            // Poblar selector del historial
             var sel = document.getElementById('hist-distribuidor');
             sel.innerHTML = '<option value="">Todos los distribuidores</option>';
             lista.forEach(function(d) { sel.innerHTML += '<option value="' + d.id + '">' + d.razon_social + '</option>'; });
 
+            // Poblar filtro de localidades (únicas)
+            var locs = [...new Set(lista.map(d=>d.localidad).filter(Boolean))].sort();
+            var selLoc = document.getElementById('filtro-localidad');
+            var locActual = selLoc.value;
+            selLoc.innerHTML = '<option value="">Todas las localidades</option>' + locs.map(l=>'<option value="'+l+'">'+l+'</option>').join('');
+            selLoc.value = locActual;
+
             var tabla = document.getElementById('tabla-distribuidores');
             tabla.innerHTML = '';
-            if (!lista.length) { tabla.innerHTML = '<tr><td colspan="7" class="p-4 text-center text-gray-500">Sin distribuidores.</td></tr>'; return; }
+            if (!lista.length) { tabla.innerHTML = '<tr><td colspan="8" class="p-4 text-center text-gray-500">Sin distribuidores.</td></tr>'; return; }
 
             lista.forEach(function(d) {
                 var tr = document.createElement('tr');
@@ -502,23 +584,47 @@
                 var locProv = [d.localidad, d.provincia].filter(Boolean).join(', ') || '—';
                 var buscable = [d.razon_social, d.cuit, d.dni, d.telefono, d.email, d.localidad, d.provincia].filter(Boolean).join(' ').toLowerCase();
                 tr.setAttribute('data-buscar', buscable);
+                tr.setAttribute('data-localidad', d.localidad || '');
+                tr.setAttribute('data-estado', d.aprobado ? 'aprobado' : 'pendiente');
                 var btnAprobar = d.aprobado ? '' : '<button class="text-xs bg-blue-700 hover:bg-blue-600 text-white font-bold px-3 py-1 rounded transition btn-aprobar">Aprobar</button>';
+                var badgeNuevo = esNuevo(d.fecha_registro) ? ' <span class="text-[10px] bg-blue-500/20 text-blue-300 font-bold px-2 py-0.5 rounded">NUEVO</span>' : '';
+                var fechaReg = d.fecha_registro ? new Date(d.fecha_registro).toLocaleDateString('es-AR', {day:'2-digit', month:'2-digit', year:'numeric'}) : '—';
+
+                // Mensajes de WhatsApp pre-armados
+                var nombre = d.razon_social || 'Cliente';
+                var loc = d.localidad || '';
+                var msgBienvenida = '¡Hola ' + nombre + '! Te damos la bienvenida a Portal del Viento. Gracias por sumarte como distribuidor. Cualquier consulta estamos a tu disposición. 🌬️';
+                var msgIncentivo = '¡Hola ' + nombre + '! ¿Cómo va todo? Tenemos novedades y promociones especiales para vos este mes. ¿Querés que te pasemos la lista actualizada? 🍫';
+                var msgPostEntrega = '¡Hola ' + nombre + '! Vimos que tu último pedido ya fue entregado. ¿Llegó todo en orden? Queremos asegurarnos de que la mercadería haya llegado en perfectas condiciones a ' + loc + '.';
+                var msgPago = '¡Hola ' + nombre + '! Te recordamos que tenés un saldo pendiente con nosotros. Cualquier consulta sobre tu cuenta, no dudes en escribirnos. ¡Gracias!';
+
                 tr.innerHTML =
                     '<td class="p-4">' +
-                        '<p class="font-bold text-white">' + d.razon_social + '</p>' +
+                        '<p class="font-bold text-white">' + nombre + badgeNuevo + '</p>' +
                         (d.email ? '<p class="text-gray-500 text-xs">' + d.email + '</p>' : '') +
                     '</td>' +
                     '<td class="p-4 text-gray-400 text-sm">' + (d.cuit || '—') + (d.dni ? '<br><span class="text-xs text-gray-600">DNI: ' + d.dni + '</span>' : '') + '</td>' +
                     '<td class="p-4 text-gray-300 text-sm">' + (d.telefono || '—') + '</td>' +
                     '<td class="p-4 text-gray-400 text-sm">' + locProv + '</td>' +
+                    '<td class="p-4 text-gray-400 text-sm">' + fechaReg + '</td>' +
                     '<td class="p-4 text-neon font-bold">$ ' + parseFloat(d.limite_credito || 0).toLocaleString('es-AR') + '</td>' +
                     '<td class="p-4">' + (d.aprobado ? '<span class="text-xs text-green-400 font-bold">✓ Aprobado</span>' : '<span class="text-xs text-yellow-400 font-bold">⏳ Pendiente</span>') +
                         (d.tiene_clave ? '<br><span class="text-xs text-blue-400">🔑 Con acceso</span>' : '<br><span class="text-xs text-gray-600">Sin acceso</span>') + '</td>' +
                     '<td class="p-4 text-right">' +
-                        '<div class="flex justify-end gap-1">' +
+                        '<div class="flex justify-end gap-1 items-center">' +
                             '<button class="text-xs border border-gray-700 bg-gray-800 hover:border-gray-500 px-3 py-1 rounded text-gray-400 hover:text-white transition btn-editar">Editar</button>' +
-                            '<button class="text-xs border border-blue-800 bg-blue-900/30 hover:bg-blue-800 px-3 py-1 rounded text-blue-300 hover:text-white transition btn-acceso">🔑 Acceso</button>' +
-                            '<button class="text-xs border border-purple-800 bg-purple-900/30 hover:bg-purple-800 px-3 py-1 rounded text-purple-300 hover:text-white transition btn-descuentos">% Desc.</button>' +
+                            (d.telefono ?
+                            '<div class="relative wa-drop">' +
+                                '<button class="text-xs border border-green-800 bg-green-900/30 hover:bg-green-700 px-3 py-1 rounded text-green-300 hover:text-white transition btn-wa">💬 WhatsApp ▾</button>' +
+                                '<div class="wa-menu hidden absolute right-0 top-full mt-1 bg-gray-900 border border-gray-700 rounded-lg shadow-xl z-20 min-w-[210px] text-left">' +
+                                    '<a href="' + linkWhatsApp(d.telefono, msgBienvenida) + '" target="_blank" class="block px-3 py-2 text-xs text-gray-200 hover:bg-gray-800 hover:text-green-300">🤝 Mensaje de bienvenida</a>' +
+                                    '<a href="' + linkWhatsApp(d.telefono, msgIncentivo) + '" target="_blank" class="block px-3 py-2 text-xs text-gray-200 hover:bg-gray-800 hover:text-green-300">🚀 Incentivo de compra</a>' +
+                                    '<a href="' + linkWhatsApp(d.telefono, msgPostEntrega) + '" target="_blank" class="block px-3 py-2 text-xs text-gray-200 hover:bg-gray-800 hover:text-green-300">📦 Control post-entrega</a>' +
+                                    '<a href="' + linkWhatsApp(d.telefono, msgPago) + '" target="_blank" class="block px-3 py-2 text-xs text-gray-200 hover:bg-gray-800 hover:text-green-300">💰 Recordatorio de pago</a>' +
+                                '</div>' +
+                            '</div>' : '') +
+                            '<button class="text-xs border border-blue-800 bg-blue-900/30 hover:bg-blue-800 px-3 py-1 rounded text-blue-300 hover:text-white transition btn-acceso">🔑</button>' +
+                            '<button class="text-xs border border-purple-800 bg-purple-900/30 hover:bg-purple-800 px-3 py-1 rounded text-purple-300 hover:text-white transition btn-descuentos">%</button>' +
                             '<button class="text-xs bg-neon text-black font-bold px-3 py-1 rounded hover:bg-yellow-300 transition btn-pedidos">Pedidos</button>' +
                             btnAprobar +
                             '<button class="text-xs bg-red-900/50 hover:bg-red-700 text-red-400 hover:text-white px-2 py-1 rounded transition btn-eliminar">✕</button>' +
@@ -531,6 +637,14 @@
                 var btnApr = tr.querySelector('.btn-aprobar');
                 if (btnApr) btnApr.onclick = function() { aprobarDistribuidor(d.id, d.razon_social); };
                 tr.querySelector('.btn-eliminar').onclick = function() { abrirModalEliminar(d.id, d.razon_social); };
+                // Toggle del menú WhatsApp
+                var btnWa = tr.querySelector('.btn-wa');
+                if (btnWa) btnWa.onclick = function(e) {
+                    e.stopPropagation();
+                    var menu = tr.querySelector('.wa-menu');
+                    document.querySelectorAll('.wa-menu').forEach(function(m){ if(m!==menu) m.classList.add('hidden'); });
+                    menu.classList.toggle('hidden');
+                };
                 tabla.appendChild(tr);
             });
             var cont = document.getElementById('contador-clientes');
@@ -538,20 +652,28 @@
             filtrarClientes();
         }
 
+        // Cerrar menús de WhatsApp al hacer click afuera
+        document.addEventListener('click', function(){ document.querySelectorAll('.wa-menu').forEach(function(m){ m.classList.add('hidden'); }); });
+
         function filtrarClientes() {
             var input = document.getElementById('buscar-cliente');
             if (!input) return;
             var q = input.value.toLowerCase().trim();
+            var fLoc = document.getElementById('filtro-localidad') ? document.getElementById('filtro-localidad').value : '';
+            var fEst = document.getElementById('filtro-estado') ? document.getElementById('filtro-estado').value : '';
             var filas = document.querySelectorAll('#tabla-distribuidores > .fila-cliente');
             var visibles = 0;
             filas.forEach(function(f) {
                 var txt = f.getAttribute('data-buscar') || '';
-                var match = !q || txt.indexOf(q) !== -1;
+                var matchQ = !q || txt.indexOf(q) !== -1;
+                var matchLoc = !fLoc || f.getAttribute('data-localidad') === fLoc;
+                var matchEst = !fEst || f.getAttribute('data-estado') === fEst;
+                var match = matchQ && matchLoc && matchEst;
                 f.style.display = match ? '' : 'none';
                 if (match) visibles++;
             });
             var cont = document.getElementById('contador-clientes');
-            if (cont) cont.textContent = q ? (visibles + ' de ' + filas.length + ' clientes') : (filas.length + ' clientes');
+            if (cont) cont.textContent = (q||fLoc||fEst) ? (visibles + ' de ' + filas.length + ' clientes') : (filas.length + ' clientes');
         }
 
         async function cargarHistorialPedidos() {
