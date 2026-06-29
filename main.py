@@ -1079,12 +1079,22 @@ def get_distribuidores():
     conn = obtener_conexion()
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
-        cur.execute("""
-            SELECT id, razon_social, cuit, limite_credito, direccion, localidad, provincia,
-                   cp, telefono, email, dni, aprobado, notas, username,
-                   (password_hash IS NOT NULL) AS tiene_clave
-            FROM distribuidores WHERE COALESCE(activo, true) = true ORDER BY razon_social ASC
-        """)
+        try:
+            cur.execute("""
+                SELECT id, razon_social, cuit, limite_credito, direccion, localidad, provincia,
+                       cp, telefono, email, dni, aprobado, notas, username,
+                       fecha_registro::text AS fecha_registro,
+                       (password_hash IS NOT NULL) AS tiene_clave
+                FROM distribuidores WHERE COALESCE(activo, true) = true ORDER BY razon_social ASC
+            """)
+        except Exception:
+            conn.rollback()
+            cur.execute("""
+                SELECT id, razon_social, cuit, limite_credito, direccion, localidad, provincia,
+                       cp, telefono, email, dni, aprobado, notas, username,
+                       (password_hash IS NOT NULL) AS tiene_clave
+                FROM distribuidores WHERE COALESCE(activo, true) = true ORDER BY razon_social ASC
+            """)
         return fetchall_dict(cur)
     finally:
         liberar_conexion(conn)
@@ -8039,6 +8049,100 @@ def route_proveedores2():
 @app.get("/proveedores")
 def route_proveedores():
     return serve_html("proveedores.html")
+
+@app.get("/api/distribuidores/metricas")
+def distribuidores_metricas():
+    """KPIs para el panel: activos, nuevos del mes, crédito en calle, seguimientos pendientes."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        # Activos
+        cur.execute("SELECT COUNT(*) AS c FROM distribuidores WHERE COALESCE(activo,true)=true")
+        activos = cur.fetchone()['c']
+        # Nuevos este mes
+        nuevos_mes = 0
+        try:
+            cur.execute("""SELECT COUNT(*) AS c FROM distribuidores
+                           WHERE COALESCE(activo,true)=true
+                             AND date_trunc('month', fecha_registro)=date_trunc('month', CURRENT_DATE)""")
+            nuevos_mes = cur.fetchone()['c']
+        except Exception:
+            conn.rollback()
+        # Crédito total en calle (deuda de pedidos despachados no pagados)
+        credito_calle = 0
+        try:
+            cur.execute("""SELECT COALESCE(SUM(total),0) AS t FROM pedidos_b2b
+                           WHERE estado IN ('Despachado','Despachado parcial')""")
+            credito_calle = float(cur.fetchone()['t'] or 0)
+        except Exception:
+            conn.rollback()
+        # Seguimientos pendientes
+        seguimientos = 0
+        try:
+            cur.execute("""SELECT COUNT(*) AS c FROM pedidos_b2b
+                           WHERE estado IN ('Despachado','Despachado parcial')
+                             AND fecha_entrega IS NOT NULL
+                             AND COALESCE(seguimiento_hecho,false)=false
+                             AND fecha_entrega <= NOW() - INTERVAL '24 hours'
+                             AND fecha_entrega >= NOW() - INTERVAL '15 days'""")
+            seguimientos = cur.fetchone()['c']
+        except Exception:
+            conn.rollback()
+        return {
+            "activos": activos,
+            "nuevos_mes": nuevos_mes,
+            "credito_calle": credito_calle,
+            "seguimientos_pendientes": seguimientos
+        }
+    finally:
+        liberar_conexion(conn)
+
+@app.get("/api/distribuidores/kpis")
+def distribuidores_kpis():
+    """Métricas para las tarjetas del panel de distribuidores."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        # Activos
+        cur.execute("SELECT COUNT(*) AS c FROM distribuidores WHERE COALESCE(activo,true)=true")
+        activos = cur.fetchone()['c']
+        # Nuevos del mes
+        nuevos_mes = 0
+        try:
+            cur.execute("""SELECT COUNT(*) AS c FROM distribuidores
+                           WHERE COALESCE(activo,true)=true
+                             AND fecha_registro >= date_trunc('month', CURRENT_DATE)""")
+            nuevos_mes = cur.fetchone()['c']
+        except Exception:
+            conn.rollback()
+        # Crédito total en calle (deuda de pedidos despachados no pagados)
+        credito_calle = 0
+        try:
+            cur.execute("""SELECT COALESCE(SUM(total),0) AS t FROM pedidos_b2b
+                           WHERE estado IN ('Despachado','Despachado parcial')""")
+            credito_calle = float(cur.fetchone()['t'] or 0)
+        except Exception:
+            conn.rollback()
+        # Seguimientos pendientes
+        seguimientos = 0
+        try:
+            cur.execute("""SELECT COUNT(*) AS c FROM pedidos_b2b
+                           WHERE estado IN ('Despachado','Despachado parcial')
+                             AND fecha_entrega IS NOT NULL
+                             AND COALESCE(seguimiento_hecho,false)=false
+                             AND fecha_entrega <= NOW() - INTERVAL '24 hours'
+                             AND fecha_entrega >= NOW() - INTERVAL '15 days'""")
+            seguimientos = cur.fetchone()['c']
+        except Exception:
+            conn.rollback()
+        return {
+            "activos": activos,
+            "nuevos_mes": nuevos_mes,
+            "credito_calle": credito_calle,
+            "seguimientos": seguimientos
+        }
+    finally:
+        liberar_conexion(conn)
 
 @app.get("/api/distribuidores/seguimiento_entregas")
 def distribuidores_seguimiento_entregas():
