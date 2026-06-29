@@ -1660,12 +1660,17 @@
                 var n = (r && r.cantidad) || 0;
                 var cont = document.getElementById('aviso-cierres-pend');
                 if (n === 0) { cont.classList.add('hidden'); return; }
+                var totalEfectivo = parseFloat(r.total_efectivo)||0;
                 var items = (r.cierres||[]).map(function(c){
-                    return '<div class="flex justify-between items-center bg-black border border-orange-900/50 rounded-lg px-3 py-2 mb-1 text-sm"><span class="text-white">Caja #' + c.id + ' · ' + (c.nombre_local||'') + ' · ' + (c.nombre_responsable||'') + '</span><span class="text-orange-400 font-bold">$ ' + (parseFloat(c.total_efectivo)||0).toLocaleString('es-AR') + '</span></div>';
+                    return '<div class="flex justify-between items-center bg-black border border-orange-900/50 rounded-lg px-3 py-2 mb-1 text-sm"><span class="text-white">Caja #' + c.id + ' · ' + (c.nombre_local||'') + ' · ' + (c.nombre_responsable||'') + ' · <span class="text-gray-500 text-xs">' + (c.fecha_cierre||'').split('T')[0] + '</span></span><span class="text-orange-400 font-bold">$ ' + (parseFloat(c.total_efectivo)||0).toLocaleString('es-AR') + '</span></div>';
                 }).join('');
                 cont.classList.remove('hidden');
                 cont.innerHTML = '<div class="bg-orange-900/20 border border-orange-700 rounded-xl p-4">' +
-                    '<p class="text-orange-300 font-bold text-sm mb-2">💵 Hay ' + n + ' cierre(s) de caja pendientes de retiro de dinero</p>' +
+                    '<div class="flex justify-between items-center mb-3 pb-3 border-b border-orange-800/50">' +
+                        '<div><p class="text-orange-300 font-bold">💵 Efectivo pendiente de retirar</p>' +
+                        '<p class="text-gray-400 text-xs">' + n + ' caja(s) cerrada(s) sin retirar</p></div>' +
+                        '<p class="text-2xl font-bold text-orange-400">$ ' + totalEfectivo.toLocaleString('es-AR') + '</p>' +
+                    '</div>' +
                     items +
                     '<p class="text-gray-500 text-xs mt-2">El retiro se registra desde el POS al momento de entregar el efectivo.</p></div>';
             } catch(e) {}
