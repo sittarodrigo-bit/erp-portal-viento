@@ -7067,7 +7067,11 @@ def afip_listar_facturas(id_local: Optional[int] = None, punto_venta: Optional[i
         cur = conn.cursor(cursor_factory=RealDictCursor)
         q = """SELECT f.*, l.nombre AS local_nombre,
                       COALESCE(d.razon_social, '') AS cliente_b2b,
-                      COALESCE(d.cuit, '') AS cliente_cuit
+                      COALESCE(d.cuit, '') AS cliente_cuit,
+                      COALESCE(d.direccion, '') AS cliente_direccion,
+                      COALESCE(d.localidad, '') AS cliente_localidad,
+                      COALESCE(d.provincia, '') AS cliente_provincia,
+                      COALESCE(d.cp, '') AS cliente_cp
                FROM afip_facturas f
                LEFT JOIN pos_locales l ON f.id_local = l.id
                LEFT JOIN pedidos_b2b p ON f.id_pedido_b2b = p.id
