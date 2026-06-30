@@ -2790,6 +2790,82 @@ def listar_fichajes(fecha: Optional[str] = None, id_empleado: Optional[int] = No
     finally:
         liberar_conexion(conn)
 
+@app.put("/api/fichajes/{id}")
+def editar_fichaje(id: int, data: dict = Body(...)):
+    """Edita un fichaje: tipo (entrada/salida), fecha_hora y/o observación.
+    Para corregir errores de marcación."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        campos, params = [], []
+        if data.get('tipo') is not None:
+            t = (data['tipo'] or '').strip().lower()
+            if t not in ('entrada', 'salida'):
+                raise HTTPException(status_code=400, detail="El tipo debe ser 'entrada' o 'salida'.")
+            campos.append("tipo=%s"); params.append(t)
+        if data.get('fecha_hora'):
+            campos.append("fecha_hora=%s"); params.append(data['fecha_hora'])
+        if 'observacion' in data:
+            campos.append("observacion=%s"); params.append(data.get('observacion'))
+        if not campos:
+            raise HTTPException(status_code=400, detail="No hay nada para actualizar.")
+        params.append(id)
+        cur.execute("UPDATE registros_horarios SET " + ", ".join(campos) + " WHERE id=%s", tuple(params))
+        conn.commit()
+        return {"status": "ok"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
+@app.delete("/api/fichajes/{id}")
+def eliminar_fichaje(id: int):
+    """Elimina un fichaje (para corregir un registro equivocado)."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM registros_horarios WHERE id=%s", (id,))
+        conn.commit()
+        return {"status": "ok"}
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
+@app.post("/api/fichajes/manual")
+def fichaje_manual(data: dict = Body(...)):
+    """Agrega un fichaje manualmente (ej: el empleado se olvidó de fichar).
+    No aplica la validación anti-duplicado porque es una corrección administrativa."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        t = (data.get('tipo') or '').strip().lower()
+        if t not in ('entrada', 'salida'):
+            raise HTTPException(status_code=400, detail="El tipo debe ser 'entrada' o 'salida'.")
+        if not data.get('id_empleado'):
+            raise HTTPException(status_code=400, detail="Falta el empleado.")
+        if data.get('fecha_hora'):
+            cur.execute("""INSERT INTO registros_horarios (id_empleado, tipo, fecha_hora, observacion)
+                           VALUES (%s,%s,%s,%s)""",
+                        (data['id_empleado'], t, data['fecha_hora'], data.get('observacion', 'Carga manual')))
+        else:
+            cur.execute("""INSERT INTO registros_horarios (id_empleado, tipo, observacion)
+                           VALUES (%s,%s,%s)""",
+                        (data['id_empleado'], t, data.get('observacion', 'Carga manual')))
+        conn.commit()
+        return {"status": "ok"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
 @app.delete("/api/liquidacion/historial/{id}")
 def eliminar_pago_sueldo(id: int):
     """Elimina un pago del historial (para corregir errores)."""
