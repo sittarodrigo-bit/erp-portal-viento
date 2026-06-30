@@ -42,7 +42,52 @@ DB_URL = os.environ.get("DATABASE_URL")
 if not DB_URL:
     raise RuntimeError("Falta la variable de entorno DATABASE_URL. Configurala en Railway.")
 
+# ── Connection Pool ──────────────────────────────────────────────
+# Reusa conexiones en vez de abrir una nueva en cada request.
+# Baja el consumo en Neon (menos handshakes, conexiones reutilizadas).
+from psycopg2 import pool as _pg_pool
+
+_POOL = None
+
+def _crear_pool():
+    global _POOL
+    try:
+        _POOL = _pg_pool.SimpleConnectionPool(
+            minconn=1,      # mínimo de conexiones vivas
+            maxconn=10,     # máximo simultáneas (suficiente para uso por momentos)
+            dsn=DB_URL
+        )
+    except Exception as e:
+        _POOL = None
+        print("No se pudo crear el pool, se usará conexión directa:", e)
+
+_crear_pool()
+
 def obtener_conexion():
+    """Toma una conexión del pool (o crea una directa si el pool falla)."""
+    global _POOL
+    try:
+        if _POOL is None:
+            _crear_pool()
+        if _POOL is not None:
+            conn = _POOL.getconn()
+            # Asegurar que la conexión esté viva y con la zona horaria correcta
+            try:
+                cur = conn.cursor()
+                cur.execute("SET TIME ZONE 'America/Argentina/Mendoza';")
+                cur.close()
+            except Exception:
+                # Conexión muerta: descartarla y pedir otra
+                try: _POOL.putconn(conn, close=True)
+                except Exception: pass
+                conn = _POOL.getconn()
+                cur = conn.cursor()
+                cur.execute("SET TIME ZONE 'America/Argentina/Mendoza';")
+                cur.close()
+            return conn
+    except Exception as e:
+        print("Pool falló, usando conexión directa:", e)
+    # Fallback: conexión directa (como antes)
     try:
         conn = psycopg2.connect(DB_URL)
         cur = conn.cursor()
@@ -53,8 +98,27 @@ def obtener_conexion():
         raise HTTPException(status_code=500, detail=f"Error de conexión a la BD: {e}")
 
 def liberar_conexion(conn):
-    if conn:
+    """Devuelve la conexión al pool (en vez de cerrarla)."""
+    if not conn:
+        return
+    global _POOL
+    try:
+        if _POOL is not None:
+            # Si quedó una transacción abierta, revertirla antes de devolver
+            try:
+                if conn.status != psycopg2.extensions.STATUS_READY:
+                    conn.rollback()
+            except Exception:
+                pass
+            _POOL.putconn(conn)
+            return
+    except Exception:
+        pass
+    # Fallback: cerrar directamente
+    try:
         conn.close()
+    except Exception:
+        pass
 
 def fetchall_dict(cursor):
     return [dict(row) for row in cursor.fetchall()]
