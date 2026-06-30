@@ -13,6 +13,8 @@
     </style>
 </head>
 <body class="bg-gray-950 text-gray-200 font-sans h-screen flex">
+
+    <!-- SIDEBAR -->
     <aside class="w-64 bg-black border-r border-gray-800 flex flex-col">
         <div class="p-6 border-b border-gray-800 text-center">
             <h1 class="text-neon font-bold text-lg tracking-widest uppercase">Portal del Viento</h1>
@@ -32,7 +34,10 @@
         <div id="usuario-info" class="p-4 border-t border-gray-800 text-xs text-gray-500 text-center"></div>
     </aside>
 
+    <!-- MAIN -->
     <main class="flex-1 flex flex-col overflow-hidden">
+
+        <!-- HEADER -->
         <header class="bg-gray-900 border-b border-gray-800 py-4 px-8 flex justify-between items-center">
             <h2 class="text-xl font-bold text-white">Reportes y Analítica</h2>
             <div class="flex items-center gap-3">
@@ -45,13 +50,15 @@
             </div>
         </header>
 
+        <!-- TABS -->
         <div class="bg-gray-900 border-b border-gray-800 px-8 flex gap-6">
             <button onclick="cambiarTab('ventas')" id="tab-ventas" class="py-3 text-sm font-bold tab-activa">💰 Ventas por día</button>
             <button onclick="cambiarTab('productos')" id="tab-prods" class="py-3 text-sm font-bold text-gray-400 hover:text-white">🏆 Productos más vendidos</button>
             <button onclick="cambiarTab('cajas')" id="tab-cajas" class="py-3 text-sm font-bold text-gray-400 hover:text-white">🗃️ Historial de cajas</button>
+            <button onclick="cambiarTabUnificado()" id="tab-unificado" class="py-3 text-sm font-bold text-gray-400 hover:text-white">📊 Reporte Unificado</button>
         </div>
 
-        <!-- Panel Ventas -->
+        <!-- PANEL: VENTAS POR DÍA -->
         <div id="panel-ventas" class="flex-1 overflow-y-auto p-8">
             <div class="grid grid-cols-3 gap-6 mb-8">
                 <div class="bg-black border border-gray-800 rounded-xl p-5">
@@ -67,19 +74,19 @@
                     <p id="stat-promedio" class="text-3xl font-bold text-white">$ 0</p>
                 </div>
             </div>
-
-            <div class="bg-black border border-gray-800 rounded-xl p-6 mb-6">
-                <h3 class="text-sm font-bold text-gray-400 uppercase mb-4">Recaudación diaria</h3>
-                <canvas id="grafico-ventas" height="100"></canvas>
-            </div>
-
-            <div class="bg-black border border-gray-800 rounded-xl p-6">
-                <h3 class="text-sm font-bold text-gray-400 uppercase mb-4">Efectivo vs Tarjeta</h3>
-                <canvas id="grafico-metodos" height="80"></canvas>
+            <div class="grid grid-cols-2 gap-6">
+                <div class="bg-black border border-gray-800 rounded-xl p-6">
+                    <h3 class="text-sm font-bold text-gray-400 uppercase mb-4">Recaudación Diaria</h3>
+                    <canvas id="grafico-ventas"></canvas>
+                </div>
+                <div class="bg-black border border-gray-800 rounded-xl p-6">
+                    <h3 class="text-sm font-bold text-gray-400 uppercase mb-4">Efectivo vs Tarjeta</h3>
+                    <canvas id="grafico-metodos"></canvas>
+                </div>
             </div>
         </div>
 
-        <!-- Panel Productos -->
+        <!-- PANEL: PRODUCTOS MÁS VENDIDOS -->
         <div id="panel-productos" class="hidden flex-1 overflow-y-auto p-8">
             <div class="grid grid-cols-2 gap-6">
                 <div class="bg-black border border-gray-800 rounded-xl p-6">
@@ -89,7 +96,11 @@
                 <div class="bg-black border border-gray-800 rounded-xl overflow-hidden">
                     <table class="w-full text-sm">
                         <thead class="bg-gray-900 text-xs text-gray-400 uppercase">
-                            <tr><th class="p-3 text-left">Producto</th><th class="p-3 text-right">Unidades</th><th class="p-3 text-right">Total</th></tr>
+                            <tr>
+                                <th class="p-3 text-left">Producto</th>
+                                <th class="p-3 text-right">Unidades</th>
+                                <th class="p-3 text-right">Total</th>
+                            </tr>
                         </thead>
                         <tbody id="tabla-productos-rep" class="divide-y divide-gray-800"></tbody>
                     </table>
@@ -97,7 +108,7 @@
             </div>
         </div>
 
-        <!-- Panel Cajas -->
+        <!-- PANEL: HISTORIAL DE CAJAS -->
         <div id="panel-cajas" class="hidden flex-1 overflow-y-auto p-8">
             <div class="bg-black rounded-xl border border-gray-800 overflow-hidden">
                 <table class="w-full text-sm text-left">
@@ -115,118 +126,352 @@
                 </table>
             </div>
         </div>
+
+        <!-- PANEL: REPORTE UNIFICADO (NUEVO) -->
+        <div id="panel-unificado" class="hidden flex-1 overflow-y-auto p-8">
+
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px">
+                <h3 style="color:white;font-size:1.2rem;font-weight:bold">📊 Reporte de Negocio Unificado</h3>
+                <div style="display:flex;gap:10px;align-items:center">
+                    <select id="periodo-unif" onchange="cargarReporteUnificado()" style="background:#1f2937;border:1px solid #374151;color:white;border-radius:6px;padding:6px 10px;font-size:0.85rem">
+                        <option value="mes">Este mes</option>
+                        <option value="7">Últimos 7 días</option>
+                        <option value="30">Últimos 30 días</option>
+                        <option value="90">Últimos 90 días</option>
+                    </select>
+                    <button onclick="exportarReporteUnificado()" style="background:#eab308;color:#000;font-weight:bold;padding:6px 14px;border-radius:6px;font-size:0.8rem;cursor:pointer">⬇ Exportar CSV</button>
+                </div>
+            </div>
+
+            <!-- KPIs fila 1 -->
+            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:20px">
+                <div style="background:#1f2937;border:1px solid #374151;border-radius:10px;padding:20px;text-align:center">
+                    <p style="color:#9ca3af;font-size:0.7rem;font-weight:bold;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px">💰 VENTAS LOCALES</p>
+                    <p id="unif-ventas-locales" style="color:white;font-size:1.5rem;font-weight:bold">—</p>
+                </div>
+                <div style="background:#1f2937;border:1px solid #374151;border-radius:10px;padding:20px;text-align:center">
+                    <p style="color:#9ca3af;font-size:0.7rem;font-weight:bold;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px">🚚 FACTURADO B2B</p>
+                    <p id="unif-b2b-facturado" style="color:#eab308;font-size:1.5rem;font-weight:bold">—</p>
+                </div>
+                <div style="background:#1f2937;border:1px solid #374151;border-radius:10px;padding:20px;text-align:center">
+                    <p style="color:#9ca3af;font-size:0.7rem;font-weight:bold;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px">💵 COBRADO DIST.</p>
+                    <p id="unif-cobrado" style="color:#22c55e;font-size:1.5rem;font-weight:bold">—</p>
+                </div>
+                <div style="background:#1f2937;border:1px solid #374151;border-radius:10px;padding:20px;text-align:center">
+                    <p style="color:#9ca3af;font-size:0.7rem;font-weight:bold;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px">💸 GASTOS</p>
+                    <p id="unif-gastos" style="color:#ef4444;font-size:1.5rem;font-weight:bold">—</p>
+                </div>
+            </div>
+
+            <!-- KPIs fila 2 -->
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:24px">
+                <div style="background:#1f2937;border:1px solid #374151;border-radius:10px;padding:20px;text-align:center">
+                    <p style="color:#9ca3af;font-size:0.7rem;font-weight:bold;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px">📦 PEDIDOS B2B DESPACHADOS</p>
+                    <p id="unif-pedidos-desp" style="color:white;font-size:1.5rem;font-weight:bold">—</p>
+                </div>
+                <div style="background:#1f2937;border:1px solid #374151;border-radius:10px;padding:20px;text-align:center">
+                    <p style="color:#9ca3af;font-size:0.7rem;font-weight:bold;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px">📉 CRÉDITO EN CALLE</p>
+                    <p id="unif-credito" style="color:#f97316;font-size:1.5rem;font-weight:bold">—</p>
+                </div>
+                <div style="background:#1f2937;border:1px solid #374151;border-radius:10px;padding:20px;text-align:center">
+                    <p style="color:#9ca3af;font-size:0.7rem;font-weight:bold;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px">🏭 UNIDADES PRODUCIDAS</p>
+                    <p id="unif-produccion" style="color:#a78bfa;font-size:1.5rem;font-weight:bold">—</p>
+                </div>
+            </div>
+
+            <!-- Tablas fila 1 -->
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px">
+                <div style="background:#1f2937;border:1px solid #374151;border-radius:10px;padding:20px">
+                    <h4 style="color:white;font-weight:bold;margin-bottom:16px;font-size:0.9rem">🏬 Ventas por Local</h4>
+                    <div id="unif-tabla-locales"></div>
+                </div>
+                <div style="background:#1f2937;border:1px solid #374151;border-radius:10px;padding:20px">
+                    <h4 style="color:white;font-weight:bold;margin-bottom:16px;font-size:0.9rem">🏆 Top Distribuidores Cobrados</h4>
+                    <div id="unif-tabla-distribuidores"></div>
+                </div>
+            </div>
+
+            <!-- Tablas fila 2 -->
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+                <div style="background:#1f2937;border:1px solid #374151;border-radius:10px;padding:20px">
+                    <h4 style="color:white;font-weight:bold;margin-bottom:16px;font-size:0.9rem">📋 Estado de Pedidos B2B</h4>
+                    <div id="unif-estados-b2b"></div>
+                </div>
+                <div style="background:#1f2937;border:1px solid #374151;border-radius:10px;padding:20px">
+                    <h4 style="color:white;font-weight:bold;margin-bottom:16px;font-size:0.9rem">💳 Cobros por Método de Pago</h4>
+                    <div id="unif-metodos-pago"></div>
+                </div>
+            </div>
+
+        </div>
+        <!-- FIN PANEL REPORTE UNIFICADO -->
+
     </main>
 
     <script>
-        const API_URL = window.location.origin + "/api";
-        const usr = JSON.parse(sessionStorage.getItem('usuario') || '{}');
-        if (usr.nombre) document.getElementById('usuario-info').textContent = `${usr.nombre} ${usr.apellido} · ${usr.rol}`;
+        // ─── AUTH ─────────────────────────────────────────────────────────────
+        const token = localStorage.getItem('token');
+        if (!token) window.location.href = '/login';
+        fetch('/api/me', { headers: { Authorization: 'Bearer ' + token } })
+            .then(r => { if (!r.ok) { localStorage.removeItem('token'); window.location.href = '/login'; } return r.json(); })
+            .then(u => { document.getElementById('usuario-info').textContent = u.usuario + ' · ' + u.rol; })
+            .catch(() => { localStorage.removeItem('token'); window.location.href = '/login'; });
 
-        let graficoVentas = null, graficoMetodos = null, graficoProductos = null;
+        function authHeaders() {
+            return { 'Authorization': 'Bearer ' + localStorage.getItem('token') };
+        }
 
+        // ─── TABS EXISTENTES ──────────────────────────────────────────────────
         function cambiarTab(tab) {
-            ['ventas','productos','cajas'].forEach(t => {
-                document.getElementById(`panel-${t}`).classList.toggle('hidden', t !== tab);
+            ['panel-ventas', 'panel-productos', 'panel-cajas', 'panel-unificado'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.classList.add('hidden');
             });
-            document.getElementById('tab-ventas').className = tab === 'ventas' ? 'py-3 text-sm font-bold tab-activa' : 'py-3 text-sm font-bold text-gray-400 hover:text-white';
-            document.getElementById('tab-prods').className = tab === 'productos' ? 'py-3 text-sm font-bold tab-activa' : 'py-3 text-sm font-bold text-gray-400 hover:text-white';
-            document.getElementById('tab-cajas').className = tab === 'cajas' ? 'py-3 text-sm font-bold tab-activa' : 'py-3 text-sm font-bold text-gray-400 hover:text-white';
+            ['tab-ventas', 'tab-prods', 'tab-cajas', 'tab-unificado'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) { el.classList.remove('tab-activa'); el.classList.add('text-gray-400'); }
+            });
+            const panelMap = { ventas: 'panel-ventas', productos: 'panel-productos', cajas: 'panel-cajas' };
+            const tabMap   = { ventas: 'tab-ventas',   productos: 'tab-prods',       cajas: 'tab-cajas' };
+            document.getElementById(panelMap[tab]).classList.remove('hidden');
+            document.getElementById(tabMap[tab]).classList.add('tab-activa');
+            document.getElementById(tabMap[tab]).classList.remove('text-gray-400');
         }
 
-        async function cargarVentas() {
+        function cargarVentas(dias) {
+            fetch('/api/reportes/ventas_por_dia?dias=' + dias, { headers: authHeaders() })
+                .then(r => r.json()).then(data => {
+                    document.getElementById('stat-total').textContent = '$ ' + (data.total || 0).toLocaleString('es-AR');
+                    document.getElementById('stat-tickets').textContent = data.tickets || 0;
+                    document.getElementById('stat-promedio').textContent = '$ ' + Math.round(data.promedio || 0).toLocaleString('es-AR');
+                    if (window._chartVentas) window._chartVentas.destroy();
+                    window._chartVentas = new Chart(document.getElementById('grafico-ventas'), {
+                        type: 'bar',
+                        data: {
+                            labels: (data.por_dia || []).map(d => d.fecha),
+                            datasets: [{ label: 'Ventas', data: (data.por_dia || []).map(d => d.total), backgroundColor: '#e4fc74' }]
+                        },
+                        options: { plugins: { legend: { display: false } }, scales: { x: { ticks: { color: '#9ca3af' } }, y: { ticks: { color: '#9ca3af' } } } }
+                    });
+                    if (window._chartMetodos) window._chartMetodos.destroy();
+                    window._chartMetodos = new Chart(document.getElementById('grafico-metodos'), {
+                        type: 'doughnut',
+                        data: {
+                            labels: (data.por_metodo || []).map(m => m.metodo),
+                            datasets: [{ data: (data.por_metodo || []).map(m => m.total), backgroundColor: ['#e4fc74','#60a5fa','#f97316','#a78bfa'] }]
+                        },
+                        options: { plugins: { legend: { labels: { color: '#9ca3af' } } } }
+                    });
+                }).catch(() => {});
+        }
+
+        function cargarProductos(dias) {
+            fetch('/api/reportes/productos_mas_vendidos?dias=' + dias, { headers: authHeaders() })
+                .then(r => r.json()).then(data => {
+                    const items = Array.isArray(data) ? data : (data.productos || []);
+                    if (window._chartProd) window._chartProd.destroy();
+                    window._chartProd = new Chart(document.getElementById('grafico-productos'), {
+                        type: 'bar',
+                        data: {
+                            labels: items.slice(0, 10).map(p => p.nombre),
+                            datasets: [{ label: 'Unidades', data: items.slice(0, 10).map(p => p.cantidad), backgroundColor: '#e4fc74' }]
+                        },
+                        options: { indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { ticks: { color: '#9ca3af' } }, y: { ticks: { color: '#9ca3af', font: { size: 10 } } } } }
+                    });
+                    document.getElementById('tabla-productos-rep').innerHTML = items.slice(0, 10).map(p =>
+                        `<tr class="hover:bg-gray-900">
+                            <td class="p-3">${p.nombre}</td>
+                            <td class="p-3 text-right text-neon">${p.cantidad}</td>
+                            <td class="p-3 text-right">$ ${(p.total || 0).toLocaleString('es-AR')}</td>
+                        </tr>`).join('');
+                }).catch(() => {});
+        }
+
+        function cargarCajas() {
+            fetch('/api/caja/historial', { headers: authHeaders() })
+                .then(r => r.json()).then(data => {
+                    const items = Array.isArray(data) ? data : (data.cajas || []);
+                    document.getElementById('tabla-cajas').innerHTML = items.map(c =>
+                        `<tr class="hover:bg-gray-900 text-sm">
+                            <td class="p-4">${c.apertura || '—'}</td>
+                            <td class="p-4">${c.cierre || '—'}</td>
+                            <td class="p-4">${c.empleado || '—'}</td>
+                            <td class="p-4">$ ${(c.efectivo || 0).toLocaleString('es-AR')}</td>
+                            <td class="p-4">$ ${(c.tarjeta || 0).toLocaleString('es-AR')}</td>
+                            <td class="p-4"><span class="px-2 py-1 rounded text-xs ${c.estado === 'cerrada' ? 'bg-green-900 text-green-300' : 'bg-yellow-900 text-yellow-300'}">${c.estado || '—'}</span></td>
+                        </tr>`).join('');
+                }).catch(() => {});
+        }
+
+        function cargarTodo() {
             const dias = document.getElementById('periodo').value;
-            const res = await fetch(`${API_URL}/reportes/ventas_por_dia?dias=${dias}`);
-            const datos = await res.json();
-            datos.reverse(); // orden cronológico
-
-            const labels = datos.map(d => d.dia);
-            const totales = datos.map(d => parseFloat(d.total || 0));
-            const efectivo = datos.map(d => parseFloat(d.efectivo || 0));
-            const tarjeta = datos.map(d => parseFloat(d.tarjeta || 0));
-
-            const totalGeneral = totales.reduce((a, b) => a + b, 0);
-            const totalTickets = datos.reduce((a, d) => a + parseInt(d.tickets || 0), 0);
-            document.getElementById('stat-total').textContent = `$ ${totalGeneral.toLocaleString('es-AR')}`;
-            document.getElementById('stat-tickets').textContent = totalTickets;
-            document.getElementById('stat-promedio').textContent = totalTickets > 0 ? `$ ${Math.round(totalGeneral / totalTickets).toLocaleString('es-AR')}` : '$ 0';
-
-            if (graficoVentas) graficoVentas.destroy();
-            graficoVentas = new Chart(document.getElementById('grafico-ventas'), {
-                type: 'bar',
-                data: {
-                    labels,
-                    datasets: [{ label: 'Total $', data: totales, backgroundColor: '#e4fc74', borderRadius: 4 }]
-                },
-                options: { plugins: { legend: { display: false } }, scales: { x: { ticks: { color: '#9ca3af' }, grid: { color: '#1f2937' } }, y: { ticks: { color: '#9ca3af' }, grid: { color: '#1f2937' } } } }
-            });
-
-            if (graficoMetodos) graficoMetodos.destroy();
-            graficoMetodos = new Chart(document.getElementById('grafico-metodos'), {
-                type: 'bar',
-                data: {
-                    labels,
-                    datasets: [
-                        { label: 'Efectivo', data: efectivo, backgroundColor: '#22c55e', borderRadius: 2 },
-                        { label: 'Tarjeta', data: tarjeta, backgroundColor: '#3b82f6', borderRadius: 2 }
-                    ]
-                },
-                options: { plugins: { legend: { labels: { color: '#9ca3af' } } }, scales: { x: { stacked: true, ticks: { color: '#9ca3af' }, grid: { color: '#1f2937' } }, y: { stacked: true, ticks: { color: '#9ca3af' }, grid: { color: '#1f2937' } } } }
-            });
+            cargarVentas(dias);
+            cargarProductos(dias);
+            cargarCajas();
         }
 
-        async function cargarProductos() {
-            const dias = document.getElementById('periodo').value;
-            const res = await fetch(`${API_URL}/reportes/productos_mas_vendidos?dias=${dias}`);
-            const datos = await res.json();
-
-            if (graficoProductos) graficoProductos.destroy();
-            graficoProductos = new Chart(document.getElementById('grafico-productos'), {
-                type: 'bar',
-                indexAxis: 'y',
-                data: {
-                    labels: datos.map(d => d.nombre),
-                    datasets: [{ label: 'Unidades', data: datos.map(d => d.unidades), backgroundColor: '#e4fc74', borderRadius: 4 }]
-                },
-                options: { plugins: { legend: { display: false } }, scales: { x: { ticks: { color: '#9ca3af' }, grid: { color: '#1f2937' } }, y: { ticks: { color: '#fff' }, grid: { color: '#1f2937' } } } }
+        // ─── REPORTE UNIFICADO (NUEVO) ────────────────────────────────────────
+        function cambiarTabUnificado() {
+            ['panel-ventas', 'panel-productos', 'panel-cajas', 'panel-unificado'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.classList.add('hidden');
             });
-
-            const tabla = document.getElementById('tabla-productos-rep');
-            tabla.innerHTML = '';
-            datos.forEach((d, idx) => {
-                tabla.innerHTML += `
-                    <tr class="hover:bg-gray-900">
-                        <td class="p-3 text-white font-bold">${idx + 1}. ${d.nombre}</td>
-                        <td class="p-3 text-right text-neon font-bold">${d.unidades}</td>
-                        <td class="p-3 text-right text-gray-300">$ ${parseFloat(d.total || 0).toLocaleString('es-AR')}</td>
-                    </tr>`;
+            ['tab-ventas', 'tab-prods', 'tab-cajas', 'tab-unificado'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) { el.classList.remove('tab-activa'); el.classList.add('text-gray-400'); }
             });
+            document.getElementById('panel-unificado').classList.remove('hidden');
+            document.getElementById('tab-unificado').classList.add('tab-activa');
+            document.getElementById('tab-unificado').classList.remove('text-gray-400');
+            cargarReporteUnificado();
         }
 
-        async function cargarCajas() {
-            const res = await fetch(`${API_URL}/caja/historial`);
-            const lista = await res.json();
-            const tabla = document.getElementById('tabla-cajas');
-            tabla.innerHTML = '';
-            lista.forEach(c => {
-                const apertura = new Date(c.fecha_apertura).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' });
-                const cierre = c.fecha_cierre ? new Date(c.fecha_cierre).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' }) : '—';
-                tabla.innerHTML += `
-                    <tr class="hover:bg-gray-900">
-                        <td class="p-4 text-xs text-gray-400">${apertura}<br><span class="text-white text-xs">${c.apertura_nombre} ${c.apertura_apellido}</span></td>
-                        <td class="p-4 text-xs text-gray-400">${cierre}</td>
-                        <td class="p-4 text-gray-300 text-xs">${c.cierre_nombre ? c.cierre_nombre + ' ' + c.cierre_apellido : '—'}</td>
-                        <td class="p-4 text-green-400 font-bold">$ ${parseFloat(c.total_efectivo || 0).toLocaleString('es-AR')}</td>
-                        <td class="p-4 text-blue-400 font-bold">$ ${parseFloat(c.total_tarjeta || 0).toLocaleString('es-AR')}</td>
-                        <td class="p-4"><span class="text-xs px-2 py-1 rounded font-bold ${c.estado === 'abierta' ? 'bg-green-900/30 text-green-400' : 'bg-gray-800 text-gray-400'}">${c.estado}</span></td>
-                    </tr>`;
-            });
+        function fmtPesos(n) {
+            return '$ ' + Math.round(n).toLocaleString('es-AR');
         }
 
-        async function cargarTodo() {
-            await Promise.all([cargarVentas(), cargarProductos(), cargarCajas()]);
+        async function cargarReporteUnificado() {
+            const periodo = document.getElementById('periodo-unif').value;
+            const hoy = new Date();
+            const fechaHasta = hoy.toISOString().split('T')[0];
+            let fechaDesde;
+            if (periodo === 'mes') {
+                fechaDesde = new Date(hoy.getFullYear(), hoy.getMonth(), 1).toISOString().split('T')[0];
+            } else {
+                const d = new Date(hoy);
+                d.setDate(d.getDate() - parseInt(periodo));
+                fechaDesde = d.toISOString().split('T')[0];
+            }
+
+            try {
+                const [b2bRaw, ingresosRaw, localesRaw, gastosRaw, kpisRaw, prodRaw] = await Promise.all([
+                    fetch('/api/pedidos_b2b/historial?modo=todo', { headers: authHeaders() }).then(r => r.json()),
+                    fetch(`/api/ingresos_distribuidores?fecha_desde=${fechaDesde}&fecha_hasta=${fechaHasta}`, { headers: authHeaders() }).then(r => r.json()),
+                    fetch('/api/locales/resumen', { headers: authHeaders() }).then(r => r.json()),
+                    fetch('/api/gastos', { headers: authHeaders() }).then(r => r.json()),
+                    fetch('/api/distribuidores/kpis', { headers: authHeaders() }).then(r => r.json()),
+                    fetch('/api/produccion/historial', { headers: authHeaders() }).then(r => r.json())
+                ]);
+
+                // Filtrar B2B por período
+                const b2bFiltrado = b2bRaw.filter(p => {
+                    const f = p.fecha.split(' ')[0];
+                    return f >= fechaDesde && f <= fechaHasta;
+                });
+                const b2bTotal = b2bFiltrado.reduce((s, p) => s + (p.total || 0), 0);
+                const b2bDespachos = b2bFiltrado.filter(p => p.estado === 'Despachado').length;
+                const b2bByEstado = {};
+                b2bFiltrado.forEach(p => { b2bByEstado[p.estado] = (b2bByEstado[p.estado] || 0) + 1; });
+
+                // Locales
+                const ventasLocalesTotal = localesRaw.reduce((s, l) => s + (l.ventas_mes || 0), 0);
+                const ticketsTotal = localesRaw.reduce((s, l) => s + (l.tickets_mes || 0), 0);
+
+                // Gastos filtrados
+                const gastosFiltrados = gastosRaw.filter(g => g.fecha >= fechaDesde && g.fecha <= fechaHasta);
+                const gastosTotal = gastosFiltrados.reduce((s, g) => s + (g.monto || 0), 0);
+
+                // Producción filtrada
+                const prodFiltrado = prodRaw.filter(p => p.fecha.split(' ')[0] >= fechaDesde);
+                const unidadesProducidas = prodFiltrado.reduce((s, p) => s + (p.cantidad_producida || 0), 0);
+
+                // Actualizar KPIs
+                document.getElementById('unif-ventas-locales').textContent = fmtPesos(ventasLocalesTotal) + ' (' + ticketsTotal + ' tickets)';
+                document.getElementById('unif-b2b-facturado').textContent = fmtPesos(b2bTotal);
+                document.getElementById('unif-cobrado').textContent = fmtPesos(ingresosRaw.total || 0);
+                document.getElementById('unif-gastos').textContent = fmtPesos(gastosTotal);
+                document.getElementById('unif-pedidos-desp').textContent = b2bDespachos + ' / ' + b2bFiltrado.length;
+                document.getElementById('unif-credito').textContent = fmtPesos(kpisRaw.credito_calle || 0);
+                document.getElementById('unif-produccion').textContent = unidadesProducidas.toLocaleString('es-AR') + ' un.';
+
+                // Tabla locales
+                document.getElementById('unif-tabla-locales').innerHTML =
+                    localesRaw.map(l => `
+                        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #374151">
+                            <div>
+                                <span style="color:white;font-weight:600">${l.nombre}</span>
+                                <span style="color:#9ca3af;font-size:0.75rem;margin-left:8px">${l.tickets_mes} tickets</span>
+                            </div>
+                            <span style="color:#eab308;font-weight:bold">${fmtPesos(l.ventas_mes)}</span>
+                        </div>`).join('') +
+                    `<div style="display:flex;justify-content:space-between;padding:10px 0;margin-top:4px">
+                        <span style="color:#9ca3af;font-size:0.85rem;font-weight:bold">TOTAL</span>
+                        <span style="color:white;font-weight:bold">${fmtPesos(ventasLocalesTotal)}</span>
+                    </div>`;
+
+                // Top distribuidores
+                const topDist = (ingresosRaw.por_distribuidor || []).slice(0, 8);
+                document.getElementById('unif-tabla-distribuidores').innerHTML = topDist.length
+                    ? topDist.map((d, i) => `
+                        <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid #374151">
+                            <div style="display:flex;align-items:center;gap:8px">
+                                <span style="color:#6b7280;font-size:0.7rem;width:16px">${i + 1}.</span>
+                                <span style="color:white;font-size:0.85rem">${d.distribuidor}</span>
+                            </div>
+                            <span style="color:#22c55e;font-weight:bold;font-size:0.85rem">${fmtPesos(d.total)}</span>
+                        </div>`).join('')
+                    : '<p style="color:#6b7280;font-size:0.85rem">Sin datos en el período</p>';
+
+                // Estados B2B
+                const estadosColors = { 'Despachado': '#22c55e', 'Pendiente': '#eab308', 'En preparación': '#60a5fa', 'Cancelado': '#ef4444' };
+                document.getElementById('unif-estados-b2b').innerHTML =
+                    Object.entries(b2bByEstado).map(([estado, count]) => `
+                        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #374151">
+                            <span style="color:${estadosColors[estado] || '#9ca3af'};font-weight:600">${estado}</span>
+                            <span style="color:white;font-weight:bold">${count} pedidos</span>
+                        </div>`).join('') +
+                    `<div style="display:flex;justify-content:space-between;padding:10px 0;margin-top:4px">
+                        <span style="color:#9ca3af;font-size:0.85rem;font-weight:bold">TOTAL FACTURADO</span>
+                        <span style="color:white;font-weight:bold">${fmtPesos(b2bTotal)}</span>
+                    </div>`;
+
+                // Métodos de pago con barras
+                const metodoColors = { 'transferencia': '#60a5fa', 'cheque': '#a78bfa', 'mercado pago': '#34d399', 'efectivo': '#fbbf24' };
+                document.getElementById('unif-metodos-pago').innerHTML = (ingresosRaw.por_metodo || []).map(m => {
+                    const pct = ingresosRaw.total > 0 ? Math.round((m.total / ingresosRaw.total) * 100) : 0;
+                    const color = metodoColors[m.metodo] || '#9ca3af';
+                    return `
+                        <div style="padding:8px 0;border-bottom:1px solid #374151">
+                            <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+                                <span style="color:white;text-transform:capitalize;font-size:0.85rem">${m.metodo}</span>
+                                <span style="color:${color};font-weight:bold;font-size:0.85rem">${fmtPesos(m.total)} (${pct}%)</span>
+                            </div>
+                            <div style="background:#374151;border-radius:4px;height:6px">
+                                <div style="background:${color};height:6px;border-radius:4px;width:${pct}%"></div>
+                            </div>
+                        </div>`;
+                }).join('') || '<p style="color:#6b7280;font-size:0.85rem">Sin datos</p>';
+
+            } catch (e) {
+                console.error('Error cargando reporte unificado:', e);
+            }
         }
 
-        window.onload = cargarTodo;
+        function exportarReporteUnificado() {
+            const rows = [
+                ['REPORTE UNIFICADO - Portal del Viento'],
+                ['Generado:', new Date().toLocaleString('es-AR')],
+                [],
+                ['Métrica', 'Valor'],
+                ['Ventas Locales (mes)', document.getElementById('unif-ventas-locales').textContent],
+                ['Facturado B2B', document.getElementById('unif-b2b-facturado').textContent],
+                ['Cobrado Distribuidores', document.getElementById('unif-cobrado').textContent],
+                ['Gastos', document.getElementById('unif-gastos').textContent],
+                ['Pedidos B2B Despachados', document.getElementById('unif-pedidos-desp').textContent],
+                ['Crédito en Calle', document.getElementById('unif-credito').textContent],
+                ['Unidades Producidas', document.getElementById('unif-produccion').textContent],
+            ];
+            const csv = rows.map(r => r.join(',')).join('\n');
+            const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = 'reporte-unificado-' + new Date().toISOString().split('T')[0] + '.csv';
+            a.click();
+        }
+
+        // ─── INICIO ───────────────────────────────────────────────────────────
+        cargarTodo();
     </script>
+
 </body>
 </html>
