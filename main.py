@@ -1689,6 +1689,24 @@ def listar_en_proceso():
     finally:
         liberar_conexion(conn)
 
+@app.put("/api/productos/{id}/categoria")
+def cambiar_categoria_producto(id: int, data: dict = Body(...)):
+    """Cambia solo la categoría de un producto. Permanente, afecta todo el sistema."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        id_cat = data.get('id_categoria')
+        # id_categoria puede ser None (para dejarlo sin categoría) o un número
+        cur.execute("UPDATE productos SET id_categoria=%s WHERE id=%s",
+                    (id_cat if id_cat else None, id))
+        conn.commit()
+        return {"status": "ok"}
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
 @app.get("/api/produccion/necesidades")
 def produccion_necesidades():
     """Suma lo pedido en pedidos B2B PENDIENTES + reposiciones de locales pendientes,
@@ -1713,11 +1731,12 @@ def produccion_necesidades():
         # Acumulador por producto de fábrica: {id_producto: {...}}
         acum = {}
 
-        def sumar(id_prod, nombre, sku, categoria, factor, stock, pedido):
+        def sumar(id_prod, nombre, sku, categoria, id_categoria, factor, stock, pedido):
             if id_prod not in acum:
                 acum[id_prod] = {
                     "id_producto": id_prod, "nombre": nombre, "sku": sku,
                     "categoria": categoria or "Sin categoría",
+                    "id_categoria": id_categoria,
                     "factor": factor, "stock": float(stock or 0), "pedido": 0.0
                 }
             acum[id_prod]["pedido"] += float(pedido or 0)
@@ -1727,17 +1746,17 @@ def produccion_necesidades():
             cur.execute("""
                 SELECT d.id_producto, p.nombre, p.sku, p.unidades_por_caja AS factor,
                        COALESCE(p.stock_actual,0) AS stock,
-                       LOWER(COALESCE(c.nombre,'')) AS categoria,
+                       LOWER(COALESCE(c.nombre,'')) AS categoria, p.id_categoria,
                        COALESCE(SUM(d.cantidad),0) AS pedido
                 FROM detalle_pedidos_b2b d
                 JOIN pedidos_b2b pb ON d.id_pedido = pb.id
                 LEFT JOIN productos p ON d.id_producto = p.id
                 LEFT JOIN categorias c ON p.id_categoria = c.id
                 WHERE pb.estado = 'Pendiente'
-                GROUP BY d.id_producto, p.nombre, p.sku, p.unidades_por_caja, p.stock_actual, c.nombre
+                GROUP BY d.id_producto, p.nombre, p.sku, p.unidades_por_caja, p.stock_actual, c.nombre, p.id_categoria
             """)
             for f in fetchall_dict(cur):
-                sumar(f['id_producto'], f['nombre'], f['sku'], f['categoria'], f.get('factor'), f['stock'], f['pedido'])
+                sumar(f['id_producto'], f['nombre'], f['sku'], f['categoria'], f.get('id_categoria'), f.get('factor'), f['stock'], f['pedido'])
         except Exception:
             conn.rollback()
 
@@ -1747,20 +1766,20 @@ def produccion_necesidades():
             cur.execute("""
                 SELECT rd.id_producto_fabrica AS id_producto, p.nombre, p.sku,
                        p.unidades_por_caja AS factor, COALESCE(p.stock_actual,0) AS stock,
-                       LOWER(COALESCE(c.nombre,'')) AS categoria,
+                       LOWER(COALESCE(c.nombre,'')) AS categoria, p.id_categoria,
                        COALESCE(SUM(rd.cantidad),0) AS pedido_unidades
                 FROM pos_reposiciones_detalle rd
                 JOIN pos_reposiciones r ON rd.id_reposicion = r.id
                 LEFT JOIN productos p ON rd.id_producto_fabrica = p.id
                 LEFT JOIN categorias c ON p.id_categoria = c.id
                 WHERE r.estado IN ('habilitada','en_preparacion')
-                GROUP BY rd.id_producto_fabrica, p.nombre, p.sku, p.unidades_por_caja, p.stock_actual, c.nombre
+                GROUP BY rd.id_producto_fabrica, p.nombre, p.sku, p.unidades_por_caja, p.stock_actual, c.nombre, p.id_categoria
             """)
             for f in fetchall_dict(cur):
                 upc = unidades_por_caja(f.get('nombre'), f.get('factor')) or 1
                 # Convertir unidades a cajas (mismo criterio que B2B, que está en cajas)
                 pedido_cajas = float(f['pedido_unidades'] or 0) / upc
-                sumar(f['id_producto'], f['nombre'], f['sku'], f['categoria'], f.get('factor'), f['stock'], pedido_cajas)
+                sumar(f['id_producto'], f['nombre'], f['sku'], f['categoria'], f.get('id_categoria'), f.get('factor'), f['stock'], pedido_cajas)
         except Exception:
             conn.rollback()
 
@@ -1776,6 +1795,7 @@ def produccion_necesidades():
                 "nombre": p['nombre'] or ('Producto #' + str(p['id_producto'])),
                 "sku": p['sku'],
                 "categoria": (p['categoria'] or 'Sin categoría').title(),
+                "id_categoria": p.get('id_categoria'),
                 "pedido": round(pedido, 1),
                 "stock": stock,
                 "falta_producir": round(falta_cajas, 1),
