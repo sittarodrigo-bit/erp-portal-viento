@@ -8402,6 +8402,30 @@ def route_historial_b2b():
 def route_empleados():
     return serve_html("empleados.html")
 
+@app.get("/api/reportes/ranking_vendedores")
+def reportes_ranking_vendedores(dias: int = 30, id_local: Optional[int] = None):
+    """Ranking de cajeros/vendedores por monto vendido y cantidad de tickets."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        filtro_local = ""
+        params = [dias]
+        if id_local:
+            filtro_local = " AND id_local=%s"; params.append(id_local)
+        cur.execute(f"""
+            SELECT COALESCE(NULLIF(TRIM(nombre_cajero), ''), 'Sin identificar') AS vendedor,
+                   COUNT(*) AS tickets,
+                   COALESCE(SUM(total),0) AS monto,
+                   COALESCE(AVG(total),0) AS ticket_promedio
+            FROM pos_ventas
+            WHERE fecha >= NOW() - (%s || ' days')::interval {filtro_local}
+            GROUP BY COALESCE(NULLIF(TRIM(nombre_cajero), ''), 'Sin identificar')
+            ORDER BY monto DESC
+        """, tuple(params))
+        return fetchall_dict(cur)
+    finally:
+        liberar_conexion(conn)
+
 @app.get("/api/reportes/ventas_por_dia")
 def reportes_ventas_por_dia(dias: int = 30, id_local: Optional[int] = None):
     """Ventas agregadas por día + totales + desglose por método de pago."""
@@ -8589,4 +8613,3 @@ def route_carga_stock():
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
-    
