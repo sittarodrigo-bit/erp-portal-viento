@@ -1691,70 +1691,116 @@ def listar_en_proceso():
 
 @app.get("/api/produccion/necesidades")
 def produccion_necesidades():
-    """Suma todo lo pedido en pedidos PENDIENTES y lo compara con el stock disponible.
-    Devuelve, por producto: pedido, stock, cuánto falta (en cajas) y la conversión a unidades."""
+    """Suma lo pedido en pedidos B2B PENDIENTES + reposiciones de locales pendientes,
+    lo compara con el stock, y agrupa por categoría. Ningún producto queda afuera."""
     import re
     def unidades_por_caja(nombre, factor_col):
-        # 1) Si el producto tiene un factor guardado, usarlo
         try:
             if factor_col and float(factor_col) > 0:
                 return int(float(factor_col))
         except Exception:
             pass
-        # 2) Si no, leer del nombre: busca patrones tipo x12, x 6, X24, etc.
         if nombre:
             m = re.search(r'[xX]\s*(\d{1,3})', nombre)
             if m:
                 return int(m.group(1))
-        # 3) Por defecto, 1 unidad por caja (no convierte)
         return 1
 
     conn = obtener_conexion()
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
-        # Intentar traer un posible campo unidades_por_caja; si no existe, sin él
+
+        # Acumulador por producto de fábrica: {id_producto: {...}}
+        acum = {}
+
+        def sumar(id_prod, nombre, sku, categoria, factor, stock, pedido):
+            if id_prod not in acum:
+                acum[id_prod] = {
+                    "id_producto": id_prod, "nombre": nombre, "sku": sku,
+                    "categoria": categoria or "Sin categoría",
+                    "factor": factor, "stock": float(stock or 0), "pedido": 0.0
+                }
+            acum[id_prod]["pedido"] += float(pedido or 0)
+
+        # ── 1) Pedidos B2B pendientes ──
         try:
             cur.execute("""
                 SELECT d.id_producto, p.nombre, p.sku, p.unidades_por_caja AS factor,
-                       COALESCE(SUM(d.cantidad),0) AS pedido, COALESCE(p.stock_actual,0) AS stock
+                       COALESCE(p.stock_actual,0) AS stock,
+                       LOWER(COALESCE(c.nombre,'')) AS categoria,
+                       COALESCE(SUM(d.cantidad),0) AS pedido
                 FROM detalle_pedidos_b2b d
                 JOIN pedidos_b2b pb ON d.id_pedido = pb.id
                 LEFT JOIN productos p ON d.id_producto = p.id
+                LEFT JOIN categorias c ON p.id_categoria = c.id
                 WHERE pb.estado = 'Pendiente'
-                GROUP BY d.id_producto, p.nombre, p.sku, p.unidades_por_caja, p.stock_actual
-                ORDER BY (COALESCE(SUM(d.cantidad),0) - COALESCE(p.stock_actual,0)) DESC
+                GROUP BY d.id_producto, p.nombre, p.sku, p.unidades_por_caja, p.stock_actual, c.nombre
             """)
-            filas = fetchall_dict(cur)
+            for f in fetchall_dict(cur):
+                sumar(f['id_producto'], f['nombre'], f['sku'], f['categoria'], f.get('factor'), f['stock'], f['pedido'])
         except Exception:
             conn.rollback()
+
+        # ── 2) Reposiciones de locales pendientes (estado habilitada/en_preparacion) ──
+        # El detalle guarda cantidad EN UNIDADES; convertir a cajas dividiendo por upc.
+        try:
             cur.execute("""
-                SELECT d.id_producto, p.nombre, p.sku, NULL AS factor,
-                       COALESCE(SUM(d.cantidad),0) AS pedido, COALESCE(p.stock_actual,0) AS stock
-                FROM detalle_pedidos_b2b d
-                JOIN pedidos_b2b pb ON d.id_pedido = pb.id
-                LEFT JOIN productos p ON d.id_producto = p.id
-                WHERE pb.estado = 'Pendiente'
-                GROUP BY d.id_producto, p.nombre, p.sku, p.stock_actual
-                ORDER BY (COALESCE(SUM(d.cantidad),0) - COALESCE(p.stock_actual,0)) DESC
+                SELECT rd.id_producto_fabrica AS id_producto, p.nombre, p.sku,
+                       p.unidades_por_caja AS factor, COALESCE(p.stock_actual,0) AS stock,
+                       LOWER(COALESCE(c.nombre,'')) AS categoria,
+                       COALESCE(SUM(rd.cantidad),0) AS pedido_unidades
+                FROM pos_reposiciones_detalle rd
+                JOIN pos_reposiciones r ON rd.id_reposicion = r.id
+                LEFT JOIN productos p ON rd.id_producto_fabrica = p.id
+                LEFT JOIN categorias c ON p.id_categoria = c.id
+                WHERE r.estado IN ('habilitada','en_preparacion')
+                GROUP BY rd.id_producto_fabrica, p.nombre, p.sku, p.unidades_por_caja, p.stock_actual, c.nombre
             """)
-            filas = fetchall_dict(cur)
-        out = []
-        for f in filas:
-            pedido = float(f['pedido'] or 0)
-            stock = float(f['stock'] or 0)
+            for f in fetchall_dict(cur):
+                upc = unidades_por_caja(f.get('nombre'), f.get('factor')) or 1
+                # Convertir unidades a cajas (mismo criterio que B2B, que está en cajas)
+                pedido_cajas = float(f['pedido_unidades'] or 0) / upc
+                sumar(f['id_producto'], f['nombre'], f['sku'], f['categoria'], f.get('factor'), f['stock'], pedido_cajas)
+        except Exception:
+            conn.rollback()
+
+        # ── Armar salida por producto ──
+        productos = []
+        for p in acum.values():
+            pedido = p['pedido']
+            stock = p['stock']
             falta_cajas = max(0, pedido - stock)
-            upc = unidades_por_caja(f.get('nombre'), f.get('factor'))
-            out.append({
-                "id_producto": f['id_producto'],
-                "nombre": f['nombre'],
-                "sku": f['sku'],
-                "pedido": pedido,
+            upc = unidades_por_caja(p.get('nombre'), p.get('factor'))
+            productos.append({
+                "id_producto": p['id_producto'],
+                "nombre": p['nombre'] or ('Producto #' + str(p['id_producto'])),
+                "sku": p['sku'],
+                "categoria": (p['categoria'] or 'Sin categoría').title(),
+                "pedido": round(pedido, 1),
                 "stock": stock,
-                "falta_producir": falta_cajas,
+                "falta_producir": round(falta_cajas, 1),
                 "unidades_por_caja": upc,
-                "falta_unidades": int(falta_cajas * upc)
+                "falta_unidades": int(round(falta_cajas * upc))
             })
-        return out
+
+        # ── Agrupar por categoría ──
+        cats = {}
+        for p in productos:
+            c = p['categoria']
+            if c not in cats:
+                cats[c] = {"categoria": c, "productos": [], "total_falta_cajas": 0, "total_falta_unidades": 0}
+            cats[c]["productos"].append(p)
+            cats[c]["total_falta_cajas"] += p['falta_producir']
+            cats[c]["total_falta_unidades"] += p['falta_unidades']
+
+        # Ordenar productos dentro de cada categoría por lo que más falta
+        for c in cats.values():
+            c["productos"].sort(key=lambda x: x['falta_producir'], reverse=True)
+            c["total_falta_cajas"] = round(c["total_falta_cajas"], 1)
+
+        # Devolver categorías ordenadas por lo que más falta producir
+        categorias = sorted(cats.values(), key=lambda x: x['total_falta_unidades'], reverse=True)
+        return {"categorias": categorias, "productos": productos}
     finally:
         liberar_conexion(conn)
 
