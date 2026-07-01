@@ -1,6 +1,8 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
+<script>window.PANEL_ACTUAL = "reportes";</script>
+<script src="/static/auth.js"></script>
     <meta charset="UTF-8">
     <title>Reportes | Portal del Viento</title>
     <script src="https://cdn.tailwindcss.com"></script>
@@ -127,7 +129,7 @@
             </div>
         </div>
 
-        <!-- PANEL: REPORTE UNIFICADO (NUEVO) -->
+        <!-- PANEL: REPORTE UNIFICADO -->
         <div id="panel-unificado" class="hidden flex-1 overflow-y-auto p-8">
 
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px">
@@ -209,17 +211,7 @@
     </main>
 
     <script>
-        // ─── AUTH ─────────────────────────────────────────────────────────────
-        const token = localStorage.getItem('token');
-        if (!token) window.location.href = '/login';
-        fetch('/api/me', { headers: { Authorization: 'Bearer ' + token } })
-            .then(r => { if (!r.ok) { localStorage.removeItem('token'); window.location.href = '/login'; } return r.json(); })
-            .then(u => { document.getElementById('usuario-info').textContent = u.usuario + ' · ' + u.rol; })
-            .catch(() => { localStorage.removeItem('token'); window.location.href = '/login'; });
-
-        function authHeaders() {
-            return { 'Authorization': 'Bearer ' + localStorage.getItem('token') };
-        }
+        const API_URL = window.location.origin + "/api";
 
         // ─── TABS EXISTENTES ──────────────────────────────────────────────────
         function cambiarTab(tab) {
@@ -239,7 +231,7 @@
         }
 
         function cargarVentas(dias) {
-            fetch('/api/reportes/ventas_por_dia?dias=' + dias, { headers: authHeaders() })
+            fetch(API_URL + '/reportes/ventas_por_dia?dias=' + dias)
                 .then(r => r.json()).then(data => {
                     document.getElementById('stat-total').textContent = '$ ' + (data.total || 0).toLocaleString('es-AR');
                     document.getElementById('stat-tickets').textContent = data.tickets || 0;
@@ -266,7 +258,7 @@
         }
 
         function cargarProductos(dias) {
-            fetch('/api/reportes/productos_mas_vendidos?dias=' + dias, { headers: authHeaders() })
+            fetch(API_URL + '/reportes/productos_mas_vendidos?dias=' + dias)
                 .then(r => r.json()).then(data => {
                     const items = Array.isArray(data) ? data : (data.productos || []);
                     if (window._chartProd) window._chartProd.destroy();
@@ -288,7 +280,7 @@
         }
 
         function cargarCajas() {
-            fetch('/api/caja/historial', { headers: authHeaders() })
+            fetch(API_URL + '/caja/historial')
                 .then(r => r.json()).then(data => {
                     const items = Array.isArray(data) ? data : (data.cajas || []);
                     document.getElementById('tabla-cajas').innerHTML = items.map(c =>
@@ -310,7 +302,7 @@
             cargarCajas();
         }
 
-        // ─── REPORTE UNIFICADO (NUEVO) ────────────────────────────────────────
+        // ─── REPORTE UNIFICADO ────────────────────────────────────────────────
         function cambiarTabUnificado() {
             ['panel-ventas', 'panel-productos', 'panel-cajas', 'panel-unificado'].forEach(id => {
                 const el = document.getElementById(id);
@@ -345,17 +337,22 @@
 
             try {
                 const [b2bRaw, ingresosRaw, localesRaw, gastosRaw, kpisRaw, prodRaw] = await Promise.all([
-                    fetch('/api/pedidos_b2b/historial?modo=todo', { headers: authHeaders() }).then(r => r.json()),
-                    fetch(`/api/ingresos_distribuidores?fecha_desde=${fechaDesde}&fecha_hasta=${fechaHasta}`, { headers: authHeaders() }).then(r => r.json()),
-                    fetch('/api/locales/resumen', { headers: authHeaders() }).then(r => r.json()),
-                    fetch('/api/gastos', { headers: authHeaders() }).then(r => r.json()),
-                    fetch('/api/distribuidores/kpis', { headers: authHeaders() }).then(r => r.json()),
-                    fetch('/api/produccion/historial', { headers: authHeaders() }).then(r => r.json())
+                    fetch(API_URL + '/pedidos_b2b/historial?modo=todo').then(r => r.json()).catch(() => []),
+                    fetch(`${API_URL}/ingresos_distribuidores?fecha_desde=${fechaDesde}&fecha_hasta=${fechaHasta}`).then(r => r.json()).catch(() => ({})),
+                    fetch(API_URL + '/locales/resumen').then(r => r.json()).catch(() => []),
+                    fetch(API_URL + '/gastos').then(r => r.json()).catch(() => []),
+                    fetch(API_URL + '/distribuidores/kpis').then(r => r.json()).catch(() => ({})),
+                    fetch(API_URL + '/produccion/historial').then(r => r.json()).catch(() => [])
                 ]);
 
+                const b2bArr = Array.isArray(b2bRaw) ? b2bRaw : (b2bRaw.pedidos || []);
+                const localesArr = Array.isArray(localesRaw) ? localesRaw : (localesRaw.locales || []);
+                const gastosArr = Array.isArray(gastosRaw) ? gastosRaw : (gastosRaw.gastos || []);
+                const prodArr = Array.isArray(prodRaw) ? prodRaw : (prodRaw.historial || []);
+
                 // Filtrar B2B por período
-                const b2bFiltrado = b2bRaw.filter(p => {
-                    const f = p.fecha.split(' ')[0];
+                const b2bFiltrado = b2bArr.filter(p => {
+                    const f = (p.fecha || '').split(' ')[0];
                     return f >= fechaDesde && f <= fechaHasta;
                 });
                 const b2bTotal = b2bFiltrado.reduce((s, p) => s + (p.total || 0), 0);
@@ -364,15 +361,15 @@
                 b2bFiltrado.forEach(p => { b2bByEstado[p.estado] = (b2bByEstado[p.estado] || 0) + 1; });
 
                 // Locales
-                const ventasLocalesTotal = localesRaw.reduce((s, l) => s + (l.ventas_mes || 0), 0);
-                const ticketsTotal = localesRaw.reduce((s, l) => s + (l.tickets_mes || 0), 0);
+                const ventasLocalesTotal = localesArr.reduce((s, l) => s + (l.ventas_mes || 0), 0);
+                const ticketsTotal = localesArr.reduce((s, l) => s + (l.tickets_mes || 0), 0);
 
                 // Gastos filtrados
-                const gastosFiltrados = gastosRaw.filter(g => g.fecha >= fechaDesde && g.fecha <= fechaHasta);
+                const gastosFiltrados = gastosArr.filter(g => g.fecha >= fechaDesde && g.fecha <= fechaHasta);
                 const gastosTotal = gastosFiltrados.reduce((s, g) => s + (g.monto || 0), 0);
 
                 // Producción filtrada
-                const prodFiltrado = prodRaw.filter(p => p.fecha.split(' ')[0] >= fechaDesde);
+                const prodFiltrado = prodArr.filter(p => (p.fecha || '').split(' ')[0] >= fechaDesde);
                 const unidadesProducidas = prodFiltrado.reduce((s, p) => s + (p.cantidad_producida || 0), 0);
 
                 // Actualizar KPIs
@@ -386,13 +383,13 @@
 
                 // Tabla locales
                 document.getElementById('unif-tabla-locales').innerHTML =
-                    localesRaw.map(l => `
+                    localesArr.map(l => `
                         <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #374151">
                             <div>
                                 <span style="color:white;font-weight:600">${l.nombre}</span>
-                                <span style="color:#9ca3af;font-size:0.75rem;margin-left:8px">${l.tickets_mes} tickets</span>
+                                <span style="color:#9ca3af;font-size:0.75rem;margin-left:8px">${l.tickets_mes || 0} tickets</span>
                             </div>
-                            <span style="color:#eab308;font-weight:bold">${fmtPesos(l.ventas_mes)}</span>
+                            <span style="color:#eab308;font-weight:bold">${fmtPesos(l.ventas_mes || 0)}</span>
                         </div>`).join('') +
                     `<div style="display:flex;justify-content:space-between;padding:10px 0;margin-top:4px">
                         <span style="color:#9ca3af;font-size:0.85rem;font-weight:bold">TOTAL</span>
