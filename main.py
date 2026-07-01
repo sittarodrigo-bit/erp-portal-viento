@@ -8402,6 +8402,103 @@ def route_historial_b2b():
 def route_empleados():
     return serve_html("empleados.html")
 
+@app.get("/api/reportes/ventas_por_dia")
+def reportes_ventas_por_dia(dias: int = 30, id_local: Optional[int] = None):
+    """Ventas agregadas por día + totales + desglose por método de pago."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        filtro_local = ""
+        params = [dias]
+        if id_local:
+            filtro_local = " AND id_local=%s"; params.append(id_local)
+        # Por día
+        cur.execute(f"""
+            SELECT to_char(fecha::date, 'DD/MM') AS fecha, COALESCE(SUM(total),0) AS total
+            FROM pos_ventas
+            WHERE fecha >= NOW() - (%s || ' days')::interval {filtro_local}
+            GROUP BY fecha::date ORDER BY fecha::date
+        """, tuple(params))
+        por_dia = fetchall_dict(cur)
+        # Totales
+        cur.execute(f"""
+            SELECT COALESCE(SUM(total),0) AS total, COUNT(*) AS tickets
+            FROM pos_ventas
+            WHERE fecha >= NOW() - (%s || ' days')::interval {filtro_local}
+        """, tuple(params))
+        tot = cur.fetchone()
+        total = float(tot['total'] or 0)
+        tickets = int(tot['tickets'] or 0)
+        # Por método de pago
+        cur.execute(f"""
+            SELECT COALESCE(metodo_pago,'otro') AS metodo, COALESCE(SUM(total),0) AS total
+            FROM pos_ventas
+            WHERE fecha >= NOW() - (%s || ' days')::interval {filtro_local}
+            GROUP BY metodo_pago ORDER BY total DESC
+        """, tuple(params))
+        por_metodo = fetchall_dict(cur)
+        return {
+            "total": total,
+            "tickets": tickets,
+            "promedio": (total / tickets) if tickets else 0,
+            "por_dia": por_dia,
+            "por_metodo": por_metodo
+        }
+    finally:
+        liberar_conexion(conn)
+
+@app.get("/api/reportes/productos_mas_vendidos")
+def reportes_productos_mas_vendidos(dias: int = 30, id_local: Optional[int] = None):
+    """Ranking de productos por unidades vendidas (desde el detalle de ventas)."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        filtro_local = ""
+        params = [dias]
+        if id_local:
+            filtro_local = " AND v.id_local=%s"; params.append(id_local)
+        cur.execute(f"""
+            SELECT d.nombre_producto AS nombre,
+                   COALESCE(SUM(d.cantidad),0) AS cantidad,
+                   COALESCE(SUM(d.cantidad * d.precio_unitario),0) AS total
+            FROM pos_detalle_ventas d
+            JOIN pos_ventas v ON d.id_venta = v.id
+            WHERE v.fecha >= NOW() - (%s || ' days')::interval {filtro_local}
+            GROUP BY d.nombre_producto
+            ORDER BY cantidad DESC
+            LIMIT 20
+        """, tuple(params))
+        return fetchall_dict(cur)
+    finally:
+        liberar_conexion(conn)
+
+@app.get("/api/caja/historial")
+def reportes_caja_historial(dias: int = 30, id_local: Optional[int] = None):
+    """Historial de cajas cerradas con sus totales."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        filtro_local = ""
+        params = [dias]
+        if id_local:
+            filtro_local = " AND id_local=%s"; params.append(id_local)
+        cur.execute(f"""
+            SELECT id,
+                   to_char(fecha_apertura, 'DD/MM HH24:MI') AS apertura,
+                   CASE WHEN fecha_cierre IS NOT NULL THEN to_char(fecha_cierre, 'DD/MM HH24:MI') ELSE NULL END AS cierre,
+                   COALESCE(nombre_responsable,'—') AS empleado,
+                   COALESCE(total_efectivo,0) AS efectivo,
+                   COALESCE(total_tarjeta,0) AS tarjeta,
+                   estado
+            FROM pos_cajas
+            WHERE fecha_apertura >= NOW() - (%s || ' days')::interval {filtro_local}
+            ORDER BY fecha_apertura DESC
+            LIMIT 100
+        """, tuple(params))
+        return fetchall_dict(cur)
+    finally:
+        liberar_conexion(conn)
+
 @app.get("/reportes")
 def route_reportes():
     return serve_html("reportes.html")
@@ -8492,3 +8589,4 @@ def route_carga_stock():
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
+    
