@@ -1,6 +1,9 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
+<script>window.PANEL_ACTUAL = "produccion";</script>
+<script src="/static/auth.js"></script>
+
     <meta charset="UTF-8">
     <title>Producción | Portal del Viento</title>
     <script src="https://cdn.tailwindcss.com"></script>
@@ -255,35 +258,60 @@
             var cont = document.getElementById('lista-producir');
             cont.innerHTML = '<p class="text-gray-500 text-sm">Calculando...</p>';
             try {
-                var datos = await fetch(API_URL + '/produccion/necesidades').then(function(r){ return r.json(); });
-                var conFalta = datos.filter(function(d){ return d.falta_producir > 0; });
-                if (datos.length === 0) {
-                    cont.innerHTML = '<p class="text-gray-500 text-sm">No hay pedidos pendientes.</p>';
+                var resp = await fetch(API_URL + '/produccion/necesidades').then(function(r){ return r.json(); });
+                var categorias = resp.categorias || [];
+                var productos = resp.productos || [];
+                if (productos.length === 0) {
+                    cont.innerHTML = '<p class="text-gray-500 text-sm">No hay pedidos ni reposiciones pendientes.</p>';
                     return;
                 }
-                var html = '<div class="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden"><table class="w-full text-sm"><thead class="text-xs text-gray-400 border-b border-gray-700 bg-gray-900"><tr><th class="py-3 px-4 text-left">Producto</th><th class="py-3 px-4 text-center">Pedido (cajas)</th><th class="py-3 px-4 text-center">Stock (cajas)</th><th class="py-3 px-4 text-center">Faltan (cajas)</th><th class="py-3 px-4 text-center">A PRODUCIR (unidades)</th></tr></thead><tbody class="divide-y divide-gray-800">';
-                var totalUnidades = 0;
-                datos.forEach(function(d){
-                    var falta = d.falta_producir;
-                    var faltaU = d.falta_unidades || 0;
-                    totalUnidades += faltaU;
-                    html += '<tr class="' + (falta > 0 ? 'bg-yellow-900/10' : '') + '">' +
-                        '<td class="py-3 px-4 text-white font-bold">' + (d.nombre||'—') + ' <span class="text-gray-600 text-xs">(x' + (d.unidades_por_caja||1) + ')</span></td>' +
-                        '<td class="py-3 px-4 text-center text-gray-300">' + d.pedido + '</td>' +
-                        '<td class="py-3 px-4 text-center text-gray-300">' + d.stock + '</td>' +
-                        '<td class="py-3 px-4 text-center font-bold ' + (falta > 0 ? 'text-yellow-400' : 'text-green-400') + '">' + (falta > 0 ? falta : '✓') + '</td>' +
-                        '<td class="py-3 px-4 text-center font-bold ' + (faltaU > 0 ? 'text-orange-400 text-base' : 'text-green-400') + '">' + (faltaU > 0 ? faltaU.toLocaleString('es-AR') : '✓') + '</td>' +
-                    '</tr>';
-                });
-                html += '</tbody></table></div>';
+                var conFalta = productos.filter(function(d){ return d.falta_producir > 0; });
+                var totalUnidades = productos.reduce(function(s,d){ return s + (d.falta_unidades||0); }, 0);
+
+                var html = '';
+                // Encabezado resumen
                 if (conFalta.length === 0) {
-                    html = '<div class="bg-green-900/30 border border-green-800 rounded-lg p-4 text-green-300 text-sm mb-4">✅ Tenés stock para cubrir todos los pedidos pendientes.</div>' + html;
+                    html += '<div class="bg-green-900/30 border border-green-800 rounded-lg p-4 text-green-300 text-sm mb-4">✅ Tenés stock para cubrir todos los pedidos y reposiciones pendientes.</div>';
                 } else {
-                    html = '<div class="bg-orange-900/20 border border-orange-700 rounded-lg p-4 mb-4">' +
-                           '<p class="text-orange-300 text-sm mb-1">⚠️ Hay ' + conFalta.length + ' producto(s) que necesitás producir.</p>' +
+                    html += '<div class="bg-orange-900/20 border border-orange-700 rounded-lg p-4 mb-4">' +
+                           '<p class="text-orange-300 text-sm mb-1">⚠️ Hay ' + conFalta.length + ' producto(s) que necesitás producir (incluye pedidos B2B + reposiciones de locales).</p>' +
                            '<p class="text-white font-bold text-lg">Total a fabricar: ' + totalUnidades.toLocaleString('es-AR') + ' unidades</p>' +
-                           '</div>' + html;
+                           '</div>';
                 }
+
+                // Por categoría
+                categorias.forEach(function(cat){
+                    // Mostrar solo categorías que tienen algo para producir
+                    var prodsConFalta = cat.productos.filter(function(p){ return p.falta_producir > 0; });
+                    if (prodsConFalta.length === 0) return;
+
+                    html += '<div class="mb-4 bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">' +
+                        '<div class="flex justify-between items-center px-4 py-3 bg-gray-950 border-b border-gray-700">' +
+                            '<span class="text-neon font-bold uppercase text-sm">' + cat.categoria + '</span>' +
+                            '<span class="text-white font-bold">' + cat.total_falta_unidades.toLocaleString('es-AR') + ' un. a producir</span>' +
+                        '</div>' +
+                        '<table class="w-full text-sm"><thead class="text-xs text-gray-500 border-b border-gray-800"><tr>' +
+                            '<th class="py-2 px-4 text-left">Producto</th>' +
+                            '<th class="py-2 px-4 text-center">Pedido</th>' +
+                            '<th class="py-2 px-4 text-center">Stock</th>' +
+                            '<th class="py-2 px-4 text-center">Faltan (cajas)</th>' +
+                            '<th class="py-2 px-4 text-center">A PRODUCIR (un.)</th>' +
+                        '</tr></thead><tbody class="divide-y divide-gray-800">';
+
+                    prodsConFalta.forEach(function(d){
+                        var falta = d.falta_producir;
+                        var faltaU = d.falta_unidades || 0;
+                        html += '<tr class="bg-yellow-900/10">' +
+                            '<td class="py-3 px-4 text-white font-bold">' + (d.nombre||'—') + ' <span class="text-gray-600 text-xs">(x' + (d.unidades_por_caja||1) + ')</span></td>' +
+                            '<td class="py-3 px-4 text-center text-gray-300">' + d.pedido + '</td>' +
+                            '<td class="py-3 px-4 text-center text-gray-300">' + d.stock + '</td>' +
+                            '<td class="py-3 px-4 text-center font-bold text-yellow-400">' + falta + '</td>' +
+                            '<td class="py-3 px-4 text-center font-bold text-orange-400 text-base">' + faltaU.toLocaleString('es-AR') + '</td>' +
+                        '</tr>';
+                    });
+                    html += '</tbody></table></div>';
+                });
+
                 cont.innerHTML = html;
             } catch(e) {
                 cont.innerHTML = '<p class="text-red-400 text-sm">No se pudo calcular: ' + (e && e.message ? e.message : e) + '</p>';
