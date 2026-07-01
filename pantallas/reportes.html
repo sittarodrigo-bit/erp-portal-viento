@@ -57,6 +57,7 @@
             <button onclick="cambiarTab('ventas')" id="tab-ventas" class="py-3 text-sm font-bold tab-activa">💰 Ventas por día</button>
             <button onclick="cambiarTab('productos')" id="tab-prods" class="py-3 text-sm font-bold text-gray-400 hover:text-white">🏆 Productos más vendidos</button>
             <button onclick="cambiarTab('cajas')" id="tab-cajas" class="py-3 text-sm font-bold text-gray-400 hover:text-white">🗃️ Historial de cajas</button>
+            <button onclick="cambiarTab('vendedores')" id="tab-vend" class="py-3 text-sm font-bold text-gray-400 hover:text-white">👤 Ranking vendedores</button>
             <button onclick="cambiarTabUnificado()" id="tab-unificado" class="py-3 text-sm font-bold text-gray-400 hover:text-white">📊 Reporte Unificado</button>
         </div>
 
@@ -125,6 +126,31 @@
                         </tr>
                     </thead>
                     <tbody id="tabla-cajas" class="divide-y divide-gray-800"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- PANEL: RANKING VENDEDORES -->
+        <div id="panel-vendedores" class="hidden flex-1 overflow-y-auto p-8">
+            <div class="flex items-center gap-3 mb-6">
+                <label class="text-xs text-gray-400 font-bold">Local:</label>
+                <select id="vend-local" onchange="cargarVendedores()" class="bg-gray-800 border border-gray-700 text-white rounded p-2 text-sm">
+                    <option value="">Todos los locales</option>
+                </select>
+                <span class="text-gray-600 text-xs">Usa el período seleccionado arriba</span>
+            </div>
+            <div class="bg-black rounded-xl border border-gray-800 overflow-hidden">
+                <table class="w-full text-sm text-left">
+                    <thead class="bg-gray-950 text-xs text-gray-400 uppercase">
+                        <tr>
+                            <th class="p-4">#</th>
+                            <th class="p-4">Vendedor</th>
+                            <th class="p-4 text-right">Tickets</th>
+                            <th class="p-4 text-right">Monto vendido</th>
+                            <th class="p-4 text-right">Ticket promedio</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tabla-vendedores" class="divide-y divide-gray-800"></tbody>
                 </table>
             </div>
         </div>
@@ -215,19 +241,59 @@
 
         // ─── TABS EXISTENTES ──────────────────────────────────────────────────
         function cambiarTab(tab) {
-            ['panel-ventas', 'panel-productos', 'panel-cajas', 'panel-unificado'].forEach(id => {
+            ['panel-ventas', 'panel-productos', 'panel-cajas', 'panel-vendedores', 'panel-unificado'].forEach(id => {
                 const el = document.getElementById(id);
                 if (el) el.classList.add('hidden');
             });
-            ['tab-ventas', 'tab-prods', 'tab-cajas', 'tab-unificado'].forEach(id => {
+            ['tab-ventas', 'tab-prods', 'tab-cajas', 'tab-vend', 'tab-unificado'].forEach(id => {
                 const el = document.getElementById(id);
                 if (el) { el.classList.remove('tab-activa'); el.classList.add('text-gray-400'); }
             });
-            const panelMap = { ventas: 'panel-ventas', productos: 'panel-productos', cajas: 'panel-cajas' };
-            const tabMap   = { ventas: 'tab-ventas',   productos: 'tab-prods',       cajas: 'tab-cajas' };
+            const panelMap = { ventas: 'panel-ventas', productos: 'panel-productos', cajas: 'panel-cajas', vendedores: 'panel-vendedores' };
+            const tabMap   = { ventas: 'tab-ventas',   productos: 'tab-prods',       cajas: 'tab-cajas', vendedores: 'tab-vend' };
             document.getElementById(panelMap[tab]).classList.remove('hidden');
             document.getElementById(tabMap[tab]).classList.add('tab-activa');
             document.getElementById(tabMap[tab]).classList.remove('text-gray-400');
+            if (tab === 'vendedores') { initVendedoresLocales(); cargarVendedores(); }
+        }
+
+        var _vendLocalesCargados = false;
+        async function initVendedoresLocales() {
+            if (_vendLocalesCargados) return;
+            try {
+                var locales = await fetch(API_URL + '/pos/locales').then(r => r.json());
+                document.getElementById('vend-local').innerHTML = '<option value="">Todos los locales</option>' +
+                    locales.map(l => '<option value="' + l.id + '">' + l.nombre + '</option>').join('');
+                _vendLocalesCargados = true;
+            } catch(e) {}
+        }
+
+        async function cargarVendedores() {
+            const dias = document.getElementById('periodo').value;
+            const idLocal = document.getElementById('vend-local').value;
+            var url = API_URL + '/reportes/ranking_vendedores?dias=' + dias;
+            if (idLocal) url += '&id_local=' + idLocal;
+            try {
+                var lista = await fetch(url).then(r => r.json());
+                var tabla = document.getElementById('tabla-vendedores');
+                if (!lista.length) {
+                    tabla.innerHTML = '<tr><td colspan="5" class="p-8 text-center text-gray-500">Sin ventas en este período.</td></tr>';
+                    return;
+                }
+                var medallas = ['🥇', '🥈', '🥉'];
+                tabla.innerHTML = lista.map(function(v, i) {
+                    var pos = i < 3 ? medallas[i] : (i + 1);
+                    return '<tr class="hover:bg-gray-900">' +
+                        '<td class="p-4 text-lg">' + pos + '</td>' +
+                        '<td class="p-4 font-bold text-white">' + v.vendedor + '</td>' +
+                        '<td class="p-4 text-right text-gray-300">' + v.tickets + '</td>' +
+                        '<td class="p-4 text-right text-neon font-bold">$ ' + Math.round(v.monto).toLocaleString('es-AR') + '</td>' +
+                        '<td class="p-4 text-right text-gray-400">$ ' + Math.round(v.ticket_promedio).toLocaleString('es-AR') + '</td>' +
+                        '</tr>';
+                }).join('');
+            } catch(e) {
+                document.getElementById('tabla-vendedores').innerHTML = '<tr><td colspan="5" class="p-8 text-center text-red-400">Error al cargar.</td></tr>';
+            }
         }
 
         function cargarVentas(dias) {
@@ -300,6 +366,9 @@
             cargarVentas(dias);
             cargarProductos(dias);
             cargarCajas();
+            // Si la pestaña de vendedores está abierta, recargarla también
+            var pv = document.getElementById('panel-vendedores');
+            if (pv && !pv.classList.contains('hidden')) cargarVendedores();
         }
 
         // ─── REPORTE UNIFICADO ────────────────────────────────────────────────
