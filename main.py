@@ -3668,6 +3668,69 @@ def eliminar_insumo(id_insumo: int):
 # ==============================================================================
 # RECETAS
 # ==============================================================================
+@app.get("/api/recetas/copiar/candidatos/{id_producto}")
+def recetas_candidatos_copia(id_producto: int):
+    """Devuelve los productos de la MISMA categoría que el origen (para copiarles la receta),
+    indicando cuáles ya tienen receta cargada."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        # Categoría del producto origen
+        cur.execute("SELECT id_categoria FROM productos WHERE id=%s", (id_producto,))
+        row = cur.fetchone()
+        if not row or not row['id_categoria']:
+            return {"categoria": None, "productos": []}
+        id_cat = row['id_categoria']
+        # Otros productos de esa categoría (excluye el origen) + si ya tienen receta
+        cur.execute("""
+            SELECT p.id, p.nombre,
+                   EXISTS(SELECT 1 FROM recetas r WHERE r.id_producto = p.id) AS tiene_receta
+            FROM productos p
+            WHERE p.id_categoria = %s AND p.id <> %s
+              AND COALESCE(p.activo, true) = true
+            ORDER BY p.nombre
+        """, (id_cat, id_producto))
+        productos = fetchall_dict(cur)
+        cur.execute("SELECT nombre FROM categorias WHERE id=%s", (id_cat,))
+        cat = cur.fetchone()
+        return {"categoria": cat['nombre'] if cat else None, "productos": productos}
+    finally:
+        liberar_conexion(conn)
+
+@app.post("/api/recetas/copiar")
+def recetas_copiar(data: dict = Body(...)):
+    """Copia la receta del producto origen a una lista de productos destino.
+    Reemplaza la receta existente en cada destino."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        id_origen = data.get('id_origen')
+        destinos = data.get('id_destinos', [])
+        if not id_origen or not destinos:
+            raise HTTPException(status_code=400, detail="Falta el producto origen o los destinos.")
+        # Traer la receta del origen
+        cur.execute("SELECT id_insumo, cantidad_necesaria FROM recetas WHERE id_producto=%s", (id_origen,))
+        items = cur.fetchall()
+        if not items:
+            raise HTTPException(status_code=400, detail="El producto origen no tiene receta cargada.")
+        copiados = 0
+        for id_dest in destinos:
+            # Reemplazar: borrar la receta actual del destino y copiar la del origen
+            cur.execute("DELETE FROM recetas WHERE id_producto=%s", (id_dest,))
+            for (id_insumo, cant) in items:
+                cur.execute("INSERT INTO recetas (id_producto, id_insumo, cantidad_necesaria) VALUES (%s,%s,%s)",
+                            (id_dest, id_insumo, cant))
+            copiados += 1
+        conn.commit()
+        return {"status": "ok", "copiados": copiados}
+    except HTTPException:
+        raise
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
 @app.get("/api/recetas/{id_producto}")
 def get_receta(id_producto: int):
     conn = obtener_conexion()
