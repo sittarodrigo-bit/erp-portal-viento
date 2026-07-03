@@ -1731,15 +1731,21 @@ def produccion_necesidades():
         # Acumulador por producto de fábrica: {id_producto: {...}}
         acum = {}
 
-        def sumar(id_prod, nombre, sku, categoria, id_categoria, factor, stock, pedido):
+        def sumar(id_prod, nombre, sku, categoria, id_categoria, factor, stock, pedido, origen=None, unidades_orig=0):
             if id_prod not in acum:
                 acum[id_prod] = {
                     "id_producto": id_prod, "nombre": nombre, "sku": sku,
                     "categoria": categoria or "Sin categoría",
                     "id_categoria": id_categoria,
-                    "factor": factor, "stock": float(stock or 0), "pedido": 0.0
+                    "factor": factor, "stock": float(stock or 0), "pedido": 0.0,
+                    "pedido_b2b": 0.0, "pedido_repo_cajas": 0.0, "pedido_repo_unidades": 0.0
                 }
             acum[id_prod]["pedido"] += float(pedido or 0)
+            if origen == 'b2b':
+                acum[id_prod]["pedido_b2b"] += float(pedido or 0)
+            elif origen == 'repo':
+                acum[id_prod]["pedido_repo_cajas"] += float(pedido or 0)
+                acum[id_prod]["pedido_repo_unidades"] += float(unidades_orig or 0)
 
         # ── 1) Pedidos B2B pendientes ──
         try:
@@ -1756,7 +1762,7 @@ def produccion_necesidades():
                 GROUP BY d.id_producto, p.nombre, p.sku, p.unidades_por_caja, p.stock_actual, c.nombre, p.id_categoria
             """)
             for f in fetchall_dict(cur):
-                sumar(f['id_producto'], f['nombre'], f['sku'], f['categoria'], f.get('id_categoria'), f.get('factor'), f['stock'], f['pedido'])
+                sumar(f['id_producto'], f['nombre'], f['sku'], f['categoria'], f.get('id_categoria'), f.get('factor'), f['stock'], f['pedido'], origen='b2b')
         except Exception:
             conn.rollback()
 
@@ -1778,8 +1784,9 @@ def produccion_necesidades():
             for f in fetchall_dict(cur):
                 upc = unidades_por_caja(f.get('nombre'), f.get('factor')) or 1
                 # Convertir unidades a cajas (mismo criterio que B2B, que está en cajas)
-                pedido_cajas = float(f['pedido_unidades'] or 0) / upc
-                sumar(f['id_producto'], f['nombre'], f['sku'], f['categoria'], f.get('id_categoria'), f.get('factor'), f['stock'], pedido_cajas)
+                unid = float(f['pedido_unidades'] or 0)
+                pedido_cajas = unid / upc
+                sumar(f['id_producto'], f['nombre'], f['sku'], f['categoria'], f.get('id_categoria'), f.get('factor'), f['stock'], pedido_cajas, origen='repo', unidades_orig=unid)
         except Exception:
             conn.rollback()
 
@@ -1797,6 +1804,9 @@ def produccion_necesidades():
                 "categoria": (p['categoria'] or 'Sin categoría').title(),
                 "id_categoria": p.get('id_categoria'),
                 "pedido": round(pedido, 1),
+                "pedido_b2b": round(p.get('pedido_b2b', 0), 1),
+                "pedido_repo_cajas": round(p.get('pedido_repo_cajas', 0), 1),
+                "pedido_repo_unidades": int(round(p.get('pedido_repo_unidades', 0))),
                 "stock": stock,
                 "falta_producir": round(falta_cajas, 1),
                 "unidades_por_caja": upc,
@@ -2148,18 +2158,47 @@ def armado_setear_cantidad(id: str, data: SetearCantidad):
             if nueva < 0: nueva = 0
             if nueva > pedido_cant: nueva = pedido_cant
             try:
+                # Cuánto había preparado antes de este producto (para descontar solo la diferencia)
+                cur.execute("""SELECT cantidad FROM preparacion_reposicion
+                               WHERE id_reposicion=%s AND id_producto_fabrica=%s LIMIT 1""",
+                            (rid, data.id_producto_fabrica))
+                prev_row = cur.fetchone()
+                anterior = float(prev_row[0] or 0) if prev_row else 0.0
+
                 cur.execute("""INSERT INTO preparacion_reposicion
                                (id_reposicion, id_producto_fabrica, cantidad, preparado_por)
                                VALUES (%s,%s,%s,%s)
                                ON CONFLICT (id_reposicion, id_producto_fabrica)
                                DO UPDATE SET cantidad=EXCLUDED.cantidad, preparado_por=EXCLUDED.preparado_por""",
                             (rid, data.id_producto_fabrica, nueva, data.preparado_por))
+
+                # ── DESCUENTO EN EL MOMENTO ──
+                # La reposición está en UNIDADES, el stock en CAJAS. Descontar la diferencia.
+                diferencia_unidades = nueva - anterior  # puede ser negativa (si corrige hacia abajo)
+                if diferencia_unidades != 0:
+                    # Unidades por caja del producto de fábrica
+                    cur.execute("SELECT COALESCE(unidades_por_caja, 1) AS upc, nombre FROM productos WHERE id=%s",
+                                (data.id_producto_fabrica,))
+                    prow = cur.fetchone()
+                    upc = float(prow[0]) if prow and prow[0] and float(prow[0]) > 0 else 1.0
+                    diferencia_cajas = diferencia_unidades / upc
+                    # Restar del stock (si la diferencia es negativa, suma de vuelta = devuelve)
+                    cur.execute("UPDATE productos SET stock_actual = COALESCE(stock_actual,0) - %s WHERE id=%s",
+                                (diferencia_cajas, data.id_producto_fabrica))
+
                 # marcar como en preparación
                 cur.execute("UPDATE pos_reposiciones SET estado='en_preparacion' WHERE id=%s AND estado IN ('habilitada','pendiente')", (rid,))
+                # marcar que esta reposición YA descontó stock (para no volver a hacerlo al despachar)
+                try:
+                    cur.execute("UPDATE pos_reposiciones SET stock_descontado=true WHERE id=%s", (rid,))
+                except Exception:
+                    pass  # si la columna no existe, no rompe
                 conn.commit()
+            except HTTPException:
+                raise
             except Exception as e:
                 conn.rollback()
-                raise HTTPException(status_code=400, detail="Falta correr REPOSICION_ESTRUCTURA_LIMPIA.sql en la base.")
+                raise HTTPException(status_code=400, detail="Falta correr REPOSICION_ESTRUCTURA_LIMPIA.sql en la base. (" + str(e) + ")")
             return {"status": "ok", "cantidad": nueva}
         except HTTPException:
             raise
