@@ -2478,7 +2478,9 @@ def historial_pedidos_b2b(estado: Optional[str] = None, id_distribuidor: Optiona
         query = """
             SELECT p.id, p.fecha::text, p.total, p.estado, p.id_distribuidor, d.razon_social as distribuidor,
                    d.telefono AS dist_telefono, d.cuit AS dist_cuit,
-                   COALESCE(p.guia_transporte,'') AS guia_transporte, COALESCE(p.guia_numero,'') AS guia_numero
+                   COALESCE(p.guia_transporte,'') AS guia_transporte, COALESCE(p.guia_numero,'') AS guia_numero,
+                   COALESCE(p.descuento_porcentaje,0) AS descuento_porcentaje,
+                   COALESCE(p.descuento_monto,0) AS descuento_monto, p.total_sin_descuento
             FROM pedidos_b2b p
             LEFT JOIN distribuidores d ON p.id_distribuidor = d.id
             WHERE 1=1
@@ -2508,7 +2510,9 @@ def historial_pedidos_b2b(estado: Optional[str] = None, id_distribuidor: Optiona
             q2 = """
                 SELECT p.id, p.fecha::text, p.total, p.estado, p.id_distribuidor, d.razon_social as distribuidor,
                        d.telefono AS dist_telefono, d.cuit AS dist_cuit,
-                       '' AS guia_transporte, '' AS guia_numero
+                       '' AS guia_transporte, '' AS guia_numero,
+                       COALESCE(p.descuento_porcentaje,0) AS descuento_porcentaje,
+                       COALESCE(p.descuento_monto,0) AS descuento_monto, p.total_sin_descuento
                 FROM pedidos_b2b p
                 LEFT JOIN distribuidores d ON p.id_distribuidor = d.id
                 WHERE 1=1
@@ -2591,7 +2595,13 @@ def actualizar_pedido(id: int, payload: PedidoUpdate):
 
         # Reescribir el detalle del pedido (el stock se mueve al armar, no acá)
         cur.execute("DELETE FROM detalle_pedidos_b2b WHERE id_pedido = %s", (id,))
-        cur.execute("UPDATE pedidos_b2b SET total = %s WHERE id = %s", (payload.total, id))
+        # Al modificar los productos, el total cambia: resetear cualquier descuento previo
+        # (el usuario puede volver a aplicarlo sobre el nuevo total)
+        try:
+            cur.execute("UPDATE pedidos_b2b SET total = %s, descuento_porcentaje=0, descuento_monto=0, total_sin_descuento=NULL WHERE id = %s", (payload.total, id))
+        except Exception:
+            conn.rollback()
+            cur.execute("UPDATE pedidos_b2b SET total = %s WHERE id = %s", (payload.total, id))
         for item in payload.detalle:
             if item.cantidad > 0:
                 cur.execute("""
@@ -2675,6 +2685,51 @@ def cambiar_estado_pedido(id: int, estado: str):
 class GuiaTransporte(BaseModel):
     transporte: Optional[str] = None
     numero: Optional[str] = None
+
+@app.put("/api/pedidos_b2b/{id}/descuento")
+def aplicar_descuento_pedido(id: int, data: dict = Body(...)):
+    """Aplica un descuento en porcentaje al total del pedido B2B.
+    Baja el total (y por lo tanto la deuda del distribuidor). Reversible: descuento 0 lo quita."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        # Estado del pedido: no permitir si ya está despachado/cancelado
+        cur.execute("SELECT estado, total, total_sin_descuento FROM pedidos_b2b WHERE id=%s", (id,))
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Pedido no encontrado")
+        if row['estado'] in ('Despachado', 'Despachado parcial', 'Cancelado'):
+            raise HTTPException(status_code=409, detail="No se puede aplicar descuento a un pedido ya despachado o cancelado.")
+
+        porcentaje = float(data.get('porcentaje') or 0)
+        if porcentaje < 0 or porcentaje > 100:
+            raise HTTPException(status_code=400, detail="El porcentaje debe estar entre 0 y 100.")
+
+        # El total original es el que ya tenía guardado (si nunca se aplicó descuento) o el total_sin_descuento
+        total_original = float(row['total_sin_descuento']) if row['total_sin_descuento'] is not None else float(row['total'] or 0)
+
+        monto_descuento = round(total_original * porcentaje / 100, 2)
+        nuevo_total = round(total_original - monto_descuento, 2)
+
+        cur.execute("""UPDATE pedidos_b2b
+                       SET total=%s, descuento_porcentaje=%s, descuento_monto=%s, total_sin_descuento=%s
+                       WHERE id=%s""",
+                    (nuevo_total, porcentaje, monto_descuento, total_original, id))
+        conn.commit()
+        return {
+            "status": "ok",
+            "total_original": total_original,
+            "descuento_porcentaje": porcentaje,
+            "descuento_monto": monto_descuento,
+            "nuevo_total": nuevo_total
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
 
 @app.put("/api/pedidos_b2b/{id}/guia")
 def guardar_guia_transporte(id: int, data: GuiaTransporte):
