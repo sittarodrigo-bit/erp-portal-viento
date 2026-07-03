@@ -129,6 +129,16 @@
                 </div>
             </div>
 
+            <div class="border-t border-gray-700 pt-3 mb-2">
+                <div class="flex items-center gap-2 mb-2">
+                    <span class="text-gray-400 text-sm flex-1">💸 Descuento (%)</span>
+                    <input type="number" id="det-descuento-pct" min="0" max="100" step="0.5" placeholder="0"
+                           class="w-20 bg-gray-800 border border-gray-700 text-white rounded p-1.5 text-sm text-right">
+                    <button onclick="aplicarDescuento()" class="text-xs bg-blue-700 hover:bg-blue-600 text-white font-bold px-3 py-1.5 rounded transition">Aplicar</button>
+                </div>
+                <div id="det-descuento-info" class="hidden text-xs text-gray-500 text-right mb-1"></div>
+            </div>
+
             <div class="border-t border-gray-700 pt-3 flex justify-between items-center mb-4">
                 <span class="font-bold text-gray-400">TOTAL</span>
                 <span id="det-total" class="font-bold text-neon text-xl"></span>
@@ -447,6 +457,37 @@
             cargarPedidos();
         }
 
+        async function aplicarDescuento() {
+            if (!pedidoActual) return;
+            var pct = parseFloat(document.getElementById('det-descuento-pct').value || 0);
+            if (isNaN(pct) || pct < 0 || pct > 100) { alert('Poné un porcentaje entre 0 y 100.'); return; }
+            var msg = pct > 0 ? ('¿Aplicar ' + pct + '% de descuento a este pedido?\n\nEsto baja el total y la deuda del distribuidor.') : '¿Quitar el descuento de este pedido?';
+            if (!confirm(msg)) return;
+            try {
+                var res = await fetch(`${API_URL}/pedidos_b2b/${pedidoActual.id}/descuento`, {
+                    method: 'PUT', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ porcentaje: pct })
+                });
+                if (!res.ok) { var e = await res.json(); alert('No se pudo aplicar: ' + (e.detail||'')); return; }
+                var r = await res.json();
+                // Actualizar el pedido en memoria y refrescar la vista
+                pedidoActual.total = r.nuevo_total;
+                pedidoActual.descuento_porcentaje = r.descuento_porcentaje;
+                pedidoActual.descuento_monto = r.descuento_monto;
+                pedidoActual.total_sin_descuento = r.total_original;
+                document.getElementById('det-total').textContent = '$ ' + parseFloat(r.nuevo_total).toLocaleString('es-AR');
+                var infoDesc = document.getElementById('det-descuento-info');
+                if (r.descuento_porcentaje > 0) {
+                    infoDesc.classList.remove('hidden');
+                    infoDesc.textContent = 'Descuento del ' + r.descuento_porcentaje + '%: -$ ' + parseFloat(r.descuento_monto).toLocaleString('es-AR') +
+                        ' (antes: $ ' + parseFloat(r.total_original).toLocaleString('es-AR') + ')';
+                } else {
+                    infoDesc.classList.add('hidden');
+                }
+                if (typeof cargarPedidos === 'function') cargarPedidos();
+            } catch(e) { alert('Error al aplicar el descuento.'); }
+        }
+
         async function abrirDetalle(id) {
             await cargarPedidoYItems(id);
             if (!pedidoActual) { alert('No se pudo cargar el pedido. Refrescá la página.'); return; }
@@ -456,6 +497,18 @@
             document.getElementById('det-dist').textContent   = dist.razon_social || pedidoActual.distribuidor;
             document.getElementById('det-fecha').textContent  = new Date(pedidoActual.fecha).toLocaleString('es-AR', {dateStyle:'long', timeStyle:'short'});
             document.getElementById('det-total').textContent  = '$ ' + parseFloat(pedidoActual.total).toLocaleString('es-AR');
+            // Mostrar descuento actual si tiene
+            var pctInput = document.getElementById('det-descuento-pct');
+            var infoDesc = document.getElementById('det-descuento-info');
+            var pct = parseFloat(pedidoActual.descuento_porcentaje || 0);
+            pctInput.value = pct > 0 ? pct : '';
+            if (pct > 0) {
+                infoDesc.classList.remove('hidden');
+                infoDesc.textContent = 'Descuento del ' + pct + '%: -$ ' + parseFloat(pedidoActual.descuento_monto||0).toLocaleString('es-AR') +
+                    ' (antes: $ ' + parseFloat(pedidoActual.total_sin_descuento||pedidoActual.total).toLocaleString('es-AR') + ')';
+            } else {
+                infoDesc.classList.add('hidden');
+            }
             var selEst = document.getElementById('sel-estado-hist');
             if (selEst) {
                 // Si el estado no está entre las opciones (ej "Preparado" viejo), lo agrega
