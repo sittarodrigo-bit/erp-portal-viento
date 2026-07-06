@@ -2693,13 +2693,14 @@ def aplicar_descuento_pedido(id: int, data: dict = Body(...)):
     conn = obtener_conexion()
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
-        # Estado del pedido: no permitir si ya está despachado/cancelado
+        # Estado del pedido: el descuento solo se aplica DESPUÉS de despachar,
+        # así el stock ya salió de fábrica y no puede verse afectado.
         cur.execute("SELECT estado, total, total_sin_descuento FROM pedidos_b2b WHERE id=%s", (id,))
         row = cur.fetchone()
         if not row:
             raise HTTPException(status_code=404, detail="Pedido no encontrado")
-        if row['estado'] in ('Despachado', 'Despachado parcial', 'Cancelado'):
-            raise HTTPException(status_code=409, detail="No se puede aplicar descuento a un pedido ya despachado o cancelado.")
+        if row['estado'] not in ('Despachado', 'Despachado parcial'):
+            raise HTTPException(status_code=409, detail="El descuento se aplica una vez que el pedido está despachado.")
 
         porcentaje = float(data.get('porcentaje') or 0)
         if porcentaje < 0 or porcentaje > 100:
