@@ -129,7 +129,7 @@
                 </div>
             </div>
 
-            <div class="border-t border-gray-700 pt-3 mb-2">
+            <div id="det-descuento-seccion" class="hidden border-t border-gray-700 pt-3 mb-2">
                 <div class="flex items-center gap-2 mb-2">
                     <span class="text-gray-400 text-sm flex-1">💸 Descuento (%)</span>
                     <input type="number" id="det-descuento-pct" min="0" max="100" step="0.5" placeholder="0"
@@ -497,17 +497,25 @@
             document.getElementById('det-dist').textContent   = dist.razon_social || pedidoActual.distribuidor;
             document.getElementById('det-fecha').textContent  = new Date(pedidoActual.fecha).toLocaleString('es-AR', {dateStyle:'long', timeStyle:'short'});
             document.getElementById('det-total').textContent  = '$ ' + parseFloat(pedidoActual.total).toLocaleString('es-AR');
-            // Mostrar descuento actual si tiene
+            // El descuento solo se puede aplicar DESPUÉS de despachar
+            var esDespachado = (pedidoActual.estado === 'Despachado' || pedidoActual.estado === 'Despachado parcial');
+            var seccionDesc = document.getElementById('det-descuento-seccion');
             var pctInput = document.getElementById('det-descuento-pct');
             var infoDesc = document.getElementById('det-descuento-info');
             var pct = parseFloat(pedidoActual.descuento_porcentaje || 0);
-            pctInput.value = pct > 0 ? pct : '';
-            if (pct > 0) {
-                infoDesc.classList.remove('hidden');
-                infoDesc.textContent = 'Descuento del ' + pct + '%: -$ ' + parseFloat(pedidoActual.descuento_monto||0).toLocaleString('es-AR') +
-                    ' (antes: $ ' + parseFloat(pedidoActual.total_sin_descuento||pedidoActual.total).toLocaleString('es-AR') + ')';
+            if (esDespachado) {
+                seccionDesc.classList.remove('hidden');
+                pctInput.value = pct > 0 ? pct : '';
+                if (pct > 0) {
+                    infoDesc.classList.remove('hidden');
+                    infoDesc.textContent = 'Descuento del ' + pct + '%: -$ ' + parseFloat(pedidoActual.descuento_monto||0).toLocaleString('es-AR') +
+                        ' (antes: $ ' + parseFloat(pedidoActual.total_sin_descuento||pedidoActual.total).toLocaleString('es-AR') + ')';
+                } else {
+                    infoDesc.classList.add('hidden');
+                }
             } else {
-                infoDesc.classList.add('hidden');
+                // Antes de despachar no se muestra la opción de descuento
+                seccionDesc.classList.add('hidden');
             }
             var selEst = document.getElementById('sel-estado-hist');
             if (selEst) {
