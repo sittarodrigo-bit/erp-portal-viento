@@ -165,7 +165,10 @@
                         <option value="Cancelado">❌ Cancelado</option>
                     </select>
                 </div>
-                <button onclick="eliminarPedido()" class="text-xs text-red-500 hover:text-red-400 font-bold">🗑 Eliminar</button>
+                <div class="flex items-center gap-3">
+                    <button id="btn-desbloquear" onclick="desbloquearParaEditar()" class="hidden text-xs bg-orange-800/40 border border-orange-700 hover:bg-orange-800 text-orange-300 hover:text-white font-bold px-3 py-1.5 rounded transition">🔓 Desbloquear para editar (sin tocar stock)</button>
+                    <button onclick="eliminarPedido()" class="text-xs text-red-500 hover:text-red-400 font-bold">🗑 Eliminar</button>
+                </div>
             </div>
         </div>
     </div>
@@ -488,6 +491,26 @@
             } catch(e) { alert('Error al aplicar el descuento.'); }
         }
 
+        async function desbloquearParaEditar() {
+            if (!pedidoActual) return;
+            if (!confirm('¿Desbloquear este pedido para editarlo?\n\nEl stock NO será modificado. Solo podés cambiar lo que esté mal.')) return;
+            try {
+                var res = await fetch(API_URL + '/pedidos_b2b/' + pedidoActual.id + '/desbloquear', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ estado: 'En preparación' })
+                });
+                if (!res.ok) { var e = await res.json(); alert('No se pudo desbloquear: ' + (e.detail||'')); return; }
+                var r = await res.json();
+                alert('✅ Pedido desbloqueado.\n\n' + r.aviso + '\nAhora podés editar los productos y volver a despachar cuando esté correcto.');
+                pedidoActual.estado = 'En preparación';
+                document.getElementById('sel-estado-hist').value = 'En preparación';
+                document.getElementById('btn-desbloquear').classList.add('hidden');
+                cerrarModales();
+                cargarPedidos();
+            } catch(e) { alert('Error al desbloquear el pedido.'); }
+        }
+
         async function abrirDetalle(id) {
             await cargarPedidoYItems(id);
             if (!pedidoActual) { alert('No se pudo cargar el pedido. Refrescá la página.'); return; }
@@ -523,6 +546,13 @@
                 var existe = Array.prototype.some.call(selEst.options, function(o){ return o.value === pedidoActual.estado; });
                 if (!existe && pedidoActual.estado) { var op = document.createElement('option'); op.value = pedidoActual.estado; op.textContent = pedidoActual.estado; selEst.appendChild(op); }
                 selEst.value = pedidoActual.estado;
+            }
+            // Mostrar el botón de desbloquear solo si el pedido está despachado
+            var btnDesbloquear = document.getElementById('btn-desbloquear');
+            if (pedidoActual.estado === 'Despachado' || pedidoActual.estado === 'Despachado parcial') {
+                btnDesbloquear.classList.remove('hidden');
+            } else {
+                btnDesbloquear.classList.add('hidden');
             }
 
             renderDetalle();
