@@ -139,6 +139,13 @@
                 <div id="det-descuento-info" class="hidden text-xs text-gray-500 text-right mb-1"></div>
             </div>
 
+            <div class="border-t border-gray-700 pt-3 pb-3 flex items-center gap-3">
+                <label class="flex items-center gap-2 cursor-pointer text-gray-300 hover:text-white">
+                    <input type="checkbox" id="remito-con-iva" class="w-4 h-4" style="accent-color: var(--neon);">
+                    <span class="text-sm">📊 Remito con IVA (21%)</span>
+                </label>
+            </div>
+
             <div class="border-t border-gray-700 pt-3 flex justify-between items-center mb-4">
                 <span class="font-bold text-gray-400">TOTAL</span>
                 <span id="det-total" class="font-bold text-neon text-xl"></span>
@@ -779,8 +786,26 @@
                 styles: {fontSize:8, cellPadding:1.5, lineWidth:0.1, lineColor:[120,120,120]},
                 columnStyles: {1:{halign:'center'}, 2:{halign:'right'}, 3:{halign:'right'}}
             });
-            var y = doc.lastAutoTable.finalY + 18;
+            var y = doc.lastAutoTable.finalY + 8;
+            // Mostrar total con IVA si está marcado
+            var conIva = document.getElementById('remito-con-iva').checked;
+            var total = parseFloat(pedidoActual.total || 0);
+            var iva = conIva ? Math.round(total * 0.21 * 100) / 100 : 0;
+            var totalConIva = conIva ? total + iva : total;
+            
+            doc.setFontSize(9); doc.setFont('helvetica', 'bold'); doc.setTextColor(0, 0, 0);
+            if (conIva) {
+                doc.text('Subtotal: $ ' + total.toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2}), 130, y);
+                doc.text('IVA (21%): $ ' + iva.toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2}), 130, y + 6);
+                doc.setFontSize(11); doc.setTextColor(255, 100, 0);
+                doc.text('TOTAL + IVA: $ ' + totalConIva.toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2}), 130, y + 12);
+            } else {
+                doc.setFontSize(11); doc.setTextColor(0, 100, 150);
+                doc.text('TOTAL: $ ' + total.toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2}), 130, y);
+            }
+            y = y + (conIva ? 20 : 10);
             if (y > 270) y = 270;
+            doc.setTextColor(0, 0, 0); doc.setLineWidth(0.5);
             doc.line(14, y, 80, y); doc.line(130, y, 196, y);
             doc.setFontSize(8);
             doc.text('Firma cliente', 14, y+5);
@@ -830,8 +855,28 @@
                 styles: {fontSize:8, cellPadding:1.5, lineWidth:0.1, lineColor:[120,120,120]},
                 columnStyles: hayArmado ? {1:{halign:'center'}, 2:{halign:'center'}, 3:{halign:'center'}} : {1:{halign:'center'}, 2:{halign:'center'}}
             });
-            var y = doc.lastAutoTable.finalY + 18;
+            // Mostrar total con IVA si está marcado
+            var conIva = document.getElementById('remito-con-iva').checked;
+            var total = parseFloat(pedidoActual.total || 0);
+            var iva = conIva ? Math.round(total * 0.21 * 100) / 100 : 0;
+            var totalConIva = conIva ? total + iva : total;
+            
+            var y = doc.lastAutoTable.finalY + 8;
+            if (y > 265) y = 265;
+            // Mostrar total e IVA
+            doc.setFontSize(9); doc.setFont('helvetica', 'bold'); doc.setTextColor(0, 0, 0);
+            if (conIva) {
+                doc.text('Subtotal: $ ' + total.toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2}), 130, y);
+                doc.text('IVA (21%): $ ' + iva.toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2}), 130, y + 6);
+                doc.setFontSize(11); doc.setTextColor(255, 100, 0);
+                doc.text('TOTAL + IVA: $ ' + totalConIva.toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2}), 130, y + 12);
+            } else {
+                doc.setFontSize(11); doc.setTextColor(0, 100, 150);
+                doc.text('TOTAL: $ ' + total.toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2}), 130, y);
+            }
+            y = y + (conIva ? 20 : 10);
             if (y > 270) y = 270;
+            doc.setTextColor(0, 0, 0); doc.setLineWidth(0.5);
             doc.line(14, y, 80, y); doc.line(130, y, 196, y);
             doc.setFontSize(8);
             doc.text('Firma recepción', 14, y+5);
