@@ -2686,6 +2686,32 @@ class GuiaTransporte(BaseModel):
     transporte: Optional[str] = None
     numero: Optional[str] = None
 
+@app.put("/api/pedidos_b2b/{id}/desbloquear")
+def desbloquear_pedido_sin_stock(id: int, data: dict = Body(default={})):
+    """Revierte el pedido a un estado editable SIN tocar el stock ni el armado.
+    Para corregir un pedido despachado por error, ajustando solo lo necesario a mano."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT estado FROM pedidos_b2b WHERE id=%s", (id,))
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Pedido no encontrado")
+        nuevo_estado = data.get('estado', 'En preparación')
+        if nuevo_estado not in ('Pendiente', 'En preparación'):
+            raise HTTPException(status_code=400, detail="El estado destino debe ser 'Pendiente' o 'En preparación'.")
+        # Solo cambia el estado. NO toca stock_actual ni preparacion_items.
+        cur.execute("UPDATE pedidos_b2b SET estado=%s WHERE id=%s", (nuevo_estado, id))
+        conn.commit()
+        return {"status": "ok", "estado": nuevo_estado, "aviso": "Estado revertido sin modificar el stock."}
+    except HTTPException:
+        raise
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
 @app.put("/api/pedidos_b2b/{id}/descuento")
 def aplicar_descuento_pedido(id: int, data: dict = Body(...)):
     """Aplica un descuento en porcentaje al total del pedido B2B.
