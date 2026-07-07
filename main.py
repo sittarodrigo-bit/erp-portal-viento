@@ -1622,10 +1622,11 @@ def crear_pedido_b2b(pedido: PedidoB2B):
     conn = obtener_conexion()
     try:
         cur = conn.cursor()
+        observaciones = getattr(pedido, 'observaciones', '') or ''
         cur.execute("""
-            INSERT INTO pedidos_b2b (id_distribuidor, total, estado)
-            VALUES (%s, %s, 'Pendiente') RETURNING id
-        """, (pedido.id_distribuidor, pedido.total))
+            INSERT INTO pedidos_b2b (id_distribuidor, total, estado, observaciones)
+            VALUES (%s, %s, 'Pendiente', %s) RETURNING id
+        """, (pedido.id_distribuidor, pedido.total, observaciones))
         id_pedido = cur.fetchone()[0]
         for item in pedido.detalle:
             cur.execute("""
@@ -2480,7 +2481,8 @@ def historial_pedidos_b2b(estado: Optional[str] = None, id_distribuidor: Optiona
                    d.telefono AS dist_telefono, d.cuit AS dist_cuit,
                    COALESCE(p.guia_transporte,'') AS guia_transporte, COALESCE(p.guia_numero,'') AS guia_numero,
                    COALESCE(p.descuento_porcentaje,0) AS descuento_porcentaje,
-                   COALESCE(p.descuento_monto,0) AS descuento_monto, p.total_sin_descuento
+                   COALESCE(p.descuento_monto,0) AS descuento_monto, p.total_sin_descuento,
+                   COALESCE(p.observaciones, '') AS observaciones
             FROM pedidos_b2b p
             LEFT JOIN distribuidores d ON p.id_distribuidor = d.id
             WHERE 1=1
@@ -2512,7 +2514,8 @@ def historial_pedidos_b2b(estado: Optional[str] = None, id_distribuidor: Optiona
                        d.telefono AS dist_telefono, d.cuit AS dist_cuit,
                        '' AS guia_transporte, '' AS guia_numero,
                        COALESCE(p.descuento_porcentaje,0) AS descuento_porcentaje,
-                       COALESCE(p.descuento_monto,0) AS descuento_monto, p.total_sin_descuento
+                       COALESCE(p.descuento_monto,0) AS descuento_monto, p.total_sin_descuento,
+                       COALESCE(p.observaciones, '') AS observaciones
                 FROM pedidos_b2b p
                 LEFT JOIN distribuidores d ON p.id_distribuidor = d.id
                 WHERE 1=1
