@@ -2642,13 +2642,9 @@ def cambiar_estado_pedido(id: int, estado: str):
         er = cur.fetchone()
         estado_previo = er[0] if er else None
 
-        # Estados que implican stock ya descontado (lo preparado/tildado salió del depósito)
-        CON_STOCK = ('Terminado', 'Despachado', 'Despachado parcial')
-        # Estados "abiertos" donde el pedido se puede editar/re-armar
+        CON_STOCK = ('Terminado', 'Despachado', 'Despachado parcial', 'Facturado')
         ABIERTOS = ('Pendiente', 'En preparación')
 
-        # Si REVERTIMOS de un estado con stock descontado a uno abierto:
-        # devolver al stock lo preparado y limpiar los tildes, para poder editar/re-armar.
         if estado_previo in CON_STOCK and estado in ABIERTOS:
             try:
                 cur.execute("SELECT id_producto, cantidad FROM preparacion_items WHERE id_pedido = %s", (id,))
@@ -2658,7 +2654,6 @@ def cambiar_estado_pedido(id: int, estado: str):
             except Exception:
                 conn.rollback()
 
-        # Si CANCELAMOS: devolver lo preparado (si había) y limpiar
         if estado == 'Cancelado' and estado_previo != 'Cancelado':
             try:
                 cur.execute("SELECT id_producto, cantidad FROM preparacion_items WHERE id_pedido = %s", (id,))
@@ -2668,8 +2663,7 @@ def cambiar_estado_pedido(id: int, estado: str):
             except Exception:
                 conn.rollback()
 
-        # Registrar la fecha de entrega cuando pasa a Despachado (para seguimiento post-entrega)
-        if estado in ('Despachado', 'Despachado parcial') and estado_previo not in ('Despachado', 'Despachado parcial'):
+        if estado in ('Despachado', 'Despachado parcial', 'Facturado') and estado_previo not in ('Despachado', 'Despachado parcial', 'Facturado'):
             try:
                 cur.execute("UPDATE pedidos_b2b SET estado = %s, fecha_entrega = NOW() WHERE id = %s", (estado, id))
             except Exception:
