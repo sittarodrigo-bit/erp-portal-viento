@@ -1486,11 +1486,9 @@ def estado_cuenta_distribuidor(id_dist: int):
         cur = conn.cursor(cursor_factory=RealDictCursor)
         cur.execute("""
             SELECT id, fecha::text, total, estado, observaciones FROM pedidos_b2b
-            WHERE id_distribuidor = %s AND estado IN ('Despachado','Despachado parcial') ORDER BY fecha DESC
+            WHERE id_distribuidor = %s AND estado IN ('Despachado','Despachado parcial','Facturado') ORDER BY fecha DESC
         """, (id_dist,))
         pedidos = fetchall_dict(cur)
-        # Para cada pedido, calcular el monto REAL despachado:
-        # si hay armado registrado, se cobra lo armado (precio x cantidad armada); si no, el total pedido.
         for p in pedidos:
             monto_real = None
             try:
