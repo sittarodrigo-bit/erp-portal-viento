@@ -1531,8 +1531,6 @@ def cuenta_corriente_global():
     conn = obtener_conexion()
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
-        # Total despachado por distribuidor: si el pedido tiene armado registrado,
-        # se toma lo armado (cantidad x precio); si no, el total del pedido.
         cur.execute("""
             WITH pedidos_real AS (
                 SELECT pb.id, pb.id_distribuidor,
@@ -1546,7 +1544,7 @@ def cuenta_corriente_global():
                          ELSE COALESCE(pb.total, 0)
                     END AS monto_real
                 FROM pedidos_b2b pb
-                WHERE pb.estado IN ('Despachado','Despachado parcial')
+                WHERE pb.estado IN ('Despachado','Despachado parcial','Facturado')
             )
             SELECT d.id, d.razon_social, d.limite_credito,
                    COALESCE(ped.total_despachado, 0) AS total_despachado,
@@ -1567,7 +1565,6 @@ def cuenta_corriente_global():
         return fetchall_dict(cur)
     finally:
         liberar_conexion(conn)
-
 # ==============================================================================
 # LOGIN / REGISTRO MAYORISTAS
 # ==============================================================================
