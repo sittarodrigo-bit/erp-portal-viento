@@ -2722,22 +2722,18 @@ def aplicar_descuento_pedido(id: int, data: dict = Body(...)):
     conn = obtener_conexion()
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
-        # Estado del pedido: el descuento solo se aplica DESPUÉS de despachar,
-        # así el stock ya salió de fábrica y no puede verse afectado.
         cur.execute("SELECT estado, total, total_sin_descuento FROM pedidos_b2b WHERE id=%s", (id,))
         row = cur.fetchone()
         if not row:
             raise HTTPException(status_code=404, detail="Pedido no encontrado")
-        if row['estado'] not in ('Despachado', 'Despachado parcial'):
-            raise HTTPException(status_code=409, detail="El descuento se aplica una vez que el pedido está despachado.")
+        if row['estado'] not in ('Despachado', 'Despachado parcial', 'Facturado'):
+            raise HTTPException(status_code=409, detail="El descuento se aplica una vez que el pedido está despachado o facturado.")
 
         porcentaje = float(data.get('porcentaje') or 0)
         if porcentaje < 0 or porcentaje > 100:
             raise HTTPException(status_code=400, detail="El porcentaje debe estar entre 0 y 100.")
 
-        # El total original es el que ya tenía guardado (si nunca se aplicó descuento) o el total_sin_descuento
         total_original = float(row['total_sin_descuento']) if row['total_sin_descuento'] is not None else float(row['total'] or 0)
-
         monto_descuento = round(total_original * porcentaje / 100, 2)
         nuevo_total = round(total_original - monto_descuento, 2)
 
@@ -2760,24 +2756,6 @@ def aplicar_descuento_pedido(id: int, data: dict = Body(...)):
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         liberar_conexion(conn)
-
-@app.put("/api/pedidos_b2b/{id}/guia")
-def guardar_guia_transporte(id: int, data: GuiaTransporte):
-    """Guarda los datos de la guía de transporte en el pedido."""
-    conn = obtener_conexion()
-    try:
-        cur = conn.cursor()
-        try:
-            cur.execute("UPDATE pedidos_b2b SET guia_transporte=%s, guia_numero=%s WHERE id=%s",
-                        (data.transporte, data.numero, id))
-            conn.commit()
-            return {"status": "ok"}
-        except Exception:
-            conn.rollback()
-            raise HTTPException(status_code=400, detail="Falta correr CREAR_GUIA_TRANSPORTE.sql en la base.")
-    finally:
-        liberar_conexion(conn)
-
 @app.delete("/api/pedidos_b2b/{id}")
 def eliminar_pedido(id: int):
     conn = obtener_conexion()
