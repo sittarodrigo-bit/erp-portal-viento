@@ -1532,6 +1532,240 @@ def estado_cuenta_distribuidor(id_dist: int):
     finally:
         liberar_conexion(conn)
 
+# ==============================================================================
+# ENDPOINTS PARA IVA POR PEDIDO (Session 8)
+# ==============================================================================
+
+@app.get("/api/pedidos_b2b/{id_pedido}/datos_completos")
+def obtener_datos_completos_pedido(id_pedido: int):
+    """Obtiene los datos completos del pedido incluyendo incluir_iva."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("""
+            SELECT id, total, incluir_iva, estado, fecha::text
+            FROM pedidos_b2b
+            WHERE id=%s
+        """, (id_pedido,))
+        pedido = cur.fetchone()
+        
+        if not pedido:
+            raise HTTPException(status_code=404, detail="Pedido no encontrado")
+        
+        # Obtener subtotal desde detalle_pedidos_b2b
+        cur.execute("""
+            SELECT COALESCE(SUM(cantidad * precio_unitario), 0) AS subtotal
+            FROM detalle_pedidos_b2b
+            WHERE id_pedido=%s
+        """, (id_pedido,))
+        row = cur.fetchone()
+        subtotal = float(row['subtotal'] or 0) if row else 0
+        
+        iva = subtotal * 0.21 if pedido['incluir_iva'] else 0
+        
+        return {
+            "id": pedido['id'],
+            "subtotal": subtotal,
+            "iva": iva,
+            "total": subtotal + iva,
+            "incluir_iva": bool(pedido['incluir_iva']),
+            "estado": pedido['estado'],
+            "fecha": pedido['fecha']
+        }
+    finally:
+        liberar_conexion(conn)
+
+@app.put("/api/pedidos_b2b/{id_pedido}/incluir_iva")
+def guardar_incluir_iva(id_pedido: int, data: dict = Body(...)):
+    """Guarda el flag incluir_iva en un pedido y recalcula el total si es necesario."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        incluir_iva = data.get('incluir_iva', False)
+        
+        # Obtener el pedido actual
+        cur.execute("SELECT id, total FROM pedidos_b2b WHERE id=%s", (id_pedido,))
+        pedido = cur.fetchone()
+        if not pedido:
+            raise HTTPException(status_code=404, detail="Pedido no encontrado")
+        
+        # Obtener el subtotal (sin IVA) desde detalle_pedidos_b2b
+        cur.execute("""
+            SELECT COALESCE(SUM(cantidad * precio_unitario), 0) AS subtotal
+            FROM detalle_pedidos_b2b
+            WHERE id_pedido=%s
+        """, (id_pedido,))
+        row = cur.fetchone()
+        subtotal = float(row['subtotal'] or 0) if row else 0
+        
+        # Calcular nuevo total según el flag
+        nuevo_total = subtotal * 1.21 if incluir_iva else subtotal
+        
+        # Guardar el flag y actualizar el total
+        cur.execute("""
+            UPDATE pedidos_b2b 
+            SET incluir_iva=%s, total=%s
+            WHERE id=%s
+        """, (incluir_iva, nuevo_total, id_pedido))
+        conn.commit()
+        
+        return {
+            "status": "ok",
+            "incluir_iva": incluir_iva,
+            "subtotal": subtotal,
+            "iva": subtotal * 0.21 if incluir_iva else 0,
+            "total": nuevo_total
+        }
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
+@app.get("/api/pedidos_b2b/{id_pedido}/remito_pdf")
+def generar_remito_pdf(id_pedido: int):
+    """Genera un remito PDF con IVA detallado si incluir_iva=true."""
+    try:
+        from reportlab.lib.pagesizes import letter
+        from reportlab.lib.units import inch
+        from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib.enums import TA_CENTER, TA_RIGHT, TA_LEFT
+        from reportlab.lib import colors
+        from io import BytesIO
+        from datetime import datetime
+    except ImportError:
+        raise HTTPException(status_code=500, detail="Falta instalar reportlab: pip install reportlab")
+    
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # Obtener datos del pedido
+        cur.execute("""
+            SELECT p.id, p.fecha::text, p.total, p.incluir_iva, p.estado,
+                   d.razon_social, d.cuit, d.direccion, d.telefono
+            FROM pedidos_b2b p
+            LEFT JOIN distribuidores d ON p.id_distribuidor = d.id
+            WHERE p.id=%s
+        """, (id_pedido,))
+        pedido = cur.fetchone()
+        
+        if not pedido:
+            raise HTTPException(status_code=404, detail="Pedido no encontrado")
+        
+        # Obtener detalle
+        cur.execute("""
+            SELECT dp.id_producto, pr.nombre, pr.sku, dp.cantidad, dp.precio_unitario,
+                   (dp.cantidad * dp.precio_unitario) AS subtotal_item
+            FROM detalle_pedidos_b2b dp
+            LEFT JOIN productos pr ON dp.id_producto = pr.id
+            WHERE dp.id_pedido=%s
+            ORDER BY pr.nombre
+        """, (id_pedido,))
+        items = fetchall_dict(cur)
+        
+        # Calcular totales
+        subtotal = sum(float(item['subtotal_item'] or 0) for item in items)
+        iva = subtotal * 0.21 if pedido['incluir_iva'] else 0
+        total = subtotal + iva
+        
+        # Crear PDF en memoria
+        buffer = BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=letter, topMargin=0.5*inch, bottomMargin=0.5*inch)
+        elementos = []
+        
+        # Estilos
+        styles = getSampleStyleSheet()
+        titulo_style = ParagraphStyle(
+            'Titulo',
+            parent=styles['Heading1'],
+            fontSize=16,
+            textColor=colors.HexColor('#e4fc74'),
+            alignment=TA_CENTER,
+            fontName='Helvetica-Bold'
+        )
+        
+        # Título
+        elementos.append(Paragraph("PORTAL DEL VIENTO - REMITO", titulo_style))
+        elementos.append(Spacer(1, 0.2*inch))
+        
+        # Datos del distribuidor
+        fecha_formateada = datetime.fromisoformat(pedido['fecha']).strftime('%d/%m/%Y') if pedido['fecha'] else '—'
+        cliente_info = f"""
+        <b>Cliente:</b> {pedido['razon_social'] or '—'}<br/>
+        <b>CUIT:</b> {pedido['cuit'] or '—'}<br/>
+        <b>Dirección:</b> {pedido['direccion'] or '—'}<br/>
+        <b>Teléfono:</b> {pedido['telefono'] or '—'}<br/>
+        <b>Pedido N°:</b> {str(pedido['id']).zfill(4)}<br/>
+        <b>Fecha:</b> {fecha_formateada}<br/>
+        <b>Estado:</b> {pedido['estado']}
+        """
+        elementos.append(Paragraph(cliente_info, styles['Normal']))
+        elementos.append(Spacer(1, 0.2*inch))
+        
+        # Tabla de items
+        tabla_data = [['Producto', 'SKU', 'Cantidad', 'Precio Unit.', 'Subtotal']]
+        for item in items:
+            tabla_data.append([
+                item['nombre'] or '—',
+                item['sku'] or '—',
+                f"{item['cantidad']}",
+                f"${float(item['precio_unitario'] or 0):.2f}",
+                f"${float(item['subtotal_item'] or 0):.2f}"
+            ])
+        
+        tabla = Table(tabla_data, colWidths=[2.5*inch, 0.8*inch, 0.8*inch, 1*inch, 1.1*inch])
+        tabla.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#e4fc74')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.black),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 10),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+            ('BACKGROUND', (0, 1), (-1, -1), colors.white),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black),
+            ('FONTSIZE', (0, 1), (-1, -1), 9),
+        ]))
+        elementos.append(tabla)
+        elementos.append(Spacer(1, 0.3*inch))
+        
+        # Totales
+        totales_html = f"""
+        <table cellpadding="5" cellspacing="0" width="100%">
+        <tr><td align="right" width="70%"><b>Subtotal:</b></td><td align="right" width="30%"><b>${subtotal:.2f}</b></td></tr>
+        """
+        if pedido['incluir_iva']:
+            totales_html += f"<tr><td align=\"right\"><b>IVA (21%):</b></td><td align=\"right\"><b>${iva:.2f}</b></td></tr>"
+        totales_html += f"""
+        <tr><td align="right"><b style="font-size: 14px">TOTAL:</b></td><td align="right"><b style="font-size: 14px">${total:.2f}</b></td></tr>
+        </table>
+        """
+        elementos.append(Paragraph(totales_html, styles['Normal']))
+        
+        # Nota al pie
+        if pedido['incluir_iva']:
+            elementos.append(Spacer(1, 0.2*inch))
+            elementos.append(Paragraph(
+                "<i>Este remito incluye IVA (21%).</i>",
+                styles['Normal']
+            ))
+        
+        # Generar PDF
+        doc.build(elementos)
+        buffer.seek(0)
+        
+        return Response(
+            content=buffer.getvalue(),
+            media_type="application/pdf",
+            headers={"Content-Disposition": f"attachment; filename=remito_{id_pedido}.pdf"}
+        )
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
 @app.get("/api/distribuidores/cuenta_corriente")
 def cuenta_corriente_global():
     conn = obtener_conexion()
