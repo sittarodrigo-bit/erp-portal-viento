@@ -539,9 +539,10 @@
                 });
                 if (!res.ok) { alert('No se pudo aplicar el IVA.'); return; }
                 var r = await res.json();
-                pedidoActual.total = r.nuevo_total;
-                document.getElementById('det-total').textContent = '$ ' + parseFloat(r.nuevo_total).toLocaleString('es-AR');
                 alert('✅ IVA aplicado.\n\nIVA: $ ' + parseFloat(r.iva).toLocaleString('es-AR') + '\nNuevo Total: $ ' + parseFloat(r.nuevo_total).toLocaleString('es-AR'));
+                // Refrescar datos completos
+                await cargarPedidoYItems(pedidoActual.id);
+                renderDetalle();
                 cargarPedidos();
             } catch(e) { alert('Error al aplicar IVA.'); }
         }
@@ -561,9 +562,10 @@
                 });
                 if (!res.ok) { alert('No se pudo quitar el IVA.'); return; }
                 var r = await res.json();
-                pedidoActual.total = r.total_nuevo;
-                document.getElementById('det-total').textContent = '$ ' + parseFloat(r.total_nuevo).toLocaleString('es-AR');
                 alert('✅ IVA removido.\n\nNuevo Total: $ ' + parseFloat(r.total_nuevo).toLocaleString('es-AR'));
+                // Refrescar datos completos
+                await cargarPedidoYItems(pedidoActual.id);
+                renderDetalle();
                 cargarPedidos();
             } catch(e) { alert('Error al quitar IVA.'); }
         }
