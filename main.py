@@ -1505,7 +1505,13 @@ def estado_cuenta_distribuidor(id_dist: int):
                 conn.rollback()
                 monto_real = None
             p['total_pedido'] = float(p['total'] or 0)
-            p['total'] = monto_real if monto_real is not None else float(p['total'] or 0)
+            
+            # AQUÍ VA LA CORRECCIÓN: Aplicar IVA (21%)
+            if monto_real is not None:
+                p['total'] = float(monto_real) * 1.21
+            else:
+                p['total'] = float(p['total'] or 0)
+        
         cur.execute("""
             SELECT c.id, c.fecha::text, c.monto, c.metodo, c.referencia, c.notas, c.id_pedido,
                    e.nombre as empleado_nombre, e.apellido as empleado_apellido
