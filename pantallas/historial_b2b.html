@@ -160,6 +160,10 @@
                 <button onclick="guardarCambios()" id="btn-guardar-cambios" class="bg-neon text-black font-bold py-2 px-3 rounded text-sm hover:bg-yellow-300">💾 Guardar Cambios</button>
             </div>
 
+            <div class="grid grid-cols-2 gap-2 mb-4">
+                <button onclick="aplicarIvaPedido()" id="btn-aplicar-iva" class="border border-orange-700 hover:bg-orange-800/30 text-orange-300 hover:text-orange-200 py-2 px-3 rounded text-sm transition font-bold">💸 Aplicar IVA 21%</button>
+            </div>
+
             <div class="flex justify-between items-center border-t border-gray-700 pt-4">
                 <div class="flex items-center gap-2">
                     <label class="text-xs text-gray-400 font-bold">Estado:</label>
@@ -516,6 +520,30 @@
                 cerrarModales();
                 cargarPedidos();
             } catch(e) { alert('Error al desbloquear el pedido.'); }
+        }
+
+        async function aplicarIvaPedido() {
+            if (!pedidoActual) return;
+            if (pedidoActual.estado === 'Despachado' || pedidoActual.estado === 'Despachado parcial') {
+                alert('No se puede aplicar IVA a un pedido ya despachado.');
+                return;
+            }
+            if (!confirm('¿Aplicar IVA 21% a este pedido?\n\nTotal actual: $ ' + parseFloat(pedidoActual.total).toLocaleString('es-AR') + '\nTotal con IVA será mayor.')) return;
+            
+            try {
+                var res = await fetch(API_URL + '/pedidos_b2b/' + pedidoActual.id + '/aplicar-iva', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({})
+                });
+                if (!res.ok) { alert('No se pudo aplicar el IVA.'); return; }
+                var r = await res.json();
+                // Actualizar en memoria
+                pedidoActual.total = r.nuevo_total;
+                document.getElementById('det-total').textContent = '$ ' + parseFloat(r.nuevo_total).toLocaleString('es-AR');
+                alert('✅ IVA aplicado.\n\nIVA: $ ' + parseFloat(r.iva).toLocaleString('es-AR') + '\nNuevo Total: $ ' + parseFloat(r.nuevo_total).toLocaleString('es-AR'));
+                cargarPedidos();
+            } catch(e) { alert('Error al aplicar IVA.'); }
         }
 
         async function abrirDetalle(id) {
