@@ -2720,24 +2720,54 @@ def desbloquear_pedido_sin_stock(id: int, data: dict = Body(default={})):
     finally:
         liberar_conexion(conn)
 
+@app.put("/api/pedidos_b2b/{id}/quitar-iva")
+def quitar_iva_pedido(id: int):
+    """Quita el IVA aplicado a un pedido (revierte al total original sin IVA)."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("SELECT total, total_sin_descuento FROM pedidos_b2b WHERE id=%s", (id,))
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Pedido no encontrado.")
+        
+        total_actual = float(row['total'])
+        if row['total_sin_descuento']:
+            total_original = float(row['total_sin_descuento'])
+        else:
+            total_original = round(total_actual / 1.21 * 100) / 100
+        
+        cur.execute("UPDATE pedidos_b2b SET total = %s WHERE id=%s", (total_original, id))
+        conn.commit()
+        
+        return {
+            "status": "ok",
+            "total_anterior": total_actual,
+            "total_nuevo": total_original
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
 @app.put("/api/pedidos_b2b/{id}/aplicar-iva")
 def aplicar_iva_pedido(id: int, data: dict = Body(default={})):
     """Aplica IVA 21% a un pedido B2B. Suma al total guardado."""
     conn = obtener_conexion()
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
-        # Obtener el total actual
         cur.execute("SELECT total FROM pedidos_b2b WHERE id=%s", (id,))
         row = cur.fetchone()
         if not row:
             raise HTTPException(status_code=404, detail="Pedido no encontrado.")
         
         total_actual = float(row['total'])
-        # Calcular IVA (21%)
         iva = round(total_actual * 0.21 * 100) / 100
         nuevo_total = total_actual + iva
         
-        # Guardar el nuevo total con IVA
         cur.execute("""
             UPDATE pedidos_b2b
             SET total = %s
@@ -2759,6 +2789,7 @@ def aplicar_iva_pedido(id: int, data: dict = Body(default={})):
     finally:
         liberar_conexion(conn)
 
+@app.put("/api/pedidos_b2b/{id}/descuento")
 @app.put("/api/pedidos_b2b/{id}/descuento")
 def aplicar_descuento_pedido(id: int, data: dict = Body(...)):
     """Aplica un descuento en porcentaje al total del pedido B2B.
