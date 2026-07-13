@@ -543,9 +543,7 @@
                 pedidoActual.total = r.nuevo_total;
                 document.getElementById('det-total').textContent = '$ ' + parseFloat(r.nuevo_total).toLocaleString('es-AR');
                 alert('✅ IVA aplicado.\n\nIVA: $ ' + parseFloat(r.iva).toLocaleString('es-AR') + '\nNuevo Total: $ ' + parseFloat(r.nuevo_total).toLocaleString('es-AR'));
-                // Refrescar lista
-                setTimeout(cargarPedidos, 500);
-            } catch(e) { alert('Error al aplicar IVA.'); }
+            } catch(e) { alert('Error al aplicar IVA: ' + e.message); }
         }
 
         async function quitarIvaPedido() {
@@ -567,9 +565,7 @@
                 pedidoActual.total = r.total_nuevo;
                 document.getElementById('det-total').textContent = '$ ' + parseFloat(r.total_nuevo).toLocaleString('es-AR');
                 alert('✅ IVA removido.\n\nNuevo Total: $ ' + parseFloat(r.total_nuevo).toLocaleString('es-AR'));
-                // Refrescar lista
-                setTimeout(cargarPedidos, 500);
-            } catch(e) { alert('Error al quitar IVA.'); }
+            } catch(e) { alert('Error al quitar IVA: ' + e.message); }
         }
 
         async function abrirDetalle(id) {
