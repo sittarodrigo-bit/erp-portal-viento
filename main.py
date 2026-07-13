@@ -6,6 +6,11 @@ from typing import List, Optional
 import psycopg2
 from psycopg2.extras import RealDictCursor
 import os
+import secrets
+
+def generar_codigo_acceso(longitud=12):
+    """Genera un código alfanumérico único para acceso de clientes."""
+    return secrets.token_hex(longitud // 2).upper()
 
 app = FastAPI(
     title="API Portal del Viento - Alfajores",
@@ -1486,9 +1491,11 @@ def estado_cuenta_distribuidor(id_dist: int):
         cur = conn.cursor(cursor_factory=RealDictCursor)
         cur.execute("""
             SELECT id, fecha::text, total, estado, observaciones FROM pedidos_b2b
-            WHERE id_distribuidor = %s AND estado IN ('Despachado','Despachado parcial','Facturado') ORDER BY fecha DESC
+            WHERE id_distribuidor = %s AND estado IN ('Despachado','Despachado parcial') ORDER BY fecha DESC
         """, (id_dist,))
         pedidos = fetchall_dict(cur)
+        # Para cada pedido, calcular el monto REAL despachado:
+        # si hay armado registrado, se cobra lo armado (precio x cantidad armada); si no, el total pedido.
         for p in pedidos:
             monto_real = None
             try:
@@ -1505,13 +1512,7 @@ def estado_cuenta_distribuidor(id_dist: int):
                 conn.rollback()
                 monto_real = None
             p['total_pedido'] = float(p['total'] or 0)
-            
-            # AQUÍ VA LA CORRECCIÓN: Aplicar IVA (21%)
-            if monto_real is not None:
-                p['total'] = float(monto_real) * 1.21
-            else:
-                p['total'] = float(p['total'] or 0)
-        
+            p['total'] = monto_real if monto_real is not None else float(p['total'] or 0)
         cur.execute("""
             SELECT c.id, c.fecha::text, c.monto, c.metodo, c.referencia, c.notas, c.id_pedido,
                    e.nombre as empleado_nombre, e.apellido as empleado_apellido
@@ -1532,245 +1533,13 @@ def estado_cuenta_distribuidor(id_dist: int):
     finally:
         liberar_conexion(conn)
 
-# ==============================================================================
-# ENDPOINTS PARA IVA POR PEDIDO (Session 8)
-# ==============================================================================
-
-@app.get("/api/pedidos_b2b/{id_pedido}/datos_completos")
-def obtener_datos_completos_pedido(id_pedido: int):
-    """Obtiene los datos completos del pedido incluyendo incluir_iva."""
-    conn = obtener_conexion()
-    try:
-        cur = conn.cursor(cursor_factory=RealDictCursor)
-        cur.execute("""
-            SELECT id, total, incluir_iva, estado, fecha::text
-            FROM pedidos_b2b
-            WHERE id=%s
-        """, (id_pedido,))
-        pedido = cur.fetchone()
-        
-        if not pedido:
-            raise HTTPException(status_code=404, detail="Pedido no encontrado")
-        
-        # Obtener subtotal desde detalle_pedidos_b2b
-        cur.execute("""
-            SELECT COALESCE(SUM(cantidad * precio_unitario), 0) AS subtotal
-            FROM detalle_pedidos_b2b
-            WHERE id_pedido=%s
-        """, (id_pedido,))
-        row = cur.fetchone()
-        subtotal = float(row['subtotal'] or 0) if row else 0
-        
-        iva = subtotal * 0.21 if pedido['incluir_iva'] else 0
-        
-        return {
-            "id": pedido['id'],
-            "subtotal": subtotal,
-            "iva": iva,
-            "total": subtotal + iva,
-            "incluir_iva": bool(pedido['incluir_iva']),
-            "estado": pedido['estado'],
-            "fecha": pedido['fecha']
-        }
-    finally:
-        liberar_conexion(conn)
-
-@app.put("/api/pedidos_b2b/{id_pedido}/incluir_iva")
-def guardar_incluir_iva(id_pedido: int, data: dict = Body(...)):
-    """Guarda el flag incluir_iva en un pedido y recalcula el total si es necesario."""
-    conn = obtener_conexion()
-    try:
-        cur = conn.cursor(cursor_factory=RealDictCursor)
-        incluir_iva = data.get('incluir_iva', False)
-        
-        # Obtener el pedido actual
-        cur.execute("SELECT id, total FROM pedidos_b2b WHERE id=%s", (id_pedido,))
-        pedido = cur.fetchone()
-        if not pedido:
-            raise HTTPException(status_code=404, detail="Pedido no encontrado")
-        
-        # Obtener el subtotal (sin IVA) desde detalle_pedidos_b2b
-        cur.execute("""
-            SELECT COALESCE(SUM(cantidad * precio_unitario), 0) AS subtotal
-            FROM detalle_pedidos_b2b
-            WHERE id_pedido=%s
-        """, (id_pedido,))
-        row = cur.fetchone()
-        subtotal = float(row['subtotal'] or 0) if row else 0
-        
-        # Calcular nuevo total según el flag
-        nuevo_total = subtotal * 1.21 if incluir_iva else subtotal
-        
-        # Guardar el flag y actualizar el total
-        cur.execute("""
-            UPDATE pedidos_b2b 
-            SET incluir_iva=%s, total=%s
-            WHERE id=%s
-        """, (incluir_iva, nuevo_total, id_pedido))
-        conn.commit()
-        
-        return {
-            "status": "ok",
-            "incluir_iva": incluir_iva,
-            "subtotal": subtotal,
-            "iva": subtotal * 0.21 if incluir_iva else 0,
-            "total": nuevo_total
-        }
-    except Exception as e:
-        conn.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        liberar_conexion(conn)
-
-@app.get("/api/pedidos_b2b/{id_pedido}/remito_pdf")
-def generar_remito_pdf(id_pedido: int):
-    """Genera un remito PDF con IVA detallado si incluir_iva=true."""
-    try:
-        from reportlab.lib.pagesizes import letter
-        from reportlab.lib.units import inch
-        from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
-        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-        from reportlab.lib.enums import TA_CENTER, TA_RIGHT, TA_LEFT
-        from reportlab.lib import colors
-        from io import BytesIO
-        from datetime import datetime
-    except ImportError:
-        raise HTTPException(status_code=500, detail="Falta instalar reportlab: pip install reportlab")
-    
-    conn = obtener_conexion()
-    try:
-        cur = conn.cursor(cursor_factory=RealDictCursor)
-        
-        # Obtener datos del pedido
-        cur.execute("""
-            SELECT p.id, p.fecha::text, p.total, p.incluir_iva, p.estado,
-                   d.razon_social, d.cuit, d.direccion, d.telefono
-            FROM pedidos_b2b p
-            LEFT JOIN distribuidores d ON p.id_distribuidor = d.id
-            WHERE p.id=%s
-        """, (id_pedido,))
-        pedido = cur.fetchone()
-        
-        if not pedido:
-            raise HTTPException(status_code=404, detail="Pedido no encontrado")
-        
-        # Obtener detalle
-        cur.execute("""
-            SELECT dp.id_producto, pr.nombre, pr.sku, dp.cantidad, dp.precio_unitario,
-                   (dp.cantidad * dp.precio_unitario) AS subtotal_item
-            FROM detalle_pedidos_b2b dp
-            LEFT JOIN productos pr ON dp.id_producto = pr.id
-            WHERE dp.id_pedido=%s
-            ORDER BY pr.nombre
-        """, (id_pedido,))
-        items = fetchall_dict(cur)
-        
-        # Calcular totales
-        subtotal = sum(float(item['subtotal_item'] or 0) for item in items)
-        iva = subtotal * 0.21 if pedido['incluir_iva'] else 0
-        total = subtotal + iva
-        
-        # Crear PDF en memoria
-        buffer = BytesIO()
-        doc = SimpleDocTemplate(buffer, pagesize=letter, topMargin=0.5*inch, bottomMargin=0.5*inch)
-        elementos = []
-        
-        # Estilos
-        styles = getSampleStyleSheet()
-        titulo_style = ParagraphStyle(
-            'Titulo',
-            parent=styles['Heading1'],
-            fontSize=16,
-            textColor=colors.HexColor('#e4fc74'),
-            alignment=TA_CENTER,
-            fontName='Helvetica-Bold'
-        )
-        
-        # Título
-        elementos.append(Paragraph("PORTAL DEL VIENTO - REMITO", titulo_style))
-        elementos.append(Spacer(1, 0.2*inch))
-        
-        # Datos del distribuidor
-        fecha_formateada = datetime.fromisoformat(pedido['fecha']).strftime('%d/%m/%Y') if pedido['fecha'] else '—'
-        cliente_info = f"""
-        <b>Cliente:</b> {pedido['razon_social'] or '—'}<br/>
-        <b>CUIT:</b> {pedido['cuit'] or '—'}<br/>
-        <b>Dirección:</b> {pedido['direccion'] or '—'}<br/>
-        <b>Teléfono:</b> {pedido['telefono'] or '—'}<br/>
-        <b>Pedido N°:</b> {str(pedido['id']).zfill(4)}<br/>
-        <b>Fecha:</b> {fecha_formateada}<br/>
-        <b>Estado:</b> {pedido['estado']}
-        """
-        elementos.append(Paragraph(cliente_info, styles['Normal']))
-        elementos.append(Spacer(1, 0.2*inch))
-        
-        # Tabla de items
-        tabla_data = [['Producto', 'SKU', 'Cantidad', 'Precio Unit.', 'Subtotal']]
-        for item in items:
-            tabla_data.append([
-                item['nombre'] or '—',
-                item['sku'] or '—',
-                f"{item['cantidad']}",
-                f"${float(item['precio_unitario'] or 0):.2f}",
-                f"${float(item['subtotal_item'] or 0):.2f}"
-            ])
-        
-        tabla = Table(tabla_data, colWidths=[2.5*inch, 0.8*inch, 0.8*inch, 1*inch, 1.1*inch])
-        tabla.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#e4fc74')),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.black),
-            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, 0), 10),
-            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-            ('BACKGROUND', (0, 1), (-1, -1), colors.white),
-            ('GRID', (0, 0), (-1, -1), 1, colors.black),
-            ('FONTSIZE', (0, 1), (-1, -1), 9),
-        ]))
-        elementos.append(tabla)
-        elementos.append(Spacer(1, 0.3*inch))
-        
-        # Totales
-        totales_html = f"""
-        <table cellpadding="5" cellspacing="0" width="100%">
-        <tr><td align="right" width="70%"><b>Subtotal:</b></td><td align="right" width="30%"><b>${subtotal:.2f}</b></td></tr>
-        """
-        if pedido['incluir_iva']:
-            totales_html += f"<tr><td align=\"right\"><b>IVA (21%):</b></td><td align=\"right\"><b>${iva:.2f}</b></td></tr>"
-        totales_html += f"""
-        <tr><td align="right"><b style="font-size: 14px">TOTAL:</b></td><td align="right"><b style="font-size: 14px">${total:.2f}</b></td></tr>
-        </table>
-        """
-        elementos.append(Paragraph(totales_html, styles['Normal']))
-        
-        # Nota al pie
-        if pedido['incluir_iva']:
-            elementos.append(Spacer(1, 0.2*inch))
-            elementos.append(Paragraph(
-                "<i>Este remito incluye IVA (21%).</i>",
-                styles['Normal']
-            ))
-        
-        # Generar PDF
-        doc.build(elementos)
-        buffer.seek(0)
-        
-        return Response(
-            content=buffer.getvalue(),
-            media_type="application/pdf",
-            headers={"Content-Disposition": f"attachment; filename=remito_{id_pedido}.pdf"}
-        )
-    
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        liberar_conexion(conn)
-
 @app.get("/api/distribuidores/cuenta_corriente")
 def cuenta_corriente_global():
     conn = obtener_conexion()
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
+        # Total despachado por distribuidor: si el pedido tiene armado registrado,
+        # se toma lo armado (cantidad x precio); si no, el total del pedido.
         cur.execute("""
             WITH pedidos_real AS (
                 SELECT pb.id, pb.id_distribuidor,
@@ -1784,7 +1553,7 @@ def cuenta_corriente_global():
                          ELSE COALESCE(pb.total, 0)
                     END AS monto_real
                 FROM pedidos_b2b pb
-                WHERE pb.estado IN ('Despachado','Despachado parcial','Facturado')
+                WHERE pb.estado IN ('Despachado','Despachado parcial')
             )
             SELECT d.id, d.razon_social, d.limite_credito,
                    COALESCE(ped.total_despachado, 0) AS total_despachado,
@@ -1805,6 +1574,7 @@ def cuenta_corriente_global():
         return fetchall_dict(cur)
     finally:
         liberar_conexion(conn)
+
 # ==============================================================================
 # LOGIN / REGISTRO MAYORISTAS
 # ==============================================================================
@@ -2877,9 +2647,13 @@ def cambiar_estado_pedido(id: int, estado: str):
         er = cur.fetchone()
         estado_previo = er[0] if er else None
 
-        CON_STOCK = ('Terminado', 'Despachado', 'Despachado parcial', 'Facturado')
+        # Estados que implican stock ya descontado (lo preparado/tildado salió del depósito)
+        CON_STOCK = ('Terminado', 'Despachado', 'Despachado parcial')
+        # Estados "abiertos" donde el pedido se puede editar/re-armar
         ABIERTOS = ('Pendiente', 'En preparación')
 
+        # Si REVERTIMOS de un estado con stock descontado a uno abierto:
+        # devolver al stock lo preparado y limpiar los tildes, para poder editar/re-armar.
         if estado_previo in CON_STOCK and estado in ABIERTOS:
             try:
                 cur.execute("SELECT id_producto, cantidad FROM preparacion_items WHERE id_pedido = %s", (id,))
@@ -2889,6 +2663,7 @@ def cambiar_estado_pedido(id: int, estado: str):
             except Exception:
                 conn.rollback()
 
+        # Si CANCELAMOS: devolver lo preparado (si había) y limpiar
         if estado == 'Cancelado' and estado_previo != 'Cancelado':
             try:
                 cur.execute("SELECT id_producto, cantidad FROM preparacion_items WHERE id_pedido = %s", (id,))
@@ -2898,7 +2673,8 @@ def cambiar_estado_pedido(id: int, estado: str):
             except Exception:
                 conn.rollback()
 
-        if estado in ('Despachado', 'Despachado parcial', 'Facturado') and estado_previo not in ('Despachado', 'Despachado parcial', 'Facturado'):
+        # Registrar la fecha de entrega cuando pasa a Despachado (para seguimiento post-entrega)
+        if estado in ('Despachado', 'Despachado parcial') and estado_previo not in ('Despachado', 'Despachado parcial'):
             try:
                 cur.execute("UPDATE pedidos_b2b SET estado = %s, fecha_entrega = NOW() WHERE id = %s", (estado, id))
             except Exception:
@@ -2951,18 +2727,22 @@ def aplicar_descuento_pedido(id: int, data: dict = Body(...)):
     conn = obtener_conexion()
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
+        # Estado del pedido: el descuento solo se aplica DESPUÉS de despachar,
+        # así el stock ya salió de fábrica y no puede verse afectado.
         cur.execute("SELECT estado, total, total_sin_descuento FROM pedidos_b2b WHERE id=%s", (id,))
         row = cur.fetchone()
         if not row:
             raise HTTPException(status_code=404, detail="Pedido no encontrado")
-        if row['estado'] not in ('Despachado', 'Despachado parcial', 'Facturado'):
-            raise HTTPException(status_code=409, detail="El descuento se aplica una vez que el pedido está despachado o facturado.")
+        if row['estado'] not in ('Despachado', 'Despachado parcial'):
+            raise HTTPException(status_code=409, detail="El descuento se aplica una vez que el pedido está despachado.")
 
         porcentaje = float(data.get('porcentaje') or 0)
         if porcentaje < 0 or porcentaje > 100:
             raise HTTPException(status_code=400, detail="El porcentaje debe estar entre 0 y 100.")
 
+        # El total original es el que ya tenía guardado (si nunca se aplicó descuento) o el total_sin_descuento
         total_original = float(row['total_sin_descuento']) if row['total_sin_descuento'] is not None else float(row['total'] or 0)
+
         monto_descuento = round(total_original * porcentaje / 100, 2)
         nuevo_total = round(total_original - monto_descuento, 2)
 
@@ -2985,6 +2765,24 @@ def aplicar_descuento_pedido(id: int, data: dict = Body(...)):
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         liberar_conexion(conn)
+
+@app.put("/api/pedidos_b2b/{id}/guia")
+def guardar_guia_transporte(id: int, data: GuiaTransporte):
+    """Guarda los datos de la guía de transporte en el pedido."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        try:
+            cur.execute("UPDATE pedidos_b2b SET guia_transporte=%s, guia_numero=%s WHERE id=%s",
+                        (data.transporte, data.numero, id))
+            conn.commit()
+            return {"status": "ok"}
+        except Exception:
+            conn.rollback()
+            raise HTTPException(status_code=400, detail="Falta correr CREAR_GUIA_TRANSPORTE.sql en la base.")
+    finally:
+        liberar_conexion(conn)
+
 @app.delete("/api/pedidos_b2b/{id}")
 def eliminar_pedido(id: int):
     conn = obtener_conexion()
@@ -9069,6 +8867,477 @@ def route_analisis_horarios():
 @app.get("/carga-stock")
 def route_carga_stock():
     return serve_html("carga_stock_pos.html")
+
+# ────────────────────────────────────────────────────────────────────────────
+# PORTAL DE CLIENTES DEL DISTRIBUIDOR
+# ────────────────────────────────────────────────────────────────────────────
+
+@app.post("/api/clientes-distribuidor")
+def crear_cliente_distribuidor(data: dict = Body(...)):
+    """Crea un nuevo cliente para un distribuidor con código de acceso único."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        id_distribuidor = data.get('id_distribuidor')
+        nombre = data.get('nombre', '').strip()
+        razon_social = data.get('razon_social', '').strip()
+        email = data.get('email', '').strip()
+        telefono = data.get('telefono', '').strip()
+        direccion = data.get('direccion', '').strip()
+        localidad = data.get('localidad', '').strip()
+        
+        if not nombre or not id_distribuidor:
+            raise HTTPException(status_code=400, detail="Nombre e id_distribuidor son obligatorios.")
+        
+        # Generar código único
+        codigo = generar_codigo_acceso()
+        
+        cur.execute("""
+            INSERT INTO clientes_distribuidor (id_distribuidor, nombre, razon_social, email, telefono, direccion, localidad, codigo_acceso)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            RETURNING id, codigo_acceso
+        """, (id_distribuidor, nombre, razon_social or None, email or None, telefono or None, direccion or None, localidad or None, codigo))
+        
+        row = cur.fetchone()
+        conn.commit()
+        return {
+            "id": row[0],
+            "codigo_acceso": row[1],
+            "status": "ok"
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
+@app.get("/api/clientes-distribuidor/{id_distribuidor}")
+def listar_clientes_distribuidor(id_distribuidor: int):
+    """Devuelve todos los clientes de un distribuidor."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("""
+            SELECT id, nombre, razon_social, email, telefono, localidad, estado, codigo_acceso, fecha_creacion
+            FROM clientes_distribuidor
+            WHERE id_distribuidor = %s
+            ORDER BY fecha_creacion DESC
+        """, (id_distribuidor,))
+        return fetchall_dict(cur)
+    finally:
+        liberar_conexion(conn)
+
+@app.post("/api/cliente-distribuidor/{id_cliente}/productos")
+def habilitar_producto_cliente(id_cliente: int, data: dict = Body(...)):
+    """Habilita un producto para que lo vea un cliente con un precio específico."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        id_producto = data.get('id_producto')
+        precio_venta = data.get('precio_venta')
+        categoria_cliente = data.get('categoria_cliente', '')
+        
+        if not id_producto or precio_venta is None:
+            raise HTTPException(status_code=400, detail="id_producto y precio_venta son obligatorios.")
+        
+        cur.execute("""
+            INSERT INTO cliente_distribuidor_productos (id_cliente_distribuidor, id_producto, precio_venta, categoria_cliente)
+            VALUES (%s, %s, %s, %s)
+            ON CONFLICT (id_cliente_distribuidor, id_producto)
+            DO UPDATE SET precio_venta=EXCLUDED.precio_venta, categoria_cliente=EXCLUDED.categoria_cliente
+        """, (id_cliente, id_producto, float(precio_venta), categoria_cliente or None))
+        conn.commit()
+        return {"status": "ok"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
+@app.get("/api/cliente-distribuidor/acceso/{codigo_acceso}")
+def validar_codigo_cliente(codigo_acceso: str):
+    """Valida el código de acceso del cliente y devuelve sus datos."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("""
+            SELECT id, id_distribuidor, nombre, razon_social, email, telefono, estado
+            FROM clientes_distribuidor
+            WHERE codigo_acceso = %s AND estado = 'activo'
+        """, (codigo_acceso,))
+        cliente = cur.fetchone()
+        if not cliente:
+            raise HTTPException(status_code=404, detail="Código de acceso inválido o cliente inactivo.")
+        return cliente
+    finally:
+        liberar_conexion(conn)
+
+@app.get("/api/cliente-distribuidor/{id_cliente}/productos-disponibles")
+def listar_productos_cliente(id_cliente: int):
+    """Devuelve los productos habilitados para un cliente con sus precios."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("""
+            SELECT p.id, p.nombre, p.sku, cdp.precio_venta, cdp.categoria_cliente, p.imagen_url
+            FROM cliente_distribuidor_productos cdp
+            JOIN productos p ON cdp.id_producto = p.id
+            WHERE cdp.id_cliente_distribuidor = %s AND cdp.habilitado = true
+            ORDER BY p.nombre
+        """, (id_cliente,))
+        return fetchall_dict(cur)
+    finally:
+        liberar_conexion(conn)
+
+@app.post("/api/pedidos-cliente-distribuidor")
+def crear_pedido_cliente(data: dict = Body(...)):
+    """Crea un pedido de un cliente al distribuidor (estado pendiente de aprobación)."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        id_cliente = data.get('id_cliente_distribuidor')
+        detalle = data.get('detalle', [])
+        total = data.get('total', 0)
+        observaciones = data.get('observaciones', '').strip()
+        
+        if not id_cliente or not detalle:
+            raise HTTPException(status_code=400, detail="Cliente y detalle son obligatorios.")
+        
+        # Obtener id_distribuidor del cliente
+        cur.execute("SELECT id_distribuidor FROM clientes_distribuidor WHERE id=%s", (id_cliente,))
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Cliente no encontrado.")
+        id_distribuidor = row[0]
+        
+        # Crear pedido
+        cur.execute("""
+            INSERT INTO pedidos_cliente_distribuidor (id_cliente_distribuidor, id_distribuidor, total, observaciones)
+            VALUES (%s, %s, %s, %s)
+            RETURNING id
+        """, (id_cliente, id_distribuidor, float(total), observaciones))
+        id_pedido = cur.fetchone()[0]
+        
+        # Agregar detalle
+        for item in detalle:
+            cur.execute("""
+                INSERT INTO detalle_pedidos_cliente_distribuidor (id_pedido, id_producto, cantidad, precio_unitario)
+                VALUES (%s, %s, %s, %s)
+            """, (id_pedido, item.get('id_producto'), int(item.get('cantidad')), float(item.get('precio_unitario'))))
+        
+        conn.commit()
+        return {"id_pedido": id_pedido, "status": "ok"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
+@app.get("/api/pedidos-cliente-distribuidor/distribuidor/{id_distribuidor}")
+def listar_pedidos_clientes_distribuidor(id_distribuidor: int, estado: Optional[str] = None):
+    """Devuelve los pedidos de los clientes del distribuidor (para que los apruebe/rechace)."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        query = """
+            SELECT pcd.id, pcd.fecha, pcd.total, pcd.estado, pcd.aprobado_por, pcd.fecha_aprobacion,
+                   cd.nombre as cliente, cd.email
+            FROM pedidos_cliente_distribuidor pcd
+            JOIN clientes_distribuidor cd ON pcd.id_cliente_distribuidor = cd.id
+            WHERE pcd.id_distribuidor = %s
+        """
+        params = [id_distribuidor]
+        if estado:
+            query += " AND pcd.estado = %s"
+            params.append(estado)
+        query += " ORDER BY pcd.fecha DESC"
+        cur.execute(query, params)
+        return fetchall_dict(cur)
+    finally:
+        liberar_conexion(conn)
+
+@app.put("/api/pedidos-cliente-distribuidor/{id_pedido}/aprobar")
+def aprobar_pedido_cliente(id_pedido: int, data: dict = Body(default={})):
+    """Aprueba un pedido de cliente (cambia estado a 'aprobado')."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        aprobado_por = data.get('aprobado_por', 'Distribuidor').strip()
+        cur.execute("""
+            UPDATE pedidos_cliente_distribuidor
+            SET estado='aprobado', aprobado_por=%s, fecha_aprobacion=NOW()
+            WHERE id=%s
+        """, (aprobado_por, id_pedido))
+        conn.commit()
+        return {"status": "ok"}
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
+@app.put("/api/pedidos-cliente-distribuidor/{id_pedido}/rechazar")
+def rechazar_pedido_cliente(id_pedido: int, data: dict = Body(...)):
+    """Rechaza un pedido de cliente con motivo."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        motivo = data.get('motivo', '').strip()
+        aprobado_por = data.get('aprobado_por', 'Distribuidor').strip()
+        cur.execute("""
+            UPDATE pedidos_cliente_distribuidor
+            SET estado='rechazado', aprobado_por=%s, fecha_aprobacion=NOW(), motivo_rechazo=%s
+            WHERE id=%s
+        """, (aprobado_por, motivo, id_pedido))
+        conn.commit()
+        return {"status": "ok"}
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
+# ────────────────────────────────────────────────────────────────────────────
+# SISTEMA DE COMPRAS A PROVEEDORES
+# ────────────────────────────────────────────────────────────────────────────
+
+@app.get("/api/proveedores")
+def listar_proveedores(estado: Optional[str] = None):
+    """Devuelve lista de proveedores."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        query = "SELECT id, nombre, razon_social, cuit, telefono, estado FROM proveedores WHERE 1=1"
+        params = []
+        if estado:
+            query += " AND estado = %s"
+            params.append(estado)
+        query += " ORDER BY nombre"
+        cur.execute(query, params)
+        return fetchall_dict(cur)
+    finally:
+        liberar_conexion(conn)
+
+@app.post("/api/proveedores")
+def crear_proveedor(data: dict = Body(...)):
+    """Crea un nuevo proveedor."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        nombre = data.get('nombre', '').strip()
+        razon_social = data.get('razon_social', '').strip()
+        cuit = data.get('cuit', '').strip()
+        email = data.get('email', '').strip()
+        telefono = data.get('telefono', '').strip()
+        direccion = data.get('direccion', '').strip()
+        localidad = data.get('localidad', '').strip()
+        
+        if not nombre:
+            raise HTTPException(status_code=400, detail="El nombre del proveedor es obligatorio.")
+        
+        cur.execute("""
+            INSERT INTO proveedores (nombre, razon_social, cuit, email, telefono, direccion, localidad)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            RETURNING id
+        """, (nombre, razon_social or None, cuit or None, email or None, telefono or None, direccion or None, localidad or None))
+        
+        id_proveedor = cur.fetchone()[0]
+        # Crear saldo inicial
+        cur.execute("""
+            INSERT INTO saldos_proveedores (id_proveedor, saldo_actual, total_comprado, total_pagado)
+            VALUES (%s, 0, 0, 0)
+        """, (id_proveedor,))
+        conn.commit()
+        return {"id": id_proveedor, "status": "ok"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
+@app.post("/api/facturas-compra")
+def crear_factura_compra(data: dict = Body(...)):
+    """Crea una factura de compra y suma los insumos al stock."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        id_proveedor = data.get('id_proveedor')
+        numero_factura = data.get('numero_factura', '').strip()
+        fecha_factura = data.get('fecha_factura')
+        importe_neto = float(data.get('importe_neto', 0))
+        iva_21 = float(data.get('iva_21', 0))
+        iibb = float(data.get('iibb', 0))
+        otros_impuestos = float(data.get('otros_impuestos', 0))
+        detalle = data.get('detalle', [])
+        observaciones = data.get('observaciones', '').strip()
+        
+        if not id_proveedor or not numero_factura or not fecha_factura:
+            raise HTTPException(status_code=400, detail="Proveedor, número y fecha de factura son obligatorios.")
+        
+        # Crear factura
+        cur.execute("""
+            INSERT INTO facturas_compra (id_proveedor, numero_factura, fecha_factura, importe_neto, iva_21, iibb, otros_impuestos, observaciones)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            RETURNING id, importe_total
+        """, (id_proveedor, numero_factura, fecha_factura, importe_neto, iva_21, iibb, otros_impuestos, observaciones))
+        
+        row = cur.fetchone()
+        id_factura = row[0]
+        importe_total = float(row[1])
+        
+        # Agregar detalle e incrementar stock de insumos
+        for item in detalle:
+            id_insumo = item.get('id_insumo')
+            cantidad = float(item.get('cantidad', 0))
+            precio_unitario = float(item.get('precio_unitario', 0))
+            lote = item.get('lote', '').strip()
+            fecha_vencimiento = item.get('fecha_vencimiento')
+            observacion = item.get('observacion', '').strip()
+            
+            # Guardar detalle
+            cur.execute("""
+                INSERT INTO detalle_facturas_compra (id_factura, id_insumo, cantidad, precio_unitario, lote, fecha_vencimiento, observacion)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+            """, (id_factura, id_insumo, cantidad, precio_unitario, lote or None, fecha_vencimiento or None, observacion or None))
+            
+            # Incrementar stock del insumo
+            cur.execute("UPDATE insumos SET stock_actual = COALESCE(stock_actual,0) + %s WHERE id=%s",
+                       (cantidad, id_insumo))
+        
+        # Actualizar saldo del proveedor
+        cur.execute("""
+            UPDATE saldos_proveedores
+            SET saldo_actual = saldo_actual + %s, total_comprado = total_comprado + %s, fecha_ultima_actualizacion = NOW()
+            WHERE id_proveedor = %s
+        """, (importe_total, importe_total, id_proveedor))
+        
+        conn.commit()
+        return {"id_factura": id_factura, "importe_total": importe_total, "status": "ok"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
+@app.get("/api/facturas-compra")
+def listar_facturas_compra(id_proveedor: Optional[int] = None, estado: Optional[str] = None, limite: int = 200):
+    """Devuelve facturas de compra con opción de filtrar."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        query = """
+            SELECT fc.id, fc.numero_factura, fc.fecha_factura, fc.importe_neto, fc.iva_21, fc.iibb, fc.importe_total, fc.estado,
+                   p.nombre as proveedor, sp.saldo_actual
+            FROM facturas_compra fc
+            JOIN proveedores p ON fc.id_proveedor = p.id
+            LEFT JOIN saldos_proveedores sp ON p.id = sp.id_proveedor
+            WHERE 1=1
+        """
+        params = []
+        if id_proveedor:
+            query += " AND fc.id_proveedor = %s"
+            params.append(id_proveedor)
+        if estado:
+            query += " AND fc.estado = %s"
+            params.append(estado)
+        query += " ORDER BY fc.fecha_factura DESC LIMIT %s"
+        params.append(limite)
+        cur.execute(query, params)
+        return fetchall_dict(cur)
+    finally:
+        liberar_conexion(conn)
+
+@app.post("/api/pagos-proveedores")
+def registrar_pago_proveedor(data: dict = Body(...)):
+    """Registra un pago a un proveedor y actualiza el saldo."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        id_factura = data.get('id_factura')
+        id_proveedor = data.get('id_proveedor')
+        numero_comprobante = data.get('numero_comprobante', '').strip()
+        fecha_pago = data.get('fecha_pago')
+        importe_pagado = float(data.get('importe_pagado', 0))
+        forma_pago = data.get('forma_pago', '').strip()
+        referencia = data.get('referencia', '').strip()
+        observaciones = data.get('observaciones', '').strip()
+        registrado_por = data.get('registrado_por', 'Sistema').strip()
+        
+        if not id_factura or not importe_pagado or not forma_pago or not fecha_pago:
+            raise HTTPException(status_code=400, detail="Factura, importe, forma de pago y fecha son obligatorios.")
+        
+        # Registrar pago
+        cur.execute("""
+            INSERT INTO pagos_proveedores (id_factura, id_proveedor, numero_comprobante, fecha_pago, importe_pagado, forma_pago, referencia, observaciones, registrado_por)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            RETURNING id
+        """, (id_factura, id_proveedor, numero_comprobante or None, fecha_pago, importe_pagado, forma_pago, referencia or None, observaciones or None, registrado_por))
+        
+        id_pago = cur.fetchone()[0]
+        
+        # Actualizar saldo del proveedor (restar el pago)
+        cur.execute("""
+            UPDATE saldos_proveedores
+            SET saldo_actual = saldo_actual - %s, total_pagado = total_pagado + %s, fecha_ultima_actualizacion = NOW()
+            WHERE id_proveedor = %s
+        """, (importe_pagado, importe_pagado, id_proveedor))
+        
+        # Verificar si la factura está completamente pagada
+        cur.execute("""
+            SELECT fc.importe_total, COALESCE(SUM(pp.importe_pagado), 0) as total_pagado
+            FROM facturas_compra fc
+            LEFT JOIN pagos_proveedores pp ON fc.id = pp.id_factura
+            WHERE fc.id = %s
+            GROUP BY fc.id, fc.importe_total
+        """, (id_factura,))
+        
+        fila = cur.fetchone()
+        if fila:
+            importe_total = float(fila[0])
+            total_pagado = float(fila[1]) + importe_pagado
+            if total_pagado >= importe_total:
+                nuevo_estado = 'pagada'
+            else:
+                nuevo_estado = 'parcial'
+            cur.execute("UPDATE facturas_compra SET estado=%s WHERE id=%s", (nuevo_estado, id_factura))
+        
+        conn.commit()
+        return {"id_pago": id_pago, "status": "ok"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
+@app.get("/api/saldos-proveedores")
+def listar_saldos_proveedores():
+    """Devuelve resumen de cuentas corrientes de proveedores."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("""
+            SELECT sp.id_proveedor, p.nombre, p.cuit, sp.saldo_actual, sp.total_comprado, sp.total_pagado, 
+                   sp.fecha_ultima_actualizacion
+            FROM saldos_proveedores sp
+            JOIN proveedores p ON sp.id_proveedor = p.id
+            WHERE p.estado = 'activo'
+            ORDER BY sp.saldo_actual DESC
+        """)
+        return fetchall_dict(cur)
+    finally:
+        liberar_conexion(conn)
 
 if __name__ == "__main__":
     import uvicorn
