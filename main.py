@@ -2482,12 +2482,13 @@ def historial_pedidos_b2b(estado: Optional[str] = None, id_distribuidor: Optiona
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
         query = """
-            SELECT p.id, p.fecha::text, p.total, p.estado, p.id_distribuidor, d.razon_social as distribuidor,
+            SELECT p.id, p.fecha::text, p.total, (p.total + COALESCE(p.iva_aplicado,0)) as total_con_iva,
+                   p.estado, p.id_distribuidor, d.razon_social as distribuidor,
                    d.telefono AS dist_telefono, d.cuit AS dist_cuit,
                    COALESCE(p.guia_transporte,'') AS guia_transporte, COALESCE(p.guia_numero,'') AS guia_numero,
                    COALESCE(p.descuento_porcentaje,0) AS descuento_porcentaje,
                    COALESCE(p.descuento_monto,0) AS descuento_monto, p.total_sin_descuento,
-                   COALESCE(p.observaciones, '') AS observaciones
+                   COALESCE(p.observaciones, '') AS observaciones, COALESCE(p.iva_aplicado, 0) as iva_aplicado
             FROM pedidos_b2b p
             LEFT JOIN distribuidores d ON p.id_distribuidor = d.id
             WHERE 1=1
@@ -2515,12 +2516,13 @@ def historial_pedidos_b2b(estado: Optional[str] = None, id_distribuidor: Optiona
             conn.rollback()
             # Fallback si todavía no existen las columnas de guía
             q2 = """
-                SELECT p.id, p.fecha::text, p.total, p.estado, p.id_distribuidor, d.razon_social as distribuidor,
+                SELECT p.id, p.fecha::text, p.total, (p.total + COALESCE(p.iva_aplicado,0)) as total_con_iva,
+                       p.estado, p.id_distribuidor, d.razon_social as distribuidor,
                        d.telefono AS dist_telefono, d.cuit AS dist_cuit,
                        '' AS guia_transporte, '' AS guia_numero,
                        COALESCE(p.descuento_porcentaje,0) AS descuento_porcentaje,
                        COALESCE(p.descuento_monto,0) AS descuento_monto, p.total_sin_descuento,
-                       COALESCE(p.observaciones, '') AS observaciones
+                       COALESCE(p.observaciones, '') AS observaciones, COALESCE(p.iva_aplicado, 0) as iva_aplicado
                 FROM pedidos_b2b p
                 LEFT JOIN distribuidores d ON p.id_distribuidor = d.id
                 WHERE 1=1
@@ -2722,28 +2724,26 @@ def desbloquear_pedido_sin_stock(id: int, data: dict = Body(default={})):
 
 @app.put("/api/pedidos_b2b/{id}/quitar-iva")
 def quitar_iva_pedido(id: int):
-    """Quita el IVA aplicado a un pedido (revierte al total original sin IVA)."""
+    """Quita el IVA aplicado a un pedido."""
     conn = obtener_conexion()
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
-        cur.execute("SELECT total, total_sin_descuento FROM pedidos_b2b WHERE id=%s", (id,))
+        cur.execute("SELECT total, iva_aplicado FROM pedidos_b2b WHERE id=%s", (id,))
         row = cur.fetchone()
         if not row:
             raise HTTPException(status_code=404, detail="Pedido no encontrado.")
         
         total_actual = float(row['total'])
-        if row['total_sin_descuento']:
-            total_original = float(row['total_sin_descuento'])
-        else:
-            total_original = round(total_actual / 1.21 * 100) / 100
+        iva_anterior = float(row['iva_aplicado']) if row['iva_aplicado'] else 0
         
-        cur.execute("UPDATE pedidos_b2b SET total = %s WHERE id=%s", (total_original, id))
+        # Limpiar el IVA (poner en 0)
+        cur.execute("UPDATE pedidos_b2b SET iva_aplicado = 0 WHERE id=%s", (id,))
         conn.commit()
         
         return {
             "status": "ok",
-            "total_anterior": total_actual,
-            "total_nuevo": total_original
+            "iva_removido": iva_anterior,
+            "total": total_actual
         }
     except HTTPException:
         raise
@@ -2755,7 +2755,7 @@ def quitar_iva_pedido(id: int):
 
 @app.put("/api/pedidos_b2b/{id}/aplicar-iva")
 def aplicar_iva_pedido(id: int, data: dict = Body(default={})):
-    """Aplica IVA 21% a un pedido B2B. Suma al total guardado."""
+    """Aplica IVA 21% a un pedido B2B. Guarda en columna iva_aplicado."""
     conn = obtener_conexion()
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
@@ -2766,20 +2766,19 @@ def aplicar_iva_pedido(id: int, data: dict = Body(default={})):
         
         total_actual = float(row['total'])
         iva = round(total_actual * 0.21 * 100) / 100
-        nuevo_total = total_actual + iva
         
+        # Guardar el IVA en columna separada (NO modificar total)
         cur.execute("""
             UPDATE pedidos_b2b
-            SET total = %s
+            SET iva_aplicado = %s
             WHERE id = %s
-        """, (nuevo_total, id))
+        """, (iva, id))
         conn.commit()
         
         return {
             "status": "ok",
-            "total_anterior": total_actual,
             "iva": iva,
-            "nuevo_total": nuevo_total
+            "total_con_iva": total_actual + iva
         }
     except HTTPException:
         raise
@@ -2789,7 +2788,6 @@ def aplicar_iva_pedido(id: int, data: dict = Body(default={})):
     finally:
         liberar_conexion(conn)
 
-@app.put("/api/pedidos_b2b/{id}/descuento")
 @app.put("/api/pedidos_b2b/{id}/descuento")
 def aplicar_descuento_pedido(id: int, data: dict = Body(...)):
     """Aplica un descuento en porcentaje al total del pedido B2B.
