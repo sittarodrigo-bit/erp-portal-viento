@@ -162,6 +162,7 @@
 
             <div class="grid grid-cols-2 gap-2 mb-4">
                 <button onclick="aplicarIvaPedido()" id="btn-aplicar-iva" class="border border-orange-700 hover:bg-orange-800/30 text-orange-300 hover:text-orange-200 py-2 px-3 rounded text-sm transition font-bold">💸 Aplicar IVA 21%</button>
+                <button onclick="quitarIvaPedido()" id="btn-quitar-iva" class="border border-red-700 hover:bg-red-800/30 text-red-300 hover:text-red-200 py-2 px-3 rounded text-sm transition font-bold">❌ Quitar IVA</button>
             </div>
 
             <div class="flex justify-between items-center border-t border-gray-700 pt-4">
@@ -538,12 +539,33 @@
                 });
                 if (!res.ok) { alert('No se pudo aplicar el IVA.'); return; }
                 var r = await res.json();
-                // Actualizar en memoria
                 pedidoActual.total = r.nuevo_total;
                 document.getElementById('det-total').textContent = '$ ' + parseFloat(r.nuevo_total).toLocaleString('es-AR');
                 alert('✅ IVA aplicado.\n\nIVA: $ ' + parseFloat(r.iva).toLocaleString('es-AR') + '\nNuevo Total: $ ' + parseFloat(r.nuevo_total).toLocaleString('es-AR'));
                 cargarPedidos();
             } catch(e) { alert('Error al aplicar IVA.'); }
+        }
+
+        async function quitarIvaPedido() {
+            if (!pedidoActual) return;
+            if (pedidoActual.estado === 'Despachado' || pedidoActual.estado === 'Despachado parcial') {
+                alert('No se puede modificar un pedido ya despachado.');
+                return;
+            }
+            if (!confirm('¿Quitar el IVA de este pedido?\n\nTotal actual: $ ' + parseFloat(pedidoActual.total).toLocaleString('es-AR') + '\nVolverá al total sin IVA.')) return;
+            
+            try {
+                var res = await fetch(API_URL + '/pedidos_b2b/' + pedidoActual.id + '/quitar-iva', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                if (!res.ok) { alert('No se pudo quitar el IVA.'); return; }
+                var r = await res.json();
+                pedidoActual.total = r.total_nuevo;
+                document.getElementById('det-total').textContent = '$ ' + parseFloat(r.total_nuevo).toLocaleString('es-AR');
+                alert('✅ IVA removido.\n\nNuevo Total: $ ' + parseFloat(r.total_nuevo).toLocaleString('es-AR'));
+                cargarPedidos();
+            } catch(e) { alert('Error al quitar IVA.'); }
         }
 
         async function abrirDetalle(id) {
