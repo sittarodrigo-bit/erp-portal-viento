@@ -355,7 +355,7 @@
             // Importe
             var tdImp = document.createElement('td');
             tdImp.className = 'px-3 py-2 text-white font-bold text-sm';
-            tdImp.textContent = '$ ' + parseFloat(p.total).toLocaleString('es-AR');
+            tdImp.textContent = '$ ' + (parseFloat(p.total||0) + parseFloat(p.iva_aplicado||0)).toLocaleString('es-AR');
             tr.appendChild(tdImp);
 
             // Estado
@@ -529,7 +529,8 @@
                 alert('No se puede aplicar IVA a un pedido ya despachado.');
                 return;
             }
-            if (!confirm('¿Aplicar IVA 21% a este pedido?\n\nTotal actual: $ ' + parseFloat(pedidoActual.total).toLocaleString('es-AR') + '\nTotal con IVA será mayor.')) return;
+            var totalActualConIva = parseFloat(pedidoActual.total||0) + parseFloat(pedidoActual.iva_aplicado||0);
+            if (!confirm('¿Aplicar IVA 21% a este pedido?\n\nTotal actual: $ ' + totalActualConIva.toLocaleString('es-AR') + '\nSe sumará el 21% sobre el total.')) return;
             
             try {
                 var res = await fetch(API_URL + '/pedidos_b2b/' + pedidoActual.id + '/aplicar-iva', {
@@ -539,10 +540,10 @@
                 });
                 if (!res.ok) { alert('No se pudo aplicar el IVA.'); return; }
                 var r = await res.json();
-                // Actualizar en memoria
-                pedidoActual.total = r.nuevo_total;
-                document.getElementById('det-total').textContent = '$ ' + parseFloat(r.nuevo_total).toLocaleString('es-AR');
-                alert('✅ IVA aplicado.\n\nIVA: $ ' + parseFloat(r.iva).toLocaleString('es-AR') + '\nNuevo Total: $ ' + parseFloat(r.nuevo_total).toLocaleString('es-AR'));
+                await cargarPedidoYItems(pedidoActual.id);
+                document.getElementById('det-total').textContent = '$ ' + parseFloat(r.total_con_iva).toLocaleString('es-AR');
+                alert('✅ IVA aplicado.\n\nIVA: $ ' + parseFloat(r.iva).toLocaleString('es-AR') + '\nNuevo Total: $ ' + parseFloat(r.total_con_iva).toLocaleString('es-AR'));
+                cargarPedidos();
             } catch(e) { alert('Error al aplicar IVA: ' + e.message); }
         }
 
@@ -552,7 +553,8 @@
                 alert('No se puede modificar un pedido ya despachado.');
                 return;
             }
-            if (!confirm('¿Quitar el IVA de este pedido?\n\nTotal actual: $ ' + parseFloat(pedidoActual.total).toLocaleString('es-AR') + '\nVolverá al total sin IVA.')) return;
+            var totalActualConIva = parseFloat(pedidoActual.total||0) + parseFloat(pedidoActual.iva_aplicado||0);
+            if (!confirm('¿Quitar el IVA de este pedido?\n\nTotal actual: $ ' + totalActualConIva.toLocaleString('es-AR') + '\nVolverá al total sin IVA.')) return;
             
             try {
                 var res = await fetch(API_URL + '/pedidos_b2b/' + pedidoActual.id + '/quitar-iva', {
@@ -561,10 +563,10 @@
                 });
                 if (!res.ok) { alert('No se pudo quitar el IVA.'); return; }
                 var r = await res.json();
-                // Actualizar en memoria
-                pedidoActual.total = r.total_nuevo;
-                document.getElementById('det-total').textContent = '$ ' + parseFloat(r.total_nuevo).toLocaleString('es-AR');
-                alert('✅ IVA removido.\n\nNuevo Total: $ ' + parseFloat(r.total_nuevo).toLocaleString('es-AR'));
+                await cargarPedidoYItems(pedidoActual.id);
+                document.getElementById('det-total').textContent = '$ ' + parseFloat(r.total).toLocaleString('es-AR');
+                alert('✅ IVA removido.\n\nNuevo Total: $ ' + parseFloat(r.total).toLocaleString('es-AR'));
+                cargarPedidos();
             } catch(e) { alert('Error al quitar IVA: ' + e.message); }
         }
 
@@ -576,7 +578,7 @@
             document.getElementById('det-titulo').textContent = 'Pedido #' + String(id).padStart(4,'0');
             document.getElementById('det-dist').textContent   = dist.razon_social || pedidoActual.distribuidor;
             document.getElementById('det-fecha').textContent  = new Date(pedidoActual.fecha).toLocaleString('es-AR', {dateStyle:'long', timeStyle:'short'});
-            document.getElementById('det-total').textContent  = '$ ' + parseFloat(pedidoActual.total).toLocaleString('es-AR');
+            document.getElementById('det-total').textContent  = '$ ' + (parseFloat(pedidoActual.total||0) + parseFloat(pedidoActual.iva_aplicado||0)).toLocaleString('es-AR');
             // El descuento solo se puede aplicar DESPUÉS de despachar
             var esDespachado = (pedidoActual.estado === 'Despachado' || pedidoActual.estado === 'Despachado parcial');
             var seccionDesc = document.getElementById('det-descuento-seccion');
@@ -1272,7 +1274,7 @@
                         var color = COLORES[p.estado] || 'bg-gray-800 text-gray-400';
                         html += '<div class="bg-gray-800 rounded px-3 py-2 flex justify-between items-center text-sm">'
                             + '<span class="text-gray-300">#' + String(p.id).padStart(4,'0') + ' · ' + fechaCorta(p.fecha) + '</span>'
-                            + '<span class="flex items-center gap-2"><span class="text-white font-bold">$ ' + parseFloat(p.total).toLocaleString('es-AR') + '</span>'
+                            + '<span class="flex items-center gap-2"><span class="text-white font-bold">$ ' + (parseFloat(p.total||0) + parseFloat(p.iva_aplicado||0)).toLocaleString('es-AR') + '</span>'
                             + '<span class="text-xs px-2 py-0.5 rounded-full ' + color + '">' + p.estado + '</span></span></div>';
                     });
                     html += '</div>';
@@ -1320,7 +1322,7 @@
             if (!p) { mostrarToast('No se encontró el pedido'); return; }
             var tel = (p.dist_telefono || '').replace(/[^0-9]/g,'');
             if (tel && !tel.startsWith('54')) tel = '54' + tel;
-            var total = parseFloat(p.total||0).toLocaleString('es-AR');
+            var total = (parseFloat(p.total||0) + parseFloat(p.iva_aplicado||0)).toLocaleString('es-AR');
             var msg = '';
             if (tipo === 'recepcion')  msg = 'Hola ' + p.distribuidor + '! Recibimos tu pedido #' + String(p.id).padStart(4,'0') + '. Ya lo estamos preparando. ¡Gracias!';
             if (tipo === 'listo')      msg = 'Hola ' + p.distribuidor + '! Tu pedido #' + String(p.id).padStart(4,'0') + ' ya está listo. Importe a abonar: $ ' + total + '.';
@@ -1374,7 +1376,7 @@
                 + '<div class="bg-red-900/20 border border-red-800 rounded-lg p-3 mb-4 text-red-300 text-sm">⚠️ Esta acción emite una factura REAL en AFIP. Tiene CAE y valor fiscal. No se puede anular fácilmente.</div>'
                 + '<p class="text-gray-400 text-sm mb-3">Pedido <b class="text-white">#' + String(p.id).padStart(4,'0') + '</b> · <b class="text-white">' + (p.distribuidor||'') + '</b></p>'
                 + '<div class="grid grid-cols-2 gap-3 mb-4">'
-                + '<div><p class="text-gray-500 text-xs mb-1">Total a facturar</p><p class="text-neon font-bold text-xl">$ ' + parseFloat(p.total||0).toLocaleString('es-AR') + '</p></div>'
+                + '<div><p class="text-gray-500 text-xs mb-1">Total a facturar</p><p class="text-neon font-bold text-xl">$ ' + (parseFloat(p.total||0) + parseFloat(p.iva_aplicado||0)).toLocaleString('es-AR') + '</p></div>'
                 + '<div><p class="text-gray-500 text-xs mb-1">CUIT del distribuidor</p><p class="text-white font-bold">' + (p.dist_cuit || '— sin CUIT') + '</p></div>'
                 + '</div>'
                 + '<label class="block text-gray-400 text-xs mb-1">Tipo de comprobante</label>'
