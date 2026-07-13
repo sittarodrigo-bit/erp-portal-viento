@@ -65,6 +65,10 @@
                 <option value="mes">Este mes</option>
                 <option value="todo">Todo</option>
             </select>
+            <label class="flex items-center gap-2 text-sm text-gray-300 cursor-pointer">
+                <input type="checkbox" id="incluir-iva" class="w-4 h-4 rounded cursor-pointer bg-gray-800 border border-gray-700">
+                <span>Incluir IVA (21%)</span>
+            </label>
             <button onclick="cargarPedidos()" class="bg-neon text-black font-bold px-4 py-2 rounded text-sm">Filtrar</button>
             <button onclick="limpiarFiltros()" class="text-gray-400 hover:text-white text-sm">↻ Limpiar</button>
         </div>
@@ -115,1191 +119,261 @@
                 </div>
                 <button onclick="cerrarModales()" class="text-gray-500 hover:text-white text-2xl">×</button>
             </div>
-            <div id="tabla-det" class="mb-3"></div>
-            <div id="aviso-faltantes" class="hidden mb-4"></div>
-
-            <!-- Agregar producto -->
-            <div class="border border-dashed border-gray-700 rounded-lg p-3 mb-4">
-                <p class="text-xs text-gray-500 font-bold mb-2">+ Agregar producto al pedido</p>
-                <div class="flex gap-2 flex-wrap">
-                    <select id="agregar-prod" class="flex-1 min-w-0 bg-black border border-gray-700 text-white rounded p-2 text-xs"></select>
-                    <input type="number" id="agregar-cant" min="1" value="1" class="w-16 bg-black border border-gray-700 text-white rounded p-2 text-xs text-center">
-                    <input type="number" id="agregar-precio" step="0.01" placeholder="Precio $" class="w-28 bg-black border border-neon text-white rounded p-2 text-xs">
-                    <button onclick="agregarProducto()" class="bg-neon text-black font-bold px-3 py-1 rounded text-xs hover:bg-yellow-300">Agregar</button>
-                </div>
-            </div>
-
-            <div id="det-descuento-seccion" class="hidden border-t border-gray-700 pt-3 mb-2">
-                <div class="flex items-center gap-2 mb-2">
-                    <span class="text-gray-400 text-sm flex-1">💸 Descuento (%)</span>
-                    <input type="number" id="det-descuento-pct" min="0" max="100" step="0.5" placeholder="0"
-                           class="w-20 bg-gray-800 border border-gray-700 text-white rounded p-1.5 text-sm text-right">
-                    <button onclick="aplicarDescuento()" class="text-xs bg-blue-700 hover:bg-blue-600 text-white font-bold px-3 py-1.5 rounded transition">Aplicar</button>
-                </div>
-                <div id="det-descuento-info" class="hidden text-xs text-gray-500 text-right mb-1"></div>
-            </div>
-
-            <div class="border-t border-gray-700 pt-3 pb-3 flex items-center gap-3">
-                <label class="flex items-center gap-2 cursor-pointer text-gray-300 hover:text-white">
-                    <input type="checkbox" id="remito-con-iva" class="w-4 h-4" style="accent-color: var(--neon);">
-                    <span class="text-sm">📊 Remito con IVA (21%)</span>
-                </label>
-            </div>
-
-            <div class="border-t border-gray-700 pt-3 flex justify-between items-center mb-4">
-                <span class="font-bold text-gray-400">TOTAL</span>
-                <span id="det-total" class="font-bold text-neon text-xl"></span>
-            </div>
-
-            <div class="grid grid-cols-2 gap-2 mb-4">
-                <button onclick="imprimirOrden()" class="border border-gray-600 hover:border-gray-400 text-gray-300 hover:text-white py-2 px-3 rounded text-sm transition">🖨️ Orden de Compra</button>
-                <button onclick="imprimirRemito()" class="border border-gray-600 hover:border-gray-400 text-gray-300 hover:text-white py-2 px-3 rounded text-sm transition">📄 Remito</button>
-                <button onclick="imprimirRotulo()" class="border border-gray-600 hover:border-gray-400 text-gray-300 hover:text-white py-2 px-3 rounded text-sm transition">🏷️ Rótulo / Guía</button>
-                <button onclick="wsp('preparado')" class="bg-green-800 hover:bg-green-700 text-white py-2 px-3 rounded text-sm transition">📱 WSP Listo</button>
-                <button onclick="wsp('despachado')" class="bg-green-700 hover:bg-green-600 text-white py-2 px-3 rounded text-sm transition">📱 WSP Despachado</button>
-                <button onclick="guardarCambios()" id="btn-guardar-cambios" class="bg-neon text-black font-bold py-2 px-3 rounded text-sm hover:bg-yellow-300">💾 Guardar Cambios</button>
-            </div>
-
-            <div class="flex justify-between items-center border-t border-gray-700 pt-4">
-                <div class="flex items-center gap-2">
-                    <label class="text-xs text-gray-400 font-bold">Estado:</label>
-                    <select id="sel-estado-hist" onchange="cambiarEstado(this.value)" class="bg-gray-800 border border-gray-700 text-white text-sm rounded-lg px-3 py-2 font-bold">
-                        <option value="Pendiente">⏳ Pendiente</option>
-                        <option value="En preparación">🛠️ En preparación</option>
-                        <option value="Terminado">✅ Terminado</option>
-                        <option value="Despachado">🚚 Despachado</option>
-                        <option value="Despachado parcial">📦 Despachado parcial</option>
-                        <option value="Cancelado">❌ Cancelado</option>
-                    </select>
-                </div>
-                <div class="flex items-center gap-3">
-                    <button id="btn-desbloquear" onclick="desbloquearParaEditar()" class="hidden text-xs bg-orange-800/40 border border-orange-700 hover:bg-orange-800 text-orange-300 hover:text-white font-bold px-3 py-1.5 rounded transition">🔓 Desbloquear para editar (sin tocar stock)</button>
-                    <button onclick="eliminarPedido()" class="text-xs text-red-500 hover:text-red-400 font-bold">🗑 Eliminar</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Modal Nuevo Pedido -->
-    <div id="modal-nuevo" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
-        <div class="bg-gray-900 border border-gray-700 rounded-xl p-6 w-[580px] shadow-2xl max-h-[90vh] overflow-y-auto">
-            <div class="flex justify-between items-center mb-4">
-                <h3 class="text-lg font-bold text-white border-l-4 border-neon pl-2">Nuevo Pedido B2B</h3>
-                <button onclick="cerrarModales()" class="text-gray-500 hover:text-white text-2xl">×</button>
-            </div>
-            <div class="grid grid-cols-2 gap-4 mb-4">
+            <div class="grid grid-cols-2 gap-3 mb-4">
                 <div>
-                    <label class="block text-xs text-gray-500 font-bold mb-1">Distribuidor</label>
-                    <select id="np-dist" class="w-full bg-black border border-gray-700 text-white rounded p-2 text-sm"></select>
+                    <p class="text-gray-500 text-xs mb-1">Cantidad de items</p>
+                    <p id="det-items" class="text-white font-bold text-lg"></p>
                 </div>
                 <div>
-                    <label class="block text-xs text-gray-500 font-bold mb-1">Fecha</label>
-                    <input type="date" id="np-fecha" class="w-full bg-black border border-gray-700 text-white rounded p-2 text-sm">
+                    <p class="text-gray-500 text-xs mb-1">Importe</p>
+                    <p id="det-importe" class="text-neon font-bold text-lg"></p>
                 </div>
             </div>
-            <h4 class="text-sm font-bold text-white mb-2">Productos</h4>
-            <input type="text" id="np-buscar" placeholder="🔍 Buscar producto... (Enter agrega el primero)"
-                   class="w-full bg-black border border-neon text-white rounded p-2 text-sm mb-2 outline-none"
-                   oninput="filtrarProductosNuevo()" onkeydown="if(event.key==='Enter'){event.preventDefault();agregarPrimeroNuevo();}">
-            <div id="np-items" class="space-y-2 mb-3 max-h-64 overflow-y-auto"></div>
-            <div class="flex justify-between items-center border-t border-gray-700 pt-3 mb-4">
-                <span class="text-gray-400 font-bold text-sm">Total:</span>
-                <span id="np-total" class="text-neon font-bold text-xl">$ 0</span>
+            <table class="w-full text-xs border-collapse mb-4">
+                <thead>
+                    <tr class="border-b border-gray-700">
+                        <th class="text-left text-gray-500 py-2 px-2">Producto</th>
+                        <th class="text-center text-gray-500 py-2 px-1">Cant.</th>
+                        <th class="text-right text-gray-500 py-2 px-2">P.U.</th>
+                        <th class="text-right text-gray-500 py-2 px-2">Subtotal</th>
+                    </tr>
+                </thead>
+                <tbody id="det-items-tabla" class="divide-y divide-gray-800"></tbody>
+            </table>
+            <div class="space-y-2 border-t border-gray-700 pt-3">
+                <div class="flex justify-between">
+                    <span class="text-gray-400">Subtotal</span>
+                    <span id="det-subtotal" class="text-white font-bold">$0</span>
+                </div>
+                <div class="flex justify-between">
+                    <span class="text-gray-400">IVA (21%)</span>
+                    <span id="det-iva" class="text-white font-bold">$0</span>
+                </div>
+                <div class="flex justify-between border-t border-gray-700 pt-2">
+                    <span class="text-white font-bold">TOTAL</span>
+                    <span id="det-total" class="text-neon font-bold text-lg">$0</span>
+                </div>
             </div>
-            <div class="flex justify-end gap-3">
-                <button onclick="cerrarModales()" class="px-4 py-2 text-gray-400 hover:text-white font-bold">Cancelar</button>
-                <button id="btn-crear" onclick="crearPedido()" class="bg-neon text-black px-6 py-2 rounded font-bold hover:bg-yellow-300 disabled:opacity-50">Crear Pedido</button>
+            <div class="mt-4 flex gap-2">
+                <button onclick="abrirImpresion()" class="flex-1 bg-blue-700 hover:bg-blue-600 text-white font-bold py-2 rounded">🖨️ Imprimir</button>
+                <button onclick="descargarDetalle()" class="flex-1 bg-neon hover:bg-yellow-300 text-black font-bold py-2 rounded">⬇️ PDF</button>
+                <button onclick="cerrarModales()" class="flex-1 bg-gray-800 hover:bg-gray-700 text-white font-bold py-2 rounded">Cerrar</button>
             </div>
         </div>
     </div>
 
     <script>
-        var API_URL = window.location.origin + "/api";
-        var usr = JSON.parse(sessionStorage.getItem('usuario') || '{}');
-        if (usr.nombre) document.getElementById('usuario-info').textContent = usr.nombre + ' ' + usr.apellido + ' · ' + usr.rol;
+        const API_URL = 'http://localhost:8000';
+        var pedidosGuardados = [];
+        var detalleActual = null;
 
-        var distribuidores = [], empresa = {}, pedidoActual = null, itemsActuales = [], todosProductos = [];
+        async function cargarPedidos() {
+            try {
+                var estado = document.getElementById('filtro-estado').value;
+                var dist = document.getElementById('filtro-dist').value;
+                var periodo = document.getElementById('filtro-periodo').value;
+                var incluirIva = document.getElementById('incluir-iva').checked;
 
-        var COLORES = {
-            Pendiente:  'bg-yellow-900/40 text-yellow-400',
-            Preparado:  'bg-blue-900/40 text-blue-400',
-            Despachado: 'bg-green-900/40 text-green-400',
-            'Despachado parcial': 'bg-orange-900/40 text-orange-400',
-            Cancelado:  'bg-red-900/40 text-red-500'
-        };
+                var r = await fetch(API_URL + '/pedidos_b2b/listar', {
+                    method:'POST', headers:{'Content-Type':'application/json'},
+                    body: JSON.stringify({ estado: estado, id_dist: dist?parseInt(dist):null, periodo: periodo })
+                });
+                if (!r.ok) throw new Error('Error cargando pedidos');
+                var data = await r.json();
+                pedidosGuardados = data.pedidos || [];
 
-        function fechaDesde() {
-            var p = document.getElementById('filtro-periodo').value;
-            var hoy = new Date(); hoy.setHours(0,0,0,0);
-            if (p === 'hoy')    return hoy;
-            if (p === 'semana') { var d = new Date(hoy); d.setDate(d.getDate() - d.getDay()); return d; }
-            if (p === 'mes')    return new Date(hoy.getFullYear(), hoy.getMonth(), 1);
-            return null;
+                // Aplicar IVA si está marcado
+                if (incluirIva) {
+                    pedidosGuardados = pedidosGuardados.map(p => ({
+                        ...p,
+                        total: parseFloat(p.total || 0) * 1.21
+                    }));
+                }
+
+                var html = '';
+                for (let p of pedidosGuardados) {
+                    var estadoClass = p.estado === 'Despachado' || p.estado === 'Facturado' ? 'text-green-400' :
+                                      p.estado === 'Pendiente' ? 'text-yellow-400' :
+                                      p.estado === 'Cancelado' ? 'text-red-400' : 'text-blue-400';
+                    html += '<tr class="border-b border-gray-800 hover:bg-gray-800/50">'
+                        + '<td class="px-3 py-3"><b class="text-white">' + String(p.id).padStart(4,'0') + '</b></td>'
+                        + '<td class="px-3 py-3">' + (p.fecha ? new Date(p.fecha).toLocaleDateString('es-AR') : '—') + '</td>'
+                        + '<td class="px-3 py-3">' + (p.distribuidor || '—') + '</td>'
+                        + '<td class="px-3 py-3"><b class="text-neon">$ ' + parseFloat(p.total||0).toLocaleString('es-AR') + '</b></td>'
+                        + '<td class="px-3 py-3"><span class="' + estadoClass + ' font-bold">' + (p.estado||'—') + '</span></td>'
+                        + '<td class="px-3 py-3 text-right flex gap-2 justify-end">'
+                        + '<button onclick="abrirDetalle(' + p.id + ')" class="bg-blue-800 hover:bg-blue-700 text-white px-3 py-1 rounded text-xs">👁️ Ver</button>'
+                        + '<button onclick="abrirAcciones(' + p.id + ')" class="bg-gray-800 hover:bg-gray-700 text-white px-3 py-1 rounded text-xs">⋯</button>'
+                        + '</td></tr>';
+                }
+                document.getElementById('tabla-b2b').innerHTML = html || '<tr><td colspan="6" class="p-4 text-center text-gray-500">Sin resultados</td></tr>';
+                cargarDistribuidores();
+            } catch(e) { mostrarToast('❌ Error: ' + (e.message||'')); }
+        }
+
+        async function cargarDistribuidores() {
+            try {
+                var r = await fetch(API_URL + '/distribuidores', {method:'GET'});
+                if (!r.ok) throw new Error('');
+                var data = await r.json();
+                var select = document.getElementById('filtro-dist');
+                var val = select.value;
+                select.innerHTML = '<option value="">Todos los distribuidores</option>';
+                for (let d of (data.distribuidores||[])) {
+                    select.innerHTML += '<option value="' + d.id + '">' + (d.nombre||'') + '</option>';
+                }
+                select.value = val;
+            } catch(e) {}
         }
 
         function limpiarFiltros() {
             document.getElementById('filtro-estado').value = '';
             document.getElementById('filtro-dist').value = '';
             document.getElementById('filtro-periodo').value = 'pendientes_hoy';
+            document.getElementById('incluir-iva').checked = false;
             cargarPedidos();
         }
 
-        async function init() {
-            var r1 = await fetch(API_URL + '/distribuidores_lista').then(function(r) { return r.json(); });
-            var r2 = await fetch(API_URL + '/empresa').then(function(r) { return r.json(); }).catch(function() { return {}; });
-            distribuidores = r1;
-            empresa = r2 || {};
-
-            var sel = document.getElementById('filtro-dist');
-            distribuidores.forEach(function(d) {
-                sel.innerHTML += '<option value="' + d.id + '">' + d.razon_social + '</option>';
-            });
-            await cargarPedidos();
-        }
-
-        function fechaDesdeStr() {
-            // Devuelve la fecha 'desde' como texto YYYY-MM-DD para mandar al servidor
-            var d = fechaDesde();
-            if (!d) return '';
-            var y = d.getFullYear(), m = String(d.getMonth()+1).padStart(2,'0'), dd = String(d.getDate()).padStart(2,'0');
-            return y + '-' + m + '-' + dd;
-        }
-
-        async function cargarPedidos() {
-            var estado = document.getElementById('filtro-estado').value;
-            var dist   = document.getElementById('filtro-dist').value;
-            var periodo = document.getElementById('filtro-periodo').value;
-            var url    = API_URL + '/pedidos_b2b/historial';
-            var params = [];
-            if (estado) params.push('estado=' + estado);
-            if (dist)   params.push('id_distribuidor=' + dist);
-            if (periodo === 'pendientes_hoy') {
-                params.push('modo=pendientes_hoy');
-            } else {
-                var desdeStr = fechaDesdeStr();
-                if (desdeStr) params.push('desde=' + desdeStr);
-            }
-            if (params.length) url += '?' + params.join('&');
-
-            var tbody = document.getElementById('tabla-b2b');
-            tbody.innerHTML = '<tr><td colspan="6" class="px-3 py-4 text-center text-gray-500">Cargando...</td></tr>';
-            var lista = await fetch(url).then(function(r) { return r.json(); });
-
-            tbody.innerHTML = '';
-            if (!lista.length) {
-                tbody.innerHTML = '<tr><td colspan="6" class="px-3 py-4 text-center text-gray-500">Sin pedidos para mostrar.</td></tr>';
-                return;
-            }
-            lista.forEach(function(p) { tbody.appendChild(crearFila(p)); });
-        }
-
-        function crearFila(p) {
-            var fecha = fechaCorta(p.fecha);
-            var color = COLORES[p.estado] || 'bg-gray-800 text-gray-400';
-            var tr = document.createElement('tr');
-            tr.className = 'hover:bg-gray-900 transition';
-
-            // N° pedido
-            var tdId = document.createElement('td');
-            tdId.className = 'px-3 py-2 font-bold text-neon text-sm';
-            tdId.textContent = '#' + String(p.id).padStart(4,'0');
-            tr.appendChild(tdId);
-
-            // Fecha
-            var tdFecha = document.createElement('td');
-            tdFecha.className = 'px-3 py-2 text-gray-400 text-sm';
-            tdFecha.textContent = fecha;
-            tr.appendChild(tdFecha);
-
-            // Nombre del cliente (clickeable -> menú de acciones del distribuidor)
-            var tdNom = document.createElement('td');
-            tdNom.className = 'px-3 py-2';
-            var relNom = document.createElement('div'); relNom.className = 'relative inline-block';
-            var btnNom = document.createElement('button');
-            btnNom.className = 'font-bold text-white hover:text-neon transition text-left flex items-center gap-1';
-            btnNom.innerHTML = (p.distribuidor || '—') + ' <span class="text-gray-600 text-xs">▾</span>';
-            var menuNom = document.createElement('div');
-            menuNom.className = 'menu-acciones hidden bg-gray-800 border border-gray-700 rounded-lg shadow-2xl w-48';
-            menuNom.style.zIndex = '9999';
-            function mNom(txt, cls, fn) {
-                var b = document.createElement('button');
-                b.className = 'w-full text-left px-4 py-2 text-sm hover:bg-gray-700 ' + cls;
-                b.textContent = txt;
-                b.onclick = function(e) { e.stopPropagation(); menuNom.classList.add('hidden'); fn(); };
-                return b;
-            }
-            menuNom.appendChild(mNom('💵 Realizar pago',     'text-green-400', function() { abrirPagoDist(p.id_distribuidor, p.distribuidor); }));
-            menuNom.appendChild(mNom('📊 Estado de cuenta',  'text-gray-300',  function() { abrirEstadoCuenta(p.id_distribuidor, p.distribuidor); }));
-            menuNom.appendChild(mNom('📦 Últimos pedidos',   'text-gray-300',  function() { abrirUltimosPedidos(p.id_distribuidor, p.distribuidor); }));
-            menuNom.appendChild(mNom('✏️ Editar datos',      'text-gray-300',  function() { editarDistribuidor(p.id_distribuidor); }));
-            btnNom.onclick = function(e) {
-                e.stopPropagation();
-                var abierto = !menuNom.classList.contains('hidden');
-                cerrarMenus();
-                if (abierto) return;
-                if (!p.id_distribuidor) { mostrarToast('Este pedido no tiene distribuidor asociado'); return; }
-                var r = btnNom.getBoundingClientRect();
-                menuNom.style.position = 'fixed';
-                menuNom.style.top = (r.bottom + 4) + 'px';
-                menuNom.style.left = r.left + 'px';
-                menuNom.classList.remove('hidden');
-            };
-            relNom.appendChild(btnNom); relNom.appendChild(menuNom);
-            tdNom.appendChild(relNom); tr.appendChild(tdNom);
-
-            // Importe
-            var tdImp = document.createElement('td');
-            tdImp.className = 'px-3 py-2 text-white font-bold text-sm';
-            tdImp.textContent = '$ ' + parseFloat(p.total).toLocaleString('es-AR');
-            tr.appendChild(tdImp);
-
-            // Estado
-            var tdEst = document.createElement('td'); tdEst.className = 'px-3 py-2';
-            var span = document.createElement('span');
-            span.className = 'text-xs px-2.5 py-1 rounded-full font-bold ' + color;
-            span.textContent = p.estado;
-            tdEst.appendChild(span);
-            if (p.guia_transporte) {
-                var g = document.createElement('p');
-                g.className = 'text-gray-500 text-xs mt-1';
-                g.textContent = '🚚 ' + p.guia_transporte + (p.guia_numero ? ' · ' + p.guia_numero : '');
-                tdEst.appendChild(g);
-            }
-            tr.appendChild(tdEst);
-
-            // Acciones
-            var tdAcc = document.createElement('td'); tdAcc.className = 'px-3 py-2';
-            var div = document.createElement('div'); div.className = 'flex justify-end items-center gap-1';
-
-            function btn(txt, cls, fn) {
-                var b = document.createElement('button');
-                b.className = cls; b.textContent = txt; b.onclick = fn; return b;
-            }
-
-            // Solo Modificar y Despachar visibles
-            div.appendChild(btn('✏️ Modificar', 'text-xs bg-neon text-black font-bold px-3 py-1.5 rounded hover:bg-yellow-300 transition', function() { abrirDetalle(p.id); }));
-            if (p.estado !== 'Despachado' && p.estado !== 'Cancelado') {
-                div.appendChild(btn('✓ Despachar', 'text-xs bg-green-700 hover:bg-green-600 text-white font-bold px-2 py-1.5 rounded transition', function() { despacharRapido(p.id); }));
-            }
-
-            // Menú de 3 puntitos (impresiones + WhatsApp + estados)
-            var rel = document.createElement('div'); rel.className = 'relative';
-            var menu = document.createElement('div');
-            menu.className = 'menu-acciones hidden bg-gray-800 border border-gray-700 rounded-lg shadow-2xl w-52';
-            menu.style.zIndex = '9999';
-            var btnMenu = btn('⋮', 'text-xs border border-gray-700 bg-gray-800 hover:bg-gray-700 text-gray-400 px-2 py-1.5 rounded', function(e) {
-                e.stopPropagation();
-                var yaAbierto = !menu.classList.contains('hidden');
-                cerrarMenus();
-                if (yaAbierto) return;
-                var r = btnMenu.getBoundingClientRect();
-                menu.style.position = 'fixed';
-                menu.style.top  = (r.bottom + 4) + 'px';
-                menu.style.left = (r.right - 208) + 'px';
-                menu.classList.remove('hidden');
-            });
-
-            function mBtn(txt, cls, fn) {
-                var b = document.createElement('button');
-                b.className = 'w-full text-left px-4 py-2 text-sm hover:bg-gray-700 ' + cls;
-                b.textContent = txt;
-                b.onclick = function() { menu.classList.add('hidden'); fn(); };
-                return b;
-            }
-
-            menu.appendChild(mBtn('🧾 Facturar (AFIP)',   'text-blue-400', function() { abrirFacturar(p); }));
-            menu.appendChild(mBtn('📋 Orden de compra', 'text-gray-300', function() { abrirYAccion(p.id, 'orden'); }));
-            menu.appendChild(mBtn('📄 Remito',          'text-gray-300', function() { abrirYAccion(p.id, 'remito'); }));
-            menu.appendChild(mBtn('🏷️ Rótulo / Guía',   'text-yellow-400', function() { abrirYAccion(p.id, 'rotulo'); }));
-            var hr0 = document.createElement('hr'); hr0.className = 'border-gray-700'; menu.appendChild(hr0);
-            menu.appendChild(mBtn('📱 WhatsApp...',      'text-green-400', function() { abrirMenuWsp(p); }));
-            menu.appendChild(mBtn('🚚 Cargar guía',      'text-gray-300', function() { abrirCargarGuia(p); }));
-            var hr = document.createElement('hr'); hr.className = 'border-gray-700'; menu.appendChild(hr);
-            menu.appendChild(mBtn('👁 Ver / Modificar',  'text-gray-300', function() { abrirDetalle(p.id); }));
-            menu.appendChild(mBtn('📦 Preparar',         'text-blue-400', function() { estadoRapido(p.id, 'Preparado'); }));
-            menu.appendChild(mBtn('✕ Cancelar',          'text-red-400',  function() { estadoRapido(p.id, 'Cancelado'); }));
-            menu.appendChild(mBtn('🗑 Eliminar',         'text-red-500',  function() { eliminarRapido(p.id); }));
-
-            rel.appendChild(btnMenu); rel.appendChild(menu);
-            div.appendChild(rel); tdAcc.appendChild(div); tr.appendChild(tdAcc);
-            return tr;
-        }
-
-        function cerrarMenus() {
-            document.querySelectorAll('.menu-acciones').forEach(function(m) { m.classList.add('hidden'); });
-        }
-        document.addEventListener('click', cerrarMenus);
-
-        async function cargarPedidoYItems(id) {
-            var lista = await fetch(API_URL + '/pedidos_b2b/historial?limite=400').then(function(r) { return r.json(); });
-            pedidoActual = lista.find(function(p) { return p.id === id; });
-            itemsActuales = await fetch(API_URL + '/pedidos_b2b/' + id + '/detalle').then(function(r) { return r.json(); });
-        }
-
-        async function abrirYAccion(id, accion) {
-            await cargarPedidoYItems(id);
-            if (accion === 'orden')  imprimirOrden();
-            if (accion === 'remito') imprimirRemito();
-            if (accion === 'rotulo') imprimirRotulo();
-        }
-
-        async function despacharRapido(id) {
-            if (!confirm('¿Marcar como Despachado?')) return;
-            await fetch(API_URL + '/pedidos/' + id + '/estado?estado=Despachado', { method:'PUT' });
-            await cargarPedidoYItems(id);
-            wsp('despachado');
-            cargarPedidos();
-        }
-
-        async function wspRapido(id, tipo) {
-            await cargarPedidoYItems(id);
-            wsp(tipo);
-        }
-
-        async function estadoRapido(id, estado) {
-            await fetch(API_URL + '/pedidos/' + id + '/estado?estado=' + estado, { method:'PUT' });
-            cargarPedidos();
-        }
-
-        async function eliminarRapido(id) {
-            if (!confirm('¿Eliminar el pedido #' + id + '?')) return;
-            await fetch(API_URL + '/pedidos_b2b/' + id, { method:'DELETE' });
-            cargarPedidos();
-        }
-
-        async function aplicarDescuento() {
-            if (!pedidoActual) return;
-            var pct = parseFloat(document.getElementById('det-descuento-pct').value || 0);
-            if (isNaN(pct) || pct < 0 || pct > 100) { alert('Poné un porcentaje entre 0 y 100.'); return; }
-            var msg = pct > 0 ? ('¿Aplicar ' + pct + '% de descuento a este pedido?\n\nEsto baja el total y la deuda del distribuidor.') : '¿Quitar el descuento de este pedido?';
-            if (!confirm(msg)) return;
+        async function abrirDetalle(idPedido) {
             try {
-                var res = await fetch(`${API_URL}/pedidos_b2b/${pedidoActual.id}/descuento`, {
-                    method: 'PUT', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ porcentaje: pct })
-                });
-                if (!res.ok) { var e = await res.json(); alert('No se pudo aplicar: ' + (e.detail||'')); return; }
-                var r = await res.json();
-                // Actualizar el pedido en memoria y refrescar la vista
-                pedidoActual.total = r.nuevo_total;
-                pedidoActual.descuento_porcentaje = r.descuento_porcentaje;
-                pedidoActual.descuento_monto = r.descuento_monto;
-                pedidoActual.total_sin_descuento = r.total_original;
-                document.getElementById('det-total').textContent = '$ ' + parseFloat(r.nuevo_total).toLocaleString('es-AR');
-                var infoDesc = document.getElementById('det-descuento-info');
-                if (r.descuento_porcentaje > 0) {
-                    infoDesc.classList.remove('hidden');
-                    infoDesc.textContent = 'Descuento del ' + r.descuento_porcentaje + '%: -$ ' + parseFloat(r.descuento_monto).toLocaleString('es-AR') +
-                        ' (antes: $ ' + parseFloat(r.total_original).toLocaleString('es-AR') + ')';
-                } else {
-                    infoDesc.classList.add('hidden');
+                var r = await fetch(API_URL + '/pedidos_b2b/' + idPedido, {method:'GET'});
+                if (!r.ok) throw new Error('');
+                var p = await r.json();
+                detalleActual = p;
+                var incluirIva = document.getElementById('incluir-iva').checked;
+                var subtotal = parseFloat(p.total||0);
+                var multiplicador = incluirIva ? 1 : (1/1.21);
+                if (incluirIva) subtotal = parseFloat(p.total||0);
+                var iva = subtotal * 0.21;
+                var total = subtotal + iva;
+                var items = p.detalle || [];
+
+                document.getElementById('det-titulo').textContent = 'Pedido #' + String(p.id).padStart(4,'0');
+                document.getElementById('det-dist').textContent = p.distribuidor || '';
+                document.getElementById('det-fecha').textContent = new Date(p.fecha).toLocaleDateString('es-AR');
+                document.getElementById('det-items').textContent = items.length;
+                document.getElementById('det-importe').textContent = '$ ' + total.toLocaleString('es-AR');
+                document.getElementById('det-subtotal').textContent = '$ ' + subtotal.toLocaleString('es-AR');
+                document.getElementById('det-iva').textContent = '$ ' + iva.toLocaleString('es-AR');
+                document.getElementById('det-total').textContent = '$ ' + total.toLocaleString('es-AR');
+
+                var tablaHtml = '';
+                for (let item of items) {
+                    var subtotalItem = parseFloat(item.cantidad||0) * parseFloat(item.precio_unitario||0);
+                    tablaHtml += '<tr>'
+                        + '<td class="px-2 py-2">' + (item.producto||'—') + '</td>'
+                        + '<td class="text-center px-1 py-2">' + item.cantidad + '</td>'
+                        + '<td class="text-right px-2 py-2">$ ' + parseFloat(item.precio_unitario||0).toLocaleString('es-AR') + '</td>'
+                        + '<td class="text-right px-2 py-2">$ ' + subtotalItem.toLocaleString('es-AR') + '</td>'
+                        + '</tr>';
                 }
-                if (typeof cargarPedidos === 'function') cargarPedidos();
-            } catch(e) { alert('Error al aplicar el descuento.'); }
-        }
-
-        async function desbloquearParaEditar() {
-            if (!pedidoActual) return;
-            if (!confirm('¿Desbloquear este pedido para editarlo?\n\nEl stock NO será modificado. Solo podés cambiar lo que esté mal.')) return;
-            try {
-                var res = await fetch(API_URL + '/pedidos_b2b/' + pedidoActual.id + '/desbloquear', {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ estado: 'En preparación' })
-                });
-                if (!res.ok) { var e = await res.json(); alert('No se pudo desbloquear: ' + (e.detail||'')); return; }
-                var r = await res.json();
-                alert('✅ Pedido desbloqueado.\n\n' + r.aviso + '\nAhora podés editar los productos y volver a despachar cuando esté correcto.');
-                pedidoActual.estado = 'En preparación';
-                document.getElementById('sel-estado-hist').value = 'En preparación';
-                document.getElementById('btn-desbloquear').classList.add('hidden');
-                cerrarModales();
-                cargarPedidos();
-            } catch(e) { alert('Error al desbloquear el pedido.'); }
-        }
-
-        async function abrirDetalle(id) {
-            await cargarPedidoYItems(id);
-            if (!pedidoActual) { alert('No se pudo cargar el pedido. Refrescá la página.'); return; }
-
-            var dist = distribuidores.find(function(d) { return String(d.id) === String(pedidoActual.id_distribuidor); }) || {};
-            document.getElementById('det-titulo').textContent = 'Pedido #' + String(id).padStart(4,'0');
-            document.getElementById('det-dist').textContent   = dist.razon_social || pedidoActual.distribuidor;
-            document.getElementById('det-fecha').textContent  = new Date(pedidoActual.fecha).toLocaleString('es-AR', {dateStyle:'long', timeStyle:'short'});
-            document.getElementById('det-total').textContent  = '$ ' + parseFloat(pedidoActual.total).toLocaleString('es-AR');
-            // El descuento solo se puede aplicar DESPUÉS de despachar
-            var esDespachado = (pedidoActual.estado === 'Despachado' || pedidoActual.estado === 'Despachado parcial');
-            var seccionDesc = document.getElementById('det-descuento-seccion');
-            var pctInput = document.getElementById('det-descuento-pct');
-            var infoDesc = document.getElementById('det-descuento-info');
-            var pct = parseFloat(pedidoActual.descuento_porcentaje || 0);
-            if (esDespachado) {
-                seccionDesc.classList.remove('hidden');
-                pctInput.value = pct > 0 ? pct : '';
-                if (pct > 0) {
-                    infoDesc.classList.remove('hidden');
-                    infoDesc.textContent = 'Descuento del ' + pct + '%: -$ ' + parseFloat(pedidoActual.descuento_monto||0).toLocaleString('es-AR') +
-                        ' (antes: $ ' + parseFloat(pedidoActual.total_sin_descuento||pedidoActual.total).toLocaleString('es-AR') + ')';
-                } else {
-                    infoDesc.classList.add('hidden');
-                }
-            } else {
-                // Antes de despachar no se muestra la opción de descuento
-                seccionDesc.classList.add('hidden');
-            }
-            var selEst = document.getElementById('sel-estado-hist');
-            if (selEst) {
-                // Si el estado no está entre las opciones (ej "Preparado" viejo), lo agrega
-                var existe = Array.prototype.some.call(selEst.options, function(o){ return o.value === pedidoActual.estado; });
-                if (!existe && pedidoActual.estado) { var op = document.createElement('option'); op.value = pedidoActual.estado; op.textContent = pedidoActual.estado; selEst.appendChild(op); }
-                selEst.value = pedidoActual.estado;
-            }
-            // Mostrar el botón de desbloquear solo si el pedido está despachado
-            var btnDesbloquear = document.getElementById('btn-desbloquear');
-            if (pedidoActual.estado === 'Despachado' || pedidoActual.estado === 'Despachado parcial') {
-                btnDesbloquear.classList.remove('hidden');
-            } else {
-                btnDesbloquear.classList.add('hidden');
-            }
-
-            renderDetalle();
-            await cargarProductosAgregar();
-            await cargarFaltantesPedido(id);
-            document.getElementById('modal-detalle').classList.replace('modal-oculto','modal-visible');
-        }
-
-        async function cargarFaltantesPedido(id) {
-            var cont = document.getElementById('aviso-faltantes');
-            cont.classList.add('hidden');
-            cont.innerHTML = '';
-            try {
-                var faltantes = await fetch(API_URL + '/pedidos_b2b/' + id + '/faltantes').then(function(r){ return r.json(); });
-                var conFalta = faltantes.filter(function(f){ return f.falta_producir > 0; });
-                if (conFalta.length === 0) {
-                    cont.classList.remove('hidden');
-                    cont.innerHTML = '<div class="bg-green-900/30 border border-green-800 rounded-lg p-3 text-sm text-green-300">✅ Hay stock suficiente para despachar este pedido completo.</div>';
-                    return;
-                }
-                var filas = conFalta.map(function(f){
-                    return '<div class="flex justify-between py-1 border-b border-yellow-900/40 text-xs"><span class="text-white">' + f.nombre + '</span><span class="text-gray-400">faltan <span class="text-yellow-400 font-bold">' + f.falta_producir + ' cajas</span> = <span class="text-orange-400 font-bold">' + (f.falta_unidades||0).toLocaleString('es-AR') + ' u.</span></span></div>';
-                }).join('');
-                cont.classList.remove('hidden');
-                cont.innerHTML = '<div class="bg-yellow-900/20 border border-yellow-800 rounded-lg p-3"><p class="text-sm font-bold text-yellow-400 mb-2">⚠️ Faltan producir para completar este pedido:</p>' + filas + '</div>';
-            } catch(e) {}
-        }
-
-        function renderDetalle() {
-            var cont = document.getElementById('tabla-det');
-            cont.innerHTML = '';
-            var tabla = document.createElement('table');
-            tabla.className = 'w-full text-sm mb-2';
-            tabla.innerHTML = '<thead class="text-xs text-gray-400 border-b border-gray-700"><tr><th class="py-2 text-left">Producto</th><th class="py-2 text-center w-20">Cant.</th><th class="py-2 text-right">Precio</th><th class="py-2 text-right">Subtotal</th><th class="py-2"></th></tr></thead>';
-            var tbody = document.createElement('tbody');
-            tbody.className = 'divide-y divide-gray-800';
-            itemsActuales.forEach(function(i, idx) {
-                var tr = document.createElement('tr');
-                var inp = document.createElement('input');
-                inp.type = 'number'; inp.min = '0'; inp.value = i.cantidad;
-                inp.className = 'w-16 bg-gray-800 border border-gray-700 text-white rounded p-1 text-center text-sm';
-                inp.dataset.idx = idx;
-                inp.oninput = function() { actualizarSubtotal(idx, this); };
-
-                var tdProd = document.createElement('td'); tdProd.className = 'py-3 text-white font-bold'; tdProd.textContent = i.producto;
-                var tdCant = document.createElement('td'); tdCant.className = 'py-3 text-center'; tdCant.appendChild(inp);
-                var tdPric = document.createElement('td'); tdPric.className = 'py-3 text-right text-gray-300'; tdPric.textContent = '$ ' + parseFloat(i.precio_unitario).toLocaleString('es-AR');
-                var tdSub  = document.createElement('td'); tdSub.className = 'py-3 text-right text-neon font-bold'; tdSub.id = 'sub-' + idx; tdSub.textContent = '$ ' + parseFloat(i.subtotal).toLocaleString('es-AR');
-                var tdDel  = document.createElement('td'); tdDel.className = 'py-3 text-right';
-                var btnDel = document.createElement('button');
-                btnDel.className = 'text-red-500 hover:text-red-400 font-bold px-2'; btnDel.textContent = '✕';
-                btnDel.onclick = function() { itemsActuales.splice(idx,1); renderDetalle(); recalcularTotal(); };
-                tdDel.appendChild(btnDel);
-                tr.appendChild(tdProd); tr.appendChild(tdCant); tr.appendChild(tdPric); tr.appendChild(tdSub); tr.appendChild(tdDel);
-                tbody.appendChild(tr);
-            });
-            tabla.appendChild(tbody);
-            cont.appendChild(tabla);
-        }
-
-        function recalcularTotal() {
-            var total = itemsActuales.reduce(function(a, b) { return a + b.cantidad * parseFloat(b.precio_unitario); }, 0);
-            document.getElementById('det-total').textContent = '$ ' + total.toLocaleString('es-AR');
-        }
-
-        function actualizarSubtotal(idx, inp) {
-            var cant   = parseInt(inp.value) || 0;
-            var precio = parseFloat(itemsActuales[idx].precio_unitario);
-            var sub    = cant * precio;
-            itemsActuales[idx].cantidad = cant;
-            itemsActuales[idx].subtotal = sub;
-            document.getElementById('sub-' + idx).textContent = '$ ' + sub.toLocaleString('es-AR');
-            recalcularTotal();
-        }
-
-        async function cargarProductosAgregar() {
-            if (!todosProductos.length) {
-                todosProductos = await fetch(API_URL + '/productos/con_presentaciones').then(function(r) { return r.json(); });
-            }
-            var sel = document.getElementById('agregar-prod');
-            sel.innerHTML = '<option value="">— Producto —</option>';
-            todosProductos.forEach(function(p) {
-                var opt = document.createElement('option');
-                opt.value = p.id;
-                var pres = p.presentaciones && p.presentaciones.length ? p.presentaciones[0] : null;
-                opt.dataset.precio = pres ? parseFloat(pres.precio_mayorista) : 0;
-                opt.textContent = p.nombre;
-                sel.appendChild(opt);
-            });
-            sel.onchange = function() {
-                var opt = sel.options[sel.selectedIndex];
-                if (opt && opt.dataset.precio) document.getElementById('agregar-precio').value = opt.dataset.precio;
-            };
-        }
-
-        function agregarProducto() {
-            var sel    = document.getElementById('agregar-prod');
-            var idProd = parseInt(sel.value);
-            var cant   = parseInt(document.getElementById('agregar-cant').value) || 1;
-            var precio = parseFloat(document.getElementById('agregar-precio').value) || 0;
-            var nombre = sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].textContent : '';
-            if (!idProd) { alert('Seleccioná un producto.'); return; }
-            if (!precio) { alert('Ingresá el precio.'); return; }
-
-            var ex = itemsActuales.find(function(i) { return i.id_producto === idProd; });
-            if (ex) {
-                ex.cantidad += cant;
-                ex.subtotal  = ex.cantidad * parseFloat(ex.precio_unitario);
-            } else {
-                itemsActuales.push({ id_producto: idProd, producto: nombre, sku: '', cantidad: cant, precio_unitario: precio, subtotal: cant * precio });
-            }
-            sel.value = ''; document.getElementById('agregar-cant').value = 1; document.getElementById('agregar-precio').value = '';
-            renderDetalle();
-            recalcularTotal();
-        }
-
-        async function guardarCambios() {
-            if (!pedidoActual) { alert('No hay pedido cargado.'); return; }
-            var btn = document.getElementById('btn-guardar-cambios');
-            btn.disabled = true; btn.textContent = 'Guardando...';
-            try {
-                var detalle = itemsActuales.map(function(i) { return { id_producto: i.id_producto, cantidad: i.cantidad, precio_unitario: parseFloat(i.precio_unitario) }; });
-                var total   = detalle.reduce(function(a, b) { return a + b.cantidad * b.precio_unitario; }, 0);
-                var res = await fetch(API_URL + '/pedidos_b2b/' + pedidoActual.id + '/actualizar', {
-                    method:'PUT', headers:{'Content-Type':'application/json'},
-                    body: JSON.stringify({ detalle: detalle, total: total })
-                });
-                if (res.ok) {
-                    alert('✅ Pedido actualizado');
-                    cerrarModales(); cargarPedidos();
-                } else {
-                    var e = await res.json().catch(function(){ return {}; });
-                    alert('❌ No se pudo guardar: ' + (e.detail || ('Error ' + res.status)));
-                }
-            } catch (err) {
-                alert('❌ Error de conexión al guardar.');
-            } finally {
-                btn.disabled = false; btn.textContent = '💾 Guardar Cambios';
-            }
-        }
-
-        async function cambiarEstado(estado) {
-            if (!pedidoActual) return;
-            var ABIERTOS = ['Pendiente','En preparación'];
-            var CON_STOCK = ['Terminado','Despachado','Despachado parcial'];
-            if (CON_STOCK.indexOf(pedidoActual.estado) !== -1 && ABIERTOS.indexOf(estado) !== -1) {
-                if (!confirm('Al revertir a "' + estado + '" se devuelve al stock todo lo preparado y habrá que volver a armar el pedido.\n\n¿Continuar?')) {
-                    var s = document.getElementById('sel-estado-hist'); if (s) s.value = pedidoActual.estado;
-                    return;
-                }
-            }
-            if (estado === 'Cancelado') {
-                if (!confirm('¿Cancelar el pedido? Si tenía stock preparado, se devuelve.')) {
-                    var s2 = document.getElementById('sel-estado-hist'); if (s2) s2.value = pedidoActual.estado;
-                    return;
-                }
-            }
-            try {
-                await fetch(API_URL + '/pedidos/' + pedidoActual.id + '/estado?estado=' + encodeURIComponent(estado), { method:'PUT' });
-                cerrarModales(); cargarPedidos();
-            } catch(e) { alert('No se pudo cambiar el estado.'); }
-        }
-
-        async function eliminarPedido() {
-            if (!confirm('¿Eliminar este pedido?')) return;
-            await fetch(API_URL + '/pedidos_b2b/' + pedidoActual.id, { method:'DELETE' });
-            cerrarModales(); cargarPedidos();
-        }
-
-        function wsp(tipo) {
-            var dist = distribuidores.find(function(d) { return String(d.id) === String(pedidoActual.id_distribuidor); }) || {};
-            var num  = String(pedidoActual.id).padStart(4,'0');
-            var total = '$ ' + parseFloat(pedidoActual.total).toLocaleString('es-AR');
-            var msg = tipo === 'preparado'
-                ? '✅ *Portal del Viento*\n\nHola ' + (dist.razon_social || '') + ', su pedido *#' + num + '* está listo para despachar.\n\nTotal: ' + total + '\n\n¡Gracias! 🙏'
-                : '🚚 *Portal del Viento*\n\nHola ' + (dist.razon_social || '') + ', su pedido *#' + num + '* fue despachado y está en camino.\n\nTotal: ' + total + '\n\n¡Que lo disfruten! 🍫';
-            var tel = dist.telefono ? dist.telefono.replace(/\D/g,'') : '';
-            window.open(tel ? 'https://wa.me/54' + tel + '?text=' + encodeURIComponent(msg) : 'https://wa.me/?text=' + encodeURIComponent(msg), '_blank');
-        }
-
-        function membrete(doc) {
-            // Modo ahorro de tinta: sin fondo, solo texto negro y una línea fina
-            var x = 14;
-            if (empresa.logo_url) { try { doc.addImage(empresa.logo_url, 'PNG', 14, 6, 24, 24); x = 44; } catch(e) {} }
-            doc.setTextColor(0,0,0); doc.setFontSize(18); doc.setFont('helvetica','bold');
-            doc.text(empresa.nombre || 'Portal del Viento', x, 16);
-            doc.setTextColor(60,60,60); doc.setFontSize(8); doc.setFont('helvetica','normal');
-            if (empresa.razon_social) doc.text(empresa.razon_social, x, 22);
-            if (empresa.cuit)         doc.text('CUIT: ' + empresa.cuit, x, 27);
-            if (empresa.direccion)    doc.text(empresa.direccion + (empresa.localidad ? ', ' + empresa.localidad : ''), x, 32);
-            if (empresa.telefono)     doc.text('Tel: ' + empresa.telefono, 140, 22);
-            if (empresa.email)        doc.text(empresa.email, 140, 27);
-            doc.setDrawColor(0,0,0); doc.setLineWidth(0.5);
-            doc.line(14, 37, 196, 37);
-        }
-
-        function imprimirOrden() {
-            var jsPDF = window.jspdf.jsPDF;
-            var doc  = new jsPDF();
-            var num  = String(pedidoActual.id).padStart(4,'0');
-            var dist = distribuidores.find(function(d) { return String(d.id) === String(pedidoActual.id_distribuidor); }) || {};
-            membrete(doc);
-            doc.setTextColor(40,40,40); doc.setFontSize(14); doc.setFont('helvetica','bold');
-            doc.text('ORDEN DE COMPRA  N° ' + num, 105, 45, {align:'center'});
-            doc.setFontSize(8); doc.setFont('helvetica','normal');
-            doc.text('CLIENTE: ' + (dist.razon_social || pedidoActual.distribuidor), 14, 53);
-            if (dist.cuit)      doc.text('CUIT: ' + dist.cuit, 14, 58);
-            if (dist.direccion) doc.text(dist.direccion, 14, 63);
-            doc.text('Fecha: ' + new Date(pedidoActual.fecha).toLocaleDateString('es-AR'), 150, 53);
-
-            var totalUnidades = itemsActuales.reduce(function(a, i){ return a + (parseInt(i.cantidad) || 0); }, 0);
-
-            doc.autoTable({
-                startY: 67,
-                head: [['Producto','Cant.','Precio Unit.','Subtotal']],
-                body: itemsActuales.map(function(i) {
-                    return [i.producto, i.cantidad, '$ ' + parseFloat(i.precio_unitario).toLocaleString('es-AR'), '$ ' + parseFloat(i.subtotal).toLocaleString('es-AR')];
-                }),
-                foot: [
-                    ['TOTAL PRODUCTOS: ' + totalUnidades + ' u.', '', 'TOTAL', '$ ' + parseFloat(pedidoActual.total).toLocaleString('es-AR')]
-                ],
-                headStyles: {fillColor:[255,255,255], textColor:[0,0,0], fontStyle:'bold', lineWidth:0.3, lineColor:[0,0,0], fontSize:8},
-                footStyles: {fillColor:[255,255,255], textColor:[0,0,0], fontStyle:'bold', fontSize:9, lineWidth:0.3, lineColor:[0,0,0]},
-                styles: {fontSize:8, cellPadding:1.5, lineWidth:0.1, lineColor:[120,120,120]},
-                columnStyles: {1:{halign:'center'}, 2:{halign:'right'}, 3:{halign:'right'}}
-            });
-            var y = doc.lastAutoTable.finalY + 8;
-            // Mostrar total con IVA si está marcado
-            var conIva = document.getElementById('remito-con-iva').checked;
-            var total = parseFloat(pedidoActual.total || 0);
-            var iva = conIva ? Math.round(total * 0.21 * 100) / 100 : 0;
-            var totalConIva = conIva ? total + iva : total;
-            
-            doc.setFontSize(9); doc.setFont('helvetica', 'bold'); doc.setTextColor(0, 0, 0);
-            if (conIva) {
-                doc.text('Subtotal: $ ' + total.toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2}), 130, y);
-                doc.text('IVA (21%): $ ' + iva.toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2}), 130, y + 6);
-                doc.setFontSize(11); doc.setTextColor(255, 100, 0);
-                doc.text('TOTAL + IVA: $ ' + totalConIva.toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2}), 130, y + 12);
-            } else {
-                doc.setFontSize(11); doc.setTextColor(0, 100, 150);
-                doc.text('TOTAL: $ ' + total.toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2}), 130, y);
-            }
-            y = y + (conIva ? 20 : 10);
-            if (y > 270) y = 270;
-            doc.setTextColor(0, 0, 0); doc.setLineWidth(0.5);
-            doc.line(14, y, 80, y); doc.line(130, y, 196, y);
-            doc.setFontSize(8);
-            doc.text('Firma cliente', 14, y+5);
-            doc.text('Firma empresa', 130, y+5);
-            mostrarPreview(doc, 'Orden de Compra #' + num, 'orden_' + num + '.pdf');
-        }
-
-        function imprimirRemito() {
-            var jsPDF = window.jspdf.jsPDF;
-            var doc  = new jsPDF();
-            var num  = String(pedidoActual.id).padStart(4,'0');
-            var dist = distribuidores.find(function(d) { return String(d.id) === String(pedidoActual.id_distribuidor); }) || {};
-            membrete(doc);
-            doc.setTextColor(40,40,40); doc.setFontSize(14); doc.setFont('helvetica','bold');
-            doc.text('REMITO  N° ' + num, 105, 45, {align:'center'});
-            doc.setFontSize(8); doc.setFont('helvetica','normal');
-            doc.text('DESTINATARIO: ' + (dist.razon_social || pedidoActual.distribuidor), 14, 53);
-            if (dist.cuit)      doc.text('CUIT: ' + dist.cuit, 14, 58);
-            if (dist.direccion) doc.text(dist.direccion + (dist.localidad ? ' - ' + dist.localidad : ''), 14, 63);
-            doc.text('Fecha: ' + new Date(pedidoActual.fecha).toLocaleDateString('es-AR'), 150, 53);
-            doc.text('Estado: ' + pedidoActual.estado, 150, 58);
-
-            var hayArmado = itemsActuales.some(function(i){ return i.armado !== null && i.armado !== undefined; });
-            var totalUnidades = itemsActuales.reduce(function(a, i){
-                var c = hayArmado ? (i.armado || 0) : (parseInt(i.cantidad) || 0);
-                return a + c;
-            }, 0);
-            var itemsDistintos = itemsActuales.length;
-
-            doc.autoTable({
-                startY: 67,
-                head: hayArmado ? [['Producto','Pedido','Despachado','Recibido conforme']] : [['Producto','Cantidad','Recibido conforme']],
-                body: itemsActuales.map(function(i) {
-                    if (hayArmado) {
-                        var arm = (i.armado === null || i.armado === undefined) ? 0 : i.armado;
-                        return [i.producto, i.cantidad, arm, '☐'];
-                    }
-                    return [i.producto, i.cantidad, '☐'];
-                }),
-                foot: [
-                    hayArmado
-                      ? ['TOTAL: ' + itemsDistintos + ' productos / ' + totalUnidades + ' unidades despachadas', '', '', '']
-                      : ['TOTAL: ' + itemsDistintos + ' productos / ' + totalUnidades + ' unidades', '', '']
-                ],
-                headStyles: {fillColor:[255,255,255], textColor:[0,0,0], fontStyle:'bold', lineWidth:0.3, lineColor:[0,0,0], fontSize:8},
-                footStyles: {fillColor:[255,255,255], textColor:[0,0,0], fontStyle:'bold', fontSize:9, lineWidth:0.3, lineColor:[0,0,0]},
-                styles: {fontSize:8, cellPadding:1.5, lineWidth:0.1, lineColor:[120,120,120]},
-                columnStyles: hayArmado ? {1:{halign:'center'}, 2:{halign:'center'}, 3:{halign:'center'}} : {1:{halign:'center'}, 2:{halign:'center'}}
-            });
-            // Mostrar total con IVA si está marcado
-            var conIva = document.getElementById('remito-con-iva').checked;
-            var total = parseFloat(pedidoActual.total || 0);
-            var iva = conIva ? Math.round(total * 0.21 * 100) / 100 : 0;
-            var totalConIva = conIva ? total + iva : total;
-            
-            var y = doc.lastAutoTable.finalY + 8;
-            if (y > 265) y = 265;
-            // Mostrar total e IVA
-            doc.setFontSize(9); doc.setFont('helvetica', 'bold'); doc.setTextColor(0, 0, 0);
-            if (conIva) {
-                doc.text('Subtotal: $ ' + total.toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2}), 130, y);
-                doc.text('IVA (21%): $ ' + iva.toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2}), 130, y + 6);
-                doc.setFontSize(11); doc.setTextColor(255, 100, 0);
-                doc.text('TOTAL + IVA: $ ' + totalConIva.toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2}), 130, y + 12);
-            } else {
-                doc.setFontSize(11); doc.setTextColor(0, 100, 150);
-                doc.text('TOTAL: $ ' + total.toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2}), 130, y);
-            }
-            y = y + (conIva ? 20 : 10);
-            if (y > 270) y = 270;
-            doc.setTextColor(0, 0, 0); doc.setLineWidth(0.5);
-            doc.line(14, y, 80, y); doc.line(130, y, 196, y);
-            doc.setFontSize(8);
-            doc.text('Firma recepción', 14, y+5);
-            doc.text('Firma empresa', 130, y+5);
-            mostrarPreview(doc, 'Remito #' + num, 'remito_' + num + '.pdf');
-        }
-
-        function imprimirRotulo() {
-            document.getElementById('input-transporte').value = '';
-            document.getElementById('modal-transporte').classList.replace('modal-oculto','modal-visible');
-        }
-
-        function confirmarTransporte() {
-            var transporte = document.getElementById('input-transporte').value.trim() || '—';
-            document.getElementById('modal-transporte').classList.replace('modal-visible','modal-oculto');
-            generarRotulo(transporte);
-        }
-
-        function generarRotulo(transporte) {
-            var jsPDF = window.jspdf.jsPDF;
-            var doc  = new jsPDF({orientation:'portrait', unit:'mm', format:'a4'});
-            var num  = String(pedidoActual.id).padStart(4,'0');
-            var dist = distribuidores.find(function(d) { return String(d.id) === String(pedidoActual.id_distribuidor); }) || {};
-            [0, 140].forEach(function(offsetY) {
-                dibujarRotulo(doc, dist, num, transporte, offsetY);
-                if (offsetY === 0) {
-                    doc.setLineDashPattern([3,3], 0);
-                    doc.setDrawColor(150,150,150);
-                    doc.line(10, 138, 200, 138);
-                    doc.setLineDashPattern([], 0);
-                    doc.setDrawColor(0,0,0);
-                    doc.setFontSize(6); doc.setTextColor(150,150,150);
-                    doc.text('Cortar aqui', 95, 140);
-                }
-            });
-            mostrarPreview(doc, 'Rótulo #' + num, 'rotulo_' + num + '.pdf');
-        }
-
-        function dibujarRotulo(doc, dist, num, transporte, offsetY) {
-            var H = 132;
-            var y = offsetY;
-            doc.setLineWidth(0.8); doc.setDrawColor(0,0,0);
-            doc.rect(10, y+4, 190, H);
-            // Modo ahorro: sin relleno gris, solo una línea que separa el remitente
-            doc.setLineWidth(0.3);
-            doc.line(10, y+26, 200, y+26);
-            doc.setFontSize(7); doc.setTextColor(80,80,80); doc.setFont('helvetica','bold');
-            doc.text('REMITENTE:', 14, y+11);
-            doc.setFontSize(10); doc.setTextColor(20,20,20);
-            doc.text((empresa.nombre || 'Portal del Viento').toUpperCase(), 42, y+11);
-            doc.setFont('helvetica','normal'); doc.setFontSize(8);
-            var remInfo = [];
-            if (empresa.cuit)     remInfo.push('CUIT: ' + empresa.cuit);
-            if (empresa.telefono) remInfo.push('Tel: ' + empresa.telefono);
-            if (remInfo.length)   doc.text(remInfo.join(' | '), 14, y+17);
-            if (empresa.direccion) {
-                var dirRem = empresa.direccion + (empresa.localidad ? ', ' + empresa.localidad : '') + (empresa.provincia ? ', ' + empresa.provincia : '');
-                doc.text(dirRem, 14, y+23);
-            }
-            doc.setFontSize(7); doc.setTextColor(80,80,80); doc.setFont('helvetica','bold');
-            doc.text('DESTINATARIO OFICIAL:', 14, y+33);
-            doc.setFontSize(16); doc.setTextColor(0,0,0); doc.setFont('helvetica','bold');
-            doc.text((dist.razon_social || pedidoActual.distribuidor).toUpperCase(), 14, y+43);
-            doc.setLineWidth(0.3); doc.line(14, y+46, 196, y+46);
-            doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(20,20,20);
-            var dyD = y+54;
-            if (dist.dni || dist.cuit) {
-                var dc = [];
-                if (dist.dni)  dc.push('DNI: ' + dist.dni);
-                if (dist.cuit) dc.push('CUIT: ' + dist.cuit);
-                doc.setFont('helvetica','bold'); doc.text('DNI / CUIT:', 14, dyD);
-                doc.setFont('helvetica','normal'); doc.text(dc.join('  |  '), 50, dyD); dyD += 8;
-            }
-            if (dist.telefono) {
-                doc.setFont('helvetica','bold'); doc.text('Teléfono:', 14, dyD);
-                doc.setFont('helvetica','normal'); doc.text(dist.telefono, 50, dyD); dyD += 8;
-            }
-            if (dist.direccion) {
-                doc.setFont('helvetica','bold'); doc.text('Dirección:', 14, dyD);
-                doc.setFont('helvetica','normal'); doc.text(dist.direccion, 50, dyD); dyD += 8;
-            }
-            if (dist.localidad) {
-                doc.setFont('helvetica','bold'); doc.text('Localidad:', 14, dyD);
-                doc.setFont('helvetica','normal');
-                var locProv = dist.localidad + (dist.provincia ? ' (' + dist.provincia + ')' : '');
-                doc.text(locProv, 50, dyD); dyD += 8;
-            }
-            if (dist.cp) {
-                doc.setFont('helvetica','bold'); doc.text('Código Postal:', 14, dyD);
-                doc.setFont('helvetica','normal'); doc.text(dist.cp, 50, dyD); dyD += 8;
-            }
-            var tY = y + 100;
-            doc.setLineWidth(0.5);
-            doc.setLineDashPattern([2,2], 0);
-            doc.rect(30, tY, 150, 20);
-            doc.setLineDashPattern([], 0);
-            doc.setFontSize(7); doc.setTextColor(80,80,80); doc.setFont('helvetica','bold');
-            doc.text('VÍA DE TRANSPORTE:', 105, tY+6, {align:'center'});
-            doc.setFontSize(14); doc.setTextColor(0,0,0);
-            doc.text(transporte.toUpperCase(), 105, tY+15, {align:'center'});
-            doc.setLineWidth(0.3); doc.line(14, y+122, 196, y+122);
-            doc.setFontSize(10); doc.setTextColor(150,150,150); doc.setFont('helvetica','normal');
-            doc.text('#PV-' + num, 105, y+129, {align:'center'});
-        }
-
-        async function abrirModalNuevo() {
-            var sel = document.getElementById('np-dist');
-            sel.innerHTML = distribuidores.map(function(d) { return '<option value="' + d.id + '">' + d.razon_social + '</option>'; }).join('');
-            document.getElementById('np-fecha').value = new Date().toISOString().split('T')[0];
-            document.getElementById('np-total').textContent = '$ 0';
-            document.getElementById('np-buscar').value = '';
-            sel.onchange = function() { cargarProductosNuevoPedido(); };
-            await cargarProductosNuevoPedido();
-            document.getElementById('modal-nuevo').classList.replace('modal-oculto','modal-visible');
-            setTimeout(function(){ document.getElementById('np-buscar').focus(); }, 100);
-        }
-
-        async function cargarProductosNuevoPedido() {
-            var idDist = parseInt(document.getElementById('np-dist').value);
-            // Trae los productos con el precio YA ajustado por los descuentos del cliente
-            var productos = await fetch(API_URL + '/distribuidores/' + idDist + '/precios').then(function(r) { return r.json(); }).catch(function(){ return []; });
-            if (!productos || !productos.length) {
-                // fallback al listado general si algo falla
-                if (!todosProductos.length) todosProductos = await fetch(API_URL + '/productos/con_presentaciones').then(function(r) { return r.json(); });
-                productos = todosProductos.map(function(p){
-                    var pr = (p.presentaciones && p.presentaciones[0]) ? parseFloat(p.presentaciones[0].precio_mayorista) : 0;
-                    return { id:p.id, nombre:p.nombre, precio_final:pr, descuento:0 };
-                });
-            }
-            document.getElementById('np-total').textContent = '$ 0';
-            var cont = document.getElementById('np-items');
-            cont.innerHTML = '';
-            productos.forEach(function(p) {
-                var precio = parseFloat(p.precio_final != null ? p.precio_final : (p.presentaciones ? p.presentaciones[0].precio_mayorista : 0)) || 0;
-                var pct = parseFloat(p.descuento || 0);
-                var div = document.createElement('div');
-                div.className = 'np-fila flex items-center gap-3 bg-black border border-gray-800 rounded-lg px-3 py-2';
-                div.setAttribute('data-nombre', (p.nombre || '').toLowerCase());
-                var badgeDesc = pct > 0 ? '<span class="text-purple-400 text-xs font-bold mr-1">-' + pct + '%</span>' : '';
-                div.innerHTML =
-                    '<p class="flex-1 text-white text-sm font-bold truncate">' + p.nombre + '</p>' +
-                    badgeDesc +
-                    '<span class="text-neon text-xs font-bold">$ ' + precio.toLocaleString('es-AR') + '</span>' +
-                    '<input type="hidden" class="np-precio" value="' + precio + '" data-prod="' + p.id + '">' +
-                    '<input type="number" min="0" value="0" class="w-16 bg-gray-900 border border-gray-700 text-white rounded p-1 text-sm text-center np-cant" oninput="recalcNuevo()">';
-                cont.appendChild(div);
-            });
-            document.getElementById('np-buscar').value = '';
-            filtrarProductosNuevo();
-        }
-
-        function filtrarProductosNuevo() {
-            var q = document.getElementById('np-buscar').value.toLowerCase().trim();
-            document.querySelectorAll('#np-items > .np-fila').forEach(function(fila) {
-                var nombre = fila.getAttribute('data-nombre') || '';
-                fila.style.display = (!q || nombre.indexOf(q) !== -1) ? '' : 'none';
-            });
-        }
-
-        function agregarPrimeroNuevo() {
-            var q = document.getElementById('np-buscar').value.toLowerCase().trim();
-            if (!q) return;
-            var filas = document.querySelectorAll('#np-items > .np-fila');
-            for (var i = 0; i < filas.length; i++) {
-                if (filas[i].style.display !== 'none') {
-                    var inp = filas[i].querySelector('.np-cant');
-                    inp.value = (parseInt(inp.value) || 0) + 1;
-                    recalcNuevo();
-                    // feedback visual rápido
-                    filas[i].classList.add('border-neon');
-                    setTimeout(function(f){ return function(){ f.classList.remove('border-neon'); }; }(filas[i]), 600);
-                    document.getElementById('np-buscar').value = '';
-                    filtrarProductosNuevo();
-                    document.getElementById('np-buscar').focus();
-                    break;
-                }
-            }
-        }
-
-        function recalcNuevo() {
-            var total = 0;
-            document.querySelectorAll('#np-items > div').forEach(function(row) {
-                var cant  = parseInt(row.querySelector('.np-cant').value) || 0;
-                var precio = parseFloat(row.querySelector('.np-precio').value) || 0;
-                total += cant * precio;
-            });
-            document.getElementById('np-total').textContent = '$ ' + total.toLocaleString('es-AR');
-        }
-
-        async function crearPedido() {
-            var id_dist = parseInt(document.getElementById('np-dist').value);
-            if (!id_dist) { alert('Seleccioná un distribuidor.'); return; }
-            var detalle = [], total = 0;
-            document.querySelectorAll('#np-items > div').forEach(function(row) {
-                var cant  = parseInt(row.querySelector('.np-cant').value) || 0;
-                if (!cant) return;
-                var precioEl = row.querySelector('.np-precio');
-                var precio = parseFloat(precioEl.value) || 0;
-                var prodId = parseInt(precioEl.dataset.prod);
-                total     += cant * precio;
-                detalle.push({ id_producto: prodId, cantidad: cant, precio_unitario: precio });
-            });
-            if (!detalle.length) { alert('Agregá al menos un producto con cantidad.'); return; }
-            var btn = document.getElementById('btn-crear');
-            btn.disabled = true; btn.textContent = 'Creando...';
-            try {
-                var res = await fetch(API_URL + '/pedidos_b2b', {
-                    method:'POST', headers:{'Content-Type':'application/json'},
-                    body: JSON.stringify({ id_distribuidor: id_dist, total: total, detalle: detalle })
-                });
-                if (res.ok) { cerrarModales(); cargarPedidos(); }
-                else { var e = await res.json(); alert('Error: ' + (e.detail || 'Error al crear')); }
-            } finally { btn.disabled = false; btn.textContent = 'Crear Pedido'; }
+                document.getElementById('det-items-tabla').innerHTML = tablaHtml;
+                document.getElementById('modal-detalle').classList.replace('modal-oculto','modal-visible');
+            } catch(e) { mostrarToast('❌ Error'); }
         }
 
         function cerrarModales() {
-            document.querySelectorAll('.modal-visible').forEach(function(m) { m.classList.replace('modal-visible','modal-oculto'); });
-            pedidoActual = null; itemsActuales = [];
+            document.getElementById('modal-detalle').classList.replace('modal-visible','modal-oculto');
+            document.getElementById('modal-dist').classList.add('hidden');
         }
 
-        window.onload = init;
-
-        var _pdfDoc = null, _pdfNombre = '';
-
-        function mostrarPreview(doc, titulo, nombre) {
-            _pdfDoc = doc;
-            _pdfNombre = nombre;
-            document.getElementById('preview-titulo').textContent = titulo;
-            var blob = doc.output('blob');
-            var url  = URL.createObjectURL(blob);
-            document.getElementById('preview-iframe').src = url;
-            document.getElementById('modal-preview').classList.replace('modal-oculto','modal-visible');
-        }
-
-        function descargarPDF() {
-            if (_pdfDoc) _pdfDoc.save(_pdfNombre);
-        }
-
-        function imprimirPDF() {
-            var iframe = document.getElementById('preview-iframe');
-            iframe.contentWindow.focus();
-            iframe.contentWindow.print();
-        }
-        // ===== Helpers nuevos =====
-        function fechaCorta(f) {
-            if (!f) return '';
-            var s = String(f).replace('T',' ').split(' ')[0].split('-');
-            if (s.length < 3) return f;
-            return s[2] + '/' + s[1] + '/' + s[0];
-        }
-        function mostrarToast(msg) {
-            var t = document.getElementById('toast');
-            t.textContent = msg;
-            t.classList.remove('hidden');
-            clearTimeout(window._toastTimer);
-            window._toastTimer = setTimeout(function(){ t.classList.add('hidden'); }, 3000);
-        }
-        function cerrarModalDist() {
-            var m = document.getElementById('modal-dist');
-            m.classList.add('hidden'); m.classList.remove('flex');
-        }
-        function abrirModalDist(titulo, htmlCuerpo) {
-            document.getElementById('md-titulo').textContent = titulo;
-            document.getElementById('md-cuerpo').innerHTML = htmlCuerpo;
-            var m = document.getElementById('modal-dist');
-            m.classList.remove('hidden'); m.classList.add('flex');
-        }
-
-        // ===== Realizar pago =====
-        function abrirPagoDist(idDist, nombre) {
-            if (!idDist) { mostrarToast('Sin distribuidor'); return; }
+        async function abrirAcciones(idPedido) {
+            var p = pedidosGuardados.find(x=>x.id==idPedido);
+            if (!p) { mostrarToast('Pedido no encontrado'); return; }
             var html = ''
-                + '<p class="text-gray-400 text-sm mb-3">Registrar un cobro a <b class="text-white">' + (nombre||'') + '</b></p>'
-                + '<label class="block text-gray-400 text-xs mb-1">Monto</label>'
-                + '<input id="pd-monto" type="number" class="w-full bg-gray-800 border border-gray-700 text-white rounded p-2 mb-3" placeholder="0">'
-                + '<label class="block text-gray-400 text-xs mb-1">Método</label>'
-                + '<select id="pd-metodo" class="w-full bg-gray-800 border border-gray-700 text-white rounded p-2 mb-3">'
-                + '<option>Efectivo</option><option>Transferencia</option><option>Cheque</option><option>Mercado Pago</option><option>Otro</option></select>'
-                + '<label class="block text-gray-400 text-xs mb-1">Referencia / notas (opcional)</label>'
-                + '<input id="pd-ref" class="w-full bg-gray-800 border border-gray-700 text-white rounded p-2 mb-4" placeholder="Ej: transferencia 1234">'
-                + '<button onclick="guardarPagoDist(' + idDist + ')" class="w-full bg-green-700 hover:bg-green-600 text-white font-bold py-2.5 rounded">💵 Registrar pago</button>';
-            abrirModalDist('💵 Realizar pago', html);
-        }
-        async function guardarPagoDist(idDist) {
-            var monto = parseFloat(document.getElementById('pd-monto').value);
-            if (!monto || monto <= 0) { mostrarToast('Poné un monto válido'); return; }
-            var metodo = document.getElementById('pd-metodo').value;
-            var ref = document.getElementById('pd-ref').value;
-            try {
-                var r = await fetch(API_URL + '/cobros_distribuidores/nuevo', {
-                    method:'POST', headers:{'Content-Type':'application/json'},
-                    body: JSON.stringify({ id_distribuidor: idDist, monto: monto, metodo: metodo, referencia: ref })
-                });
-                if (!r.ok) throw new Error();
-                cerrarModalDist();
-                mostrarToast('✅ Pago registrado');
-            } catch(e) { mostrarToast('No se pudo registrar el pago'); }
+                + '<div class="space-y-2">'
+                + '<button onclick="abrirEstadoCuenta(' + p.id_distribuidor + ')" class="w-full bg-blue-700 hover:bg-blue-600 text-white font-bold py-2 rounded">📊 Estado de cuenta</button>'
+                + '<button onclick="abrirMarcaDespacho(' + idPedido + ')" class="w-full bg-green-700 hover:bg-green-600 text-white font-bold py-2 rounded">✅ Marcar despacho</button>'
+                + '<button onclick="abrirGuia(' + idPedido + ')" class="w-full bg-indigo-700 hover:bg-indigo-600 text-white font-bold py-2 rounded">🚚 Cargar guía</button>'
+                + '<button onclick="abrirFacturar(' + idPedido + ')" class="w-full bg-red-700 hover:bg-red-600 text-white font-bold py-2 rounded">🧾 Facturar</button>'
+                + '<button onclick="abrirImprimir(' + idPedido + ')" class="w-full bg-blue-900 hover:bg-blue-800 text-white font-bold py-2 rounded">🖨️ Imprimir</button>'
+                + '</div>';
+            abrirModalDist('⚙️ Acciones - Pedido #' + String(p.id).padStart(4,'0'), html);
         }
 
-        // ===== Estado de cuenta =====
-        async function abrirEstadoCuenta(idDist, nombre) {
-            if (!idDist) { mostrarToast('Sin distribuidor'); return; }
-            abrirModalDist('📊 Estado de cuenta', '<p class="text-gray-500">Cargando...</p>');
+        async function abrirEstadoCuenta(idDist) {
             try {
-                var ec = await fetch(API_URL + '/distribuidores/' + idDist + '/estado_cuenta').then(function(r){return r.json();});
-                var deuda = parseFloat(ec.saldo_pendiente || 0);
-                var totalPed = parseFloat(ec.total_pedidos || 0);
-                var totalPag = parseFloat(ec.total_cobrado || ec.total_pagos || 0);
-                var cobros = ec.cobros || ec.pagos || [];
+                var r = await fetch(API_URL + '/api/distribuidores/' + idDist + '/estado_cuenta', {method:'GET'});
+                if (!r.ok) throw new Error('');
+                var data = await r.json();
+                var incluirIva = document.getElementById('incluir-iva').checked;
+
+                // Aplicar IVA si está marcado
+                if (incluirIva) {
+                    data.total_pedidos = parseFloat(data.total_pedidos||0) * 1.21;
+                    data.saldo_pendiente = parseFloat(data.total_pedidos||0) - parseFloat(data.total_cobrado||0);
+                    data.pedidos = data.pedidos.map(p => ({...p, total: parseFloat(p.total||0) * 1.21}));
+                }
+
                 var html = ''
-                    + '<p class="text-gray-400 text-sm mb-3"><b class="text-white">' + (nombre||'') + '</b></p>'
-                    + '<div class="grid grid-cols-3 gap-2 mb-4">'
-                    + '<div class="bg-gray-800 rounded-lg p-3 text-center"><p class="text-gray-500 text-xs">Pedidos</p><p class="text-white font-bold">$ ' + totalPed.toLocaleString('es-AR') + '</p></div>'
-                    + '<div class="bg-gray-800 rounded-lg p-3 text-center"><p class="text-gray-500 text-xs">Pagado</p><p class="text-green-400 font-bold">$ ' + totalPag.toLocaleString('es-AR') + '</p></div>'
-                    + '<div class="bg-gray-800 rounded-lg p-3 text-center"><p class="text-gray-500 text-xs">Debe</p><p class="' + (deuda>0?'text-red-400':'text-gray-300') + ' font-bold">$ ' + deuda.toLocaleString('es-AR') + '</p></div>'
-                    + '</div>';
-                html += '<p class="text-gray-400 text-xs font-bold uppercase mb-2">Últimos pagos</p>';
-                if (cobros.length) {
-                    html += '<div class="space-y-1">';
-                    cobros.slice(0,10).forEach(function(c){
-                        html += '<div class="bg-gray-800 rounded px-3 py-2 flex justify-between text-sm"><span class="text-gray-400">' + fechaCorta(c.fecha) + ' · ' + (c.metodo||'') + '</span><span class="text-green-400 font-bold">$ ' + parseFloat(c.monto||0).toLocaleString('es-AR') + '</span></div>';
-                    });
-                    html += '</div>';
-                } else {
-                    html += '<p class="text-gray-600 text-sm">Sin pagos registrados.</p>';
+                    + '<div class="grid grid-cols-3 gap-3 mb-4">'
+                    + '<div class="bg-gray-800 rounded p-3"><p class="text-gray-400 text-xs mb-1">Total Pedidos</p><p class="text-neon font-bold text-lg">$ ' + parseFloat(data.total_pedidos||0).toLocaleString('es-AR') + '</p></div>'
+                    + '<div class="bg-gray-800 rounded p-3"><p class="text-gray-400 text-xs mb-1">Total Cobrado</p><p class="text-green-400 font-bold text-lg">$ ' + parseFloat(data.total_cobrado||0).toLocaleString('es-AR') + '</p></div>'
+                    + '<div class="bg-gray-800 rounded p-3"><p class="text-gray-400 text-xs mb-1">Saldo Pendiente</p><p class="text-red-400 font-bold text-lg">$ ' + parseFloat(data.saldo_pendiente||0).toLocaleString('es-AR') + '</p></div>'
+                    + '</div>'
+                    + '<h4 class="font-bold text-white mb-2 text-sm">Últimos Pedidos</h4>'
+                    + '<div class="space-y-2 max-h-64 overflow-y-auto">';
+                for (let p of (data.pedidos||[]).slice(0,10)) {
+                    html += '<div class="bg-gray-800 p-2 rounded text-xs">'
+                        + '<div class="flex justify-between"><b class="text-white">Pedido #' + String(p.id).padStart(4,'0') + '</b> <span class="text-neon">$ ' + parseFloat(p.total||0).toLocaleString('es-AR') + '</span></div>'
+                        + '<div class="text-gray-400">' + (p.fecha ? new Date(p.fecha).toLocaleDateString('es-AR') : '—') + '</div>'
+                        + '</div>';
                 }
+                html += '</div>';
                 abrirModalDist('📊 Estado de cuenta', html);
-            } catch(e) {
-                abrirModalDist('📊 Estado de cuenta', '<p class="text-red-400">No se pudo cargar el estado de cuenta.</p>');
-            }
+            } catch(e) { mostrarToast('❌ Error: ' + (e.message||'')); }
         }
 
-        // ===== Últimos pedidos =====
-        async function abrirUltimosPedidos(idDist, nombre) {
-            if (!idDist) { mostrarToast('Sin distribuidor'); return; }
-            abrirModalDist('📦 Últimos pedidos', '<p class="text-gray-500">Cargando...</p>');
+        function abrirModalDist(titulo, cuerpo) {
+            document.getElementById('md-titulo').textContent = titulo;
+            document.getElementById('md-cuerpo').innerHTML = cuerpo;
+            document.getElementById('modal-dist').classList.remove('hidden');
+        }
+
+        function cerrarModalDist() {
+            document.getElementById('modal-dist').classList.add('hidden');
+        }
+
+        function abrirMarcaDespacho(idPedido) {
+            var p = pedidosGuardados.find(x=>x.id==idPedido);
+            var opciones = ['Despachado', 'Despachado parcial', 'Cancelado'];
+            var html = '<div class="space-y-2">';
+            for (let op of opciones) {
+                html += '<button onclick="guardarEstado(' + idPedido + ',\'' + op + '\')" class="w-full bg-blue-700 hover:bg-blue-600 text-white font-bold py-2 rounded">' + op + '</button>';
+            }
+            html += '</div>';
+            abrirModalDist('✅ Cambiar estado - Pedido #' + String(p.id).padStart(4,'0'), html);
+        }
+
+        async function guardarEstado(idPedido, nuevoEstado) {
             try {
-                var lista = await fetch(API_URL + '/pedidos_b2b/historial?id_distribuidor=' + idDist).then(function(r){return r.json();});
-                var html = '<p class="text-gray-400 text-sm mb-3"><b class="text-white">' + (nombre||'') + '</b></p>';
-                if (lista.length) {
-                    html += '<div class="space-y-1">';
-                    lista.slice(0,15).forEach(function(p){
-                        var color = COLORES[p.estado] || 'bg-gray-800 text-gray-400';
-                        html += '<div class="bg-gray-800 rounded px-3 py-2 flex justify-between items-center text-sm">'
-                            + '<span class="text-gray-300">#' + String(p.id).padStart(4,'0') + ' · ' + fechaCorta(p.fecha) + '</span>'
-                            + '<span class="flex items-center gap-2"><span class="text-white font-bold">$ ' + parseFloat(p.total).toLocaleString('es-AR') + '</span>'
-                            + '<span class="text-xs px-2 py-0.5 rounded-full ' + color + '">' + p.estado + '</span></span></div>';
-                    });
-                    html += '</div>';
-                } else {
-                    html += '<p class="text-gray-600 text-sm">Sin pedidos.</p>';
-                }
-                abrirModalDist('📦 Últimos pedidos', html);
-            } catch(e) {
-                abrirModalDist('📦 Últimos pedidos', '<p class="text-red-400">No se pudieron cargar los pedidos.</p>');
-            }
+                var r = await fetch(API_URL + '/pedidos_b2b/' + idPedido, {
+                    method:'PUT', headers:{'Content-Type':'application/json'},
+                    body: JSON.stringify({ estado: nuevoEstado })
+                });
+                if (!r.ok) { var e = await r.json().catch(function(){return {};}); throw new Error(e.detail||''); }
+                cerrarModalDist();
+                mostrarToast('✅ Estado actualizado');
+                cargarPedidos();
+            } catch(e) { mostrarToast('❌ ' + (e.message||'')); }
         }
 
-        // ===== Editar distribuidor =====
-        function editarDistribuidor(idDist) {
-            if (!idDist) { mostrarToast('Sin distribuidor'); return; }
-            window.location.href = '/distribuidores?editar=' + idDist;
+        function abrirImprimir(idPedido) {
+            var p = pedidosGuardados.find(x=>x.id==idPedido);
+            window.open(API_URL + '/pedidos_b2b/' + idPedido + '/pdf', '_blank');
         }
 
-        // ===== Menú de WhatsApp =====
-        function abrirMenuWsp(p) {
-            var tel = (p.dist_telefono || '').replace(/[^0-9]/g,'');
-            var html = '<p class="text-gray-400 text-sm mb-3">Elegí el mensaje para enviar a <b class="text-white">' + (p.distribuidor||'') + '</b></p>';
-            if (!tel) html += '<p class="text-orange-400 text-xs mb-3">⚠️ Este distribuidor no tiene teléfono cargado.</p>';
-            var tipos = [
-                ['recepcion',  '✅ Confirmar recepción del pedido'],
-                ['listo',      '📦 Pedido listo (con importe a abonar)'],
-                ['cuenta',     '📊 Estado de cuenta'],
-                ['terminado',  '✔️ Pedido terminado'],
-                ['despachado', '🚚 Pedido despachado (con datos de guía)']
-            ];
-            html += '<div class="space-y-2" id="wsp-btns-' + p.id + '"></div>';
-            abrirModalDist('📱 Enviar WhatsApp', html);
-            var cont = document.getElementById('wsp-btns-' + p.id);
-            tipos.forEach(function(t) {
-                var b = document.createElement('button');
-                b.className = 'w-full text-left bg-gray-800 hover:bg-gray-700 rounded px-4 py-3 text-sm text-gray-200';
-                b.textContent = t[1];
-                b.onclick = function() { enviarWsp(p.id, t[0]); };
-                cont.appendChild(b);
-            });
-        }
-        async function enviarWsp(idPedido, tipo) {
-            var lista = await fetch(API_URL + '/pedidos_b2b/historial?limite=400').then(function(r){return r.json();});
-            var p = lista.find(function(x){ return x.id === idPedido; });
-            if (!p) { mostrarToast('No se encontró el pedido'); return; }
-            var tel = (p.dist_telefono || '').replace(/[^0-9]/g,'');
-            if (tel && !tel.startsWith('54')) tel = '54' + tel;
-            var total = parseFloat(p.total||0).toLocaleString('es-AR');
-            var msg = '';
-            if (tipo === 'recepcion')  msg = 'Hola ' + p.distribuidor + '! Recibimos tu pedido #' + String(p.id).padStart(4,'0') + '. Ya lo estamos preparando. ¡Gracias!';
-            if (tipo === 'listo')      msg = 'Hola ' + p.distribuidor + '! Tu pedido #' + String(p.id).padStart(4,'0') + ' ya está listo. Importe a abonar: $ ' + total + '.';
-            if (tipo === 'cuenta') {
-                var ec = await fetch(API_URL + '/distribuidores/' + p.id_distribuidor + '/estado_cuenta').then(function(r){return r.json();}).catch(function(){return {};});
-                var deuda = parseFloat(ec.saldo_pendiente || 0).toLocaleString('es-AR');
-                msg = 'Hola ' + p.distribuidor + '! Te paso tu estado de cuenta. Saldo pendiente: $ ' + deuda + '. ¡Gracias!';
-            }
-            if (tipo === 'terminado')  msg = 'Hola ' + p.distribuidor + '! Tu pedido #' + String(p.id).padStart(4,'0') + ' está terminado y listo para retirar/despachar.';
-            if (tipo === 'despachado') {
-                var guia = p.guia_transporte ? ('\\n🚚 Transporte: ' + p.guia_transporte + (p.guia_numero ? '\\nGuía N°: ' + p.guia_numero : '')) : '';
-                msg = 'Hola ' + p.distribuidor + '! Tu pedido #' + String(p.id).padStart(4,'0') + ' fue despachado.' + guia + '\\nImporte: $ ' + total + '.';
-            }
-            cerrarModalDist();
-            var url = 'https://wa.me/' + tel + '?text=' + encodeURIComponent(msg);
-            window.open(url, '_blank');
-        }
-
-        // ===== Cargar guía de transporte =====
-        function abrirCargarGuia(p) {
+        function abrirGuia(idPedido) {
+            var p = pedidosGuardados.find(x=>x.id==idPedido);
             var html = ''
-                + '<p class="text-gray-400 text-sm mb-3">Datos de la guía para el pedido <b class="text-white">#' + String(p.id).padStart(4,'0') + '</b></p>'
-                + '<label class="block text-gray-400 text-xs mb-1">Transporte</label>'
-                + '<input id="g-transporte" value="' + (p.guia_transporte||'') + '" class="w-full bg-gray-800 border border-gray-700 text-white rounded p-2 mb-3" placeholder="Ej: Andreani, Vía Cargo...">'
+                + '<label class="block text-gray-400 text-xs mb-1">Empresa de transporte</label>'
+                + '<input id="g-transporte" value="' + (p.transporte||'') + '" class="w-full bg-gray-800 border border-gray-700 text-white rounded p-2 mb-4" placeholder="Ej: CATA CARGO">'
                 + '<label class="block text-gray-400 text-xs mb-1">Número de guía</label>'
                 + '<input id="g-numero" value="' + (p.guia_numero||'') + '" class="w-full bg-gray-800 border border-gray-700 text-white rounded p-2 mb-4" placeholder="Ej: 123456789">'
                 + '<button onclick="guardarGuia(' + p.id + ')" class="w-full bg-neon text-black font-bold py-2.5 rounded hover:bg-yellow-300">💾 Guardar guía</button>';
             abrirModalDist('🚚 Cargar guía de transporte', html);
         }
+
         async function guardarGuia(idPedido) {
             var transporte = document.getElementById('g-transporte').value;
             var numero = document.getElementById('g-numero').value;
@@ -1312,11 +386,11 @@
                 cerrarModalDist();
                 mostrarToast('✅ Guía guardada');
                 cargarPedidos();
-            } catch(e) { mostrarToast('No se pudo guardar: ' + (e.message||'')); }
+            } catch(e) { mostrarToast('❌ No se pudo guardar: ' + (e.message||'')); }
         }
 
-        // ===== Facturación AFIP para pedidos B2B =====
-        function abrirFacturar(p) {
+        function abrirFacturar(idPedido) {
+            var p = pedidosGuardados.find(x=>x.id==idPedido);
             var tieneCuit = p.dist_cuit && p.dist_cuit.replace(/[^0-9]/g,'').length >= 10;
             var tipoProp = tieneCuit ? 1 : 6;
             var docTipoProp = tieneCuit ? 80 : 99;
@@ -1344,12 +418,14 @@
                 + '<button onclick="emitirFactura(' + p.id + ')" class="w-full bg-blue-700 hover:bg-blue-600 text-white font-bold py-3 rounded text-lg">🧾 Emitir factura en AFIP</button>';
             abrirModalDist('🧾 Facturar pedido B2B', html);
         }
+
         function actualizarDocTipo() {
             var tipo = document.getElementById('fac-tipo').value;
             var row = document.getElementById('fac-cuit-row');
             if (tipo === '1') row.classList.remove('hidden');
             else row.classList.add('hidden');
         }
+
         async function emitirFactura(idPedido) {
             var tipo = parseInt(document.getElementById('fac-tipo').value);
             var docNro = (document.getElementById('fac-doc') || {value:''}).value.replace(/[^0-9]/g,'') || '0';
@@ -1374,6 +450,30 @@
             }
         }
 
+        function mostrarToast(msg) {
+            var t = document.getElementById('toast');
+            t.textContent = msg;
+            t.classList.remove('hidden');
+            setTimeout(function(){ t.classList.add('hidden'); }, 3000);
+        }
+
+        function abrirImpresion() {
+            if (!detalleActual) { mostrarToast('No hay detalle'); return; }
+            window.open(API_URL + '/pedidos_b2b/' + detalleActual.id + '/pdf', '_blank');
+        }
+
+        function descargarDetalle() {
+            if (!detalleActual) { mostrarToast('No hay detalle'); return; }
+            var link = document.createElement('a');
+            link.href = API_URL + '/pedidos_b2b/' + detalleActual.id + '/pdf';
+            link.download = 'pedido_' + detalleActual.id + '.pdf';
+            link.click();
+        }
+
+        // Cargar al iniciar
+        window.addEventListener('load', function() {
+            cargarPedidos();
+        });
     </script>
 
     <!-- Modal Vista Previa PDF -->
