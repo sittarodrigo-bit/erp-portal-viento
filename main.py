@@ -1490,12 +1490,12 @@ def estado_cuenta_distribuidor(id_dist: int):
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
         cur.execute("""
-            SELECT id, fecha::text, total, estado, observaciones FROM pedidos_b2b
+            SELECT id, fecha::text, total, COALESCE(iva_aplicado,0) AS iva_aplicado, estado, observaciones FROM pedidos_b2b
             WHERE id_distribuidor = %s AND estado IN ('Despachado','Despachado parcial') ORDER BY fecha DESC
         """, (id_dist,))
         pedidos = fetchall_dict(cur)
         # Para cada pedido, calcular el monto REAL despachado:
-        # si hay armado registrado, se cobra lo armado (precio x cantidad armada); si no, el total pedido.
+        # si hay armado registrado, se cobra lo armado (precio x cantidad armada) + IVA; si no, el total pedido + IVA.
         for p in pedidos:
             monto_real = None
             try:
@@ -1511,8 +1511,9 @@ def estado_cuenta_distribuidor(id_dist: int):
             except Exception:
                 conn.rollback()
                 monto_real = None
-            p['total_pedido'] = float(p['total'] or 0)
-            p['total'] = monto_real if monto_real is not None else float(p['total'] or 0)
+            iva = float(p.get('iva_aplicado') or 0)
+            p['total_pedido'] = float(p['total'] or 0) + iva
+            p['total'] = (monto_real if monto_real is not None else float(p['total'] or 0)) + iva
         cur.execute("""
             SELECT c.id, c.fecha::text, c.monto, c.metodo, c.referencia, c.notas, c.id_pedido,
                    e.nombre as empleado_nombre, e.apellido as empleado_apellido
@@ -1551,7 +1552,7 @@ def cuenta_corriente_global():
                             WHERE pi.id_pedido = pb.id
                          ), 0)
                          ELSE COALESCE(pb.total, 0)
-                    END AS monto_real
+                    END + COALESCE(pb.iva_aplicado, 0) AS monto_real
                 FROM pedidos_b2b pb
                 WHERE pb.estado IN ('Despachado','Despachado parcial')
             )
