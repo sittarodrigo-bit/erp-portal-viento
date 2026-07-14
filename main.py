@@ -7356,6 +7356,23 @@ def afip_estado():
     except Exception as e:
         return {"disponible": False, "error": str(e)}
 
+@app.get("/api/afip/validar_cuit/{cuit}")
+def afip_validar_formato_cuit(cuit: str):
+    """Valida el dígito verificador del CUIT (instantáneo, no consulta a AFIP)."""
+    if not afip_service:
+        raise HTTPException(status_code=500, detail="Módulo AFIP no disponible en el servidor.")
+    return afip_service.validar_formato_cuit(cuit)
+
+@app.get("/api/afip/consultar_cuit/{cuit}")
+def afip_consultar_cuit(cuit: str):
+    """Consulta el padrón de AFIP: razón social, condición de IVA, domicilio y si está activo."""
+    if not afip_service:
+        raise HTTPException(status_code=500, detail="Módulo AFIP no disponible en el servidor.")
+    try:
+        return afip_service.consultar_cuit(cuit)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
 @app.post("/api/afip/facturar")
 def afip_facturar(f: FacturaAfip):
     if not afip_service:
