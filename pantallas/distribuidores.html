@@ -362,7 +362,11 @@
                 </div>
                 <div>
                     <label class="block text-xs text-gray-500 font-bold mb-1">CUIT</label>
-                    <input type="text" id="nd-cuit" placeholder="XX-XXXXXXXX-X" class="w-full bg-black border border-gray-700 text-white rounded p-2">
+                    <div class="flex gap-1">
+                        <input type="text" id="nd-cuit" placeholder="XX-XXXXXXXX-X" class="w-full bg-black border border-gray-700 text-white rounded p-2">
+                        <button type="button" onclick="verificarCuitAfip('nd')" class="shrink-0 border border-blue-700 hover:bg-blue-800/30 text-blue-300 hover:text-blue-200 rounded px-2 text-xs font-bold" title="Verificar en AFIP">🔍</button>
+                    </div>
+                    <p id="nd-cuit-info" class="text-xs mt-1"></p>
                 </div>
                 <div>
                     <label class="block text-xs text-gray-500 font-bold mb-1">Teléfono</label>
@@ -421,7 +425,11 @@
                 </div>
                 <div>
                     <label class="block text-xs text-gray-500 font-bold mb-1">CUIT</label>
-                    <input type="text" id="ed-cuit" class="w-full bg-black border border-gray-700 text-white rounded p-2">
+                    <div class="flex gap-1">
+                        <input type="text" id="ed-cuit" class="w-full bg-black border border-gray-700 text-white rounded p-2">
+                        <button type="button" onclick="verificarCuitAfip('ed')" class="shrink-0 border border-blue-700 hover:bg-blue-800/30 text-blue-300 hover:text-blue-200 rounded px-2 text-xs font-bold" title="Verificar en AFIP">🔍</button>
+                    </div>
+                    <p id="ed-cuit-info" class="text-xs mt-1"></p>
                 </div>
                 <div>
                     <label class="block text-xs text-gray-500 font-bold mb-1">Teléfono</label>
@@ -504,6 +512,39 @@
         var API_URL = window.location.origin + "/api";
         if(window.location.hostname === '127.0.0.1' && window.location.port !== '8000') {
             API_URL = "http://127.0.0.1:8000/api";
+        }
+
+        async function verificarCuitAfip(prefix) {
+            var input = document.getElementById(prefix + '-cuit');
+            var info = document.getElementById(prefix + '-cuit-info');
+            var cuit = (input.value || '').replace(/[^0-9]/g, '');
+            if (!cuit) { info.textContent = '⚠️ Ingresá un CUIT primero.'; info.className = 'text-xs mt-1 text-yellow-400'; return; }
+
+            info.textContent = '🔄 Consultando AFIP...';
+            info.className = 'text-xs mt-1 text-gray-400';
+
+            try {
+                var res = await fetch(API_URL + '/afip/consultar_cuit/' + cuit);
+                var data = await res.json();
+                if (!res.ok) {
+                    info.textContent = '❌ ' + (data.detail || 'No se pudo verificar.');
+                    info.className = 'text-xs mt-1 text-red-400';
+                    return;
+                }
+                var estadoIcono = data.estado_clave === 'ACTIVO' ? '✅' : '⚠️';
+                info.innerHTML = estadoIcono + ' <b>' + (data.razon_social || 'Sin razón social') + '</b> · ' +
+                                  (data.condicion_iva || '') + ' · Estado: ' + (data.estado_clave || '—');
+                info.className = 'text-xs mt-1 ' + (data.estado_clave === 'ACTIVO' ? 'text-green-400' : 'text-yellow-400');
+
+                // Autocompletar razón social si el campo de nombre está vacío
+                var campoNombre = document.getElementById(prefix + '-nombre');
+                if (campoNombre && !campoNombre.value.trim() && data.razon_social) {
+                    campoNombre.value = data.razon_social;
+                }
+            } catch(e) {
+                info.textContent = '❌ Error al conectar con AFIP.';
+                info.className = 'text-xs mt-1 text-red-400';
+            }
         }
 
         var usr = JSON.parse(sessionStorage.getItem('usuario') || '{}');
