@@ -9,6 +9,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <style>
         .text-neon { color: #e4fc74; }
         .bg-neon { background-color: #e4fc74; }
@@ -155,6 +156,7 @@
                 <button onclick="imprimirOrden()" class="border border-gray-600 hover:border-gray-400 text-gray-300 hover:text-white py-2 px-3 rounded text-sm transition">🖨️ Orden de Compra</button>
                 <button onclick="imprimirRemito()" class="border border-gray-600 hover:border-gray-400 text-gray-300 hover:text-white py-2 px-3 rounded text-sm transition">📄 Remito</button>
                 <button onclick="imprimirRotulo()" class="border border-gray-600 hover:border-gray-400 text-gray-300 hover:text-white py-2 px-3 rounded text-sm transition">🏷️ Rótulo / Guía</button>
+                <button onclick="imprimirFacturaA()" class="border border-blue-700 hover:bg-blue-800/30 text-blue-300 hover:text-blue-200 py-2 px-3 rounded text-sm transition font-bold">🧾 Factura A (modelo)</button>
                 <button onclick="wsp('preparado')" class="bg-green-800 hover:bg-green-700 text-white py-2 px-3 rounded text-sm transition">📱 WSP Listo</button>
                 <button onclick="wsp('despachado')" class="bg-green-700 hover:bg-green-600 text-white py-2 px-3 rounded text-sm transition">📱 WSP Despachado</button>
                 <button onclick="guardarCambios()" id="btn-guardar-cambios" class="bg-neon text-black font-bold py-2 px-3 rounded text-sm hover:bg-yellow-300">💾 Guardar Cambios</button>
@@ -806,6 +808,115 @@
             if (empresa.email)        doc.text(empresa.email, 140, 27);
             doc.setDrawColor(0,0,0); doc.setLineWidth(0.5);
             doc.line(14, 37, 196, 37);
+        }
+
+        function generarQRDataURL(texto, tamano) {
+            // Genera un QR usando qrcode.js en un div oculto y devuelve el dataURL del canvas
+            var cont = document.createElement('div');
+            cont.style.display = 'none';
+            document.body.appendChild(cont);
+            new QRCode(cont, { text: texto, width: tamano || 120, height: tamano || 120,
+                                correctLevel: QRCode.CorrectLevel.M });
+            var canvasEl = cont.querySelector('canvas');
+            var dataUrl = canvasEl ? canvasEl.toDataURL('image/png') : null;
+            document.body.removeChild(cont);
+            return dataUrl;
+        }
+
+        function imprimirFacturaA() {
+            var jsPDF = window.jspdf.jsPDF;
+            var doc = new jsPDF();
+            var num = String(pedidoActual.id).padStart(8, '0');
+            var dist = distribuidores.find(function(d) { return String(d.id) === String(pedidoActual.id_distribuidor); }) || {};
+            var subtotal = parseFloat(pedidoActual.total || 0);
+            var iva = parseFloat(pedidoActual.iva_aplicado || 0);
+            var totalConIva = subtotal + iva;
+
+            // ── Recuadro general encabezado (0 a 40mm) ──
+            doc.setDrawColor(0, 0, 0); doc.setLineWidth(0.6);
+            doc.rect(12, 5, 186, 40);
+            // Recuadro letra "A"
+            doc.rect(97, 5, 16, 14);
+            doc.setFontSize(20); doc.setFont('helvetica', 'bold'); doc.setTextColor(0, 0, 0);
+            doc.text('A', 105, 15, {align: 'center'});
+            doc.setFontSize(6); doc.setFont('helvetica', 'normal');
+            doc.text('COD. 001', 105, 18.5, {align: 'center'});
+            // Línea vertical entre emisor y datos de factura
+            doc.setLineWidth(0.4);
+            doc.line(139, 5, 139, 45);
+
+            // Emisor (izquierda)
+            doc.setFontSize(13); doc.setFont('helvetica', 'bold'); doc.setTextColor(0,0,0);
+            doc.text(empresa.nombre || 'PORTAL DEL VIENTO', 15, 13);
+            doc.setFontSize(7.5); doc.setFont('helvetica', 'normal'); doc.setTextColor(85,85,85);
+            doc.text(empresa.razon_social || 'Alfajores Portal del Viento SAS', 15, 18);
+            doc.text((empresa.direccion || 'Godoy Cruz, Mendoza'), 15, 22);
+            doc.text('Ingresos Brutos: ' + (empresa.cuit || '30717499014'), 15, 26);
+            doc.setFont('helvetica', 'bold'); doc.setTextColor(0,0,0); doc.setFontSize(7.5);
+            doc.text('IVA Responsable Inscripto', 15, 35);
+
+            // Datos factura (derecha)
+            doc.setFontSize(11); doc.setFont('helvetica', 'bold'); doc.setTextColor(0,0,0);
+            doc.text('FACTURA', 142, 12);
+            doc.setFontSize(7.5); doc.setFont('helvetica', 'normal');
+            doc.text('Punto de Venta: 0004   Comp. Nro: ' + num, 142, 17);
+            doc.text('Fecha de Emisión: ' + new Date(pedidoActual.fecha).toLocaleDateString('es-AR'), 142, 21);
+            doc.text('CUIT: ' + (empresa.cuit || '30-71749901-4'), 142, 26);
+            doc.text('Ingresos Brutos: ' + (empresa.cuit || '30717499014'), 142, 30);
+
+            // ── Datos del cliente ──
+            doc.setFontSize(8); doc.setFont('helvetica', 'normal'); doc.setTextColor(0,0,0);
+            doc.text('CUIT: ' + (dist.cuit || 'Consumidor Final'), 14, 51);
+            doc.text('Condición frente al IVA: ' + (dist.condicion_iva || 'Responsable Inscripto'), 74, 51);
+            doc.text('Razón Social: ' + (dist.razon_social || pedidoActual.distribuidor), 14, 56);
+            doc.text('Condición de venta: Cuenta Corriente', 14, 61);
+            if (dist.direccion) doc.text('Domicilio: ' + dist.direccion, 104, 61);
+            doc.setLineWidth(0.4); doc.line(12, 65, 198, 65);
+
+            // ── Tabla de productos con columna IVA ──
+            doc.autoTable({
+                startY: 68,
+                head: [['Descripción', 'Cantidad', 'Precio Unit.', 'IVA', 'Subtotal']],
+                body: itemsActuales.map(function(i) {
+                    return [i.producto, i.cantidad, '$ ' + parseFloat(i.precio_unitario).toLocaleString('es-AR'), '21%', '$ ' + parseFloat(i.subtotal).toLocaleString('es-AR')];
+                }),
+                headStyles: {fillColor:[255,255,255], textColor:[0,0,0], fontStyle:'bold', lineWidth:0.3, lineColor:[0,0,0], fontSize:7.5},
+                styles: {fontSize:7.5, cellPadding:1.5, lineWidth:0.1, lineColor:[150,150,150]},
+                columnStyles: {1:{halign:'center'}, 2:{halign:'right'}, 3:{halign:'center'}, 4:{halign:'right'}}
+            });
+
+            // ── Totales ──
+            var y = doc.lastAutoTable.finalY + 7;
+            doc.setFontSize(8); doc.setFont('helvetica', 'normal'); doc.setTextColor(0,0,0);
+            doc.text('Importe Neto Gravado:', 150, y, {align: 'right'});
+            doc.text('$ ' + subtotal.toLocaleString('es-AR', {minimumFractionDigits:2}), 196, y, {align: 'right'});
+            y += 5.5;
+            doc.text('IVA 21%:', 150, y, {align: 'right'});
+            doc.text('$ ' + iva.toLocaleString('es-AR', {minimumFractionDigits:2}), 196, y, {align: 'right'});
+            y += 8;
+            doc.setLineWidth(0.4); doc.line(140, y-3, 196, y-3);
+            doc.setFontSize(11); doc.setFont('helvetica', 'bold'); doc.setTextColor(198, 84, 0);
+            doc.text('Importe Total:', 150, y, {align: 'right'});
+            doc.text('$ ' + totalConIva.toLocaleString('es-AR', {minimumFractionDigits:2}), 196, y, {align: 'right'});
+
+            // ── CAE + QR (modelo, sin conexión real a AFIP todavía) ──
+            var yCae = 255;
+            doc.setDrawColor(150,150,150); doc.setLineWidth(0.4);
+            doc.line(12, yCae, 198, yCae);
+
+            var qrData = generarQRDataURL('https://www.afip.gob.ar/fe/qr/?p=MODELO-SIN-AFIP-CONECTADO', 120);
+            if (qrData) doc.addImage(qrData, 'PNG', 12, yCae + 3, 25, 25);
+
+            doc.setFontSize(8); doc.setFont('helvetica', 'bold'); doc.setTextColor(0,0,0);
+            doc.text('CAE N°: (pendiente de integración AFIP)', 42, yCae + 9);
+            doc.text('Fecha de Vto. de CAE: —', 42, yCae + 14);
+            doc.setFontSize(7); doc.setFont('helvetica', 'normal'); doc.setTextColor(85,85,85);
+            doc.text('Comprobante MODELO — no válido como factura real', 42, yCae + 19);
+
+            doc.setFontSize(6.5); doc.setTextColor(150,150,150);
+            doc.text('Vista previa del diseño de Factura A. Se activará al conectar la facturación electrónica AFIP.', 14, 288);
+
+            mostrarPreview(doc, 'Factura A (modelo) #' + num, 'factura_a_modelo_' + num + '.pdf');
         }
 
         function imprimirOrden() {
