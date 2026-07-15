@@ -327,11 +327,16 @@ def consultar_cuit(cuit: str) -> dict:
         apellido = getattr(datos, 'apellido', '') or ''
         razon_social = (apellido + ' ' + nombre).strip() or None
 
-    # Domicilio fiscal
+    # Domicilio fiscal (separado en partes para poder autocompletar el formulario)
     domicilio = None
+    domicilio_partes = {"direccion": None, "localidad": None, "provincia": None, "codigo_postal": None}
     try:
         dom = datos.domicilioFiscal
-        partes = [getattr(dom, 'direccion', ''), getattr(dom, 'localidad', ''), getattr(dom, 'descripcionProvincia', '')]
+        domicilio_partes["direccion"] = getattr(dom, 'direccion', None)
+        domicilio_partes["localidad"] = getattr(dom, 'localidad', None)
+        domicilio_partes["provincia"] = getattr(dom, 'descripcionProvincia', None)
+        domicilio_partes["codigo_postal"] = getattr(dom, 'codPostal', None)
+        partes = [domicilio_partes["direccion"], domicilio_partes["localidad"], domicilio_partes["provincia"]]
         domicilio = ", ".join(p for p in partes if p)
     except Exception:
         pass
@@ -378,6 +383,7 @@ def consultar_cuit(cuit: str) -> dict:
         "cuit": cuit,
         "razon_social": razon_social,
         "domicilio": domicilio,
+        "domicilio_partes": domicilio_partes,
         "condicion_iva": condicion_iva,
         "estado_clave": estado_clave,  # "ACTIVO" / "INACTIVO"
         "existe_en_afip": True,
