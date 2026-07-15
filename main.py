@@ -7675,7 +7675,7 @@ def afip_facturar_pedido_b2b(id_pedido: int, data: dict = Body(...)):
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
         # Verificar que el pedido existe y no tiene factura
-        cur.execute("SELECT p.id, p.total, p.id_distribuidor, d.razon_social, d.cuit FROM pedidos_b2b p LEFT JOIN distribuidores d ON p.id_distribuidor=d.id WHERE p.id=%s", (id_pedido,))
+        cur.execute("SELECT p.id, p.total, COALESCE(p.iva_aplicado,0) AS iva_aplicado, p.id_distribuidor, d.razon_social, d.cuit FROM pedidos_b2b p LEFT JOIN distribuidores d ON p.id_distribuidor=d.id WHERE p.id=%s", (id_pedido,))
         ped = cur.fetchone()
         if not ped:
             raise HTTPException(status_code=404, detail="Pedido no encontrado.")
@@ -7689,8 +7689,8 @@ def afip_facturar_pedido_b2b(id_pedido: int, data: dict = Body(...)):
             raise
         except Exception:
             conn.rollback()
-        total = float(ped.get('total') or 0)
-        if total <= 0:
+        neto = float(ped.get('total') or 0)
+        if neto <= 0:
             raise HTTPException(status_code=400, detail="El total del pedido es 0 o inválido.")
         tipo = int(data.get('tipo_comprobante', 6))
         doc_tipo = int(data.get('doc_tipo', 99))
@@ -7703,9 +7703,17 @@ def afip_facturar_pedido_b2b(id_pedido: int, data: dict = Body(...)):
         cur.execute("SELECT punto_venta_afip FROM pos_locales WHERE id=%s", (id_local,))
         loc = cur.fetchone()
         pv = int(loc['punto_venta_afip']) if loc and loc.get('punto_venta_afip') else int(os.environ.get('AFIP_PUNTO_VENTA', 5))
-        # Calcular neto e IVA (IVA 21% incluido en el total)
-        neto = round(total / 1.21, 2)
-        iva  = round(total - neto, 2)
+        # p.total en pedidos_b2b es el NETO (sin IVA). El IVA ya aplicado (si corresponde)
+        # se guarda por separado en iva_aplicado y se suma, no se descuenta.
+        iva_ya_aplicado = float(ped.get('iva_aplicado') or 0)
+        if iva_ya_aplicado > 0:
+            iva = round(iva_ya_aplicado, 2)
+        elif tipo in (1, 6):
+            # Si el pedido no tiene IVA aplicado todavía pero se factura como A/B, se calcula el 21% sobre el neto.
+            iva = round(neto * 0.21, 2)
+        else:
+            iva = 0.0
+        total = round(neto + iva, 2)
         # CondicionIVAReceptorId: código numérico que espera AFIP (1=RI, 5=Consumidor Final)
         cond_iva = 1 if tipo == 1 else 5
         resultado = afip_service.emitir_factura(
