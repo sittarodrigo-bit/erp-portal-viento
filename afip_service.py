@@ -336,17 +336,41 @@ def consultar_cuit(cuit: str) -> dict:
     except Exception:
         pass
 
-    # Condición frente al IVA (heurística según impuestos/regímenes informados)
+    # Condición frente al IVA (heurística según impuestos/regímenes informados por AFIP)
     condicion_iva = "No disponible"
+    impuestos_raw = []
+    categorias_monotributo_raw = []
     try:
-        impuestos = getattr(datos, 'impuesto', []) or []
-        ids_impuestos = [str(getattr(i, 'idImpuesto', '')) for i in impuestos]
-        if '30' in ids_impuestos:       # 30 = IVA (Responsable Inscripto)
-            condicion_iva = "Responsable Inscripto"
-        elif any(str(getattr(m, 'idImpuesto', '')) == '20' for m in getattr(datos, 'categoriasMonotributo', []) or []):
-            condicion_iva = "Monotributista"
+        impuestos = getattr(datos, 'impuesto', None) or []
+        for imp in impuestos:
+            impuestos_raw.append({
+                "idImpuesto": getattr(imp, 'idImpuesto', None),
+                "descripcionImpuesto": getattr(imp, 'descripcionImpuesto', None),
+            })
     except Exception:
         pass
+    try:
+        categorias = getattr(datos, 'categoriasMonotributo', None) or []
+        for cat in categorias:
+            categorias_monotributo_raw.append({
+                "idCategoria": getattr(cat, 'idCategoria', None),
+                "descripcionCategoria": getattr(cat, 'descripcionCategoria', None),
+            })
+    except Exception:
+        pass
+
+    ids_impuestos = [str(i.get("idImpuesto")) for i in impuestos_raw if i.get("idImpuesto") is not None]
+    if categorias_monotributo_raw:
+        condicion_iva = "Monotributista"
+    elif any(idi in ("30", "32") for idi in ids_impuestos):
+        # 30 = IVA (Responsable Inscripto). 32 aparece en algunas respuestas como variante del mismo impuesto.
+        condicion_iva = "Responsable Inscripto"
+    elif impuestos_raw:
+        # Tiene impuestos registrados pero ninguno es IVA reconocido: mostramos las descripciones tal cual las da AFIP.
+        descripciones = [i.get("descripcionImpuesto") for i in impuestos_raw if i.get("descripcionImpuesto")]
+        condicion_iva = ", ".join(descripciones) if descripciones else "No disponible"
+    else:
+        condicion_iva = "Sin impuestos activos informados (posible Exento o Consumidor Final)"
 
     estado_clave = getattr(datos, 'estadoClave', None)
 
@@ -357,6 +381,8 @@ def consultar_cuit(cuit: str) -> dict:
         "condicion_iva": condicion_iva,
         "estado_clave": estado_clave,  # "ACTIVO" / "INACTIVO"
         "existe_en_afip": True,
+        "impuestos_raw": impuestos_raw,                        # para diagnóstico
+        "categorias_monotributo_raw": categorias_monotributo_raw,  # para diagnóstico
     }
 
 def estado_servidores():
