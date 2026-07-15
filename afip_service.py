@@ -26,6 +26,10 @@ WSFE_URLS = {
     "homologacion": "https://wswhomo.afip.gov.ar/wsfev1/service.asmx?WSDL",
     "produccion":   "https://servicios1.afip.gov.ar/wsfev1/service.asmx?WSDL",
 }
+PADRON_URLS = {
+    "homologacion": "https://awshomo.afip.gov.ar/sr-padron/webservices/personaServiceA13?wsdl",
+    "produccion":   "https://aws.afip.gov.ar/sr-padron/webservices/personaServiceA13?wsdl",
+}
 
 def _config():
     return {
@@ -40,8 +44,8 @@ def _config():
 class AfipError(Exception):
     pass
 
-# Caché global del Ticket de Acceso
-_TA_CACHE = None
+# Caché global del Ticket de Acceso (uno por servicio: wsfe, ws_sr_padron_a13, etc.)
+_TA_CACHE = {}
 
 # Caché de clientes zeep (para no descargar el WSDL en cada factura)
 _CLIENTES = {}
@@ -130,20 +134,21 @@ def _firmar_tra(tra: str, cert_pem: str, key_pem: str) -> str:
     cms = builder.sign(Encoding.DER, [pkcs7.PKCS7Options.Binary])
     return base64.b64encode(cms).decode()
 
-def _obtener_ta(cfg):
-    """Devuelve (token, sign) autenticando contra WSAA.
-    Cachea el TA en memoria y lo reutiliza hasta poco antes de que expire,
+def _obtener_ta(cfg, servicio="wsfe"):
+    """Devuelve (token, sign) autenticando contra WSAA para el servicio indicado.
+    Cachea el TA en memoria (por servicio) y lo reutiliza hasta poco antes de que expire,
     porque AFIP no permite pedir uno nuevo si todavía hay uno válido."""
     import time
     global _TA_CACHE
 
     ahora = time.time()
-    if _TA_CACHE and _TA_CACHE.get("exp", 0) > ahora + 60:
-        return _TA_CACHE["token"], _TA_CACHE["sign"]
+    cache_entry = _TA_CACHE.get(servicio)
+    if cache_entry and cache_entry.get("exp", 0) > ahora + 60:
+        return cache_entry["token"], cache_entry["sign"]
 
     if not cfg["cert"] or not cfg["key"]:
         raise AfipError("Faltan AFIP_CERT y/o AFIP_KEY en las variables de entorno.")
-    tra = _crear_tra("wsfe")
+    tra = _crear_tra(servicio)
     cms = _firmar_tra(tra, cfg["cert"], cfg["key"])
     client = _get_client(WSAA_URLS[cfg["entorno"]])
     try:
@@ -155,20 +160,20 @@ def _obtener_ta(cfg):
             import time as _t
             _t.sleep(8)
             try:
-                tra2 = _crear_tra("wsfe")
+                tra2 = _crear_tra(servicio)
                 cms2 = _firmar_tra(tra2, cfg["cert"], cfg["key"])
                 resp = client.service.loginCms(cms2)
             except Exception as e2:
                 raise AfipError("AFIP todavía tiene un Token de Acceso anterior vigente. "
                                 "Esperá unos minutos y volvé a intentar (esto pasa al pedir logins seguidos).")
         else:
-            raise AfipError(f"Error en WSAA (login): {msg}")
+            raise AfipError(f"Error en WSAA (login) para servicio '{servicio}': {msg}")
     import xml.etree.ElementTree as ET
     root = ET.fromstring(resp)
     token = root.findtext(".//token")
     sign = root.findtext(".//sign")
     # El TA dura 12hs; lo guardamos por 11hs para reutilizarlo.
-    _TA_CACHE = {"token": token, "sign": sign, "exp": ahora + 11 * 3600}
+    _TA_CACHE[servicio] = {"token": token, "sign": sign, "exp": ahora + 11 * 3600}
     return token, sign
 
 # ---- WSFEv1: pedir el próximo número y autorizar el comprobante (CAE) ----
@@ -262,6 +267,96 @@ def emitir_factura(tipo_cbte: int, doc_tipo: int, doc_nro: str,
         "cuit_emisor": cuit,          # CUIT de la empresa (para el QR)
         "doc_tipo": doc_tipo,         # tipo doc receptor (para el QR)
         "doc_nro": doc_nro,           # nro doc receptor (para el QR)
+    }
+
+def validar_formato_cuit(cuit: str) -> dict:
+    """Valida el dígito verificador de un CUIT/CUIL (algoritmo oficial de AFIP).
+    No consulta a AFIP: solo chequea que los 11 dígitos sean matemáticamente válidos.
+    Devuelve {"valido": bool, "motivo": str}."""
+    limpio = "".join(ch for ch in str(cuit) if ch.isdigit())
+    if len(limpio) != 11:
+        return {"valido": False, "motivo": "El CUIT debe tener 11 dígitos."}
+    coeficientes = [5, 4, 3, 2, 7, 6, 5, 4, 3, 2]
+    suma = sum(int(limpio[i]) * coeficientes[i] for i in range(10))
+    resto = suma % 11
+    dv_esperado = 11 - resto
+    if dv_esperado == 11:
+        dv_esperado = 0
+    elif dv_esperado == 10:
+        return {"valido": False, "motivo": "CUIT con dígito verificador imposible (formato inválido)."}
+    dv_real = int(limpio[10])
+    if dv_real != dv_esperado:
+        return {"valido": False, "motivo": "El dígito verificador no coincide. Revisá que esté bien tipeado."}
+    return {"valido": True, "motivo": "Formato válido."}
+
+def consultar_cuit(cuit: str) -> dict:
+    """Consulta el padrón único de contribuyentes de AFIP (ws_sr_padron_a13).
+    Devuelve razón social, estado de la clave, domicilio y condición frente al IVA (aproximada).
+    Requiere el mismo certificado ya configurado para WSFE."""
+    formato = validar_formato_cuit(cuit)
+    if not formato["valido"]:
+        raise AfipError(formato["motivo"])
+
+    cfg = _config()
+    if not cfg["cuit"]:
+        raise AfipError("Falta AFIP_CUIT en las variables de entorno.")
+    if not cfg["cert"] or not cfg["key"]:
+        raise AfipError("Faltan AFIP_CERT y/o AFIP_KEY en las variables de entorno.")
+
+    token, sign = _obtener_ta(cfg, servicio="ws_sr_padron_a13")
+    cuit_representada = int(cfg["cuit"])
+    cuit_consultado = int("".join(ch for ch in str(cuit) if ch.isdigit()))
+
+    client = _get_client(PADRON_URLS[cfg["entorno"]])
+    try:
+        resp = client.service.getPersona(token=token, sign=sign,
+                                          cuitRepresentada=cuit_representada,
+                                          idPersona=cuit_consultado)
+    except Exception as e:
+        raise AfipError(f"Error consultando el padrón de AFIP: {e}")
+
+    try:
+        datos = resp.persona
+    except Exception:
+        raise AfipError("AFIP no devolvió datos para ese CUIT. Puede no estar registrado.")
+
+    # Razón social (persona jurídica) o apellido y nombre (persona física)
+    razon_social = getattr(datos, 'razonSocial', None)
+    if not razon_social:
+        nombre = getattr(datos, 'nombre', '') or ''
+        apellido = getattr(datos, 'apellido', '') or ''
+        razon_social = (apellido + ' ' + nombre).strip() or None
+
+    # Domicilio fiscal
+    domicilio = None
+    try:
+        dom = datos.domicilioFiscal
+        partes = [getattr(dom, 'direccion', ''), getattr(dom, 'localidad', ''), getattr(dom, 'descripcionProvincia', '')]
+        domicilio = ", ".join(p for p in partes if p)
+    except Exception:
+        pass
+
+    # Condición frente al IVA (heurística según impuestos/regímenes informados)
+    condicion_iva = "No disponible"
+    try:
+        impuestos = getattr(datos, 'impuesto', []) or []
+        ids_impuestos = [str(getattr(i, 'idImpuesto', '')) for i in impuestos]
+        if '30' in ids_impuestos:       # 30 = IVA (Responsable Inscripto)
+            condicion_iva = "Responsable Inscripto"
+        elif any(str(getattr(m, 'idImpuesto', '')) == '20' for m in getattr(datos, 'categoriasMonotributo', []) or []):
+            condicion_iva = "Monotributista"
+    except Exception:
+        pass
+
+    estado_clave = getattr(datos, 'estadoClave', None)
+
+    return {
+        "cuit": cuit,
+        "razon_social": razon_social,
+        "domicilio": domicilio,
+        "condicion_iva": condicion_iva,
+        "estado_clave": estado_clave,  # "ACTIVO" / "INACTIVO"
+        "existe_en_afip": True,
     }
 
 def estado_servidores():
