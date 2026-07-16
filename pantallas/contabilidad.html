@@ -9,6 +9,7 @@
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script>tailwind.config={theme:{extend:{colors:{neon:'#e4fc74'}}}}</script>
 <style>.tab-activa{border-bottom:2px solid #e4fc74;color:white;}</style>
@@ -363,8 +364,19 @@
       var clienteCuit = f.cliente_cuit || (f.doc_nro && f.doc_nro!=='0' ? f.doc_nro : '');
       var fechaFmt = (f.fecha||'').split('T')[0].split(' ')[0];
 
-      var doc = new jspdf.jsPDF();
+      var doc = new jspdf.jsPDF({unit:'mm', format:'a4'});
       var W = 210;
+
+      // Función auxiliar: reduce el tamaño de fuente hasta que el texto entre en el ancho disponible
+      function fijarFuenteQueEntre(texto, anchoMax, tamanoInicial, minimo) {
+        var tam = tamanoInicial;
+        doc.setFontSize(tam);
+        while (doc.getTextWidth(texto) > anchoMax && tam > minimo) {
+          tam -= 0.5;
+          doc.setFontSize(tam);
+        }
+        return tam;
+      }
 
       // ENCABEZADO
       doc.setDrawColor(0); doc.setLineWidth(0.3);
@@ -374,23 +386,32 @@
       doc.text(tipoLetra, W/2, 22, {align:'center'});
       doc.setFontSize(7); doc.setFont(undefined,'normal');
       doc.text('COD. '+String(f.tipo_comprobante||6).padStart(2,'0'), W/2, 25.5, {align:'center'});
-      doc.line(W/2, 8, W/2, 40);
+      doc.line(W/2, 26, W/2, 40); // divisoria solo debajo del recuadro de la letra, para no atravesarla
 
-      doc.setFontSize(13); doc.setFont(undefined,'bold');
-      doc.text(empresaDatos.razon_social||'Portal del Viento', 12, 16);
-      doc.setFontSize(7); doc.setFont(undefined,'normal');
-      doc.text('Razon Social: '+(empresaDatos.razon_social||''), 12, 22);
-      doc.text('Domicilio: '+(empresaDatos.direccion||''), 12, 26);
-      doc.text('Cond. IVA: '+(empresaDatos.iva||'IVA Responsable Inscripto'), 12, 30);
-
-      doc.setFontSize(13); doc.setFont(undefined,'bold');
-      doc.text('FACTURA', W-12, 15, {align:'right'});
-      doc.setFontSize(8); doc.setFont(undefined,'normal');
-      doc.text('Punto de Venta: '+String(pvNum).padStart(4,'0')+'   Comp. Nro: '+String(nroNum).padStart(8,'0'), W-12, 22, {align:'right'});
-      doc.text('Fecha de Emision: '+fechaFmt, W-12, 27, {align:'right'});
+      // Nombre del emisor: se achica automáticamente para no invadir el recuadro de la letra (que arranca en W/2-9)
+      var nombreEmisor = empresaDatos.razon_social||'Portal del Viento';
+      var anchoDisponibleEmisor = (W/2 - 9) - 10 - 2; // margen izq 10, hasta 2mm antes del recuadro central
       doc.setFont(undefined,'bold');
-      doc.text('CUIT: '+(empresaDatos.cuit||''), W-12, 32, {align:'right'});
-      if(empresaDatos.ingresos_brutos) doc.text('IIBB: '+empresaDatos.ingresos_brutos, W-12, 36, {align:'right'});
+      fijarFuenteQueEntre(nombreEmisor, anchoDisponibleEmisor, 11, 7);
+      doc.text(nombreEmisor, 10, 16);
+
+      doc.setFontSize(7); doc.setFont(undefined,'normal');
+      doc.text('Razon Social: '+(empresaDatos.razon_social||''), 10, 22);
+      doc.text('Domicilio: '+(empresaDatos.direccion||''), 10, 26);
+      doc.text('Cond. IVA: '+(empresaDatos.iva||'IVA Responsable Inscripto'), 10, 30);
+
+      // "FACTURA" y datos del comprobante: columna derecha, con el mismo resguardo de ancho
+      var anchoDisponibleDerecha = (W-10) - (W/2+9) - 2; // desde 2mm después del recuadro central hasta el margen derecho
+      var centroColumnaDerecha = (W/2+9+2 + W-10) / 2; // punto medio de esa columna, para centrar el texto ahí
+      doc.setFont(undefined,'bold');
+      fijarFuenteQueEntre('FACTURA', anchoDisponibleDerecha, 13, 9);
+      doc.text('FACTURA', centroColumnaDerecha, 15, {align:'center'});
+      doc.setFontSize(8); doc.setFont(undefined,'normal');
+      doc.text('Punto de Venta: '+String(pvNum).padStart(4,'0')+'   Comp. Nro: '+String(nroNum).padStart(8,'0'), centroColumnaDerecha, 22, {align:'center'});
+      doc.text('Fecha de Emision: '+fechaFmt, centroColumnaDerecha, 27, {align:'center'});
+      doc.setFont(undefined,'bold');
+      doc.text('CUIT: '+(empresaDatos.cuit||''), centroColumnaDerecha, 32, {align:'center'});
+      if(empresaDatos.ingresos_brutos) doc.text('IIBB: '+empresaDatos.ingresos_brutos, centroColumnaDerecha, 36, {align:'center'});
 
       // CLIENTE
       var yC = 46;
@@ -414,25 +435,44 @@
         doc.text(domic, 30, yC+12);
       }
 
-      // DETALLE
       var yD = 74;
-      doc.setFillColor(230,230,230);
-      doc.rect(8, yD, W-16, 7, 'F');
-      doc.setFont(undefined,'bold'); doc.setFontSize(8);
-      doc.text('Descripcion', 12, yD+5);
-      doc.text('Cantidad', 110, yD+5, {align:'right'});
-      doc.text('P. Unit.', 145, yD+5, {align:'right'});
-      doc.text('Subtotal', W-12, yD+5, {align:'right'});
-      doc.line(8, yD+7, W-8, yD+7);
-      doc.setFont(undefined,'normal');
-      var descItem = f.id_pedido_b2b ? ('Pedido mayorista #'+f.id_pedido_b2b) : 'Venta de productos';
-      doc.text(descItem, 12, yD+14);
-      doc.text('1', 110, yD+14, {align:'right'});
-      doc.text(fmt(neto), 145, yD+14, {align:'right'});
-      doc.text(fmt(neto), W-12, yD+14, {align:'right'});
+      // Traer los productos reales del pedido (si viene de un pedido B2B)
+      var itemsFactura = [];
+      if (f.id_pedido_b2b) {
+        try {
+          itemsFactura = await fetch(`${API_URL}/pedidos_b2b/${f.id_pedido_b2b}/detalle`).then(r=>r.json());
+        } catch(e) { itemsFactura = []; }
+      }
+      if (!itemsFactura || !itemsFactura.length) {
+        // Si no hay detalle (venta directa o error de red), al menos mostramos un renglón con el total
+        var descItem = f.id_pedido_b2b ? ('Pedido mayorista #'+f.id_pedido_b2b) : 'Venta de productos';
+        itemsFactura = [{ producto: descItem, cantidad: 1, precio_unitario: neto, subtotal: neto }];
+      }
 
-      // TOTALES
-      var yT = 200;
+      doc.autoTable({
+        startY: yD,
+        margin: {left: 8, right: 8},
+        head: [['Descripcion', 'Cantidad', 'P. Unit.', 'Subtotal']],
+        body: itemsFactura.map(function(it){
+          var nombreProd = it.producto || it.nombre || 'Producto';
+          var cant = it.cantidad != null ? it.cantidad : 1;
+          var precioU = it.precio_unitario != null ? parseFloat(it.precio_unitario) : parseFloat(it.subtotal||0);
+          var sub = it.subtotal != null ? parseFloat(it.subtotal) : (precioU * cant);
+          return [nombreProd, String(cant), fmt(precioU), fmt(sub)];
+        }),
+        theme: 'grid',
+        headStyles: {fillColor:[230,230,230], textColor:[0,0,0], fontStyle:'bold', lineWidth:0.3, lineColor:[0,0,0], fontSize:8, halign:'left'},
+        styles: {fontSize:8, cellPadding:2, lineWidth:0.3, lineColor:[0,0,0], valign:'middle'},
+        columnStyles: {
+          0: {halign:'left',  cellWidth: 'auto'},
+          1: {halign:'right', cellWidth: 25},
+          2: {halign:'right', cellWidth: 30},
+          3: {halign:'right', cellWidth: 30}
+        }
+      });
+
+      // TOTALES — posición dinámica, siempre debajo de la tabla con margen fijo
+      var yT = doc.lastAutoTable.finalY + 12;
       doc.line(W-95, yT-4, W-8, yT-4);
       doc.setFontSize(9);
       if(tipoLetra==='A'){
@@ -444,7 +484,7 @@
       doc.setFont(undefined,'bold'); doc.setFontSize(12);
       doc.text('Importe Total: '+fmt(total), W-12, yT+16, {align:'right'});
 
-      // QR + CAE
+      // QR + CAE — siempre al pie de página (fijo), independiente del largo del detalle
       var yQR = 250;
       doc.setDrawColor(0); doc.line(8, yQR-4, W-8, yQR-4);
       try {
