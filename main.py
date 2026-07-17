@@ -2550,7 +2550,8 @@ def detalle_pedido_b2b(id: int):
         cur = conn.cursor(cursor_factory=RealDictCursor)
         cur.execute("""
             SELECT dp.id_producto, dp.cantidad, dp.precio_unitario,
-                   (dp.cantidad * dp.precio_unitario) AS subtotal,
+                   COALESCE(dp.descuento_porcentaje,0) AS descuento_porcentaje,
+                   ROUND((dp.cantidad * dp.precio_unitario * (1 - COALESCE(dp.descuento_porcentaje,0)/100.0))::numeric, 2) AS subtotal,
                    pr.nombre as producto, pr.sku
             FROM detalle_pedidos_b2b dp
             JOIN productos pr ON dp.id_producto = pr.id
@@ -2789,43 +2790,92 @@ def aplicar_iva_pedido(id: int, data: dict = Body(default={})):
     finally:
         liberar_conexion(conn)
 
+def _recalcular_total_pedido_b2b(cur, id_pedido):
+    """Recalcula pedidos_b2b.total combinando:
+    1) el descuento por producto (detalle_pedidos_b2b.descuento_porcentaje) sobre cada línea, y
+    2) el descuento de orden (pedidos_b2b.descuento_porcentaje) aplicado sobre ese subtotal ya descontado.
+    Se puede usar en cualquier estado del pedido — NO toca stock ni preparación."""
+    cur.execute("""
+        SELECT COALESCE(SUM(cantidad * precio_unitario * (1 - COALESCE(descuento_porcentaje,0)/100.0)), 0) AS subtotal
+        FROM detalle_pedidos_b2b WHERE id_pedido=%s
+    """, (id_pedido,))
+    subtotal_items = round(float(cur.fetchone()['subtotal'] or 0), 2)
+
+    cur.execute("SELECT COALESCE(descuento_porcentaje,0) AS pct FROM pedidos_b2b WHERE id=%s", (id_pedido,))
+    row = cur.fetchone()
+    pct_orden = float(row['pct'] or 0) if row else 0.0
+
+    if pct_orden > 0:
+        nuevo_total = round(subtotal_items * (1 - pct_orden/100), 2)
+        descuento_monto = round(subtotal_items - nuevo_total, 2)
+    else:
+        nuevo_total = subtotal_items
+        descuento_monto = 0.0
+
+    cur.execute("""UPDATE pedidos_b2b SET total=%s, total_sin_descuento=%s, descuento_monto=%s WHERE id=%s""",
+                (nuevo_total, subtotal_items, descuento_monto, id_pedido))
+    return {"subtotal_items": subtotal_items, "descuento_orden_pct": pct_orden,
+            "descuento_orden_monto": descuento_monto, "total": nuevo_total}
+
 @app.put("/api/pedidos_b2b/{id}/descuento")
 def aplicar_descuento_pedido(id: int, data: dict = Body(...)):
-    """Aplica un descuento en porcentaje al total del pedido B2B.
-    Baja el total (y por lo tanto la deuda del distribuidor). Reversible: descuento 0 lo quita."""
+    """Aplica un descuento en porcentaje al TOTAL del pedido B2B (sobre el subtotal ya neto
+    de descuentos por producto, si los hubiera). Se puede usar en cualquier estado del pedido
+    — no toca stock ni preparación, solo el importe a cobrar. Reversible: descuento 0 lo quita."""
     conn = obtener_conexion()
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
-        # Estado del pedido: el descuento solo se aplica DESPUÉS de despachar,
-        # así el stock ya salió de fábrica y no puede verse afectado.
-        cur.execute("SELECT estado, total, total_sin_descuento FROM pedidos_b2b WHERE id=%s", (id,))
-        row = cur.fetchone()
-        if not row:
+        cur.execute("SELECT id FROM pedidos_b2b WHERE id=%s", (id,))
+        if not cur.fetchone():
             raise HTTPException(status_code=404, detail="Pedido no encontrado")
-        if row['estado'] not in ('Despachado', 'Despachado parcial'):
-            raise HTTPException(status_code=409, detail="El descuento se aplica una vez que el pedido está despachado.")
 
         porcentaje = float(data.get('porcentaje') or 0)
         if porcentaje < 0 or porcentaje > 100:
             raise HTTPException(status_code=400, detail="El porcentaje debe estar entre 0 y 100.")
 
-        # El total original es el que ya tenía guardado (si nunca se aplicó descuento) o el total_sin_descuento
-        total_original = float(row['total_sin_descuento']) if row['total_sin_descuento'] is not None else float(row['total'] or 0)
-
-        monto_descuento = round(total_original * porcentaje / 100, 2)
-        nuevo_total = round(total_original - monto_descuento, 2)
-
-        cur.execute("""UPDATE pedidos_b2b
-                       SET total=%s, descuento_porcentaje=%s, descuento_monto=%s, total_sin_descuento=%s
-                       WHERE id=%s""",
-                    (nuevo_total, porcentaje, monto_descuento, total_original, id))
+        cur.execute("UPDATE pedidos_b2b SET descuento_porcentaje=%s WHERE id=%s", (porcentaje, id))
+        resultado = _recalcular_total_pedido_b2b(cur, id)
         conn.commit()
         return {
             "status": "ok",
-            "total_original": total_original,
+            "total_original": resultado["subtotal_items"],
             "descuento_porcentaje": porcentaje,
-            "descuento_monto": monto_descuento,
-            "nuevo_total": nuevo_total
+            "descuento_monto": resultado["descuento_orden_monto"],
+            "nuevo_total": resultado["total"]
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
+@app.put("/api/pedidos_b2b/{id_pedido}/producto/{id_producto}/descuento")
+def aplicar_descuento_producto(id_pedido: int, id_producto: int, data: dict = Body(...)):
+    """Aplica un descuento en porcentaje a UN PRODUCTO puntual dentro del pedido.
+    Se puede usar en cualquier estado del pedido — no toca stock ni preparación,
+    solo el importe a cobrar. Reversible: descuento 0 lo quita para ese producto."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        porcentaje = float(data.get('porcentaje') or 0)
+        if porcentaje < 0 or porcentaje > 100:
+            raise HTTPException(status_code=400, detail="El porcentaje debe estar entre 0 y 100.")
+
+        cur.execute("""UPDATE detalle_pedidos_b2b SET descuento_porcentaje=%s
+                       WHERE id_pedido=%s AND id_producto=%s""", (porcentaje, id_pedido, id_producto))
+        if cur.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Ese producto no está en este pedido.")
+
+        resultado = _recalcular_total_pedido_b2b(cur, id_pedido)
+        conn.commit()
+        return {
+            "status": "ok",
+            "id_producto": id_producto,
+            "descuento_porcentaje": porcentaje,
+            "subtotal_items": resultado["subtotal_items"],
+            "nuevo_total": resultado["total"]
         }
     except HTTPException:
         raise
