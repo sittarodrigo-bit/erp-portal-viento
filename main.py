@@ -2794,6 +2794,8 @@ def _recalcular_total_pedido_b2b(cur, id_pedido):
     """Recalcula pedidos_b2b.total combinando:
     1) el descuento por producto (detalle_pedidos_b2b.descuento_porcentaje) sobre cada línea, y
     2) el descuento de orden (pedidos_b2b.descuento_porcentaje) aplicado sobre ese subtotal ya descontado.
+    Si el pedido ya tenía IVA aplicado, también lo recalcula (21% del nuevo neto) para que
+    quede proporcional al importe descontado, en vez de quedar como un monto fijo desactualizado.
     Se puede usar en cualquier estado del pedido — NO toca stock ni preparación."""
     cur.execute("""
         SELECT COALESCE(SUM(cantidad * precio_unitario * (1 - COALESCE(descuento_porcentaje,0)/100.0)), 0) AS subtotal
@@ -2801,9 +2803,10 @@ def _recalcular_total_pedido_b2b(cur, id_pedido):
     """, (id_pedido,))
     subtotal_items = round(float(cur.fetchone()['subtotal'] or 0), 2)
 
-    cur.execute("SELECT COALESCE(descuento_porcentaje,0) AS pct FROM pedidos_b2b WHERE id=%s", (id_pedido,))
+    cur.execute("SELECT COALESCE(descuento_porcentaje,0) AS pct, COALESCE(iva_aplicado,0) AS iva FROM pedidos_b2b WHERE id=%s", (id_pedido,))
     row = cur.fetchone()
     pct_orden = float(row['pct'] or 0) if row else 0.0
+    tenia_iva = float(row['iva'] or 0) > 0 if row else False
 
     if pct_orden > 0:
         nuevo_total = round(subtotal_items * (1 - pct_orden/100), 2)
@@ -2812,10 +2815,19 @@ def _recalcular_total_pedido_b2b(cur, id_pedido):
         nuevo_total = subtotal_items
         descuento_monto = 0.0
 
-    cur.execute("""UPDATE pedidos_b2b SET total=%s, total_sin_descuento=%s, descuento_monto=%s WHERE id=%s""",
-                (nuevo_total, subtotal_items, descuento_monto, id_pedido))
+    # Si el pedido ya tenía IVA aplicado, se recalcula sobre el nuevo neto (21%) para que
+    # el total combinado (neto + IVA) sí refleje el descuento aplicado.
+    if tenia_iva:
+        nuevo_iva = round(nuevo_total * 0.21, 2)
+        cur.execute("""UPDATE pedidos_b2b SET total=%s, total_sin_descuento=%s, descuento_monto=%s, iva_aplicado=%s WHERE id=%s""",
+                    (nuevo_total, subtotal_items, descuento_monto, nuevo_iva, id_pedido))
+    else:
+        nuevo_iva = 0.0
+        cur.execute("""UPDATE pedidos_b2b SET total=%s, total_sin_descuento=%s, descuento_monto=%s WHERE id=%s""",
+                    (nuevo_total, subtotal_items, descuento_monto, id_pedido))
+
     return {"subtotal_items": subtotal_items, "descuento_orden_pct": pct_orden,
-            "descuento_orden_monto": descuento_monto, "total": nuevo_total}
+            "descuento_orden_monto": descuento_monto, "total": nuevo_total, "iva_aplicado": nuevo_iva}
 
 @app.put("/api/pedidos_b2b/{id}/descuento")
 def aplicar_descuento_pedido(id: int, data: dict = Body(...)):
@@ -2841,7 +2853,8 @@ def aplicar_descuento_pedido(id: int, data: dict = Body(...)):
             "total_original": resultado["subtotal_items"],
             "descuento_porcentaje": porcentaje,
             "descuento_monto": resultado["descuento_orden_monto"],
-            "nuevo_total": resultado["total"]
+            "nuevo_total": resultado["total"],
+            "iva_aplicado": resultado["iva_aplicado"]
         }
     except HTTPException:
         raise
