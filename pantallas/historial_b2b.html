@@ -678,23 +678,36 @@
         }
 
         async function aplicarDescuentoProducto(idx) {
-            var item = itemsActuales[idx];
-            var inpDesc = document.getElementById('desc-prod-' + idx);
-            var porcentaje = parseFloat(inpDesc.value) || 0;
-            if (porcentaje < 0 || porcentaje > 100) { alert('El porcentaje debe estar entre 0 y 100.'); return; }
             try {
+                var item = itemsActuales[idx];
+                if (!item) { alert('No se encontró el producto en memoria (idx=' + idx + '). Cerrá y volvé a abrir el pedido.'); return; }
+                var inpDesc = document.getElementById('desc-prod-' + idx);
+                if (!inpDesc) { alert('No se encontró el campo de descuento en pantalla (desc-prod-' + idx + '). Cerrá y volvé a abrir el pedido.'); return; }
+                var porcentaje = parseFloat(inpDesc.value) || 0;
+                if (porcentaje < 0 || porcentaje > 100) { alert('El porcentaje debe estar entre 0 y 100.'); return; }
+                if (!pedidoActual || !pedidoActual.id) { alert('No hay un pedido cargado en memoria.'); return; }
+                if (!item.id_producto) { alert('Este producto no tiene id_producto asociado, no se puede aplicar el descuento.'); return; }
+
                 var res = await fetch(API_URL + '/pedidos_b2b/' + pedidoActual.id + '/producto/' + item.id_producto + '/descuento', {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ porcentaje: porcentaje })
                 });
-                if (!res.ok) { var e = await res.json(); alert('No se pudo aplicar: ' + (e.detail||'')); return; }
+                if (!res.ok) {
+                    var detalleError = '';
+                    try { var e = await res.json(); detalleError = e.detail || JSON.stringify(e); } catch(e2) { detalleError = 'HTTP ' + res.status; }
+                    alert('No se pudo aplicar: ' + detalleError);
+                    return;
+                }
                 var r = await res.json();
                 await cargarPedidoYItems(pedidoActual.id);
                 renderDetalle();
                 document.getElementById('det-total').textContent = '$ ' + (parseFloat(pedidoActual.total||0) + parseFloat(pedidoActual.iva_aplicado||0)).toLocaleString('es-AR');
                 cargarPedidos();
-            } catch(e) { alert('Error al aplicar el descuento: ' + e.message); }
+            } catch(e) {
+                alert('Error inesperado al aplicar el descuento: ' + e.message);
+                console.error('aplicarDescuentoProducto error:', e);
+            }
         }
 
         function recalcularTotal() {
