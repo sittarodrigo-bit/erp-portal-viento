@@ -711,17 +711,28 @@
         }
 
         function recalcularTotal() {
-            var total = itemsActuales.reduce(function(a, b) { return a + b.cantidad * parseFloat(b.precio_unitario); }, 0);
-            document.getElementById('det-total').textContent = '$ ' + total.toLocaleString('es-AR');
+            // Suma de subtotales YA descontados por producto
+            var subtotal = itemsActuales.reduce(function(a, b) {
+                var desc = parseFloat(b.descuento_porcentaje || 0);
+                return a + (b.cantidad * parseFloat(b.precio_unitario) * (1 - desc/100));
+            }, 0);
+            // Aplicar descuento de orden si lo hay
+            var descOrden = parseFloat(pedidoActual && pedidoActual.descuento_porcentaje || 0);
+            var neto = descOrden > 0 ? subtotal * (1 - descOrden/100) : subtotal;
+            // Sumar IVA si el pedido lo tiene aplicado (proporcional al neto)
+            var iva = parseFloat(pedidoActual && pedidoActual.iva_aplicado || 0) > 0 ? neto * 0.21 : 0;
+            var totalMostrar = neto + iva;
+            document.getElementById('det-total').textContent = '$ ' + totalMostrar.toLocaleString('es-AR', {maximumFractionDigits: 2});
         }
 
         function actualizarSubtotal(idx, inp) {
             var cant   = parseInt(inp.value) || 0;
             var precio = parseFloat(itemsActuales[idx].precio_unitario);
-            var sub    = cant * precio;
+            var desc   = parseFloat(itemsActuales[idx].descuento_porcentaje || 0);
+            var sub    = cant * precio * (1 - desc/100);
             itemsActuales[idx].cantidad = cant;
             itemsActuales[idx].subtotal = sub;
-            document.getElementById('sub-' + idx).textContent = '$ ' + sub.toLocaleString('es-AR');
+            document.getElementById('sub-' + idx).textContent = '$ ' + sub.toLocaleString('es-AR', {maximumFractionDigits: 2});
             recalcularTotal();
         }
 
