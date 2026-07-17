@@ -2607,10 +2607,10 @@ def actualizar_pedido(id: int, payload: PedidoUpdate):
 
         # Reescribir el detalle del pedido (el stock se mueve al armar, no acá)
         cur.execute("DELETE FROM detalle_pedidos_b2b WHERE id_pedido = %s", (id,))
-        # Al modificar los productos, el total cambia: resetear cualquier descuento previo
-        # (el usuario puede volver a aplicarlo sobre el nuevo total)
+        # Al modificar los productos, el total cambia: resetear cualquier descuento e IVA previos
+        # (el usuario puede volver a aplicarlos sobre el nuevo total, con el botón correspondiente)
         try:
-            cur.execute("UPDATE pedidos_b2b SET total = %s, descuento_porcentaje=0, descuento_monto=0, total_sin_descuento=NULL WHERE id = %s", (payload.total, id))
+            cur.execute("UPDATE pedidos_b2b SET total = %s, descuento_porcentaje=0, descuento_monto=0, total_sin_descuento=NULL, iva_aplicado=0 WHERE id = %s", (payload.total, id))
         except Exception:
             conn.rollback()
             cur.execute("UPDATE pedidos_b2b SET total = %s WHERE id = %s", (payload.total, id))
