@@ -2605,21 +2605,42 @@ def actualizar_pedido(id: int, payload: PedidoUpdate):
                 cur.execute("UPDATE productos SET stock_actual = COALESCE(stock_actual,0) + %s WHERE id = %s", (cant_prep, id_prod))
                 cur.execute("DELETE FROM preparacion_items WHERE id_pedido = %s AND id_producto = %s", (id, id_prod))
 
-        # Reescribir el detalle del pedido (el stock se mueve al armar, no acá)
-        cur.execute("DELETE FROM detalle_pedidos_b2b WHERE id_pedido = %s", (id,))
-        # Al modificar los productos, el total cambia: resetear cualquier descuento e IVA previos
-        # (el usuario puede volver a aplicarlos sobre el nuevo total, con el botón correspondiente)
+        # Guardar el descuento por producto que ya tenía cada línea, para reaplicarlo
+        # a los productos que sigan en el pedido tras la edición.
+        desc_por_producto_previo = {}
         try:
-            cur.execute("UPDATE pedidos_b2b SET total = %s, descuento_porcentaje=0, descuento_monto=0, total_sin_descuento=NULL, iva_aplicado=0 WHERE id = %s", (payload.total, id))
+            cur.execute("SELECT id_producto, COALESCE(descuento_porcentaje,0) AS d FROM detalle_pedidos_b2b WHERE id_pedido = %s", (id,))
+            for v in cur.fetchall():
+                desc_por_producto_previo[v[0]] = float(v[1] or 0)
         except Exception:
             conn.rollback()
-            cur.execute("UPDATE pedidos_b2b SET total = %s WHERE id = %s", (payload.total, id))
+
+        # ¿El pedido tenía IVA aplicado? Lo preservamos para recalcularlo sobre el nuevo total.
+        tenia_iva_aplicado = False
+        try:
+            cur.execute("SELECT COALESCE(iva_aplicado,0) AS iva FROM pedidos_b2b WHERE id=%s", (id,))
+            fila_iva = cur.fetchone()
+            tenia_iva_aplicado = float(fila_iva[0] or 0) > 0 if fila_iva else False
+        except Exception:
+            conn.rollback()
+
+        # Reescribir el detalle del pedido (el stock se mueve al armar, no acá).
+        # Se conserva el descuento por producto de las líneas que siguen en el pedido.
+        cur.execute("DELETE FROM detalle_pedidos_b2b WHERE id_pedido = %s", (id,))
         for item in payload.detalle:
             if item.cantidad > 0:
-                cur.execute("""
-                    INSERT INTO detalle_pedidos_b2b (id_pedido, id_producto, cantidad, precio_unitario)
-                    VALUES (%s,%s,%s,%s)
-                """, (id, item.id_producto, item.cantidad, item.precio_unitario))
+                desc_prod = desc_por_producto_previo.get(item.id_producto, 0)
+                try:
+                    cur.execute("""
+                        INSERT INTO detalle_pedidos_b2b (id_pedido, id_producto, cantidad, precio_unitario, descuento_porcentaje)
+                        VALUES (%s,%s,%s,%s,%s)
+                    """, (id, item.id_producto, item.cantidad, item.precio_unitario, desc_prod))
+                except Exception:
+                    conn.rollback()
+                    cur.execute("""
+                        INSERT INTO detalle_pedidos_b2b (id_pedido, id_producto, cantidad, precio_unitario)
+                        VALUES (%s,%s,%s,%s)
+                    """, (id, item.id_producto, item.cantidad, item.precio_unitario))
                 # Si lo preparado supera la nueva cantidad pedida, ajustar (devolver el excedente)
                 if item.id_producto in preparado_previo:
                     prep = preparado_previo[item.id_producto]
@@ -2627,6 +2648,18 @@ def actualizar_pedido(id: int, payload: PedidoUpdate):
                         exceso = prep - item.cantidad
                         cur.execute("UPDATE productos SET stock_actual = COALESCE(stock_actual,0) + %s WHERE id = %s", (exceso, item.id_producto))
                         cur.execute("UPDATE preparacion_items SET cantidad = %s WHERE id_pedido = %s AND id_producto = %s", (item.cantidad, id, item.id_producto))
+
+        # Recalcular el total conservando descuentos (por producto + de orden) e IVA si tenía.
+        # _recalcular_total_pedido_b2b ya recalcula el IVA sobre el nuevo neto si hay iva_aplicado>0.
+        try:
+            if not tenia_iva_aplicado:
+                # Si no tenía IVA, nos aseguramos de que quede en 0 (por si venía de un estado inconsistente)
+                cur.execute("UPDATE pedidos_b2b SET iva_aplicado=0 WHERE id=%s", (id,))
+            _recalcular_total_pedido_b2b(cur, id)
+        except Exception:
+            conn.rollback()
+            # Fallback: si algo falla con las columnas de descuento, al menos guardar el total plano
+            cur.execute("UPDATE pedidos_b2b SET total = %s WHERE id = %s", (payload.total, id))
 
         # El pedido vuelve a "En preparación" (no a Pendiente) para conservar lo armado
         # y que el empleado solo complete lo nuevo.
