@@ -492,6 +492,7 @@
                 pedidoActual.descuento_porcentaje = r.descuento_porcentaje;
                 pedidoActual.descuento_monto = r.descuento_monto;
                 pedidoActual.total_sin_descuento = r.total_original;
+                if (r.iva_aplicado !== undefined) pedidoActual.iva_aplicado = r.iva_aplicado;
                 document.getElementById('det-total').textContent = '$ ' + (parseFloat(r.nuevo_total) + parseFloat(pedidoActual.iva_aplicado||0)).toLocaleString('es-AR');
                 var infoDesc = document.getElementById('det-descuento-info');
                 if (r.descuento_porcentaje > 0) {
