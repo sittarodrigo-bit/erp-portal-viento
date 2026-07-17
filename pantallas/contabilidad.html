@@ -182,7 +182,7 @@
       document.getElementById('resumen-header').classList.remove('hidden');
 
       // Facturas (endpoint propio con datos completos: neto, iva, PV, cliente)
-      facturasData = await fetch(`${API_URL}/afip/facturas?desde=${desde}&hasta=${hasta}`).then(x=>x.json()).catch(()=>[]);
+      facturasData = await fetch(`${API_URL}/afip/facturas?desde=${desde}&hasta=${hasta}`, {cache:'no-store'}).then(x=>x.json()).catch(()=>[]);
       // Poblar filtro de puntos de venta
       var pvs = [...new Set(facturasData.map(f=>f.punto_venta).filter(Boolean))].sort((a,b)=>a-b);
       var selPV = document.getElementById('filtro-pv');
@@ -440,7 +440,7 @@
       var itemsFactura = [];
       if (f.id_pedido_b2b) {
         try {
-          itemsFactura = await fetch(`${API_URL}/pedidos_b2b/${f.id_pedido_b2b}/detalle`).then(r=>r.json());
+          itemsFactura = await fetch(`${API_URL}/pedidos_b2b/${f.id_pedido_b2b}/detalle`, {cache:'no-store'}).then(r=>r.json());
         } catch(e) { itemsFactura = []; }
       }
       if (!itemsFactura || !itemsFactura.length) {
