@@ -2605,43 +2605,54 @@ def actualizar_pedido(id: int, payload: PedidoUpdate):
                 cur.execute("UPDATE productos SET stock_actual = COALESCE(stock_actual,0) + %s WHERE id = %s", (cant_prep, id_prod))
                 cur.execute("DELETE FROM preparacion_items WHERE id_pedido = %s AND id_producto = %s", (id, id_prod))
 
-        # Guardar el descuento por producto que ya tenía cada línea, para reaplicarlo
-        # a los productos que sigan en el pedido tras la edición.
+        # Leer el descuento por producto previo (con savepoint: si la columna no existe, no rompe todo)
         desc_por_producto_previo = {}
+        cur.execute("SAVEPOINT sp_desc")
         try:
             cur.execute("SELECT id_producto, COALESCE(descuento_porcentaje,0) AS d FROM detalle_pedidos_b2b WHERE id_pedido = %s", (id,))
             for v in cur.fetchall():
                 desc_por_producto_previo[v[0]] = float(v[1] or 0)
+            cur.execute("RELEASE SAVEPOINT sp_desc")
         except Exception:
-            conn.rollback()
+            cur.execute("ROLLBACK TO SAVEPOINT sp_desc")
 
-        # ¿El pedido tenía IVA aplicado? Lo preservamos para recalcularlo sobre el nuevo total.
+        # ¿El pedido tenía IVA aplicado?
         tenia_iva_aplicado = False
+        cur.execute("SAVEPOINT sp_iva")
         try:
             cur.execute("SELECT COALESCE(iva_aplicado,0) AS iva FROM pedidos_b2b WHERE id=%s", (id,))
             fila_iva = cur.fetchone()
             tenia_iva_aplicado = float(fila_iva[0] or 0) > 0 if fila_iva else False
+            cur.execute("RELEASE SAVEPOINT sp_iva")
         except Exception:
-            conn.rollback()
+            cur.execute("ROLLBACK TO SAVEPOINT sp_iva")
 
-        # Reescribir el detalle del pedido (el stock se mueve al armar, no acá).
-        # Se conserva el descuento por producto de las líneas que siguen en el pedido.
+        # Reescribir el detalle: borrar todo y reinsertar solo lo que quedó.
         cur.execute("DELETE FROM detalle_pedidos_b2b WHERE id_pedido = %s", (id,))
+        # Detectar una vez si la columna de descuento por producto existe (para insertar acorde)
+        columna_desc_existe = True
+        cur.execute("SAVEPOINT sp_check")
+        try:
+            cur.execute("SELECT descuento_porcentaje FROM detalle_pedidos_b2b LIMIT 0")
+            cur.execute("RELEASE SAVEPOINT sp_check")
+        except Exception:
+            columna_desc_existe = False
+            cur.execute("ROLLBACK TO SAVEPOINT sp_check")
+
         for item in payload.detalle:
             if item.cantidad > 0:
-                desc_prod = desc_por_producto_previo.get(item.id_producto, 0)
-                try:
+                if columna_desc_existe:
+                    desc_prod = desc_por_producto_previo.get(item.id_producto, 0)
                     cur.execute("""
                         INSERT INTO detalle_pedidos_b2b (id_pedido, id_producto, cantidad, precio_unitario, descuento_porcentaje)
                         VALUES (%s,%s,%s,%s,%s)
                     """, (id, item.id_producto, item.cantidad, item.precio_unitario, desc_prod))
-                except Exception:
-                    conn.rollback()
+                else:
                     cur.execute("""
                         INSERT INTO detalle_pedidos_b2b (id_pedido, id_producto, cantidad, precio_unitario)
                         VALUES (%s,%s,%s,%s)
                     """, (id, item.id_producto, item.cantidad, item.precio_unitario))
-                # Si lo preparado supera la nueva cantidad pedida, ajustar (devolver el excedente)
+                # Ajustar lo preparado si supera la nueva cantidad
                 if item.id_producto in preparado_previo:
                     prep = preparado_previo[item.id_producto]
                     if prep > item.cantidad:
@@ -2649,16 +2660,15 @@ def actualizar_pedido(id: int, payload: PedidoUpdate):
                         cur.execute("UPDATE productos SET stock_actual = COALESCE(stock_actual,0) + %s WHERE id = %s", (exceso, item.id_producto))
                         cur.execute("UPDATE preparacion_items SET cantidad = %s WHERE id_pedido = %s AND id_producto = %s", (item.cantidad, id, item.id_producto))
 
-        # Recalcular el total conservando descuentos (por producto + de orden) e IVA si tenía.
-        # _recalcular_total_pedido_b2b ya recalcula el IVA sobre el nuevo neto si hay iva_aplicado>0.
+        # Recalcular total conservando descuentos e IVA (con savepoint por si faltan columnas)
+        cur.execute("SAVEPOINT sp_recalc")
         try:
             if not tenia_iva_aplicado:
-                # Si no tenía IVA, nos aseguramos de que quede en 0 (por si venía de un estado inconsistente)
                 cur.execute("UPDATE pedidos_b2b SET iva_aplicado=0 WHERE id=%s", (id,))
             _recalcular_total_pedido_b2b(cur, id)
+            cur.execute("RELEASE SAVEPOINT sp_recalc")
         except Exception:
-            conn.rollback()
-            # Fallback: si algo falla con las columnas de descuento, al menos guardar el total plano
+            cur.execute("ROLLBACK TO SAVEPOINT sp_recalc")
             cur.execute("UPDATE pedidos_b2b SET total = %s WHERE id = %s", (payload.total, id))
 
         # El pedido vuelve a "En preparación" (no a Pendiente) para conservar lo armado
