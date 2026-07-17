@@ -140,13 +140,6 @@
                 <div id="det-descuento-info" class="hidden text-xs text-gray-500 text-right mb-1"></div>
             </div>
 
-            <div class="border-t border-gray-700 pt-3 pb-3 flex items-center gap-3">
-                <label class="flex items-center gap-2 cursor-pointer text-gray-300 hover:text-white">
-                    <input type="checkbox" id="remito-con-iva" class="w-4 h-4" style="accent-color: var(--neon);">
-                    <span class="text-sm">📊 Remito con IVA (21%)</span>
-                </label>
-            </div>
-
             <div class="border-t border-gray-700 pt-3 flex justify-between items-center mb-4">
                 <span class="font-bold text-gray-400">TOTAL</span>
                 <span id="det-total" class="font-bold text-neon text-xl"></span>
@@ -980,12 +973,12 @@
                 columnStyles: {1:{halign:'center'}, 2:{halign:'right'}, 3:{halign:'right'}}
             });
             var y = doc.lastAutoTable.finalY + 8;
-            // Mostrar total con IVA si está marcado
-            var conIva = document.getElementById('remito-con-iva').checked;
+            // Usar el IVA REAL ya aplicado al pedido (recalculado con descuentos), no un checkbox aparte
             var total = parseFloat(pedidoActual.total || 0);
-            var iva = conIva ? Math.round(total * 0.21 * 100) / 100 : 0;
-            var totalConIva = conIva ? total + iva : total;
-            
+            var iva = parseFloat(pedidoActual.iva_aplicado || 0);
+            var totalConIva = total + iva;
+            var conIva = iva > 0;
+
             doc.setFontSize(9); doc.setFont('helvetica', 'bold'); doc.setTextColor(0, 0, 0);
             if (conIva) {
                 doc.text('Subtotal: $ ' + total.toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2}), 130, y);
@@ -1048,12 +1041,12 @@
                 styles: {fontSize:8, cellPadding:1.5, lineWidth:0.1, lineColor:[120,120,120]},
                 columnStyles: hayArmado ? {1:{halign:'center'}, 2:{halign:'center'}, 3:{halign:'center'}} : {1:{halign:'center'}, 2:{halign:'center'}}
             });
-            // Mostrar total con IVA si está marcado
-            var conIva = document.getElementById('remito-con-iva').checked;
+            // Usar el IVA REAL ya aplicado al pedido (recalculado con descuentos), no un checkbox aparte
             var total = parseFloat(pedidoActual.total || 0);
-            var iva = conIva ? Math.round(total * 0.21 * 100) / 100 : 0;
-            var totalConIva = conIva ? total + iva : total;
-            
+            var iva = parseFloat(pedidoActual.iva_aplicado || 0);
+            var totalConIva = total + iva;
+            var conIva = iva > 0;
+
             var y = doc.lastAutoTable.finalY + 8;
             if (y > 265) y = 265;
             // Mostrar total e IVA
