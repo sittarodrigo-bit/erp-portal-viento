@@ -492,7 +492,7 @@
                 pedidoActual.descuento_porcentaje = r.descuento_porcentaje;
                 pedidoActual.descuento_monto = r.descuento_monto;
                 pedidoActual.total_sin_descuento = r.total_original;
-                document.getElementById('det-total').textContent = '$ ' + parseFloat(r.nuevo_total).toLocaleString('es-AR');
+                document.getElementById('det-total').textContent = '$ ' + (parseFloat(r.nuevo_total) + parseFloat(pedidoActual.iva_aplicado||0)).toLocaleString('es-AR');
                 var infoDesc = document.getElementById('det-descuento-info');
                 if (r.descuento_porcentaje > 0) {
                     infoDesc.classList.remove('hidden');
@@ -581,25 +581,19 @@
             document.getElementById('det-dist').textContent   = dist.razon_social || pedidoActual.distribuidor;
             document.getElementById('det-fecha').textContent  = new Date(pedidoActual.fecha).toLocaleString('es-AR', {dateStyle:'long', timeStyle:'short'});
             document.getElementById('det-total').textContent  = '$ ' + (parseFloat(pedidoActual.total||0) + parseFloat(pedidoActual.iva_aplicado||0)).toLocaleString('es-AR');
-            // El descuento solo se puede aplicar DESPUÉS de despachar
-            var esDespachado = (pedidoActual.estado === 'Despachado' || pedidoActual.estado === 'Despachado parcial');
+            // El descuento de orden ahora se puede aplicar en cualquier estado del pedido
             var seccionDesc = document.getElementById('det-descuento-seccion');
             var pctInput = document.getElementById('det-descuento-pct');
             var infoDesc = document.getElementById('det-descuento-info');
             var pct = parseFloat(pedidoActual.descuento_porcentaje || 0);
-            if (esDespachado) {
-                seccionDesc.classList.remove('hidden');
-                pctInput.value = pct > 0 ? pct : '';
-                if (pct > 0) {
-                    infoDesc.classList.remove('hidden');
-                    infoDesc.textContent = 'Descuento del ' + pct + '%: -$ ' + parseFloat(pedidoActual.descuento_monto||0).toLocaleString('es-AR') +
-                        ' (antes: $ ' + parseFloat(pedidoActual.total_sin_descuento||pedidoActual.total).toLocaleString('es-AR') + ')';
-                } else {
-                    infoDesc.classList.add('hidden');
-                }
+            seccionDesc.classList.remove('hidden');
+            pctInput.value = pct > 0 ? pct : '';
+            if (pct > 0) {
+                infoDesc.classList.remove('hidden');
+                infoDesc.textContent = 'Descuento del ' + pct + '%: -$ ' + parseFloat(pedidoActual.descuento_monto||0).toLocaleString('es-AR') +
+                    ' (antes: $ ' + parseFloat(pedidoActual.total_sin_descuento||pedidoActual.total).toLocaleString('es-AR') + ')';
             } else {
-                // Antes de despachar no se muestra la opción de descuento
-                seccionDesc.classList.add('hidden');
+                infoDesc.classList.add('hidden');
             }
             var selEst = document.getElementById('sel-estado-hist');
             if (selEst) {
@@ -647,7 +641,7 @@
             cont.innerHTML = '';
             var tabla = document.createElement('table');
             tabla.className = 'w-full text-sm mb-2';
-            tabla.innerHTML = '<thead class="text-xs text-gray-400 border-b border-gray-700"><tr><th class="py-2 text-left">Producto</th><th class="py-2 text-center w-20">Cant.</th><th class="py-2 text-right">Precio</th><th class="py-2 text-right">Subtotal</th><th class="py-2"></th></tr></thead>';
+            tabla.innerHTML = '<thead class="text-xs text-gray-400 border-b border-gray-700"><tr><th class="py-2 text-left">Producto</th><th class="py-2 text-center w-20">Cant.</th><th class="py-2 text-right">Precio</th><th class="py-2 text-center w-24">Desc. %</th><th class="py-2 text-right">Subtotal</th><th class="py-2"></th></tr></thead>';
             var tbody = document.createElement('tbody');
             tbody.className = 'divide-y divide-gray-800';
             itemsActuales.forEach(function(i, idx) {
@@ -661,17 +655,52 @@
                 var tdProd = document.createElement('td'); tdProd.className = 'py-3 text-white font-bold'; tdProd.textContent = i.producto;
                 var tdCant = document.createElement('td'); tdCant.className = 'py-3 text-center'; tdCant.appendChild(inp);
                 var tdPric = document.createElement('td'); tdPric.className = 'py-3 text-right text-gray-300'; tdPric.textContent = '$ ' + parseFloat(i.precio_unitario).toLocaleString('es-AR');
+
+                var tdDesc = document.createElement('td'); tdDesc.className = 'py-3 text-center';
+                var wrapDesc = document.createElement('div'); wrapDesc.className = 'flex items-center justify-center gap-1';
+                var inpDesc = document.createElement('input');
+                inpDesc.type = 'number'; inpDesc.min = '0'; inpDesc.max = '100'; inpDesc.step = '0.1';
+                inpDesc.value = i.descuento_porcentaje || 0;
+                inpDesc.className = 'w-14 bg-gray-800 border border-orange-700 text-orange-300 rounded p-1 text-center text-xs';
+                inpDesc.id = 'desc-prod-' + idx;
+                var btnDesc = document.createElement('button');
+                btnDesc.textContent = '✓'; btnDesc.title = 'Aplicar descuento a este producto';
+                btnDesc.className = 'text-orange-400 hover:text-orange-300 font-bold text-xs px-1';
+                btnDesc.onclick = function() { aplicarDescuentoProducto(idx); };
+                wrapDesc.appendChild(inpDesc); wrapDesc.appendChild(btnDesc);
+                tdDesc.appendChild(wrapDesc);
+
                 var tdSub  = document.createElement('td'); tdSub.className = 'py-3 text-right text-neon font-bold'; tdSub.id = 'sub-' + idx; tdSub.textContent = '$ ' + parseFloat(i.subtotal).toLocaleString('es-AR');
                 var tdDel  = document.createElement('td'); tdDel.className = 'py-3 text-right';
                 var btnDel = document.createElement('button');
                 btnDel.className = 'text-red-500 hover:text-red-400 font-bold px-2'; btnDel.textContent = '✕';
                 btnDel.onclick = function() { itemsActuales.splice(idx,1); renderDetalle(); recalcularTotal(); };
                 tdDel.appendChild(btnDel);
-                tr.appendChild(tdProd); tr.appendChild(tdCant); tr.appendChild(tdPric); tr.appendChild(tdSub); tr.appendChild(tdDel);
+                tr.appendChild(tdProd); tr.appendChild(tdCant); tr.appendChild(tdPric); tr.appendChild(tdDesc); tr.appendChild(tdSub); tr.appendChild(tdDel);
                 tbody.appendChild(tr);
             });
             tabla.appendChild(tbody);
             cont.appendChild(tabla);
+        }
+
+        async function aplicarDescuentoProducto(idx) {
+            var item = itemsActuales[idx];
+            var inpDesc = document.getElementById('desc-prod-' + idx);
+            var porcentaje = parseFloat(inpDesc.value) || 0;
+            if (porcentaje < 0 || porcentaje > 100) { alert('El porcentaje debe estar entre 0 y 100.'); return; }
+            try {
+                var res = await fetch(API_URL + '/pedidos_b2b/' + pedidoActual.id + '/producto/' + item.id_producto + '/descuento', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ porcentaje: porcentaje })
+                });
+                if (!res.ok) { var e = await res.json(); alert('No se pudo aplicar: ' + (e.detail||'')); return; }
+                var r = await res.json();
+                await cargarPedidoYItems(pedidoActual.id);
+                renderDetalle();
+                document.getElementById('det-total').textContent = '$ ' + (parseFloat(pedidoActual.total||0) + parseFloat(pedidoActual.iva_aplicado||0)).toLocaleString('es-AR');
+                cargarPedidos();
+            } catch(e) { alert('Error al aplicar el descuento: ' + e.message); }
         }
 
         function recalcularTotal() {
