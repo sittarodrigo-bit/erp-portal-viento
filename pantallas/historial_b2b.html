@@ -290,7 +290,7 @@
 
             var tbody = document.getElementById('tabla-b2b');
             tbody.innerHTML = '<tr><td colspan="6" class="px-3 py-4 text-center text-gray-500">Cargando...</td></tr>';
-            var lista = await fetch(url).then(function(r) { return r.json(); });
+            var lista = await fetch(url, {cache: 'no-store'}).then(function(r) { return r.json(); });
 
             tbody.innerHTML = '';
             if (!lista.length) {
@@ -438,9 +438,9 @@
         document.addEventListener('click', cerrarMenus);
 
         async function cargarPedidoYItems(id) {
-            var lista = await fetch(API_URL + '/pedidos_b2b/historial?limite=400').then(function(r) { return r.json(); });
+            var lista = await fetch(API_URL + '/pedidos_b2b/historial?limite=400', {cache: 'no-store'}).then(function(r) { return r.json(); });
             pedidoActual = lista.find(function(p) { return p.id === id; });
-            itemsActuales = await fetch(API_URL + '/pedidos_b2b/' + id + '/detalle').then(function(r) { return r.json(); });
+            itemsActuales = await fetch(API_URL + '/pedidos_b2b/' + id + '/detalle', {cache: 'no-store'}).then(function(r) { return r.json(); });
         }
 
         async function abrirYAccion(id, accion) {
@@ -1406,7 +1406,7 @@
             if (!idDist) { mostrarToast('Sin distribuidor'); return; }
             abrirModalDist('📦 Últimos pedidos', '<p class="text-gray-500">Cargando...</p>');
             try {
-                var lista = await fetch(API_URL + '/pedidos_b2b/historial?id_distribuidor=' + idDist).then(function(r){return r.json();});
+                var lista = await fetch(API_URL + '/pedidos_b2b/historial?id_distribuidor=' + idDist, {cache: 'no-store'}).then(function(r){return r.json();});
                 var html = '<p class="text-gray-400 text-sm mb-3"><b class="text-white">' + (nombre||'') + '</b></p>';
                 if (lista.length) {
                     html += '<div class="space-y-1">';
