@@ -1811,6 +1811,23 @@ def produccion_necesidades():
         except Exception:
             conn.rollback()
 
+        # ── Producción ya registrada HOY (en unidades) por producto ──
+        # Se resta del "falta producir" para que el panel baje a medida que el empleado carga.
+        producido_hoy = {}
+        cur.execute("SAVEPOINT sp_prod_hoy")
+        try:
+            cur.execute("""
+                SELECT id_producto, COALESCE(SUM(cantidad_producida),0) AS total
+                FROM ordenes_produccion
+                WHERE fecha::date = CURRENT_DATE
+                GROUP BY id_producto
+            """)
+            for f in fetchall_dict(cur):
+                producido_hoy[f['id_producto']] = float(f['total'] or 0)
+            cur.execute("RELEASE SAVEPOINT sp_prod_hoy")
+        except Exception:
+            cur.execute("ROLLBACK TO SAVEPOINT sp_prod_hoy")
+
         # ── Armar salida por producto ──
         productos = []
         for p in acum.values():
@@ -1818,6 +1835,12 @@ def produccion_necesidades():
             stock = p['stock']
             falta_cajas = max(0, pedido - stock)
             upc = unidades_por_caja(p.get('nombre'), p.get('factor'))
+            falta_unidades_bruto = int(round(falta_cajas * upc))
+            # Restar lo ya producido hoy (en unidades) de lo que falta
+            ya_producido = int(round(producido_hoy.get(p['id_producto'], 0)))
+            falta_unidades = max(0, falta_unidades_bruto - ya_producido)
+            # Recalcular las cajas que faltan según las unidades restantes
+            falta_cajas_neto = falta_unidades / upc if upc else 0
             productos.append({
                 "id_producto": p['id_producto'],
                 "nombre": p['nombre'] or ('Producto #' + str(p['id_producto'])),
@@ -1829,9 +1852,11 @@ def produccion_necesidades():
                 "pedido_repo_cajas": round(p.get('pedido_repo_cajas', 0), 1),
                 "pedido_repo_unidades": int(round(p.get('pedido_repo_unidades', 0))),
                 "stock": stock,
-                "falta_producir": round(falta_cajas, 1),
+                "producido_hoy": ya_producido,
+                "falta_unidades_original": falta_unidades_bruto,
+                "falta_producir": round(falta_cajas_neto, 1),
                 "unidades_por_caja": upc,
-                "falta_unidades": int(round(falta_cajas * upc))
+                "falta_unidades": falta_unidades
             })
 
         # ── Agrupar por categoría ──
