@@ -250,6 +250,7 @@
                         '<span class="text-orange-400 font-bold text-lg">' + (d.falta_unidades||0).toLocaleString('es-AR') + ' u.</span>' +
                         '</div>' +
                         '<p class="text-gray-500 text-xs mt-1 ml-7">Faltan ' + d.falta_producir + ' cajas (pedido ' + d.pedido + ' · stock ' + d.stock + ')' + (enProc && typeof enProc === 'string' ? ' · iniciado por ' + enProc : '') + '</p>' +
+                        ((d.producido_hoy && d.producido_hoy > 0) ? '<p class="text-green-400 text-xs mt-0.5 ml-7">✓ Ya produjiste ' + d.producido_hoy.toLocaleString('es-AR') + ' u. hoy (de ' + (d.falta_unidades_original||0).toLocaleString('es-AR') + ' u.)</p>' : '') +
                         '</div>';
                 }).join('');
                 cont.innerHTML = '<div class="bg-orange-900/20 border border-orange-700 rounded-xl p-3 mb-3 text-center"><span class="text-white font-bold text-xl">Total: ' + totalU.toLocaleString('es-AR') + ' unidades</span></div>' + filas;
@@ -395,6 +396,7 @@
                 setTimeout(() => toast.classList.add('hidden'), 3000);
 
                 await cargarRegistrosHoy();
+                if (typeof cargarQueProducir === 'function') cargarQueProducir();
             } finally {
                 btn.disabled = false; btn.textContent = '✅ Registrar';
             }
