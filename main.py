@@ -1754,18 +1754,27 @@ def produccion_necesidades():
                 acum[id_prod]["pedido_repo_cajas"] += float(pedido or 0)
                 acum[id_prod]["pedido_repo_unidades"] += float(unidades_orig or 0)
 
-        # ── 1) Pedidos B2B pendientes ──
+        # ── 1) Pedidos B2B: Pendientes (todo lo pedido) + En preparación (solo lo que falta armar) ──
+        # En 'Pendiente' nada se armó todavía → se cuenta todo lo pedido.
+        # En 'En preparación' el empleado ya pudo armar una parte (que salió del stock),
+        #   así que solo falta producir lo que resta armar = pedido - preparado.
         try:
             cur.execute("""
                 SELECT d.id_producto, p.nombre, p.sku, p.unidades_por_caja AS factor,
                        COALESCE(p.stock_actual,0) AS stock,
                        LOWER(COALESCE(c.nombre,'')) AS categoria, p.id_categoria,
-                       COALESCE(SUM(d.cantidad),0) AS pedido
+                       COALESCE(SUM(
+                           CASE
+                             WHEN pb.estado = 'Pendiente' THEN d.cantidad
+                             ELSE GREATEST(0, d.cantidad - COALESCE(prep.cantidad, 0))
+                           END
+                       ),0) AS pedido
                 FROM detalle_pedidos_b2b d
                 JOIN pedidos_b2b pb ON d.id_pedido = pb.id
                 LEFT JOIN productos p ON d.id_producto = p.id
                 LEFT JOIN categorias c ON p.id_categoria = c.id
-                WHERE pb.estado = 'Pendiente'
+                LEFT JOIN preparacion_items prep ON prep.id_pedido = pb.id AND prep.id_producto = d.id_producto
+                WHERE pb.estado IN ('Pendiente', 'En preparación')
                 GROUP BY d.id_producto, p.nombre, p.sku, p.unidades_por_caja, p.stock_actual, c.nombre, p.id_categoria
             """)
             for f in fetchall_dict(cur):
@@ -1773,7 +1782,11 @@ def produccion_necesidades():
         except Exception:
             conn.rollback()
 
-        # ── 2) Reposiciones de locales pendientes (estado habilitada/en_preparacion) ──
+        # ── 2) Reposiciones de locales aún no despachadas ──
+        # Estados que todavía requieren producción: pendiente, habilitada, en_preparacion, armada.
+        # PERO se excluyen las que ya tienen stock_descontado=true, porque ese stock ya salió
+        #   (se descuenta a medida que el empleado arma) y ya está reflejado en p.stock_actual;
+        #   contarlas de nuevo pediría producir el doble.
         # El detalle guarda cantidad EN UNIDADES; convertir a cajas dividiendo por upc.
         try:
             cur.execute("""
@@ -1785,7 +1798,8 @@ def produccion_necesidades():
                 JOIN pos_reposiciones r ON rd.id_reposicion = r.id
                 LEFT JOIN productos p ON rd.id_producto_fabrica = p.id
                 LEFT JOIN categorias c ON p.id_categoria = c.id
-                WHERE r.estado IN ('habilitada','en_preparacion')
+                WHERE r.estado IN ('pendiente','habilitada','en_preparacion','armada')
+                  AND COALESCE(r.stock_descontado, false) = false
                 GROUP BY rd.id_producto_fabrica, p.nombre, p.sku, p.unidades_por_caja, p.stock_actual, c.nombre, p.id_categoria
             """)
             for f in fetchall_dict(cur):
