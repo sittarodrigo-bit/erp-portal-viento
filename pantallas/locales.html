@@ -764,11 +764,64 @@
                 const items = (v.detalle||[]).map(d=>`${d.cantidad}× ${d.nombre_producto}`).join(', ');
                 lv.innerHTML += `<div class="bg-black border border-gray-800 rounded-lg px-4 py-3">
                     <div class="flex justify-between items-center">
-                        <div><span class="text-neon font-bold">#${String(v.id).padStart(4,'0')}</span> <span class="text-gray-500 text-xs">${dt} · ${v.metodo_pago}</span></div>
-                        <span class="text-white font-bold">${fmt(v.total)}</span>
+                        <div><span class="text-neon font-bold">#${String(v.id).padStart(4,'0')}</span> <span class="text-gray-500 text-xs">${dt} · <span id="metodo-venta-${v.id}">${v.metodo_pago}</span></span></div>
+                        <div class="flex items-center gap-2">
+                            <button onclick="abrirCorreccionMetodo(${v.id}, '${v.metodo_pago}')" class="text-xs border border-gray-700 hover:border-neon text-gray-400 hover:text-white rounded px-2 py-1" title="Corregir forma de pago">✏️ Pago</button>
+                            <span class="text-white font-bold">${fmt(v.total)}</span>
+                        </div>
                     </div>
                     <p class="text-gray-500 text-xs mt-1">${items}</p></div>`;
             });
+        }
+
+        function abrirCorreccionMetodo(idVenta, metodoActual) {
+            var metodos = ['Efectivo', 'Tarjeta', 'Transferencia', 'QR'];
+            var opciones = metodos.map(function(m) {
+                return '<option value="' + m + '"' + (m === metodoActual ? ' selected' : '') + '>' + m + '</option>';
+            }).join('');
+            var html = '<div id="modal-corregir-metodo" class="fixed inset-0 bg-black/80 flex items-center justify-center z-[60] p-4">' +
+                '<div class="bg-gray-900 border border-gray-700 rounded-xl p-5 w-full max-w-sm">' +
+                '<h3 class="text-white font-bold mb-1">Corregir forma de pago</h3>' +
+                '<p class="text-gray-500 text-xs mb-4">Venta #' + String(idVenta).padStart(4,'0') + ' · Actual: ' + metodoActual + '</p>' +
+                '<label class="block text-xs text-gray-500 font-bold mb-1">Nueva forma de pago</label>' +
+                '<select id="nuevo-metodo-pago" class="w-full bg-black border border-gray-700 text-white rounded-lg p-2 mb-4">' + opciones + '</select>' +
+                '<div class="flex gap-2">' +
+                '<button onclick="cerrarCorreccionMetodo()" class="flex-1 border border-gray-600 text-gray-300 rounded-lg py-2 text-sm">Cancelar</button>' +
+                '<button onclick="guardarCorreccionMetodo(' + idVenta + ')" class="flex-1 bg-neon text-black font-bold rounded-lg py-2 text-sm">Guardar</button>' +
+                '</div></div></div>';
+            document.body.insertAdjacentHTML('beforeend', html);
+        }
+
+        function cerrarCorreccionMetodo() {
+            var m = document.getElementById('modal-corregir-metodo');
+            if (m) m.remove();
+        }
+
+        async function guardarCorreccionMetodo(idVenta) {
+            var nuevoMetodo = document.getElementById('nuevo-metodo-pago').value;
+            try {
+                var res = await fetch(API_URL + '/ventas/' + idVenta + '/metodo_pago', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ metodo_pago: nuevoMetodo })
+                });
+                if (!res.ok) {
+                    var e = await res.json().catch(function(){ return {}; });
+                    alert('No se pudo corregir: ' + (e.detail || ('Error ' + res.status)));
+                    return;
+                }
+                var r = await res.json();
+                var span = document.getElementById('metodo-venta-' + idVenta);
+                if (span) span.textContent = nuevoMetodo;
+                cerrarCorreccionMetodo();
+                if (r.era_pago_mixto) {
+                    alert('⚠️ Esta venta tenía pago mixto.\n\nSe cambió el método principal, pero los montos parciales no se modificaron. Revisá el desglose si hace falta.');
+                }
+                // Recargar para que los totales de caja por método se actualicen
+                if (typeof cargarVentas === 'function') cargarVentas();
+            } catch(e) {
+                alert('Error al corregir la forma de pago.');
+            }
         }
 
         async function cargarMasVendidos() {
