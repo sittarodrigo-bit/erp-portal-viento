@@ -5153,6 +5153,72 @@ def cerrar_caja_admin(id_caja: int):
         liberar_conexion(conn)
 
 # ---- VENTAS ----
+@app.put("/api/ventas/{id_venta}/metodo_pago")
+def corregir_metodo_pago_venta(id_venta: int, data: dict = Body(...)):
+    """Corrige la forma de pago de una venta ya registrada (ej: se puso Efectivo por error).
+    Actualiza pos_ventas.metodo_pago y, si la venta era de un solo pago, también el desglose
+    en pos_pagos_venta para que los totales de caja por método queden consistentes.
+    Pensado para uso desde el panel de administración, no desde el POS del cajero."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        nuevo_metodo = (data.get('metodo_pago') or '').strip()
+        metodos_validos = ('Efectivo', 'Tarjeta', 'Transferencia', 'QR')
+        if nuevo_metodo not in metodos_validos:
+            raise HTTPException(status_code=400, detail="Método de pago inválido. Debe ser: " + ", ".join(metodos_validos))
+
+        # Verificar que la venta existe y traer su total
+        cur.execute("SELECT id, total, metodo_pago FROM pos_ventas WHERE id=%s", (id_venta,))
+        venta = cur.fetchone()
+        if not venta:
+            raise HTTPException(status_code=404, detail="Venta no encontrada.")
+
+        # ¿Cuántas líneas de pago tiene? (para distinguir pago simple vs mixto)
+        cur.execute("SAVEPOINT sp_pagos")
+        cantidad_pagos = 0
+        try:
+            cur.execute("SELECT COUNT(*) AS n FROM pos_pagos_venta WHERE id_venta=%s", (id_venta,))
+            cantidad_pagos = int(cur.fetchone()['n'])
+            cur.execute("RELEASE SAVEPOINT sp_pagos")
+        except Exception:
+            cur.execute("ROLLBACK TO SAVEPOINT sp_pagos")
+
+        # Actualizar el método principal de la venta
+        cur.execute("UPDATE pos_ventas SET metodo_pago=%s WHERE id=%s", (nuevo_metodo, id_venta))
+
+        # Si era un pago simple (0 o 1 línea de desglose), sincronizar el desglose.
+        # Si es mixto (2+ pagos), NO tocamos el desglose para no romper los montos parciales.
+        es_mixto = cantidad_pagos > 1
+        if not es_mixto:
+            cur.execute("SAVEPOINT sp_upd")
+            try:
+                cur.execute("SELECT COUNT(*) AS n FROM pos_pagos_venta WHERE id_venta=%s", (id_venta,))
+                if int(cur.fetchone()['n']) > 0:
+                    cur.execute("UPDATE pos_pagos_venta SET metodo_pago=%s WHERE id_venta=%s", (nuevo_metodo, id_venta))
+                else:
+                    cur.execute("INSERT INTO pos_pagos_venta (id_venta, metodo_pago, monto) VALUES (%s,%s,%s)",
+                                (id_venta, nuevo_metodo, float(venta['total'] or 0)))
+                cur.execute("RELEASE SAVEPOINT sp_upd")
+            except Exception:
+                cur.execute("ROLLBACK TO SAVEPOINT sp_upd")
+
+        conn.commit()
+        return {
+            "status": "ok",
+            "id_venta": id_venta,
+            "metodo_anterior": venta['metodo_pago'],
+            "metodo_nuevo": nuevo_metodo,
+            "era_pago_mixto": es_mixto,
+            "nota": "Pago mixto: solo se cambió el método principal; los montos parciales no se tocaron." if es_mixto else "Actualizado."
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
 def _totales_por_metodo_caja(cur, id_caja):
     """Devuelve dict con efectivo/tarjeta/transferencia/qr de una caja.
     Usa el desglose de pos_pagos_venta si existe; si no, cae al metodo_pago de la venta."""
