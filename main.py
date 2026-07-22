@@ -1490,17 +1490,23 @@ def estado_cuenta_distribuidor(id_dist: int):
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
         cur.execute("""
-            SELECT id, fecha::text, total, COALESCE(iva_aplicado,0) AS iva_aplicado, estado, observaciones FROM pedidos_b2b
+            SELECT id, fecha::text, total, COALESCE(iva_aplicado,0) AS iva_aplicado,
+                   COALESCE(descuento_porcentaje,0) AS descuento_porcentaje,
+                   estado, observaciones FROM pedidos_b2b
             WHERE id_distribuidor = %s AND estado IN ('Despachado','Despachado parcial') ORDER BY fecha DESC
         """, (id_dist,))
         pedidos = fetchall_dict(cur)
-        # Para cada pedido, calcular el monto REAL despachado:
-        # si hay armado registrado, se cobra lo armado (precio x cantidad armada) + IVA; si no, el total pedido + IVA.
+        # Se cobra SOLO lo efectivamente despachado:
+        #   cantidad armada x precio, ya neto del descuento por producto,
+        #   luego el descuento general de la orden, y el IVA proporcional a ese neto.
+        # Si no hay armado registrado, se toma el total del pedido (que ya viene con descuentos).
         for p in pedidos:
             monto_real = None
             try:
                 cur.execute("""
-                    SELECT COALESCE(SUM(pi.cantidad * dp.precio_unitario), 0) AS monto, COUNT(*) AS n
+                    SELECT COALESCE(SUM(pi.cantidad * dp.precio_unitario
+                                        * (1 - COALESCE(dp.descuento_porcentaje,0)/100.0)), 0) AS monto,
+                           COUNT(*) AS n
                     FROM preparacion_items pi
                     JOIN detalle_pedidos_b2b dp ON dp.id_pedido = pi.id_pedido AND dp.id_producto = pi.id_producto
                     WHERE pi.id_pedido = %s
@@ -1508,12 +1514,19 @@ def estado_cuenta_distribuidor(id_dist: int):
                 row = cur.fetchone()
                 if row and row['n'] and int(row['n']) > 0:
                     monto_real = float(row['monto'] or 0)
+                    # Aplicar el descuento general de la orden sobre lo despachado
+                    pct = float(p.get('descuento_porcentaje') or 0)
+                    if pct > 0:
+                        monto_real = round(monto_real * (1 - pct/100), 2)
             except Exception:
                 conn.rollback()
                 monto_real = None
-            iva = float(p.get('iva_aplicado') or 0)
-            p['total_pedido'] = float(p['total'] or 0) + iva
-            p['total'] = (monto_real if monto_real is not None else float(p['total'] or 0)) + iva
+
+            neto_cobrable = monto_real if monto_real is not None else float(p['total'] or 0)
+            # El IVA se recalcula sobre lo realmente despachado (si el pedido tiene IVA aplicado)
+            iva = round(neto_cobrable * 0.21, 2) if float(p.get('iva_aplicado') or 0) > 0 else 0.0
+            p['total_pedido'] = float(p['total'] or 0) + float(p.get('iva_aplicado') or 0)
+            p['total'] = round(neto_cobrable + iva, 2)
         cur.execute("""
             SELECT c.id, c.fecha::text, c.monto, c.metodo, c.referencia, c.notas, c.id_pedido,
                    e.nombre as empleado_nombre, e.apellido as empleado_apellido
@@ -1542,19 +1555,28 @@ def cuenta_corriente_global():
         # Total despachado por distribuidor: si el pedido tiene armado registrado,
         # se toma lo armado (cantidad x precio); si no, el total del pedido.
         cur.execute("""
-            WITH pedidos_real AS (
+            WITH pedidos_neto AS (
                 SELECT pb.id, pb.id_distribuidor,
-                    CASE WHEN EXISTS (SELECT 1 FROM preparacion_items pi WHERE pi.id_pedido = pb.id)
-                         THEN COALESCE((
-                            SELECT SUM(pi.cantidad * dp.precio_unitario)
-                            FROM preparacion_items pi
-                            JOIN detalle_pedidos_b2b dp ON dp.id_pedido = pi.id_pedido AND dp.id_producto = pi.id_producto
-                            WHERE pi.id_pedido = pb.id
-                         ), 0)
-                         ELSE COALESCE(pb.total, 0)
-                    END + COALESCE(pb.iva_aplicado, 0) AS monto_real
+                    ROUND((
+                      CASE WHEN EXISTS (SELECT 1 FROM preparacion_items pi WHERE pi.id_pedido = pb.id)
+                           THEN COALESCE((
+                              SELECT SUM(pi.cantidad * dp.precio_unitario
+                                         * (1 - COALESCE(dp.descuento_porcentaje,0)/100.0))
+                              FROM preparacion_items pi
+                              JOIN detalle_pedidos_b2b dp ON dp.id_pedido = pi.id_pedido AND dp.id_producto = pi.id_producto
+                              WHERE pi.id_pedido = pb.id
+                           ), 0) * (1 - COALESCE(pb.descuento_porcentaje,0)/100.0)
+                           ELSE COALESCE(pb.total, 0)
+                      END
+                    )::numeric, 2) AS neto,
+                    COALESCE(pb.iva_aplicado, 0) AS iva_guardado
                 FROM pedidos_b2b pb
                 WHERE pb.estado IN ('Despachado','Despachado parcial')
+            ),
+            pedidos_real AS (
+                SELECT id, id_distribuidor,
+                       neto + CASE WHEN iva_guardado > 0 THEN ROUND((neto * 0.21)::numeric, 2) ELSE 0 END AS monto_real
+                FROM pedidos_neto
             )
             SELECT d.id, d.razon_social, d.limite_credito,
                    COALESCE(ped.total_despachado, 0) AS total_despachado,
@@ -2479,7 +2501,8 @@ def armado_despacho_parcial(id: str):
                 prep[r['id_producto']] = float(r['cantidad'] or 0)
         except Exception:
             conn.rollback()
-        cur.execute("""SELECT d.id_producto, p.nombre, d.cantidad, d.precio_unitario
+        cur.execute("""SELECT d.id_producto, p.nombre, d.cantidad, d.precio_unitario,
+                              COALESCE(d.descuento_porcentaje,0) AS descuento_porcentaje
                        FROM detalle_pedidos_b2b d LEFT JOIN productos p ON d.id_producto=p.id
                        WHERE d.id_pedido=%s""", (id,))
         items = fetchall_dict(cur)
@@ -2494,22 +2517,66 @@ def armado_despacho_parcial(id: str):
                         (armado_c, id, i['id_producto']))
             nuevo_total += armado_c * precio
             if armado_c < pedido_c:
-                faltantes.append({"nombre": i['nombre'], "falta": pedido_c - armado_c})
+                faltantes.append({
+                    "id_producto": i['id_producto'],
+                    "nombre": i['nombre'],
+                    "falta": pedido_c - armado_c,
+                    "precio_unitario": precio,
+                    "descuento_porcentaje": float(i.get('descuento_porcentaje') or 0)
+                })
         nota = ""
         if faltantes:
             nota = "Faltó entregar: " + ", ".join([(f['nombre'] or '?') + " x" + str(int(f['falta'])) for f in faltantes])
         # Recalcular el total del pedido a lo realmente entregado (para que la deuda sea correcta)
         try:
-            cur.execute("UPDATE pedidos_b2b SET estado='Despachado parcial', total=%s, fecha_entrega=COALESCE(fecha_entrega, NOW()) WHERE id=%s", (nuevo_total, id))
+            cur.execute("UPDATE pedidos_b2b SET estado='Despachado parcial', total=%s, fecha_entrega=COALESCE(fecha_entrega, NOW()), faltantes_nota=%s WHERE id=%s", (nuevo_total, nota or None, id))
         except Exception:
             conn.rollback()
             cur.execute("UPDATE pedidos_b2b SET estado='Despachado parcial', total=%s WHERE id=%s", (nuevo_total, id))
+
+        # ── BACKORDER: crear un pedido nuevo (Pendiente) con lo que faltó entregar ──
+        # Así el faltante no se pierde y entra automáticamente al panel de "qué producir".
+        id_backorder = None
+        if faltantes:
+            cur.execute("SAVEPOINT sp_backorder")
+            try:
+                cur.execute("SELECT id_distribuidor FROM pedidos_b2b WHERE id=%s", (id,))
+                fila_dist = cur.fetchone()
+                id_dist = fila_dist['id_distribuidor'] if fila_dist else None
+                if id_dist:
+                    total_backorder = sum(
+                        f['falta'] * f['precio_unitario'] * (1 - f['descuento_porcentaje']/100)
+                        for f in faltantes
+                    )
+                    obs_backorder = "Pendiente del pedido #" + str(id).zfill(4) + " (despacho parcial)."
+                    cur.execute("""
+                        INSERT INTO pedidos_b2b (id_distribuidor, total, estado, observaciones, id_pedido_origen)
+                        VALUES (%s, %s, 'Pendiente', %s, %s) RETURNING id
+                    """, (id_dist, round(total_backorder, 2), obs_backorder, id))
+                    id_backorder = cur.fetchone()['id']
+                    for f in faltantes:
+                        cur.execute("""
+                            INSERT INTO detalle_pedidos_b2b (id_pedido, id_producto, cantidad, precio_unitario, descuento_porcentaje)
+                            VALUES (%s,%s,%s,%s,%s)
+                        """, (id_backorder, f['id_producto'], f['falta'], f['precio_unitario'], f['descuento_porcentaje']))
+                    # Dejar constancia en el pedido original de a qué backorder derivó
+                    cur.execute("UPDATE pedidos_b2b SET faltantes_nota=%s WHERE id=%s",
+                                (nota + " → Backorder #" + str(id_backorder).zfill(4), id))
+                cur.execute("RELEASE SAVEPOINT sp_backorder")
+            except Exception:
+                # Si falla la creación del backorder, el despacho parcial igual queda registrado
+                cur.execute("ROLLBACK TO SAVEPOINT sp_backorder")
+                id_backorder = None
+
         conn.commit()
         try:
-            crear_notificacion("pedido", "Pedido despachado PARCIAL", "Pedido #" + str(id) + ". " + nota)
+            aviso = "Pedido #" + str(id) + ". " + nota
+            if id_backorder:
+                aviso += " Se generó el pedido #" + str(id_backorder).zfill(4) + " con lo pendiente."
+            crear_notificacion("pedido", "Pedido despachado PARCIAL", aviso)
         except Exception:
             pass
-        return {"status": "ok", "faltantes": faltantes, "nota": nota}
+        return {"status": "ok", "faltantes": faltantes, "nota": nota, "id_backorder": id_backorder}
     except Exception as e:
         conn.rollback()
         raise HTTPException(status_code=500, detail=str(e))
@@ -2760,7 +2827,17 @@ def cambiar_estado_pedido(id: int, estado: str):
                 conn.rollback()
 
         # Registrar la fecha de entrega cuando pasa a Despachado (para seguimiento post-entrega)
+        id_backorder = None
+        nota_faltantes = ""
         if estado in ('Despachado', 'Despachado parcial') and estado_previo not in ('Despachado', 'Despachado parcial'):
+            # Si se entregó menos de lo pedido, ajustar el pedido y generar el backorder
+            cur2 = conn.cursor(cursor_factory=RealDictCursor)
+            try:
+                id_backorder, nota_faltantes = _generar_backorder_si_falta(cur2, id)
+                if id_backorder:
+                    estado = 'Despachado parcial'
+            except Exception:
+                id_backorder, nota_faltantes = None, ""
             try:
                 cur.execute("UPDATE pedidos_b2b SET estado = %s, fecha_entrega = NOW() WHERE id = %s", (estado, id))
             except Exception:
@@ -2769,12 +2846,107 @@ def cambiar_estado_pedido(id: int, estado: str):
         else:
             cur.execute("UPDATE pedidos_b2b SET estado = %s WHERE id = %s", (estado, id))
         conn.commit()
-        return {"status": "ok", "estado": estado, "estado_previo": estado_previo}
+        if id_backorder:
+            try:
+                crear_notificacion("pedido", "Entrega parcial — backorder generado",
+                                   "Pedido #" + str(id) + ". " + nota_faltantes)
+            except Exception:
+                pass
+        return {"status": "ok", "estado": estado, "estado_previo": estado_previo,
+                "id_backorder": id_backorder, "nota_faltantes": nota_faltantes}
     except Exception as e:
         conn.rollback()
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         liberar_conexion(conn)
+
+def _generar_backorder_si_falta(cur, id_pedido):
+    """Al despachar: compara lo pedido contra lo realmente armado.
+    Si se entregó de menos, ajusta el pedido original a lo entregado (para que la deuda
+    sea la correcta) y crea un pedido NUEVO en estado 'Pendiente' con el faltante.
+    Ese pedido nuevo entra solo al panel de 'qué producir'.
+    Devuelve (id_backorder, nota) o (None, '') si no faltó nada."""
+    # Cantidades realmente armadas
+    prep = {}
+    cur.execute("SAVEPOINT sp_prep_bo")
+    try:
+        cur.execute("SELECT id_producto, cantidad FROM preparacion_items WHERE id_pedido=%s", (id_pedido,))
+        for r in cur.fetchall():
+            prep[r['id_producto']] = float(r['cantidad'] or 0)
+        cur.execute("RELEASE SAVEPOINT sp_prep_bo")
+    except Exception:
+        cur.execute("ROLLBACK TO SAVEPOINT sp_prep_bo")
+        return (None, "")
+
+    # Si no hay armado registrado, se asume entrega completa: no hay backorder
+    if not prep:
+        return (None, "")
+
+    cur.execute("""SELECT d.id_producto, p.nombre, d.cantidad, d.precio_unitario,
+                          COALESCE(d.descuento_porcentaje,0) AS descuento_porcentaje
+                   FROM detalle_pedidos_b2b d LEFT JOIN productos p ON d.id_producto=p.id
+                   WHERE d.id_pedido=%s""", (id_pedido,))
+    items = fetchall_dict(cur)
+
+    faltantes = []
+    for i in items:
+        pedido_c = float(i['cantidad'] or 0)
+        armado_c = prep.get(i['id_producto'], 0)
+        if armado_c < pedido_c:
+            faltantes.append({
+                "id_producto": i['id_producto'],
+                "nombre": i['nombre'],
+                "falta": pedido_c - armado_c,
+                "precio_unitario": float(i['precio_unitario'] or 0),
+                "descuento_porcentaje": float(i.get('descuento_porcentaje') or 0)
+            })
+
+    if not faltantes:
+        return (None, "")
+
+    nota = "Faltó entregar: " + ", ".join([(f['nombre'] or '?') + " x" + str(int(f['falta'])) for f in faltantes])
+
+    # Ajustar el pedido original a lo realmente entregado, para no cobrar dos veces
+    # (lo faltante se cobra en el backorder).
+    for i in items:
+        armado_c = prep.get(i['id_producto'], 0)
+        cur.execute("UPDATE detalle_pedidos_b2b SET cantidad=%s WHERE id_pedido=%s AND id_producto=%s",
+                    (armado_c, id_pedido, i['id_producto']))
+    cur.execute("DELETE FROM detalle_pedidos_b2b WHERE id_pedido=%s AND cantidad<=0", (id_pedido,))
+    _recalcular_total_pedido_b2b(cur, id_pedido)
+
+    # Crear el backorder con el faltante
+    id_backorder = None
+    cur.execute("SAVEPOINT sp_bo")
+    try:
+        cur.execute("SELECT id_distribuidor FROM pedidos_b2b WHERE id=%s", (id_pedido,))
+        fila = cur.fetchone()
+        id_dist = fila['id_distribuidor'] if fila else None
+        if id_dist:
+            total_bo = sum(f['falta'] * f['precio_unitario'] * (1 - f['descuento_porcentaje']/100) for f in faltantes)
+            obs = "Pendiente del pedido #" + str(id_pedido).zfill(4) + " (entrega parcial)."
+            cur.execute("""INSERT INTO pedidos_b2b (id_distribuidor, total, estado, observaciones, id_pedido_origen)
+                           VALUES (%s,%s,'Pendiente',%s,%s) RETURNING id""",
+                        (id_dist, round(total_bo, 2), obs, id_pedido))
+            id_backorder = cur.fetchone()['id']
+            for f in faltantes:
+                cur.execute("""INSERT INTO detalle_pedidos_b2b (id_pedido, id_producto, cantidad, precio_unitario, descuento_porcentaje)
+                               VALUES (%s,%s,%s,%s,%s)""",
+                            (id_backorder, f['id_producto'], f['falta'], f['precio_unitario'], f['descuento_porcentaje']))
+            nota += " → Backorder #" + str(id_backorder).zfill(4)
+        cur.execute("RELEASE SAVEPOINT sp_bo")
+    except Exception:
+        cur.execute("ROLLBACK TO SAVEPOINT sp_bo")
+        id_backorder = None
+
+    cur.execute("SAVEPOINT sp_nota_bo")
+    try:
+        cur.execute("UPDATE pedidos_b2b SET faltantes_nota=%s WHERE id=%s", (nota, id_pedido))
+        cur.execute("RELEASE SAVEPOINT sp_nota_bo")
+    except Exception:
+        cur.execute("ROLLBACK TO SAVEPOINT sp_nota_bo")
+
+    return (id_backorder, nota)
 
 class GuiaTransporte(BaseModel):
     transporte: Optional[str] = None
@@ -8328,7 +8500,7 @@ def ia_preguntar(data: dict = Body(...)):
         try:
             cur.execute("""
                 SELECT d.razon_social AS distribuidor,
-                    COALESCE((SELECT SUM(p.total) FROM pedidos_b2b p WHERE p.id_distribuidor=d.id AND p.estado IN ('Despachado','Despachado parcial')),0) AS pedidos,
+                    COALESCE((SELECT SUM(p.total + COALESCE(p.iva_aplicado,0)) FROM pedidos_b2b p WHERE p.id_distribuidor=d.id AND p.estado IN ('Despachado','Despachado parcial')),0) AS pedidos,
                     COALESCE((SELECT SUM(c.monto) FROM cobros_distribuidores c WHERE c.id_distribuidor=d.id),0) AS cobrado
                 FROM distribuidores d WHERE COALESCE(d.activo,true)=true
             """)
