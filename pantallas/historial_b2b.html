@@ -116,6 +116,10 @@
                 </div>
                 <button onclick="cerrarModales()" class="text-gray-500 hover:text-white text-2xl">×</button>
             </div>
+            <div id="det-observaciones-bloque" class="hidden bg-blue-900/20 border border-blue-700/50 rounded-lg px-3 py-2 mb-4">
+                <p class="text-xs text-blue-300 font-bold mb-1">📝 Observaciones del distribuidor:</p>
+                <p id="det-observaciones-texto" class="text-sm text-blue-100 whitespace-pre-wrap"></p>
+            </div>
             <div id="tabla-det" class="mb-3"></div>
             <div id="aviso-faltantes" class="hidden mb-4"></div>
 
@@ -317,7 +321,7 @@
             var relNom = document.createElement('div'); relNom.className = 'relative inline-block';
             var btnNom = document.createElement('button');
             btnNom.className = 'font-bold text-white hover:text-neon transition text-left flex items-center gap-1';
-            btnNom.innerHTML = (p.distribuidor || '—') + ' <span class="text-gray-600 text-xs">▾</span>';
+            btnNom.innerHTML = (p.distribuidor || '—') + ((p.observaciones && p.observaciones.trim()) ? ' <span class="text-blue-400 text-xs" title="Este pedido tiene observaciones">📝</span>' : '') + ' <span class="text-gray-600 text-xs">▾</span>';
             var menuNom = document.createElement('div');
             menuNom.className = 'menu-acciones hidden bg-gray-800 border border-gray-700 rounded-lg shadow-2xl w-48';
             menuNom.style.zIndex = '9999';
@@ -575,6 +579,16 @@
             document.getElementById('det-dist').textContent   = dist.razon_social || pedidoActual.distribuidor;
             document.getElementById('det-fecha').textContent  = new Date(pedidoActual.fecha).toLocaleString('es-AR', {dateStyle:'long', timeStyle:'short'});
             document.getElementById('det-total').textContent  = '$ ' + (parseFloat(pedidoActual.total||0) + parseFloat(pedidoActual.iva_aplicado||0)).toLocaleString('es-AR');
+
+            // Observaciones que dejó el distribuidor al hacer el pedido
+            var obsBloque = document.getElementById('det-observaciones-bloque');
+            var obsTexto = (pedidoActual.observaciones || '').trim();
+            if (obsTexto) {
+                document.getElementById('det-observaciones-texto').textContent = obsTexto;
+                obsBloque.classList.remove('hidden');
+            } else {
+                obsBloque.classList.add('hidden');
+            }
             // El descuento de orden ahora se puede aplicar en cualquier estado del pedido
             var seccionDesc = document.getElementById('det-descuento-seccion');
             var pctInput = document.getElementById('det-descuento-pct');
