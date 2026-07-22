@@ -154,6 +154,7 @@
                 <button onclick="imprimirRemito()" class="border border-gray-600 hover:border-gray-400 text-gray-300 hover:text-white py-2 px-3 rounded text-sm transition">📄 Remito</button>
                 <button onclick="imprimirRotulo()" class="border border-gray-600 hover:border-gray-400 text-gray-300 hover:text-white py-2 px-3 rounded text-sm transition">🏷️ Rótulo / Guía</button>
                 <button onclick="imprimirFacturaA()" class="border border-blue-700 hover:bg-blue-800/30 text-blue-300 hover:text-blue-200 py-2 px-3 rounded text-sm transition font-bold">🧾 Factura A (modelo)</button>
+                <button onclick="imprimirComprobanteInterno()" class="border border-purple-700 hover:bg-purple-800/30 text-purple-300 hover:text-purple-200 py-2 px-3 rounded text-sm transition font-bold">📋 Comprobante interno</button>
                 <button onclick="wsp('preparado')" class="bg-green-800 hover:bg-green-700 text-white py-2 px-3 rounded text-sm transition">📱 WSP Listo</button>
                 <button onclick="wsp('despachado')" class="bg-green-700 hover:bg-green-600 text-white py-2 px-3 rounded text-sm transition">📱 WSP Despachado</button>
                 <button onclick="guardarCambios()" id="btn-guardar-cambios" class="bg-neon text-black font-bold py-2 px-3 rounded text-sm hover:bg-yellow-300">💾 Guardar Cambios</button>
@@ -1035,6 +1036,128 @@
             doc.text('Firma cliente', 14, y+5);
             doc.text('Firma empresa', 130, y+5);
             mostrarPreview(doc, 'Orden de Compra #' + num, 'orden_' + num + '.pdf');
+        }
+
+        function imprimirComprobanteInterno() {
+            var jsPDF = window.jspdf.jsPDF;
+            var doc = new jsPDF();
+            var num = String(pedidoActual.id).padStart(4,'0');
+            var dist = distribuidores.find(function(d) { return String(d.id) === String(pedidoActual.id_distribuidor); }) || {};
+            membrete(doc);
+
+            doc.setTextColor(40,40,40); doc.setFontSize(14); doc.setFont('helvetica','bold');
+            doc.text('COMPROBANTE INTERNO  N° ' + num, 105, 45, {align:'center'});
+            doc.setFontSize(8); doc.setFont('helvetica','bold'); doc.setTextColor(150,60,60);
+            doc.text('DOCUMENTO SIN VALOR FISCAL - NO VALIDO COMO FACTURA', 105, 51, {align:'center'});
+
+            // Datos del cliente y referencias
+            doc.setTextColor(0,0,0); doc.setFont('helvetica','normal'); doc.setFontSize(8);
+            doc.text('CLIENTE: ' + (dist.razon_social || pedidoActual.distribuidor), 14, 61);
+            if (dist.cuit) doc.text('CUIT: ' + dist.cuit, 14, 66);
+            if (dist.direccion) doc.text(dist.direccion + (dist.localidad ? ' - ' + dist.localidad : ''), 14, 71);
+            doc.text('Fecha: ' + new Date(pedidoActual.fecha).toLocaleDateString('es-AR'), 140, 61);
+            doc.setFont('helvetica','bold');
+            doc.text('Corresponde a REMITO N° ' + num, 140, 66);
+            doc.setFont('helvetica','normal');
+            doc.text('Pedido interno: #' + num + ' (' + pedidoActual.estado + ')', 140, 71);
+
+            // Calcular desglose por item
+            var brutoTotal = 0, descProductoTotal = 0;
+            var filas = itemsActuales.map(function(i) {
+                var cant = parseInt(i.cantidad) || 0;
+                var precio = parseFloat(i.precio_unitario) || 0;
+                var descPct = parseFloat(i.descuento_porcentaje || 0);
+                var bruto = cant * precio;
+                var montoDesc = bruto * descPct / 100;
+                var neto = bruto - montoDesc;
+                brutoTotal += bruto;
+                descProductoTotal += montoDesc;
+                return [
+                    i.producto,
+                    String(cant),
+                    '$ ' + precio.toLocaleString('es-AR'),
+                    '$ ' + bruto.toLocaleString('es-AR'),
+                    descPct > 0 ? descPct + '%' : '-',
+                    descPct > 0 ? '-$ ' + montoDesc.toLocaleString('es-AR', {maximumFractionDigits:2}) : '-',
+                    '$ ' + neto.toLocaleString('es-AR', {maximumFractionDigits:2})
+                ];
+            });
+
+            doc.autoTable({
+                startY: 78,
+                margin: {left: 14, right: 14},
+                head: [['Producto','Cant.','P. Lista','Bruto','Desc.','Ahorro','Subtotal']],
+                body: filas,
+                headStyles: {fillColor:[235,235,235], textColor:[0,0,0], fontStyle:'bold', fontSize:7.5, lineWidth:0.3, lineColor:[0,0,0]},
+                styles: {fontSize:7.5, cellPadding:1.5, lineWidth:0.2, lineColor:[120,120,120]},
+                columnStyles: {
+                    0:{cellWidth:'auto'},
+                    1:{halign:'center', cellWidth:14},
+                    2:{halign:'right', cellWidth:22},
+                    3:{halign:'right', cellWidth:24},
+                    4:{halign:'center', cellWidth:14},
+                    5:{halign:'right', cellWidth:24},
+                    6:{halign:'right', cellWidth:26}
+                }
+            });
+
+            // ── Resumen de totales con desglose de descuentos ──
+            var y = doc.lastAutoTable.finalY + 8;
+            var subtotalNeto = brutoTotal - descProductoTotal;
+            var descOrdenPct = parseFloat(pedidoActual.descuento_porcentaje || 0);
+            var descOrdenMonto = descOrdenPct > 0 ? subtotalNeto * descOrdenPct / 100 : 0;
+            var netoFinal = subtotalNeto - descOrdenMonto;
+            var iva = parseFloat(pedidoActual.iva_aplicado || 0);
+            var totalFinal = netoFinal + iva;
+            var ahorroTotal = descProductoTotal + descOrdenMonto;
+
+            function linea(etiqueta, valor, negrita, color) {
+                doc.setFont('helvetica', negrita ? 'bold' : 'normal');
+                doc.setTextColor(color ? color[0] : 0, color ? color[1] : 0, color ? color[2] : 0);
+                doc.text(etiqueta, 130, y, {align:'right'});
+                doc.text(valor, 196, y, {align:'right'});
+                y += 5.5;
+            }
+
+            doc.setFontSize(9);
+            linea('Importe bruto (precio de lista):', '$ ' + brutoTotal.toLocaleString('es-AR', {minimumFractionDigits:2}));
+            if (descProductoTotal > 0) {
+                linea('Descuentos por producto:', '-$ ' + descProductoTotal.toLocaleString('es-AR', {minimumFractionDigits:2}), false, [180,60,60]);
+                linea('Subtotal:', '$ ' + subtotalNeto.toLocaleString('es-AR', {minimumFractionDigits:2}));
+            }
+            if (descOrdenPct > 0) {
+                linea('Descuento general (' + descOrdenPct + '%):', '-$ ' + descOrdenMonto.toLocaleString('es-AR', {minimumFractionDigits:2}), false, [180,60,60]);
+            }
+            if (descProductoTotal > 0 || descOrdenPct > 0) {
+                y += 1;
+                linea('NETO CON DESCUENTOS:', '$ ' + netoFinal.toLocaleString('es-AR', {minimumFractionDigits:2}), true);
+            }
+            if (iva > 0) {
+                linea('IVA (21%):', '$ ' + iva.toLocaleString('es-AR', {minimumFractionDigits:2}));
+            }
+            y += 2;
+            doc.setLineWidth(0.4); doc.setDrawColor(0,0,0);
+            doc.line(100, y-3, 196, y-3);
+            doc.setFontSize(12);
+            linea('TOTAL A ABONAR:', '$ ' + totalFinal.toLocaleString('es-AR', {minimumFractionDigits:2}), true, [200,90,0]);
+
+            // Recuadro de ahorro (si hubo descuentos)
+            if (ahorroTotal > 0) {
+                doc.setFillColor(240, 248, 235);
+                doc.setDrawColor(120, 160, 90); doc.setLineWidth(0.3);
+                doc.roundedRect(14, y, 80, 16, 2, 2, 'FD');
+                doc.setFontSize(8); doc.setFont('helvetica','normal'); doc.setTextColor(70,110,50);
+                doc.text('Ahorro total aplicado:', 18, y+6);
+                doc.setFont('helvetica','bold'); doc.setFontSize(11);
+                doc.text('$ ' + ahorroTotal.toLocaleString('es-AR', {minimumFractionDigits:2}), 18, y+13);
+            }
+
+            // Pie
+            doc.setTextColor(130,130,130); doc.setFont('helvetica','normal'); doc.setFontSize(6.5);
+            doc.text('Comprobante de uso interno. No reemplaza a la factura ni al remito fiscal. Emitido el ' +
+                     new Date().toLocaleString('es-AR', {dateStyle:'short', timeStyle:'short'}), 14, 285);
+
+            mostrarPreview(doc, 'Comprobante Interno #' + num, 'comprobante_interno_' + num + '.pdf');
         }
 
         function imprimirRemito() {
