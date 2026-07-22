@@ -1061,10 +1061,21 @@
             doc.setFont('helvetica','normal');
             doc.text('Pedido interno: #' + num + ' (' + pedidoActual.estado + ')', 140, 71);
 
-            // Calcular desglose por item
+            // Calcular desglose por item — SOLO lo efectivamente despachado (cantidad armada).
+            // Si el pedido todavía no tiene armado registrado, se usa lo pedido.
+            var hayArmado = itemsActuales.some(function(i){ return i.armado !== null && i.armado !== undefined; });
+            var itemsDespachados = hayArmado
+                ? itemsActuales.filter(function(i){ return (parseInt(i.armado) || 0) > 0; })
+                : itemsActuales.slice();
+
+            if (!itemsDespachados.length) {
+                alert('Este pedido no tiene productos despachados todavía.\n\nEl comprobante interno refleja lo que efectivamente salió, así que no hay nada para emitir.');
+                return;
+            }
+
             var brutoTotal = 0, descProductoTotal = 0;
-            var filas = itemsActuales.map(function(i) {
-                var cant = parseInt(i.cantidad) || 0;
+            var filas = itemsDespachados.map(function(i) {
+                var cant = hayArmado ? (parseInt(i.armado) || 0) : (parseInt(i.cantidad) || 0);
                 var precio = parseFloat(i.precio_unitario) || 0;
                 var descPct = parseFloat(i.descuento_porcentaje || 0);
                 var bruto = cant * precio;
@@ -1072,8 +1083,14 @@
                 var neto = bruto - montoDesc;
                 brutoTotal += bruto;
                 descProductoTotal += montoDesc;
+                var pedidoOrig = parseInt(i.cantidad) || 0;
+                var nombreProd = i.producto;
+                // Si se despachó menos de lo pedido, dejarlo asentado
+                if (hayArmado && cant < pedidoOrig) {
+                    nombreProd += '  (pedido: ' + pedidoOrig + ')';
+                }
                 return [
-                    i.producto,
+                    nombreProd,
                     String(cant),
                     '$ ' + precio.toLocaleString('es-AR'),
                     '$ ' + bruto.toLocaleString('es-AR'),
@@ -1083,8 +1100,13 @@
                 ];
             });
 
+            doc.setFont('helvetica','bold'); doc.setFontSize(7.5); doc.setTextColor(70,70,70);
+            doc.text(hayArmado ? 'Detalle de MERCADERIA DESPACHADA (cantidades efectivamente entregadas)'
+                               : 'Detalle segun pedido (aun sin armado registrado)', 14, 77);
+            doc.setTextColor(0,0,0);
+
             doc.autoTable({
-                startY: 78,
+                startY: 80,
                 margin: {left: 14, right: 14},
                 head: [['Producto','Cant.','P. Lista','Bruto','Desc.','Ahorro','Subtotal']],
                 body: filas,
@@ -1107,7 +1129,10 @@
             var descOrdenPct = parseFloat(pedidoActual.descuento_porcentaje || 0);
             var descOrdenMonto = descOrdenPct > 0 ? subtotalNeto * descOrdenPct / 100 : 0;
             var netoFinal = subtotalNeto - descOrdenMonto;
-            var iva = parseFloat(pedidoActual.iva_aplicado || 0);
+            // El IVA guardado corresponde al pedido completo; acá se recalcula sobre lo
+            // efectivamente despachado para que el comprobante cierre con lo que salió.
+            var tieneIva = parseFloat(pedidoActual.iva_aplicado || 0) > 0;
+            var iva = tieneIva ? Math.round(netoFinal * 0.21 * 100) / 100 : 0;
             var totalFinal = netoFinal + iva;
             var ahorroTotal = descProductoTotal + descOrdenMonto;
 
