@@ -8535,29 +8535,55 @@ def deudas_distribuidores():
     conn = obtener_conexion()
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
-        cur.execute("""
+        # Mismo criterio que el estado de cuenta: se cobra SOLO lo despachado,
+        # neto de descuentos (por producto y de orden) y con el IVA proporcional a ese neto.
+        consulta_completa = """
+            WITH pedidos_neto AS (
+                SELECT p.id, p.id_distribuidor, p.fecha,
+                    ROUND((
+                      CASE WHEN EXISTS (SELECT 1 FROM preparacion_items pi WHERE pi.id_pedido = p.id)
+                           THEN COALESCE((
+                              SELECT SUM(pi.cantidad * dp.precio_unitario
+                                         * (1 - COALESCE(dp.descuento_porcentaje,0)/100.0))
+                              FROM preparacion_items pi
+                              JOIN detalle_pedidos_b2b dp ON dp.id_pedido = pi.id_pedido AND dp.id_producto = pi.id_producto
+                              WHERE pi.id_pedido = p.id
+                           ), 0) * (1 - COALESCE(p.descuento_porcentaje,0)/100.0)
+                           ELSE COALESCE(p.total, 0)
+                      END
+                    )::numeric, 2) AS neto,
+                    COALESCE(p.iva_aplicado, 0) AS iva_guardado
+                FROM pedidos_b2b p
+                WHERE p.estado IN ('Despachado','Despachado parcial')
+            ),
+            pedidos_real AS (
+                SELECT id, id_distribuidor, fecha,
+                       neto + CASE WHEN iva_guardado > 0 THEN ROUND((neto * 0.21)::numeric, 2) ELSE 0 END AS monto_real
+                FROM pedidos_neto
+            )
             SELECT d.id, d.razon_social AS distribuidor, d.telefono,
-                COALESCE((
-                    SELECT SUM(
-                        CASE WHEN EXISTS (SELECT 1 FROM preparacion_items pi WHERE pi.id_pedido = p.id)
-                             THEN COALESCE((
-                                SELECT SUM(pi.cantidad * dp.precio_unitario)
-                                FROM preparacion_items pi
-                                JOIN detalle_pedidos_b2b dp ON dp.id_pedido = pi.id_pedido AND dp.id_producto = pi.id_producto
-                                WHERE pi.id_pedido = p.id
-                             ), 0)
-                             ELSE COALESCE(p.total, 0)
-                        END
-                    )
-                    FROM pedidos_b2b p
-                    WHERE p.id_distribuidor=d.id AND p.estado IN ('Despachado','Despachado parcial')
-                ),0) AS pedidos,
-                COALESCE((SELECT SUM(c.monto) FROM cobros_distribuidores c WHERE c.id_distribuidor=d.id),0) AS cobrado,
-                (SELECT MIN(p.fecha) FROM pedidos_b2b p
-                 WHERE p.id_distribuidor=d.id AND p.estado IN ('Despachado','Despachado parcial')) AS pedido_mas_viejo
+                COALESCE((SELECT SUM(pr.monto_real) FROM pedidos_real pr WHERE pr.id_distribuidor = d.id), 0) AS pedidos,
+                COALESCE((SELECT SUM(c.monto) FROM cobros_distribuidores c WHERE c.id_distribuidor = d.id), 0) AS cobrado,
+                (SELECT MIN(pr.fecha) FROM pedidos_real pr WHERE pr.id_distribuidor = d.id) AS pedido_mas_viejo
             FROM distribuidores d
-            WHERE COALESCE(d.activo,true)=true
-        """)
+            WHERE COALESCE(d.activo,true) = true
+        """
+        try:
+            cur.execute(consulta_completa)
+        except Exception:
+            # Fallback por si faltan las columnas de descuento/IVA (migraciones no corridas)
+            conn.rollback()
+            cur = conn.cursor(cursor_factory=RealDictCursor)
+            cur.execute("""
+                SELECT d.id, d.razon_social AS distribuidor, d.telefono,
+                    COALESCE((SELECT SUM(COALESCE(p.total,0)) FROM pedidos_b2b p
+                              WHERE p.id_distribuidor=d.id AND p.estado IN ('Despachado','Despachado parcial')),0) AS pedidos,
+                    COALESCE((SELECT SUM(c.monto) FROM cobros_distribuidores c WHERE c.id_distribuidor=d.id),0) AS cobrado,
+                    (SELECT MIN(p.fecha) FROM pedidos_b2b p
+                     WHERE p.id_distribuidor=d.id AND p.estado IN ('Despachado','Despachado parcial')) AS pedido_mas_viejo
+                FROM distribuidores d
+                WHERE COALESCE(d.activo,true)=true
+            """)
         filas = fetchall_dict(cur)
         deudores = []
         total = 0.0
