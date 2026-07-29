@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Generador de Catálogo · Portal del Viento</title>
+<script src="/static/auth.js"></script>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<style>
+    body { background:#000; color:#fff; font-family: ui-sans-serif, system-ui, sans-serif; }
+    .text-neon { color:#e4fc74; } .bg-neon { background-color:#e4fc74; } .border-neon { border-color:#e4fc74; }
+    .prod-chk:checked + label { border-color:#e4fc74; background:rgba(228,252,116,0.08); }
+    .cat-pill.activa { background:#e4fc74; color:#000; }
+    input[type=checkbox].prod-chk { position:absolute; opacity:0; }
+    .card-prod { transition: all .12s; cursor:pointer; }
+</style>
+</head>
+<body class="min-h-screen">
+
+<div class="max-w-6xl mx-auto px-4 py-6">
+    <!-- Cabecera -->
+    <div class="flex items-center justify-between mb-1">
+        <div>
+            <p class="text-neon font-bold text-sm tracking-wide">PORTAL DEL VIENTO</p>
+            <h1 class="text-2xl font-bold">Generador de catálogo</h1>
+        </div>
+        <span id="usuario-info" class="text-gray-500 text-xs"></span>
+    </div>
+    <p class="text-gray-500 text-sm mb-5">Elegí los productos, decidí si mostrar precios y generá el catálogo para compartir o imprimir.</p>
+
+    <!-- Opciones -->
+    <div class="bg-gray-900/60 border border-gray-800 rounded-xl p-4 mb-5 flex flex-wrap gap-5 items-end">
+        <div>
+            <label class="block text-xs text-gray-500 font-bold mb-1">Precios a mostrar</label>
+            <select id="opt-precio" class="bg-black border border-gray-700 text-white rounded-lg p-2 text-sm">
+                <option value="ninguno">Sin precios</option>
+                <option value="mayorista" selected>Precio mayorista</option>
+                <option value="minorista">Precio minorista</option>
+            </select>
+        </div>
+        <div>
+            <label class="block text-xs text-gray-500 font-bold mb-1">Título del catálogo</label>
+            <input id="opt-titulo" value="Catálogo de productos" class="bg-black border border-gray-700 text-white rounded-lg p-2 text-sm w-56">
+        </div>
+        <div class="flex items-center gap-2 pb-1">
+            <input type="checkbox" id="opt-imagenes" checked class="w-4 h-4" style="accent-color:#e4fc74;">
+            <label for="opt-imagenes" class="text-sm text-gray-300">Incluir imágenes</label>
+        </div>
+        <div class="ml-auto flex gap-2">
+            <button onclick="seleccionarTodos(true)" class="text-xs border border-gray-700 hover:border-gray-500 text-gray-300 rounded-lg px-3 py-2">Seleccionar todo</button>
+            <button onclick="seleccionarTodos(false)" class="text-xs border border-gray-700 hover:border-gray-500 text-gray-300 rounded-lg px-3 py-2">Ninguno</button>
+        </div>
+    </div>
+
+    <!-- Filtro por categoría -->
+    <div id="filtro-cats" class="flex flex-wrap gap-2 mb-4"></div>
+
+    <!-- Contador -->
+    <p class="text-sm text-gray-400 mb-3"><span id="contador" class="text-neon font-bold">0</span> productos seleccionados</p>
+
+    <!-- Grilla de productos -->
+    <div id="grilla" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 mb-24"></div>
+</div>
+
+<!-- Barra de acción fija -->
+<div class="fixed bottom-0 left-0 right-0 bg-black border-t border-gray-800 p-4">
+    <div class="max-w-6xl mx-auto flex gap-3">
+        <button onclick="generarWeb()" class="flex-1 border border-neon text-neon font-bold py-3 rounded-xl hover:bg-neon hover:text-black transition">🌐 Ver catálogo web</button>
+        <button onclick="generarPDF()" class="flex-1 bg-neon text-black font-bold py-3 rounded-xl hover:bg-yellow-300 transition">📄 Descargar PDF</button>
+    </div>
+</div>
+
+<script>
+    var API_URL = window.location.origin + "/api";
+    if (window.location.hostname === '127.0.0.1' && window.location.port !== '8000') API_URL = "http://127.0.0.1:8000/api";
+
+    var usr = JSON.parse(sessionStorage.getItem('usuario') || '{}');
+    if (usr.nombre) document.getElementById('usuario-info').textContent = usr.nombre + (usr.apellido ? ' ' + usr.apellido : '');
+
+    var productos = [];
+    var categorias = [];
+    var catActiva = 'todas';
+    var empresa = {};
+
+    async function init() {
+        try {
+            var res = await fetch(API_URL + '/productos', {cache:'no-store'});
+            var data = await res.json();
+            productos = (Array.isArray(data) ? data : (data.productos || []))
+                .filter(function(p){ return p.activo === undefined || p.activo; })
+                .map(function(p){ p._sel = true; return p; });
+        } catch(e) { productos = []; }
+        try {
+            var rc = await fetch(API_URL + '/categorias', {cache:'no-store'});
+            categorias = await rc.json();
+        } catch(e) { categorias = []; }
+        try {
+            var re = await fetch(API_URL + '/configuracion/empresa', {cache:'no-store'});
+            if (re.ok) empresa = await re.json();
+        } catch(e) {}
+        renderFiltros();
+        renderGrilla();
+    }
+
+    function renderFiltros() {
+        var cont = document.getElementById('filtro-cats');
+        var pills = ['<button onclick="filtrarCat(\'todas\')" class="cat-pill activa border border-gray-700 rounded-full px-3 py-1 text-xs font-bold" data-cat="todas">Todas</button>'];
+        categorias.forEach(function(c){
+            pills.push('<button onclick="filtrarCat(' + c.id + ')" class="cat-pill border border-gray-700 rounded-full px-3 py-1 text-xs font-bold" data-cat="' + c.id + '">' + c.nombre + '</button>');
+        });
+        cont.innerHTML = pills.join('');
+    }
+
+    function filtrarCat(cat) {
+        catActiva = cat;
+        document.querySelectorAll('.cat-pill').forEach(function(b){
+            b.classList.toggle('activa', String(b.dataset.cat) === String(cat));
+        });
+        renderGrilla();
+    }
+
+    function productosVisibles() {
+        if (catActiva === 'todas') return productos;
+        return productos.filter(function(p){ return String(p.id_categoria) === String(catActiva); });
+    }
+
+    function renderGrilla() {
+        var g = document.getElementById('grilla');
+        var vis = productosVisibles();
+        if (!vis.length) { g.innerHTML = '<p class="text-gray-600 col-span-full">No hay productos en esta categoría.</p>'; actualizarContador(); return; }
+        g.innerHTML = vis.map(function(p){
+            var img = p.imagen_url
+                ? '<img src="' + p.imagen_url + '" class="w-full h-24 object-cover rounded-lg mb-2" onerror="this.style.display=\'none\'">'
+                : '<div class="w-full h-24 bg-gray-800 rounded-lg mb-2 flex items-center justify-center text-gray-600 text-xs">Sin imagen</div>';
+            return '<div class="card-prod bg-gray-900/60 border-2 ' + (p._sel ? 'border-neon' : 'border-gray-800') + ' rounded-xl p-2" onclick="toggleProd(' + p.id + ')" id="card-' + p.id + '">' +
+                img +
+                '<p class="text-white text-sm font-bold leading-tight">' + p.nombre + '</p>' +
+                '<p class="text-gray-500 text-xs mt-0.5">' + (p._sel ? '<span class="text-neon">✓ incluido</span>' : 'tocar para incluir') + '</p>' +
+            '</div>';
+        }).join('');
+        actualizarContador();
+    }
+
+    function toggleProd(id) {
+        var p = productos.find(function(x){ return x.id === id; });
+        if (p) { p._sel = !p._sel; renderGrilla(); }
+    }
+
+    function seleccionarTodos(val) {
+        productosVisibles().forEach(function(p){ p._sel = val; });
+        renderGrilla();
+    }
+
+    function actualizarContador() {
+        document.getElementById('contador').textContent = productos.filter(function(p){ return p._sel; }).length;
+    }
+
+    function seleccionados() {
+        return productos.filter(function(p){ return p._sel; });
+    }
+
+    function precioDe(p) {
+        var opt = document.getElementById('opt-precio').value;
+        if (opt === 'mayorista') return parseFloat(p.precio_mayorista || 0);
+        if (opt === 'minorista') return parseFloat(p.precio_minorista || 0);
+        return null;
+    }
+
+    function fmtPrecio(v) {
+        return '$ ' + Math.round(v).toLocaleString('es-AR');
+    }
+
+    // ── Catálogo WEB (nueva pestaña) ──
+    function generarWeb() {
+        var sel = seleccionados();
+        if (!sel.length) { alert('Elegí al menos un producto.'); return; }
+        var titulo = document.getElementById('opt-titulo').value || 'Catálogo';
+        var mostrarPrecio = document.getElementById('opt-precio').value !== 'ninguno';
+        var conImg = document.getElementById('opt-imagenes').checked;
+
+        // Agrupar por categoría
+        var porCat = {};
+        sel.forEach(function(p){
+            var cat = (categorias.find(function(c){ return c.id === p.id_categoria; }) || {}).nombre || 'Otros';
+            (porCat[cat] = porCat[cat] || []).push(p);
+        });
+
+        var bloques = Object.keys(porCat).sort().map(function(cat){
+            var cards = porCat[cat].map(function(p){
+                var precio = mostrarPrecio ? '<span class="precio">' + fmtPrecio(precioDe(p) || 0) + '</span>' : '';
+                var img = (conImg && p.imagen_url)
+                    ? '<img src="' + p.imagen_url + '" onerror="this.parentNode.removeChild(this)">'
+                    : '';
+                return '<div class="card">' + img + '<div class="info"><span class="nom">' + p.nombre + '</span>' + precio + '</div></div>';
+            }).join('');
+            return '<h2>' + cat + '</h2><div class="grid">' + cards + '</div>';
+        }).join('');
+
+        var emp = empresa.razon_social || 'Portal del Viento';
+        var contacto = [empresa.telefono, empresa.direccion].filter(Boolean).join('  ·  ');
+
+        var html = '<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">' +
+            '<meta name="viewport" content="width=device-width, initial-scale=1.0"><title>' + titulo + '</title>' +
+            '<style>' +
+            '*{margin:0;padding:0;box-sizing:border-box}' +
+            'body{background:#0a0a0a;color:#fff;font-family:ui-sans-serif,system-ui,sans-serif;padding:0 0 60px}' +
+            'header{background:#000;border-bottom:3px solid #e4fc74;padding:28px 24px}' +
+            'header .marca{color:#e4fc74;font-weight:800;letter-spacing:1px;font-size:14px}' +
+            'header h1{font-size:30px;margin-top:4px}' +
+            'header .cont{color:#888;font-size:13px;margin-top:6px}' +
+            '.wrap{max-width:1000px;margin:0 auto;padding:24px}' +
+            'h2{color:#e4fc74;font-size:18px;margin:26px 0 12px;border-bottom:1px solid #222;padding-bottom:6px}' +
+            '.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px}' +
+            '.card{background:#141414;border:1px solid #262626;border-radius:12px;overflow:hidden}' +
+            '.card img{width:100%;height:150px;object-fit:cover;display:block}' +
+            '.card .info{padding:12px;display:flex;flex-direction:column;gap:4px}' +
+            '.card .nom{font-weight:700;font-size:15px}' +
+            '.card .precio{color:#e4fc74;font-weight:800;font-size:17px}' +
+            'footer{text-align:center;color:#555;font-size:12px;margin-top:40px}' +
+            '</style></head><body>' +
+            '<header><div class="marca">' + emp.toUpperCase() + '</div><h1>' + titulo + '</h1>' +
+            (contacto ? '<div class="cont">' + contacto + '</div>' : '') + '</header>' +
+            '<div class="wrap">' + bloques + '</div>' +
+            '<footer>Catálogo generado el ' + new Date().toLocaleDateString('es-AR') + '</footer>' +
+            '</body></html>';
+
+        var w = window.open('', '_blank');
+        w.document.write(html);
+        w.document.close();
+    }
+
+    // ── Catálogo PDF ──
+    function generarPDF() {
+        var sel = seleccionados();
+        if (!sel.length) { alert('Elegí al menos un producto.'); return; }
+        var titulo = document.getElementById('opt-titulo').value || 'Catálogo';
+        var mostrarPrecio = document.getElementById('opt-precio').value !== 'ninguno';
+        var jsPDF = window.jspdf.jsPDF;
+        var doc = new jsPDF();
+        var W = 210;
+
+        // Cabecera
+        doc.setFillColor(0,0,0); doc.rect(0,0,W,32,'F');
+        doc.setFillColor(228,252,116); doc.rect(0,32,W,1.5,'F');
+        doc.setTextColor(228,252,116); doc.setFont('helvetica','bold'); doc.setFontSize(10);
+        doc.text((empresa.razon_social || 'PORTAL DEL VIENTO').toUpperCase(), 14, 14);
+        doc.setTextColor(255,255,255); doc.setFontSize(17);
+        doc.text(titulo, 14, 24);
+
+        // Agrupar por categoría
+        var porCat = {};
+        sel.forEach(function(p){
+            var cat = (categorias.find(function(c){ return c.id === p.id_categoria; }) || {}).nombre || 'Otros';
+            (porCat[cat] = porCat[cat] || []).push(p);
+        });
+
+        var y = 42;
+        Object.keys(porCat).sort().forEach(function(cat){
+            var filas = porCat[cat].map(function(p){
+                var row = [p.nombre];
+                if (mostrarPrecio) row.push(fmtPrecio(precioDe(p) || 0));
+                return row;
+            });
+            var head = mostrarPrecio ? [['Producto', 'Precio']] : [['Producto']];
+            doc.autoTable({
+                startY: y,
+                margin: {left:14, right:14},
+                head: [[{content: cat, colSpan: mostrarPrecio ? 2 : 1, styles:{fillColor:[228,252,116], textColor:[0,0,0], fontStyle:'bold', halign:'left'}}]].concat(head),
+                body: filas,
+                theme:'grid',
+                headStyles:{fillColor:[235,235,235], textColor:[0,0,0], fontStyle:'bold', fontSize:9},
+                styles:{fontSize:9, cellPadding:2.5, lineColor:[210,210,210], lineWidth:0.2},
+                columnStyles: mostrarPrecio ? {0:{cellWidth:'auto'}, 1:{halign:'right', cellWidth:40, fontStyle:'bold'}} : {0:{cellWidth:'auto'}}
+            });
+            y = doc.lastAutoTable.finalY + 6;
+        });
+
+        // Pie
+        var paginas = doc.internal.getNumberOfPages();
+        for (var i = 1; i <= paginas; i++) {
+            doc.setPage(i);
+            doc.setFontSize(7); doc.setTextColor(150,150,150);
+            doc.text('Generado el ' + new Date().toLocaleDateString('es-AR') + '  ·  Página ' + i + '/' + paginas, 14, 290);
+        }
+
+        doc.save('catalogo_portal_del_viento.pdf');
+    }
+
+    init();
+</script>
+</body>
+</html>
