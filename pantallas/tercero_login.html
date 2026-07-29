@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ingreso — Emprendimiento</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  :root { --neon: #e4fc74; }
+  .text-neon { color: var(--neon); }
+  .bg-neon { background-color: var(--neon); }
+  body { background:#0a0a0a; }
+</style>
+</head>
+<body class="min-h-screen flex items-center justify-center p-4">
+  <div class="w-full max-w-sm">
+    <div class="text-center mb-8">
+      <h1 class="text-3xl font-bold text-white">Emprendimiento</h1>
+      <p class="text-gray-500 text-sm mt-1">Control de mercadería y caja</p>
+    </div>
+    <div class="bg-gray-900 border border-gray-800 rounded-2xl p-6">
+      <label class="block text-xs text-gray-500 font-bold mb-1">Usuario</label>
+      <input id="username" class="w-full bg-black border border-gray-700 text-white rounded-lg p-3 mb-4 focus:border-neon focus:outline-none" autocomplete="username">
+      <label class="block text-xs text-gray-500 font-bold mb-1">Contraseña</label>
+      <input id="password" type="password" class="w-full bg-black border border-gray-700 text-white rounded-lg p-3 mb-2 focus:border-neon focus:outline-none" autocomplete="current-password" onkeydown="if(event.key==='Enter')entrar()">
+      <p id="error" class="hidden text-red-400 text-sm mb-2"></p>
+      <button onclick="entrar()" id="btn" class="w-full bg-neon text-black font-bold rounded-lg py-3 mt-3 hover:bg-yellow-300 transition">Entrar</button>
+    </div>
+  </div>
+<script>
+  const API_URL = '/api';
+  async function entrar() {
+    const username = document.getElementById('username').value.trim();
+    const password = document.getElementById('password').value;
+    const err = document.getElementById('error');
+    const btn = document.getElementById('btn');
+    err.classList.add('hidden');
+    if (!username || !password) { err.textContent = 'Completá usuario y contraseña.'; err.classList.remove('hidden'); return; }
+    btn.disabled = true; btn.textContent = 'Ingresando...';
+    try {
+      const res = await fetch(API_URL + '/tercero/login', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ username, password })
+      });
+      const data = await res.json();
+      if (!res.ok) { err.textContent = data.detail || 'Error al ingresar.'; err.classList.remove('hidden'); btn.disabled=false; btn.textContent='Entrar'; return; }
+      sessionStorage.setItem('tercero_usuario', JSON.stringify({ id: data.id_usuario, nombre: data.nombre }));
+      window.location.href = '/tercero';
+    } catch(e) {
+      err.textContent = 'No se pudo conectar. Reintentá.'; err.classList.remove('hidden');
+      btn.disabled=false; btn.textContent='Entrar';
+    }
+  }
+</script>
+</body>
+</html>
