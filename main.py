@@ -9371,6 +9371,10 @@ def route_analisis_horarios():
 def route_carga_stock():
     return serve_html("carga_stock_pos.html")
 
+@app.get("/generador-catalogo")
+def route_generador_catalogo():
+    return serve_html("generador_catalogo.html")
+
 # ────────────────────────────────────────────────────────────────────────────
 # PORTAL DE CLIENTES DEL DISTRIBUIDOR
 # ────────────────────────────────────────────────────────────────────────────
