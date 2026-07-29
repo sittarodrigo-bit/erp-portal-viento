@@ -9846,6 +9846,246 @@ def listar_saldos_proveedores():
     finally:
         liberar_conexion(conn)
 
+# ════════════════════════════════════════════════════════════════════════════
+#  MÓDULO EMPRENDIMIENTO CON TERCERO — aislado del ERP
+#  Login propio (tercero_usuarios), mercadería, dinero y resultado.
+#  Ninguna de estas rutas toca datos de Portal del Viento.
+# ════════════════════════════════════════════════════════════════════════════
+
+class TerceroLogin(BaseModel):
+    username: str
+    password: str
+
+@app.post("/api/tercero/login")
+def tercero_login(data: TerceroLogin):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("SELECT id, nombre, password_hash, activo FROM tercero_usuarios WHERE username=%s", (data.username.strip(),))
+        u = cur.fetchone()
+        if not u or not u['activo']:
+            raise HTTPException(status_code=401, detail="Usuario o contraseña incorrectos.")
+        if not bcrypt.checkpw(data.password.encode(), u['password_hash'].encode()):
+            raise HTTPException(status_code=401, detail="Usuario o contraseña incorrectos.")
+        return {"status": "ok", "id_usuario": u['id'], "nombre": u['nombre']}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
+@app.post("/api/tercero/usuarios")
+def tercero_crear_usuario(data: dict = Body(...)):
+    """Alta de una persona con acceso al módulo. Login por persona."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        nombre = (data.get('nombre') or '').strip()
+        username = (data.get('username') or '').strip()
+        password = (data.get('password') or '').strip()
+        if not nombre or not username or not password:
+            raise HTTPException(status_code=400, detail="Nombre, usuario y contraseña son obligatorios.")
+        cur.execute("SELECT id FROM tercero_usuarios WHERE username=%s", (username,))
+        if cur.fetchone():
+            raise HTTPException(status_code=409, detail="Ese nombre de usuario ya existe.")
+        hash_pw = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+        cur.execute("INSERT INTO tercero_usuarios (nombre, username, password_hash) VALUES (%s,%s,%s) RETURNING id",
+                    (nombre, username, hash_pw))
+        nid = cur.fetchone()['id']
+        conn.commit()
+        return {"status": "ok", "id": nid}
+    except HTTPException:
+        raise
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
+@app.get("/api/tercero/usuarios")
+def tercero_listar_usuarios():
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("SELECT id, nombre, username, activo FROM tercero_usuarios ORDER BY nombre")
+        return fetchall_dict(cur)
+    finally:
+        liberar_conexion(conn)
+
+# ── ÍTEMS de mercadería ──
+@app.get("/api/tercero/items")
+def tercero_listar_items():
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("""
+            SELECT i.id, i.nombre, i.tipo, i.unidad, i.activo,
+                   COALESCE(SUM(CASE WHEN m.tipo='entrada' THEN m.cantidad
+                                     WHEN m.tipo='salida'  THEN -m.cantidad ELSE 0 END), 0) AS stock
+            FROM tercero_items i
+            LEFT JOIN tercero_mov_mercaderia m ON m.id_item = i.id
+            WHERE i.activo = true
+            GROUP BY i.id, i.nombre, i.tipo, i.unidad, i.activo
+            ORDER BY i.tipo, i.nombre
+        """)
+        return fetchall_dict(cur)
+    finally:
+        liberar_conexion(conn)
+
+@app.post("/api/tercero/items")
+def tercero_crear_item(data: dict = Body(...)):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        nombre = (data.get('nombre') or '').strip()
+        if not nombre:
+            raise HTTPException(status_code=400, detail="El nombre del ítem es obligatorio.")
+        tipo = data.get('tipo') if data.get('tipo') in ('insumo','terminado') else 'insumo'
+        unidad = (data.get('unidad') or 'unidad').strip()
+        cur.execute("INSERT INTO tercero_items (nombre, tipo, unidad) VALUES (%s,%s,%s) RETURNING id",
+                    (nombre, tipo, unidad))
+        nid = cur.fetchone()['id']
+        conn.commit()
+        return {"status": "ok", "id": nid}
+    except HTTPException:
+        raise
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
+# ── MOVIMIENTOS de mercadería ──
+@app.post("/api/tercero/mercaderia")
+def tercero_registrar_mercaderia(data: dict = Body(...)):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        id_item = data.get('id_item')
+        tipo = data.get('tipo')
+        cantidad = float(data.get('cantidad') or 0)
+        if not id_item or tipo not in ('entrada','salida') or cantidad <= 0:
+            raise HTTPException(status_code=400, detail="Ítem, tipo (entrada/salida) y cantidad son obligatorios.")
+        cur.execute("""INSERT INTO tercero_mov_mercaderia (id_item, tipo, cantidad, fecha, detalle, id_usuario)
+                       VALUES (%s,%s,%s,COALESCE(%s,CURRENT_DATE),%s,%s) RETURNING id""",
+                    (id_item, tipo, cantidad, data.get('fecha') or None, (data.get('detalle') or '').strip() or None, data.get('id_usuario')))
+        nid = cur.fetchone()['id']
+        conn.commit()
+        return {"status": "ok", "id": nid}
+    except HTTPException:
+        raise
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
+@app.get("/api/tercero/mercaderia")
+def tercero_listar_mercaderia(desde: Optional[str] = None, hasta: Optional[str] = None):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cond, params = "", []
+        if desde: cond += " AND m.fecha >= %s"; params.append(desde)
+        if hasta: cond += " AND m.fecha <= %s"; params.append(hasta)
+        cur.execute(f"""
+            SELECT m.id, m.fecha::text, m.tipo, m.cantidad, m.detalle,
+                   i.nombre AS item, i.unidad, u.nombre AS usuario
+            FROM tercero_mov_mercaderia m
+            JOIN tercero_items i ON m.id_item = i.id
+            LEFT JOIN tercero_usuarios u ON m.id_usuario = u.id
+            WHERE 1=1 {cond}
+            ORDER BY m.fecha DESC, m.id DESC LIMIT 500
+        """, params)
+        return fetchall_dict(cur)
+    finally:
+        liberar_conexion(conn)
+
+# ── MOVIMIENTOS de dinero ──
+@app.post("/api/tercero/dinero")
+def tercero_registrar_dinero(data: dict = Body(...)):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        tipo = data.get('tipo')
+        concepto = (data.get('concepto') or '').strip()
+        monto = float(data.get('monto') or 0)
+        if tipo not in ('aporte','gasto','cobro') or not concepto or monto <= 0:
+            raise HTTPException(status_code=400, detail="Tipo (aporte/gasto/cobro), concepto y monto son obligatorios.")
+        cur.execute("""INSERT INTO tercero_mov_dinero (tipo, concepto, monto, fecha, id_usuario)
+                       VALUES (%s,%s,%s,COALESCE(%s,CURRENT_DATE),%s) RETURNING id""",
+                    (tipo, concepto, monto, data.get('fecha') or None, data.get('id_usuario')))
+        nid = cur.fetchone()['id']
+        conn.commit()
+        return {"status": "ok", "id": nid}
+    except HTTPException:
+        raise
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
+@app.get("/api/tercero/dinero")
+def tercero_listar_dinero(desde: Optional[str] = None, hasta: Optional[str] = None):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cond, params = "", []
+        if desde: cond += " AND d.fecha >= %s"; params.append(desde)
+        if hasta: cond += " AND d.fecha <= %s"; params.append(hasta)
+        cur.execute(f"""
+            SELECT d.id, d.fecha::text, d.tipo, d.concepto, d.monto, u.nombre AS usuario
+            FROM tercero_mov_dinero d
+            LEFT JOIN tercero_usuarios u ON d.id_usuario = u.id
+            WHERE 1=1 {cond}
+            ORDER BY d.fecha DESC, d.id DESC LIMIT 500
+        """, params)
+        return fetchall_dict(cur)
+    finally:
+        liberar_conexion(conn)
+
+# ── RESUMEN / RESULTADO ──
+@app.get("/api/tercero/resumen")
+def tercero_resumen(desde: Optional[str] = None, hasta: Optional[str] = None):
+    """Saldo de caja y resultado del emprendimiento.
+    Resultado = cobros (ventas) - gastos. Los aportes se muestran aparte
+    (son capital puesto, no ganancia)."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cond, params = "", []
+        if desde: cond += " AND fecha >= %s"; params.append(desde)
+        if hasta: cond += " AND fecha <= %s"; params.append(hasta)
+        cur.execute(f"""
+            SELECT COALESCE(SUM(CASE WHEN tipo='aporte' THEN monto ELSE 0 END),0) AS aportes,
+                   COALESCE(SUM(CASE WHEN tipo='gasto'  THEN monto ELSE 0 END),0) AS gastos,
+                   COALESCE(SUM(CASE WHEN tipo='cobro'  THEN monto ELSE 0 END),0) AS cobros
+            FROM tercero_mov_dinero WHERE 1=1 {cond}
+        """, params)
+        r = cur.fetchone()
+        aportes = float(r['aportes'] or 0)
+        gastos = float(r['gastos'] or 0)
+        cobros = float(r['cobros'] or 0)
+        resultado = round(cobros - gastos, 2)           # ganancia del emprendimiento
+        saldo_caja = round(aportes + cobros - gastos, 2) # plata que hay en caja
+        return {
+            "aportes": aportes, "gastos": gastos, "cobros": cobros,
+            "resultado": resultado, "saldo_caja": saldo_caja,
+            "reparto_50": round(resultado/2, 2)
+        }
+    finally:
+        liberar_conexion(conn)
+
+@app.get("/tercero")
+def route_tercero():
+    return serve_html("tercero.html")
+
+@app.get("/tercero-login")
+def route_tercero_login():
+    return serve_html("tercero_login.html")
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
