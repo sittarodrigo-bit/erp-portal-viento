@@ -67,7 +67,7 @@
 <!-- Barra de acción fija -->
 <div class="fixed bottom-0 left-0 right-0 bg-black border-t border-gray-800 p-4">
     <div class="max-w-6xl mx-auto flex gap-3">
-        <button onclick="generarWeb()" class="flex-1 border border-neon text-neon font-bold py-3 rounded-xl hover:bg-neon hover:text-black transition">🌐 Ver catálogo web</button>
+        <button onclick="publicarWeb()" class="flex-1 border border-neon text-neon font-bold py-3 rounded-xl hover:bg-neon hover:text-black transition">🔗 Crear link compartible</button>
         <button onclick="generarPDF()" class="flex-1 bg-neon text-black font-bold py-3 rounded-xl hover:bg-yellow-300 transition">📄 Descargar PDF</button>
     </div>
 </div>
@@ -173,6 +173,56 @@
     }
 
     // ── Catálogo WEB (nueva pestaña) ──
+    async function publicarWeb() {
+        var sel = seleccionados();
+        if (!sel.length) { alert('Elegí al menos un producto.'); return; }
+        var body = {
+            titulo: document.getElementById('opt-titulo').value || 'Catálogo',
+            mostrar_precio: document.getElementById('opt-precio').value,
+            con_imagenes: document.getElementById('opt-imagenes').checked,
+            ids_productos: sel.map(function(p){ return p.id; })
+        };
+        try {
+            var res = await fetch(API_URL + '/catalogos/publicar', {
+                method: 'POST', headers: {'Content-Type':'application/json'},
+                body: JSON.stringify(body)
+            });
+            var r = await res.json();
+            if (!res.ok) { alert('No se pudo publicar: ' + (r.detail||'')); return; }
+            var url = window.location.origin + r.url;
+            mostrarLinkCompartible(url);
+        } catch(e) {
+            alert('Error al publicar el catálogo.');
+        }
+    }
+
+    function mostrarLinkCompartible(url) {
+        var box = document.getElementById('link-compartible');
+        if (!box) {
+            box = document.createElement('div');
+            box.id = 'link-compartible';
+            box.className = 'mt-4 bg-gray-900 border border-neon rounded-xl p-4';
+            document.querySelector('.max-w-4xl, body').appendChild(box);
+        }
+        box.innerHTML =
+            '<p class="text-neon font-bold text-sm mb-2">✅ ¡Link creado! Compartilo por WhatsApp:</p>' +
+            '<div class="flex gap-2 items-center">' +
+            '<input id="url-cat" readonly value="' + url + '" class="flex-1 bg-black border border-gray-700 text-white rounded-lg p-2 text-sm">' +
+            '<button onclick="copiarLink()" class="bg-neon text-black font-bold rounded-lg px-3 py-2 text-sm">Copiar</button>' +
+            '<a href="' + url + '" target="_blank" class="border border-gray-600 text-gray-300 rounded-lg px-3 py-2 text-sm">Ver</a>' +
+            '</div>' +
+            '<a href="https://wa.me/?text=' + encodeURIComponent('Mirá nuestro catálogo: ' + url) + '" target="_blank" class="inline-block mt-3 bg-green-600 hover:bg-green-500 text-white font-bold rounded-lg px-4 py-2 text-sm">📲 Compartir por WhatsApp</a>';
+        box.scrollIntoView({behavior:'smooth'});
+    }
+
+    function copiarLink() {
+        var inp = document.getElementById('url-cat');
+        inp.select();
+        try { document.execCommand('copy'); } catch(e){}
+        if (navigator.clipboard) navigator.clipboard.writeText(inp.value);
+        alert('Link copiado. Ya lo podés pegar donde quieras.');
+    }
+
     function generarWeb() {
         var sel = seleccionados();
         if (!sel.length) { alert('Elegí al menos un producto.'); return; }
