@@ -10086,6 +10086,122 @@ def route_tercero():
 def route_tercero_login():
     return serve_html("tercero_login.html")
 
+import secrets
+
+@app.post("/api/catalogos/publicar")
+def publicar_catalogo(data: dict = Body(...)):
+    """Guarda un catálogo con los productos elegidos y devuelve un slug para compartir.
+    El catálogo queda accesible públicamente en /catalogo/{slug} sin login."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        ids = data.get('ids_productos') or []
+        if not ids:
+            raise HTTPException(status_code=400, detail="Elegí al menos un producto.")
+        ids_str = ",".join(str(int(x)) for x in ids)
+        titulo = (data.get('titulo') or 'Catálogo').strip()
+        mostrar_precio = data.get('mostrar_precio') if data.get('mostrar_precio') in ('ninguno','mayorista','minorista') else 'ninguno'
+        con_imagenes = bool(data.get('con_imagenes', True))
+        slug = secrets.token_urlsafe(6)
+        cur.execute("""INSERT INTO catalogos_publicados (slug, titulo, mostrar_precio, con_imagenes, ids_productos)
+                       VALUES (%s,%s,%s,%s,%s)""",
+                    (slug, titulo, mostrar_precio, con_imagenes, ids_str))
+        conn.commit()
+        return {"status": "ok", "slug": slug, "url": "/catalogo/" + slug}
+    except HTTPException:
+        raise
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
+@app.get("/catalogo/{slug}", response_class=HTMLResponse)
+def ver_catalogo_publicado(slug: str):
+    """Página pública del catálogo. Se arma en el servidor con los datos actuales
+    de los productos (precio e imagen), así siempre está al día."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("SELECT * FROM catalogos_publicados WHERE slug=%s", (slug,))
+        cat = cur.fetchone()
+        if not cat:
+            return HTMLResponse("<body style='background:#0a0a0a;color:#fff;font-family:sans-serif;text-align:center;padding:60px'><h1>Catálogo no encontrado</h1></body>", status_code=404)
+
+        ids = [int(x) for x in (cat['ids_productos'] or '').split(',') if x.strip().isdigit()]
+        if not ids:
+            productos = []
+        else:
+            cur.execute("""SELECT p.id, p.nombre, p.precio_minorista, p.precio_mayorista, p.imagen_url,
+                                  c.nombre AS categoria
+                           FROM productos p LEFT JOIN categorias c ON p.id_categoria=c.id
+                           WHERE p.id = ANY(%s) ORDER BY c.nombre, p.nombre""", (ids,))
+            productos = fetchall_dict(cur)
+
+        # Datos de empresa para el encabezado (mismas env vars que usa la factura)
+        emp = {
+            "razon_social": os.environ.get("EMPRESA_RAZON_SOCIAL", "Portal del Viento"),
+            "telefono": os.environ.get("EMPRESA_TELEFONO", ""),
+            "direccion": os.environ.get("EMPRESA_DIRECCION", "")
+        }
+
+        mostrar_precio = cat['mostrar_precio']
+        con_img = cat['con_imagenes']
+
+        def precio_de(p):
+            if mostrar_precio == 'mayorista': return p.get('precio_mayorista') or 0
+            if mostrar_precio == 'minorista': return p.get('precio_minorista') or 0
+            return None
+
+        # Agrupar por categoría
+        por_cat = {}
+        for p in productos:
+            por_cat.setdefault(p.get('categoria') or 'Otros', []).append(p)
+
+        bloques = ""
+        for catn in sorted(por_cat.keys()):
+            cards = ""
+            for p in por_cat[catn]:
+                pr = precio_de(p)
+                precio_html = ('<span class="precio">$ ' + format(int(pr), ',').replace(',', '.') + '</span>') if pr else ''
+                img_html = ('<img src="' + p['imagen_url'] + '" onerror="this.style.display=\'none\'">') if (con_img and p.get('imagen_url')) else ''
+                cards += '<div class="card">' + img_html + '<div class="info"><span class="nom">' + (p['nombre'] or '') + '</span>' + precio_html + '</div></div>'
+            bloques += '<h2>' + catn + '</h2><div class="grid">' + cards + '</div>'
+
+        contacto = "  ·  ".join([x for x in [emp['telefono'], emp['direccion']] if x])
+        html = """<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0"><title>__TITULO__</title>
+<meta property="og:title" content="__TITULO__"><meta property="og:type" content="website">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0a0a0a;color:#fff;font-family:ui-sans-serif,system-ui,sans-serif;padding:0 0 60px}
+header{background:#000;border-bottom:3px solid #e4fc74;padding:28px 24px}
+header .marca{color:#e4fc74;font-weight:800;letter-spacing:1px;font-size:14px}
+header h1{font-size:30px;margin-top:4px}
+header .cont{color:#888;font-size:13px;margin-top:6px}
+.wrap{max-width:1000px;margin:0 auto;padding:24px}
+h2{color:#e4fc74;font-size:18px;margin:26px 0 12px;border-bottom:1px solid #222;padding-bottom:6px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:14px}
+.card{background:#141414;border:1px solid #262626;border-radius:12px;overflow:hidden}
+.card img{width:100%;height:150px;object-fit:cover;display:block}
+.card .info{padding:12px;display:flex;flex-direction:column;gap:4px}
+.card .nom{font-weight:700;font-size:15px}
+.card .precio{color:#e4fc74;font-weight:800;font-size:17px}
+footer{text-align:center;color:#555;font-size:12px;margin-top:40px}
+</style></head><body>
+<header><div class="marca">__MARCA__</div><h1>__TITULO__</h1>__CONTACTO__</header>
+<div class="wrap">__BLOQUES__</div>
+<footer>__EMPRESA__</footer>
+</body></html>"""
+        html = (html.replace("__TITULO__", cat['titulo'])
+                    .replace("__MARCA__", (emp['razon_social'] or 'Portal del Viento').upper())
+                    .replace("__CONTACTO__", ('<div class="cont">' + contacto + '</div>') if contacto else '')
+                    .replace("__BLOQUES__", bloques or '<p style="color:#888">Sin productos.</p>')
+                    .replace("__EMPRESA__", emp['razon_social'] or 'Portal del Viento'))
+        return HTMLResponse(html)
+    finally:
+        liberar_conexion(conn)
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
