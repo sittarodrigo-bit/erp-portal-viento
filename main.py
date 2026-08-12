@@ -1190,6 +1190,7 @@ class ProspectoData(BaseModel):
     nombre: str
     telefono: Optional[str] = None
     email: Optional[str] = None
+    direccion: Optional[str] = None
     zona: Optional[str] = None
     tipo_comercio: Optional[str] = None
     venta_estimada: Optional[str] = None
@@ -1205,14 +1206,24 @@ def crear_prospecto(p: ProspectoData):
         cur = conn.cursor()
         try:
             cur.execute("""INSERT INTO prospectos_distribuidores
-                (nombre, telefono, email, zona, tipo_comercio, venta_estimada, mensaje)
-                VALUES (%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
-                (p.nombre.strip(), p.telefono, p.email, p.zona, p.tipo_comercio, p.venta_estimada, p.mensaje))
+                (nombre, telefono, email, direccion, zona, tipo_comercio, venta_estimada, mensaje)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
+                (p.nombre.strip(), p.telefono, p.email, p.direccion, p.zona, p.tipo_comercio, p.venta_estimada, p.mensaje))
             pid = cur.fetchone()[0]
             conn.commit()
         except Exception:
             conn.rollback()
-            raise HTTPException(status_code=400, detail="Falta correr CREAR_PROSPECTOS.sql en la base.")
+            # Fallback si la columna direccion aún no se creó
+            try:
+                cur.execute("""INSERT INTO prospectos_distribuidores
+                    (nombre, telefono, email, zona, tipo_comercio, venta_estimada, mensaje)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
+                    (p.nombre.strip(), p.telefono, p.email, p.zona, p.tipo_comercio, p.venta_estimada, p.mensaje))
+                pid = cur.fetchone()[0]
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                raise HTTPException(status_code=400, detail="Falta correr CREAR_PROSPECTOS.sql en la base.")
         try:
             crear_notificacion("pedido", "Nuevo interesado en ser distribuidor",
                                p.nombre.strip() + (" · " + p.zona if p.zona else ""))
@@ -9370,6 +9381,84 @@ def route_analisis_horarios():
 @app.get("/carga-stock")
 def route_carga_stock():
     return serve_html("carga_stock_pos.html")
+
+import json as _json_costos
+
+@app.get("/api/costos/recetas")
+def listar_costos_recetas():
+    """Lista las recetas de costo guardadas desde la calculadora."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            cur.execute("""SELECT id, nombre, rinde, margen, ingredientes, extras,
+                                  costo_total, costo_unidad, precio_sugerido,
+                                  creado::text, actualizado::text
+                           FROM costos_recetas ORDER BY nombre""")
+            return fetchall_dict(cur)
+        except Exception:
+            conn.rollback()
+            raise HTTPException(status_code=400, detail="Falta correr CREAR_COSTOS_RECETAS.sql en la base.")
+    finally:
+        liberar_conexion(conn)
+
+@app.post("/api/costos/recetas")
+def guardar_costos_receta(data: dict = Body(...)):
+    """Crea o actualiza una receta de costo. Si viene 'id', actualiza; si no, crea nueva."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        nombre = (data.get('nombre') or '').strip()
+        if not nombre:
+            raise HTTPException(status_code=400, detail="Poné un nombre para la receta.")
+        rinde = float(data.get('rinde') or 1)
+        margen = float(data.get('margen') or 0)
+        ingredientes = _json_costos.dumps(data.get('ingredientes') or [])
+        extras = _json_costos.dumps(data.get('extras') or [])
+        costo_total = float(data.get('costo_total') or 0)
+        costo_unidad = float(data.get('costo_unidad') or 0)
+        precio_sugerido = float(data.get('precio_sugerido') or 0)
+        rid = data.get('id')
+        try:
+            if rid:
+                cur.execute("""UPDATE costos_recetas SET nombre=%s, rinde=%s, margen=%s,
+                                   ingredientes=%s, extras=%s, costo_total=%s, costo_unidad=%s,
+                                   precio_sugerido=%s, actualizado=NOW() WHERE id=%s RETURNING id""",
+                            (nombre, rinde, margen, ingredientes, extras, costo_total, costo_unidad, precio_sugerido, rid))
+            else:
+                cur.execute("""INSERT INTO costos_recetas (nombre, rinde, margen, ingredientes, extras,
+                                   costo_total, costo_unidad, precio_sugerido)
+                               VALUES (%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
+                            (nombre, rinde, margen, ingredientes, extras, costo_total, costo_unidad, precio_sugerido))
+            nid = cur.fetchone()['id']
+            conn.commit()
+            return {"status": "ok", "id": nid}
+        except HTTPException:
+            raise
+        except Exception:
+            conn.rollback()
+            raise HTTPException(status_code=400, detail="Falta correr CREAR_COSTOS_RECETAS.sql en la base.")
+    finally:
+        liberar_conexion(conn)
+
+@app.delete("/api/costos/recetas/{id}")
+def borrar_costos_receta(id: int):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM costos_recetas WHERE id=%s", (id,))
+        conn.commit()
+        return {"status": "ok"}
+    finally:
+        liberar_conexion(conn)
+
+@app.get("/calculadora-costos")
+def route_calculadora_costos():
+    return serve_html("calculadora_costos.html")
+
+@app.get("/cargar-prospectos")
+def route_cargar_prospectos():
+    return serve_html("cargar_prospectos.html")
 
 @app.get("/generador-catalogo")
 def route_generador_catalogo():
