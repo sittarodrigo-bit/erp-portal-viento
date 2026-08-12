@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Calculadora de Costos</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  :root { --neon: #e4fc74; }
+  .text-neon { color: var(--neon); }
+  .bg-neon { background-color: var(--neon); }
+  .border-neon { border-color: var(--neon); }
+  body { background:#0a0a0a; }
+</style>
+</head>
+<body class="text-white min-h-screen">
+  <header class="border-b border-gray-800 px-4 py-3 flex justify-between items-center sticky top-0 bg-black z-20">
+    <div>
+      <h1 class="font-bold text-lg">Calculadora de Costos</h1>
+      <p class="text-gray-500 text-xs">Costo y precio de un producto nuevo</p>
+    </div>
+    <a href="/tablero" class="text-xs text-gray-400 hover:text-white border border-gray-700 rounded px-3 py-1.5">← Volver</a>
+  </header>
+
+  <div class="max-w-3xl mx-auto p-4 pb-32">
+    <!-- Nombre del producto y rinde -->
+    <div class="bg-gray-900 border border-gray-800 rounded-xl p-4 mb-4">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div>
+          <label class="block text-xs text-gray-500 font-bold mb-1">Producto</label>
+          <input id="nombre-prod" placeholder="Ej: Alfajor de maicena" class="w-full bg-black border border-gray-700 rounded-lg p-2.5 text-sm focus:border-neon focus:outline-none">
+        </div>
+        <div>
+          <label class="block text-xs text-gray-500 font-bold mb-1">¿Cuántas unidades rinde esta receta?</label>
+          <input id="rinde" type="number" min="1" value="1" oninput="calcular()" class="w-full bg-black border border-gray-700 rounded-lg p-2.5 text-sm focus:border-neon focus:outline-none">
+        </div>
+      </div>
+    </div>
+
+    <!-- Ingredientes -->
+    <div class="bg-gray-900 border border-gray-800 rounded-xl p-4 mb-4">
+      <div class="flex justify-between items-center mb-3">
+        <h3 class="font-bold text-sm">🧾 Ingredientes / Insumos</h3>
+        <button onclick="agregarIngrediente()" class="text-xs bg-gray-800 hover:bg-gray-700 text-white rounded px-3 py-1.5">+ Agregar</button>
+      </div>
+      <div id="lista-ingredientes" class="space-y-2"></div>
+      <p class="text-right text-sm text-gray-400 mt-3">Subtotal ingredientes: <span id="subtotal-ing" class="text-white font-bold">$ 0</span></p>
+    </div>
+
+    <!-- Costos extra -->
+    <div class="bg-gray-900 border border-gray-800 rounded-xl p-4 mb-4">
+      <div class="flex justify-between items-center mb-3">
+        <h3 class="font-bold text-sm">➕ Otros costos (mano de obra, packaging, energía...)</h3>
+        <button onclick="agregarExtra()" class="text-xs bg-gray-800 hover:bg-gray-700 text-white rounded px-3 py-1.5">+ Agregar</button>
+      </div>
+      <div id="lista-extras" class="space-y-2"></div>
+      <p class="text-right text-sm text-gray-400 mt-3">Subtotal otros costos: <span id="subtotal-extra" class="text-white font-bold">$ 0</span></p>
+    </div>
+
+    <!-- Margen -->
+    <div class="bg-gray-900 border border-gray-800 rounded-xl p-4 mb-4">
+      <label class="block text-xs text-gray-500 font-bold mb-1">Margen de ganancia deseado (%)</label>
+      <div class="flex items-center gap-3">
+        <input id="margen" type="number" min="0" value="50" oninput="calcular()" class="w-32 bg-black border border-gray-700 rounded-lg p-2.5 text-sm focus:border-neon focus:outline-none">
+        <div class="flex gap-1">
+          <button onclick="setMargen(30)" class="text-xs border border-gray-700 rounded px-2 py-1 text-gray-400 hover:text-white">30%</button>
+          <button onclick="setMargen(50)" class="text-xs border border-gray-700 rounded px-2 py-1 text-gray-400 hover:text-white">50%</button>
+          <button onclick="setMargen(100)" class="text-xs border border-gray-700 rounded px-2 py-1 text-gray-400 hover:text-white">100%</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Guardar -->
+    <div class="flex gap-2 mb-6">
+      <button onclick="guardarReceta()" id="btn-guardar" class="flex-1 bg-neon text-black font-bold rounded-xl py-3">💾 Guardar cálculo</button>
+      <button onclick="nuevaReceta()" class="border border-gray-700 text-gray-300 rounded-xl px-4 py-3 text-sm">＋ Nuevo</button>
+    </div>
+
+    <!-- Recetas guardadas -->
+    <div class="bg-gray-900 border border-gray-800 rounded-xl p-4 mb-4">
+      <h3 class="font-bold text-sm mb-3">📚 Cálculos guardados (<span id="cont-recetas">0</span>)</h3>
+      <div id="lista-recetas" class="space-y-2"></div>
+    </div>
+  </div>
+
+  <!-- Resultado fijo abajo -->
+  <div class="fixed bottom-0 left-0 right-0 bg-black border-t border-neon p-4 z-20">
+    <div class="max-w-3xl mx-auto grid grid-cols-3 gap-3 text-center">
+      <div>
+        <p class="text-gray-500 text-xs">Costo por unidad</p>
+        <p id="costo-unidad" class="text-white font-bold text-lg">$ 0</p>
+      </div>
+      <div>
+        <p class="text-gray-500 text-xs">Ganancia por unidad</p>
+        <p id="ganancia-unidad" class="text-blue-300 font-bold text-lg">$ 0</p>
+      </div>
+      <div>
+        <p class="text-gray-500 text-xs">Precio sugerido</p>
+        <p id="precio-sugerido" class="text-neon font-bold text-2xl">$ 0</p>
+      </div>
+    </div>
+  </div>
+
+<script>
+  const API_URL = '/api';
+  let insumos = [];
+  let ingredientes = [];  // {modo:'sistema'|'manual', id_insumo, nombre, costoUnit, cantidad}
+  let extras = [];        // {concepto, monto}
+  let recetaEditandoId = null;  // si estás editando una receta guardada
+
+  let ultimoCalculo = { costoTotal:0, costoUnidad:0, precio:0 };
+
+  async function cargarRecetas(){
+    var cont = document.getElementById('lista-recetas');
+    try {
+      var recetas = await fetch(API_URL+'/costos/recetas', {cache:'no-store'}).then(r=>r.json());
+      document.getElementById('cont-recetas').textContent = recetas.length || 0;
+      if (!recetas.length){ cont.innerHTML = '<p class="text-gray-600 text-sm">Todavía no guardaste ningún cálculo.</p>'; return; }
+      cont.innerHTML = '';
+      recetas.forEach(function(r){
+        var div = document.createElement('div');
+        div.className = 'bg-black border border-gray-800 rounded-lg px-3 py-2 flex justify-between items-center';
+        div.innerHTML =
+          '<div class="min-w-0">' +
+            '<p class="text-white font-bold text-sm">'+r.nombre+'</p>' +
+            '<p class="text-gray-500 text-xs">Costo/u: '+fmt(r.costo_unidad)+' · Precio: <span class="text-neon">'+fmt(r.precio_sugerido)+'</span></p>' +
+          '</div>' +
+          '<div class="flex gap-1 flex-shrink-0">' +
+            '<button class="text-xs border border-gray-700 rounded px-2 py-1 text-gray-300 hover:text-white">Abrir</button>' +
+            '<button class="text-xs border border-red-800 rounded px-2 py-1 text-red-400 hover:text-red-300">✕</button>' +
+          '</div>';
+        var botones = div.querySelectorAll('button');
+        botones[0].onclick = function(){ abrirReceta(r); };
+        botones[1].onclick = function(){ borrarReceta(r.id, r.nombre); };
+        cont.appendChild(div);
+      });
+    } catch(e){ cont.innerHTML = '<p class="text-red-400 text-sm">No se pudieron cargar (¿falta correr el SQL?).</p>'; }
+  }
+
+  function abrirReceta(r){
+    recetaEditandoId = r.id;
+    document.getElementById('nombre-prod').value = r.nombre || '';
+    document.getElementById('rinde').value = r.rinde || 1;
+    document.getElementById('margen').value = r.margen || 0;
+    try { ingredientes = (typeof r.ingredientes==='string' ? JSON.parse(r.ingredientes) : r.ingredientes) || []; } catch(e){ ingredientes = []; }
+    try { extras = (typeof r.extras==='string' ? JSON.parse(r.extras) : r.extras) || []; } catch(e){ extras = []; }
+    if (!ingredientes.length) ingredientes = [{ modo:'sistema', id_insumo:'', nombre:'', costoUnit:0, cantidad:1 }];
+    renderIngredientes();
+    renderExtras();
+    document.getElementById('btn-guardar').textContent = '💾 Actualizar cálculo';
+    window.scrollTo({top:0, behavior:'smooth'});
+  }
+
+  function nuevaReceta(){
+    recetaEditandoId = null;
+    document.getElementById('nombre-prod').value = '';
+    document.getElementById('rinde').value = 1;
+    document.getElementById('margen').value = 50;
+    ingredientes = [{ modo:'sistema', id_insumo:'', nombre:'', costoUnit:0, cantidad:1 }];
+    extras = [];
+    renderIngredientes();
+    renderExtras();
+    document.getElementById('btn-guardar').textContent = '💾 Guardar cálculo';
+    window.scrollTo({top:0, behavior:'smooth'});
+  }
+
+  async function guardarReceta(){
+    var nombre = document.getElementById('nombre-prod').value.trim();
+    if (!nombre){ alert('Poné un nombre al producto antes de guardar.'); return; }
+    var body = {
+      id: recetaEditandoId,
+      nombre: nombre,
+      rinde: parseFloat(document.getElementById('rinde').value) || 1,
+      margen: parseFloat(document.getElementById('margen').value) || 0,
+      ingredientes: ingredientes,
+      extras: extras,
+      costo_total: ultimoCalculo.costoTotal,
+      costo_unidad: ultimoCalculo.costoUnidad,
+      precio_sugerido: ultimoCalculo.precio
+    };
+    try {
+      var res = await fetch(API_URL+'/costos/recetas', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify(body)
+      });
+      var r = await res.json();
+      if (!res.ok){ alert('No se pudo guardar: '+(r.detail||'')); return; }
+      recetaEditandoId = r.id;
+      document.getElementById('btn-guardar').textContent = '💾 Actualizar cálculo';
+      alert('Cálculo guardado.');
+      cargarRecetas();
+    } catch(e){ alert('Error al guardar.'); }
+  }
+
+  async function borrarReceta(id, nombre){
+    if (!confirm('¿Borrar el cálculo "'+nombre+'"?')) return;
+    try {
+      await fetch(API_URL+'/costos/recetas/'+id, {method:'DELETE'});
+      if (recetaEditandoId === id) nuevaReceta();
+      cargarRecetas();
+    } catch(e){ alert('No se pudo borrar.'); }
+  }
+
+  function fmt(n){ return '$ ' + (Math.round((parseFloat(n)||0)*100)/100).toLocaleString('es-AR'); }
+
+  async function cargarInsumos(){
+    try { insumos = await fetch(API_URL+'/insumos', {cache:'no-store'}).then(r=>r.json()); } catch(e){ insumos = []; }
+  }
+
+  function opcionesInsumos(sel){
+    var o = '<option value="">— elegí un insumo —</option>';
+    insumos.forEach(function(i){
+      o += '<option value="'+i.id+'"'+(sel==i.id?' selected':'')+'>'+i.nombre+' ('+fmt(i.costo)+'/'+(i.unidad||'u')+')</option>';
+    });
+    return o;
+  }
+
+  function agregarIngrediente(){
+    ingredientes.push({ modo:'sistema', id_insumo:'', nombre:'', costoUnit:0, cantidad:1 });
+    renderIngredientes();
+  }
+
+  function renderIngredientes(){
+    var cont = document.getElementById('lista-ingredientes');
+    if (!ingredientes.length){ cont.innerHTML = '<p class="text-gray-600 text-sm">Agregá los ingredientes de la receta.</p>'; calcular(); return; }
+    cont.innerHTML = '';
+    ingredientes.forEach(function(ing, idx){
+      var fila = document.createElement('div');
+      fila.className = 'bg-black border border-gray-800 rounded-lg p-2';
+      var esManual = ing.modo === 'manual';
+      var selectorFuente =
+        '<div class="flex gap-1 mb-2">' +
+          '<button onclick="setModo('+idx+',\'sistema\')" class="text-xs px-2 py-1 rounded '+(!esManual?'bg-neon text-black font-bold':'bg-gray-800 text-gray-400')+'">Del sistema</button>' +
+          '<button onclick="setModo('+idx+',\'manual\')" class="text-xs px-2 py-1 rounded '+(esManual?'bg-neon text-black font-bold':'bg-gray-800 text-gray-400')+'">A mano</button>' +
+        '</div>';
+      var campos;
+      if (esManual){
+        campos =
+          '<div class="grid grid-cols-12 gap-2 items-center">' +
+            '<input value="'+(ing.nombre||'')+'" oninput="setIng('+idx+',\'nombre\',this.value)" placeholder="Ingrediente" class="col-span-5 bg-gray-900 border border-gray-700 rounded p-1.5 text-sm">' +
+            '<input type="number" step="0.01" value="'+(ing.costoUnit||'')+'" oninput="setIng('+idx+',\'costoUnit\',this.value)" placeholder="Costo unit." class="col-span-3 bg-gray-900 border border-gray-700 rounded p-1.5 text-sm text-right">' +
+            '<input type="number" step="0.001" value="'+(ing.cantidad||'')+'" oninput="setIng('+idx+',\'cantidad\',this.value)" placeholder="Cant." class="col-span-2 bg-gray-900 border border-gray-700 rounded p-1.5 text-sm text-right">' +
+            '<span class="col-span-1 text-right text-neon text-sm font-bold">'+fmt((ing.costoUnit||0)*(ing.cantidad||0)).replace('$ ','$')+'</span>' +
+            '<button onclick="quitarIng('+idx+')" class="col-span-1 text-red-500 hover:text-red-400 font-bold">✕</button>' +
+          '</div>';
+      } else {
+        campos =
+          '<div class="grid grid-cols-12 gap-2 items-center">' +
+            '<select onchange="elegirInsumo('+idx+',this.value)" class="col-span-6 bg-gray-900 border border-gray-700 rounded p-1.5 text-sm">'+opcionesInsumos(ing.id_insumo)+'</select>' +
+            '<input type="number" step="0.001" value="'+(ing.cantidad||'')+'" oninput="setIng('+idx+',\'cantidad\',this.value)" placeholder="Cant." class="col-span-3 bg-gray-900 border border-gray-700 rounded p-1.5 text-sm text-right">' +
+            '<span class="col-span-2 text-right text-neon text-sm font-bold">'+fmt((ing.costoUnit||0)*(ing.cantidad||0)).replace('$ ','$')+'</span>' +
+            '<button onclick="quitarIng('+idx+')" class="col-span-1 text-red-500 hover:text-red-400 font-bold">✕</button>' +
+          '</div>';
+      }
+      fila.innerHTML = selectorFuente + campos;
+      cont.appendChild(fila);
+    });
+    calcular();
+  }
+
+  function setModo(idx, modo){ ingredientes[idx].modo = modo; if(modo==='sistema'){ ingredientes[idx].costoUnit=0; ingredientes[idx].id_insumo=''; } renderIngredientes(); }
+  function setIng(idx, campo, val){ ingredientes[idx][campo] = campo==='nombre' ? val : (parseFloat(val)||0); calcular(); }
+  function elegirInsumo(idx, id){
+    var ins = insumos.find(function(x){ return String(x.id)===String(id); });
+    ingredientes[idx].id_insumo = id;
+    ingredientes[idx].nombre = ins ? ins.nombre : '';
+    ingredientes[idx].costoUnit = ins ? parseFloat(ins.costo)||0 : 0;
+    calcular();
+  }
+  function quitarIng(idx){ ingredientes.splice(idx,1); renderIngredientes(); }
+
+  function agregarExtra(){ extras.push({concepto:'', monto:0}); renderExtras(); }
+  function renderExtras(){
+    var cont = document.getElementById('lista-extras');
+    if (!extras.length){ cont.innerHTML = '<p class="text-gray-600 text-sm">Opcional: mano de obra, envoltorio, gas, etc.</p>'; calcular(); return; }
+    cont.innerHTML = '';
+    extras.forEach(function(e, idx){
+      var fila = document.createElement('div');
+      fila.className = 'grid grid-cols-12 gap-2 items-center';
+      fila.innerHTML =
+        '<input value="'+(e.concepto||'')+'" oninput="setExtra('+idx+',\'concepto\',this.value)" placeholder="Concepto" class="col-span-7 bg-black border border-gray-700 rounded p-1.5 text-sm">' +
+        '<input type="number" step="0.01" value="'+(e.monto||'')+'" oninput="setExtra('+idx+',\'monto\',this.value)" placeholder="Monto $" class="col-span-4 bg-black border border-gray-700 rounded p-1.5 text-sm text-right">' +
+        '<button onclick="quitarExtra('+idx+')" class="col-span-1 text-red-500 hover:text-red-400 font-bold">✕</button>';
+      cont.appendChild(fila);
+    });
+    calcular();
+  }
+  function setExtra(idx, campo, val){ extras[idx][campo] = campo==='concepto' ? val : (parseFloat(val)||0); calcular(); }
+  function quitarExtra(idx){ extras.splice(idx,1); renderExtras(); }
+  function setMargen(v){ document.getElementById('margen').value = v; calcular(); }
+
+  function calcular(){
+    var subIng = ingredientes.reduce(function(a,b){ return a + (b.costoUnit||0)*(b.cantidad||0); }, 0);
+    var subExtra = extras.reduce(function(a,b){ return a + (b.monto||0); }, 0);
+    document.getElementById('subtotal-ing').textContent = fmt(subIng);
+    document.getElementById('subtotal-extra').textContent = fmt(subExtra);
+
+    var rinde = parseFloat(document.getElementById('rinde').value) || 1;
+    var margen = parseFloat(document.getElementById('margen').value) || 0;
+    var costoTotal = subIng + subExtra;
+    var costoUnidad = costoTotal / rinde;
+    var precio = costoUnidad * (1 + margen/100);
+    var ganancia = precio - costoUnidad;
+
+    document.getElementById('costo-unidad').textContent = fmt(costoUnidad);
+    document.getElementById('ganancia-unidad').textContent = fmt(ganancia);
+    document.getElementById('precio-sugerido').textContent = fmt(precio);
+    ultimoCalculo = { costoTotal: costoTotal, costoUnidad: costoUnidad, precio: precio };
+  }
+
+  // init
+  cargarInsumos().then(function(){
+    agregarIngrediente();
+    renderExtras();
+    cargarRecetas();
+  });
+</script>
+</body>
+</html>
