@@ -3,354 +3,566 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Reparto Admin</title>
+<title>Reparto</title>
 <script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
   :root { --neon: #e4fc74; }
   .text-neon { color: var(--neon); }
   .bg-neon { background-color: var(--neon); }
+  .border-neon { border-color: var(--neon); }
   body { background:#0a0a0a; }
-  .tab-btn { padding: 10px 16px; font-size: 14px; border-bottom: 2px solid transparent; cursor: pointer; transition: all 0.2s; }
-  .tab-btn.active { border-bottom-color: var(--neon); color: var(--neon); }
+  .notif-badge { position: absolute; top: -8px; right: -8px; background: #ef4444; color: white; border-radius: 50%; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: bold; }
 </style>
 </head>
 <body class="text-white min-h-screen">
   <header class="border-b border-gray-800 px-4 py-3 flex justify-between items-center sticky top-0 bg-black z-30">
-    <h1 class="font-bold text-lg">👨‍💼 Reparto Admin</h1>
-    <button onclick="salirAdmin()" class="border border-gray-700 text-gray-400 rounded-lg px-3 py-2 text-sm">Salir</button>
+    <div>
+      <h1 class="font-bold text-lg">🚚 Reparto</h1>
+      <p class="text-gray-500 text-xs" id="nombre-repartidor">—</p>
+    </div>
+    <div class="flex items-center gap-2">
+      <div class="relative">
+        <button onclick="abrirNotificaciones()" class="relative bg-gray-800 border border-gray-700 text-gray-300 rounded-lg px-3 py-2 text-sm hover:border-neon hover:text-neon" title="Notificaciones">
+          🔔
+          <div id="notif-badge" class="notif-badge hidden">0</div>
+        </button>
+      </div>
+      <button onclick="abrirCompartirCatalogo()" class="bg-blue-800 text-blue-200 border border-blue-700 rounded-lg px-2.5 py-2 text-xs hover:bg-blue-700" title="Compartir catálogo">📲 Compartir</button>
+      <button onclick="abrirEditarMargen()" class="bg-gray-800 text-gray-300 border border-gray-700 rounded-lg px-2.5 py-2 text-xs hover:border-neon hover:text-neon" title="Editar margen">⚙️ <span id="margen-badge">0%</span></button>
+      <button onclick="abrirNuevoCliente()" class="bg-neon text-black font-bold rounded-lg px-3 py-2 text-sm">+ Cliente</button>
+      <button onclick="salirReparto()" class="border border-gray-700 text-gray-400 rounded-lg px-2 py-2 text-xs">Salir</button>
+    </div>
   </header>
 
-  <div class="border-b border-gray-800 px-4 flex gap-2 bg-gray-950">
-    <button class="tab-btn active" onclick="switchTab('clientes')">👥 Clientes</button>
-    <button class="tab-btn" onclick="switchTab('ventas')">💰 Ventas</button>
-    <button class="tab-btn" onclick="switchTab('pedidos')">📲 Pedidos catálogo</button>
-    <button class="tab-btn" onclick="switchTab('catalogo')">🎨 Catálogo</button>
-    <button class="tab-btn" onclick="switchTab('margenes')">⚙️ Márgenes</button>
+  <div class="p-4 pb-24">
+    <select id="filtro-localidad" onchange="renderClientes()" class="w-full bg-gray-900 border border-gray-700 rounded-lg p-3 text-sm mb-2 focus:outline-none">
+      <option value="">📍 Todas las localidades</option>
+    </select>
+    <input id="buscar" oninput="renderClientes()" placeholder="🔍 Buscar cliente..." class="w-full bg-gray-900 border border-gray-700 rounded-lg p-3 text-sm mb-4 focus:border-neon focus:outline-none">
+    <div id="lista-clientes" class="space-y-2"></div>
   </div>
 
-  <div class="p-4">
-    <!-- TAB: Clientes -->
-    <div id="tab-clientes" class="block">
-      <div class="flex gap-2 mb-4">
-        <input id="filtro-vendedor-cl" onchange="renderClientes()" placeholder="Filtrar vendedor..." class="flex-1 bg-gray-900 border border-gray-700 rounded-lg p-2 text-sm">
-        <input id="buscar-cliente" oninput="renderClientes()" placeholder="🔍 Buscar..." class="flex-1 bg-gray-900 border border-gray-700 rounded-lg p-2 text-sm">
-      </div>
-      <div id="lista-clientes-admin" class="space-y-2"></div>
-    </div>
-
-    <!-- TAB: Ventas -->
-    <div id="tab-ventas" class="hidden">
-      <div class="flex gap-2 mb-4">
-        <input id="filtro-vendedor" onchange="renderVentas()" placeholder="Filtrar vendedor..." class="flex-1 bg-gray-900 border border-gray-700 rounded-lg p-2 text-sm">
-        <select id="filtro-estado" onchange="renderVentas()" class="bg-gray-900 border border-gray-700 rounded-lg p-2 text-sm">
-          <option value="">— Todos los estados —</option>
-          <option value="pendiente">Pendiente</option>
-          <option value="entregado">Entregado</option>
-        </select>
-      </div>
-      <div id="lista-ventas-admin" class="space-y-2"></div>
-    </div>
-
-    <!-- TAB: Pedidos catálogo -->
-    <div id="tab-pedidos" class="hidden">
-      <div class="flex gap-2 mb-4">
-        <select id="filtro-vendedor-ped" onchange="renderPedidos()" class="flex-1 bg-gray-900 border border-gray-700 rounded-lg p-2 text-sm">
-          <option value="">— Todos los vendedores —</option>
-        </select>
-        <select id="filtro-estado-ped" onchange="renderPedidos()" class="bg-gray-900 border border-gray-700 rounded-lg p-2 text-sm">
-          <option value="">— Todos los estados —</option>
-          <option value="nuevo">Nuevo</option>
-          <option value="contactado">Contactado</option>
-          <option value="confirmado">Confirmado</option>
-          <option value="cancelado">Cancelado</option>
-        </select>
-      </div>
-      <div id="lista-pedidos-admin" class="space-y-2"></div>
-    </div>
-
-    <!-- TAB: Catálogo (control de visibilidad) -->
-    <div id="tab-catalogo" class="hidden">
-      <div class="mb-4">
-        <label class="block text-sm text-gray-500 mb-2">📦 Seleccionar vendedor</label>
-        <select id="filtro-catalogo-vendedor" onchange="renderCatalogoProducts()" class="w-full bg-gray-900 border border-gray-700 rounded-lg p-2 text-sm">
-          <option value="">— Todos los vendedores —</option>
-        </select>
-      </div>
-      <div class="bg-gray-900 border border-gray-700 rounded-xl p-4">
-        <h3 class="font-bold mb-3">Productos en catálogo</h3>
-        <p class="text-gray-500 text-xs mb-3">Marca los productos que querés mostrar en el catálogo público. Podés reordenarlos por número.</p>
-        <div id="lista-catalogo-productos" class="space-y-2"></div>
-      </div>
-    </div>
-
-    <!-- TAB: Márgenes -->
-    <div id="tab-margenes" class="hidden">
-      <div class="bg-gray-900 border border-gray-700 rounded-xl p-4">
-        <h3 class="font-bold mb-3">Márgenes por vendedor (sesiones activas)</h3>
-        <div id="lista-margenes" class="space-y-2"></div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Modal detalle pedido -->
-  <div id="modal-pedido-detalle" class="hidden fixed inset-0 bg-black/90 z-40 overflow-y-auto p-4">
+  <!-- RESTO DEL HTML IGUAL (modales de cliente, detalle, venta, etc) -->
+  <!-- Modal nuevo/editar cliente -->
+  <div id="modal-cliente" class="hidden fixed inset-0 bg-black/90 z-40 overflow-y-auto p-4">
     <div class="max-w-md mx-auto bg-gray-900 border border-gray-700 rounded-xl p-4 mt-4">
       <div class="flex justify-between items-center mb-3">
-        <h3 class="font-bold">Pedido #<span id="ped-id">0</span></h3>
-        <button onclick="cerrarPedido()" class="text-gray-500 text-2xl">×</button>
+        <h3 class="font-bold" id="titulo-cliente">Nuevo cliente</h3>
+        <button onclick="cerrarCliente()" class="text-gray-500 text-2xl">×</button>
       </div>
-      <div class="bg-gray-800 rounded-lg p-3 mb-3 space-y-1 text-sm">
-        <p><span class="text-gray-500">Cliente:</span> <strong id="ped-cliente">—</strong></p>
-        <p><span class="text-gray-500">Teléfono:</span> <strong id="ped-tel">—</strong></p>
-        <p><span class="text-gray-500">Fecha:</span> <strong id="ped-fecha">—</strong></p>
-        <p><span class="text-gray-500">Estado:</span> <strong id="ped-estado">—</strong></p>
+      <input id="c-nombre" placeholder="Nombre del kiosco/comercio *" class="w-full bg-black border border-gray-700 rounded-lg p-2.5 text-sm mb-2 focus:border-neon focus:outline-none">
+      <div class="grid grid-cols-2 gap-2 mb-2">
+        <input id="c-contacto" placeholder="Contacto" class="bg-black border border-gray-700 rounded-lg p-2.5 text-sm focus:border-neon focus:outline-none">
+        <input id="c-telefono" placeholder="Teléfono" class="bg-black border border-gray-700 rounded-lg p-2.5 text-sm focus:border-neon focus:outline-none">
       </div>
-      <h4 class="text-xs font-bold text-gray-500 mb-2">Productos</h4>
-      <div id="ped-items" class="space-y-1 text-xs mb-3"></div>
-      <p class="text-right text-sm font-bold mb-3">Total: <span class="text-neon" id="ped-total">$ 0</span></p>
+      <input id="c-direccion" placeholder="Dirección" class="w-full bg-black border border-gray-700 rounded-lg p-2.5 text-sm mb-2 focus:border-neon focus:outline-none">
+      <input id="c-localidad" placeholder="Localidad (ej: Godoy Cruz)" class="w-full bg-black border border-gray-700 rounded-lg p-2.5 text-sm mb-2 focus:border-neon focus:outline-none" list="localidades-sugeridas">
+      <datalist id="localidades-sugeridas"></datalist>
+      <div class="bg-black border border-gray-700 rounded-lg p-3 mb-2">
+        <p class="text-xs text-gray-500 font-bold mb-2">📍 Ubicación</p>
+        <button onclick="tomarUbicacionGPS()" class="w-full bg-blue-700 hover:bg-blue-600 text-white rounded-lg py-2 text-sm mb-2">GPS</button>
+        <div class="grid grid-cols-2 gap-2">
+          <input id="c-lat" placeholder="Lat" class="bg-gray-900 border border-gray-700 rounded p-2 text-xs">
+          <input id="c-lng" placeholder="Lng" class="bg-gray-900 border border-gray-700 rounded p-2 text-xs">
+        </div>
+      </div>
+      <input id="c-id" type="hidden">
+      <button onclick="guardarCliente()" class="w-full bg-neon text-black font-bold rounded-lg py-3">Guardar</button>
+    </div>
+  </div>
+
+  <!-- Modal detalle cliente -->
+  <div id="modal-detalle" class="hidden fixed inset-0 bg-black/90 z-40 overflow-y-auto p-4">
+    <div class="max-w-md mx-auto bg-gray-900 border border-gray-700 rounded-xl p-4 mt-4">
+      <div class="flex justify-between items-center mb-1">
+        <h3 class="font-bold" id="det-nombre">Cliente</h3>
+        <button onclick="cerrarDetalle()" class="text-gray-500 text-2xl">×</button>
+      </div>
+      <p id="det-info" class="text-gray-500 text-xs mb-3"></p>
+      <div class="flex gap-2 mb-4">
+        <a id="det-wsp" href="#" target="_blank" class="flex-1 bg-green-600 text-white font-bold rounded-lg py-2.5 text-sm text-center">📲 WSP</a>
+        <a id="det-mapa" href="#" target="_blank" class="flex-1 bg-blue-700 text-white font-bold rounded-lg py-2.5 text-sm text-center">🗺️</a>
+        <button onclick="editarClienteActual()" class="border border-gray-600 text-gray-300 rounded-lg px-3 text-sm">✏️</button>
+      </div>
+      <div class="bg-black border border-gray-800 rounded-lg p-3 mb-3">
+        <div class="flex gap-2 mb-2">
+          <button onclick="setTipoVenta('venta')" id="bt-venta" class="flex-1 bg-neon text-black font-bold rounded-lg py-2 text-sm">Venta</button>
+          <button onclick="setTipoVenta('pedido')" id="bt-pedido" class="flex-1 bg-gray-800 text-gray-300 rounded-lg py-2 text-sm">Pedido</button>
+        </div>
+        <div id="lista-items-venta" class="space-y-2 mb-2"></div>
+        <button onclick="agregarItemVenta()" class="w-full border border-gray-700 text-gray-300 rounded-lg py-2 text-sm mb-2">+ Agregar producto</button>
+        <p class="text-right text-sm mb-2">Total: <span id="total-venta" class="text-neon font-bold">$ 0</span></p>
+        <button onclick="guardarVenta()" class="w-full bg-neon text-black font-bold rounded-lg py-2.5 text-sm">Registrar</button>
+      </div>
+      <button onclick="registrarVisitaSinCompra()" class="w-full border border-gray-700 text-gray-400 rounded-lg py-2 text-sm mb-3">Visita sin compra</button>
+      <h4 class="text-xs text-gray-500 font-bold mb-2">Historial</h4>
+      <div id="det-historial" class="space-y-1 text-xs"></div>
+    </div>
+  </div>
+
+  <!-- Modal notificaciones -->
+  <div id="modal-notificaciones" class="hidden fixed inset-0 bg-black/90 z-40 overflow-y-auto p-4">
+    <div class="max-w-md mx-auto bg-gray-900 border border-gray-700 rounded-xl p-4 mt-4">
+      <div class="flex justify-between items-center mb-3">
+        <h3 class="font-bold">🔔 Notificaciones</h3>
+        <button onclick="cerrarNotificaciones()" class="text-gray-500 text-2xl">×</button>
+      </div>
+      <div id="lista-notificaciones" class="space-y-2"></div>
+    </div>
+  </div>
+
+  <!-- Modal compartir catálogo -->
+  <div id="modal-compartir" class="hidden fixed inset-0 bg-black/90 z-40 flex items-center justify-center p-4">
+    <div class="bg-gray-900 border border-gray-700 rounded-xl p-4 w-full max-w-sm">
+      <h3 class="font-bold mb-3">📲 Compartir tu catálogo</h3>
+      <p class="text-gray-400 text-sm mb-3">Los clientes pueden ver tus productos y hacer pedidos:</p>
+      <div class="bg-black border border-gray-700 rounded-lg p-3 mb-3">
+        <p id="link-catalogo" class="text-neon font-mono text-xs break-all">Cargando...</p>
+      </div>
+      <button onclick="copiarLink()" class="w-full bg-neon text-black font-bold rounded-lg py-2 mb-2">📋 Copiar link</button>
+      <button onclick="compartirPorWSP()" class="w-full bg-green-600 text-white font-bold rounded-lg py-2 mb-2">📲 Enviar por WhatsApp</button>
+      <button onclick="cerrarCompartir()" class="w-full border border-gray-700 text-gray-400 rounded-lg py-2 text-sm">Cerrar</button>
+    </div>
+  </div>
+
+  <!-- Modal acciones venta -->
+  <div id="modal-venta-acciones" class="hidden fixed inset-0 bg-black/90 z-40 flex items-center justify-center p-4">
+    <div class="bg-gray-900 border border-gray-700 rounded-xl p-4 w-full max-w-sm">
+      <h3 class="font-bold mb-3">Comprobante #<span id="action-venta-id">0</span></h3>
+      <div class="space-y-2">
+        <button onclick="generarComprobanteRepartidor(ventaActualId)" class="w-full bg-gray-800 hover:bg-gray-700 text-white font-bold rounded-lg py-3 text-sm">📄 PDF</button>
+        <button onclick="enviarComprobantePorWSP(ventaActualId)" class="w-full bg-green-600 hover:bg-green-500 text-white font-bold rounded-lg py-3 text-sm">📲 WhatsApp</button>
+      </div>
+      <button onclick="cerrarAcciones()" class="w-full border border-gray-700 text-gray-400 rounded-lg py-2 text-sm mt-2">Cerrar</button>
+    </div>
+  </div>
+
+  <!-- Modal editar margen -->
+  <div id="modal-editar-margen" class="hidden fixed inset-0 bg-black/90 z-40 flex items-center justify-center p-4">
+    <div class="bg-gray-900 border border-gray-700 rounded-xl p-4 w-full max-w-sm">
+      <h3 class="font-bold mb-3">⚙️ Mi margen de venta</h3>
+      <p class="text-gray-500 text-xs mb-3">Aplica a todos los productos</p>
+      <div class="mb-3">
+        <label class="block text-xs text-gray-500 mb-1">Porcentaje (%)</label>
+        <input id="input-margen" type="number" min="0" step="0.1" placeholder="Ej: 15" class="w-full bg-black border border-gray-700 rounded-lg p-3 text-sm focus:border-neon">
+      </div>
       <div class="flex gap-2">
-        <select id="ped-estado-sel" class="flex-1 bg-black border border-gray-700 rounded-lg p-2 text-sm">
-          <option value="nuevo">Nuevo</option>
-          <option value="contactado">Contactado</option>
-          <option value="confirmado">Confirmado</option>
-          <option value="cancelado">Cancelado</option>
-        </select>
-        <button onclick="actualizarEstadoPedido()" class="flex-1 bg-neon text-black font-bold rounded-lg px-3 text-sm">Guardar</button>
+        <button onclick="guardarMargen()" class="flex-1 bg-neon text-black font-bold rounded-lg py-2 text-sm">Guardar</button>
+        <button onclick="cerrarEditarMargen()" class="flex-1 border border-gray-700 text-gray-400 rounded-lg py-2 text-sm">Cancelar</button>
       </div>
-      <button onclick="cerrarPedido()" class="w-full border border-gray-700 text-gray-400 rounded-lg py-2 text-sm mt-2">Cerrar</button>
     </div>
   </div>
 
 <script>
   const API_URL = '/api';
+  let empleado = null;
   let clientes = [];
-  let ventas = [];
-  let pedidos = [];
-  let currentTab = 'clientes';
-  let currentPedidoId = null;
+  let productos = [];
+  let clienteActual = null;
+  let itemsVenta = [];
+  let tipoVentaSel = 'venta';
+  let ventaActualId = null;
+  let margenVendedor = null;
 
   function fmt(n){ return '$ ' + (Math.round((parseFloat(n)||0)*100)/100).toLocaleString('es-AR'); }
 
-  function switchTab(tab){
-    currentTab = tab;
-    ['clientes','ventas','pedidos','catalogo','margenes'].forEach(t => {
-      document.getElementById('tab-'+t).classList[t===tab?'remove':'add']('hidden');
-      document.querySelector('[onclick="switchTab(\''+t+'\')"]').classList[t===tab?'add':'remove']('active');
-    });
-    if (tab==='clientes') renderClientes();
-    else if (tab==='ventas') renderVentas();
-    else if (tab==='pedidos') renderPedidos();
-    else if (tab==='catalogo') cargarVendedoresParaCatalogo();
-    else if (tab==='margenes') renderMargenes();
+  try { empleado = JSON.parse(sessionStorage.getItem('empleado') || 'null'); } catch(e){}
+  if (!empleado || !(empleado.id_empleado || empleado.id)) {
+    window.location.href = '/reparto-login';
+  } else {
+    document.getElementById('nombre-repartidor').textContent = (empleado.nombre||'') + ' ' + (empleado.apellido||'');
   }
 
-  function salirAdmin(){ window.location.href = '/reparto-admin-login'; }
+  async function salirReparto(){
+    try { await fetch(API_URL+'/reparto/logout', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ id_empleado: empleado.id_empleado||empleado.id })}); } catch(e){}
+    sessionStorage.removeItem('empleado');
+    window.location.href = '/reparto-login';
+  }
+
+  async function cargarProductos(){
+    try { productos = await fetch(API_URL+'/productos', {cache:'no-store'}).then(r=>r.json()); } catch(e){ productos = []; }
+  }
+
+  async function cargarMargenVendedor(){
+    try {
+      var id = empleado.id_empleado || empleado.id;
+      var res = await fetch(API_URL+'/reparto/vendedor/margen/'+id, {cache:'no-store'}).then(r=>r.json());
+      margenVendedor = res.margen_venta_porcentaje_default;
+      document.getElementById('margen-badge').textContent = margenVendedor ? margenVendedor.toFixed(1)+'%' : '—';
+    } catch(e){ margenVendedor = null; }
+  }
+
+  async function cargarNotificaciones(){
+    try {
+      var id = empleado.id_empleado || empleado.id;
+      var notifs = await fetch(API_URL+'/notificaciones/sin-leer?id_empleado='+id, {cache:'no-store'}).then(r=>r.json());
+      var badge = document.getElementById('notif-badge');
+      if (notifs.length){
+        badge.textContent = notifs.length;
+        badge.classList.remove('hidden');
+      } else {
+        badge.classList.add('hidden');
+      }
+    } catch(e){}
+  }
 
   async function cargarClientes(){
-    try { clientes = await fetch(API_URL+'/reparto/clientes', {cache:'no-store'}).then(r=>r.json()); } catch(e){ clientes = []; }
-  }
-
-  async function cargarVentas(){
-    try { ventas = await fetch(API_URL+'/reparto/ventas', {cache:'no-store'}).then(r=>r.json()); } catch(e){ ventas = []; }
-  }
-
-  async function cargarPedidos(){
-    try { 
-      pedidos = await fetch(API_URL+'/catalogo-pedidos', {cache:'no-store'}).then(r=>r.json());
-      var sel = document.getElementById('filtro-vendedor-ped');
-      sel.innerHTML = '<option value="">— Todos los vendedores —</option>';
-    } catch(e){ pedidos = []; }
+    try {
+      var url = API_URL+'/reparto/clientes?id_vendedor='+(empleado.id_empleado||empleado.id);
+      clientes = await fetch(url, {cache:'no-store'}).then(r=>r.json());
+      renderClientes();
+      cargarLocalidades();
+    } catch(e){ clientes = []; renderClientes(); }
   }
 
   function renderClientes(){
-    cargarClientes().then(() => {
-      var cont = document.getElementById('lista-clientes-admin');
-      var filt_vend = (document.getElementById('filtro-vendedor-cl').value||'').toLowerCase();
-      var busca = (document.getElementById('buscar-cliente').value||'').toLowerCase();
-      var filtrados = clientes.filter(c => {
-        return (c.nombre||'').toLowerCase().includes(busca) && 
-               (filt_vend==='' || (c.nombre_vendedor||'').toLowerCase().includes(filt_vend));
-      });
-      cont.innerHTML = '';
-      if (!filtrados.length){ cont.innerHTML='<p class="text-gray-600 text-sm">Sin clientes.</p>'; return; }
-      filtrados.slice(0,200).forEach(c => {
-        var div = document.createElement('div');
-        div.className = 'bg-gray-900 border border-gray-800 rounded-lg p-3 hover:border-neon';
-        div.innerHTML =
-          '<div class="flex justify-between items-start">' +
-            '<div class="flex-1"><p class="font-bold">'+c.nombre+'</p>' +
-              '<p class="text-gray-500 text-xs">'+c.localidad+(c.telefono?' · '+c.telefono:'')+'</p>' +
-              '<p class="text-gray-600 text-xs">👤 '+(c.nombre_vendedor||'Sin vendedor')+' • '+fmt(c.total_comprado||0)+'</p></div>' +
-          '</div>';
-        cont.appendChild(div);
-      });
+    var cont = document.getElementById('lista-clientes');
+    var busca = (document.getElementById('buscar').value||'').toLowerCase();
+    var loc = document.getElementById('filtro-localidad').value;
+    var filtrados = clientes.filter(function(c){
+      return (c.nombre||'').toLowerCase().includes(busca) && (!loc || c.localidad === loc);
+    });
+    cont.innerHTML = '';
+    if (!filtrados.length){ cont.innerHTML='<p class="text-gray-600 text-sm">Sin clientes.</p>'; return; }
+    filtrados.forEach(function(c){
+      var tel = (c.telefono||'').replace(/[^0-9]/g,''); if(tel && !tel.startsWith('54')) tel='54'+tel;
+      var div = document.createElement('div');
+      div.className = 'bg-gray-900 border border-gray-800 rounded-lg p-3 cursor-pointer hover:border-neon';
+      div.innerHTML =
+        '<div class="flex justify-between items-start">' +
+          '<div class="flex-1"><p class="font-bold">'+c.nombre+'</p>' +
+            '<p class="text-gray-500 text-xs">'+c.localidad+(c.telefono?' · '+c.telefono:'')+'</p>' +
+            '<p class="text-gray-600 text-xs">'+fmt(c.total_comprado||0)+' · '+(c.ultima_visita?('últ. '+c.ultima_visita.slice(0,10)):'sin visitas')+'</p></div>' +
+          (tel?'<a href="https://wa.me/'+tel+'" target="_blank" class="text-green-400 text-lg hover:text-green-300">📲</a>':'') +
+        '</div>';
+      div.onclick = function(){ abrirDetalle(c); };
+      cont.appendChild(div);
     });
   }
 
-  function renderVentas(){
-    cargarVentas().then(() => {
-      var cont = document.getElementById('lista-ventas-admin');
-      var filt_vend = (document.getElementById('filtro-vendedor').value||'').toLowerCase();
-      var filt_estado = document.getElementById('filtro-estado').value||'';
-      var filtrados = ventas.filter(v => {
-        return (filt_vend==='' || (v.nombre_vendedor||'').toLowerCase().includes(filt_vend)) &&
-               (filt_estado==='' || v.estado===filt_estado);
-      });
-      cont.innerHTML = '';
-      if (!filtrados.length){ cont.innerHTML='<p class="text-gray-600 text-sm">Sin ventas.</p>'; return; }
-      filtrados.slice(0,200).forEach(v => {
-        var estado_cls = v.estado==='entregado' ? 'text-green-400' : 'text-yellow-400';
-        var div = document.createElement('div');
-        div.className = 'bg-gray-900 border border-gray-800 rounded-lg p-3 hover:border-neon';
-        div.innerHTML =
-          '<div class="flex justify-between">' +
-            '<div><p class="font-bold">#'+String(v.id).padStart(5,'0')+' · '+v.cliente_nombre+'</p>' +
-              '<p class="text-gray-500 text-xs">👤 '+(v.nombre_vendedor||'—')+' • '+v.tipo+' • '+(v.fecha||'').slice(0,10)+'</p></div>' +
-            '<div class="text-right"><p class="font-bold">'+fmt(v.total)+'</p>' +
-              '<p class="'+estado_cls+' text-xs">'+(v.estado||'pendiente')+'</p></div>' +
-          '</div>';
-        cont.appendChild(div);
-      });
+  function abrirNuevoCliente(){
+    document.getElementById('c-id').value = '';
+    document.getElementById('titulo-cliente').textContent = 'Nuevo cliente';
+    document.getElementById('c-nombre').value = '';
+    document.getElementById('c-contacto').value = '';
+    document.getElementById('c-telefono').value = '';
+    document.getElementById('c-direccion').value = '';
+    document.getElementById('c-localidad').value = '';
+    document.getElementById('c-lat').value = '';
+    document.getElementById('c-lng').value = '';
+    document.getElementById('modal-cliente').classList.remove('hidden');
+  }
+
+  function cerrarCliente(){ document.getElementById('modal-cliente').classList.add('hidden'); }
+
+  function tomarUbicacionGPS(){
+    navigator.geolocation.getCurrentPosition(function(pos){
+      document.getElementById('c-lat').value = pos.coords.latitude;
+      document.getElementById('c-lng').value = pos.coords.longitude;
     });
   }
 
-  function renderPedidos(){
-    cargarPedidos().then(() => {
-      var cont = document.getElementById('lista-pedidos-admin');
-      var filt_vend = parseInt(document.getElementById('filtro-vendedor-ped').value||0) || null;
-      var filt_estado = document.getElementById('filtro-estado-ped').value||'';
-      var filtrados = pedidos.filter(p => {
-        return (!filt_vend || p.id_vendedor===filt_vend) &&
-               (filt_estado==='' || p.estado===filt_estado);
-      });
-      cont.innerHTML = '';
-      if (!filtrados.length){ cont.innerHTML='<p class="text-gray-600 text-sm">Sin pedidos.</p>'; return; }
-      filtrados.slice(0,200).forEach(p => {
-        var estado_color = p.estado==='nuevo' ? 'bg-red-900' : (p.estado==='confirmado' ? 'bg-green-900' : 'bg-gray-800');
-        var div = document.createElement('div');
-        div.className = 'bg-gray-900 border border-gray-800 rounded-lg p-3 cursor-pointer hover:border-neon ' + estado_color;
-        div.innerHTML =
-          '<div class="flex justify-between">' +
-            '<div><p class="font-bold">#'+String(p.id).padStart(5,'0')+' · '+p.cliente_nombre+'</p>' +
-              '<p class="text-gray-500 text-xs">📲 '+p.cliente_telefono+'</p></div>' +
-            '<p class="font-bold">'+fmt(p.total)+'</p>' +
-          '</div>';
-        div.onclick = () => abrirPedidoDetalle(p);
-        cont.appendChild(div);
-      });
-    });
-  }
-
-  async function renderMargenes(){
+  async function guardarCliente(){
+    var nombre = (document.getElementById('c-nombre').value||'').trim();
+    if (!nombre){ alert('Ponele nombre.'); return; }
+    var id = (document.getElementById('c-id').value||'').trim();
+    var body = {
+      nombre: nombre,
+      contacto: document.getElementById('c-contacto').value || null,
+      telefono: document.getElementById('c-telefono').value || null,
+      direccion: document.getElementById('c-direccion').value || null,
+      localidad: document.getElementById('c-localidad').value || null,
+      latitud: parseFloat(document.getElementById('c-lat').value) || null,
+      longitud: parseFloat(document.getElementById('c-lng').value) || null,
+      id_empleado: empleado ? (empleado.id_empleado || empleado.id) : null
+    };
     try {
-      var resp = await fetch(API_URL+'/reparto/margenes', {cache:'no-store'}).then(r=>r.json());
-      var cont = document.getElementById('lista-margenes');
-      cont.innerHTML = '';
-      if (!resp.length){ cont.innerHTML='<p class="text-gray-600">Sin vendedores activos.</p>'; return; }
-      resp.forEach(v => {
-        var div = document.createElement('div');
-        div.className = 'flex justify-between items-center bg-gray-800 rounded-lg p-3 border border-gray-700';
-        div.innerHTML =
-          '<div><p class="font-bold">'+v.nombre+' '+v.apellido+'</p><p class="text-gray-500 text-xs">Sesión activa</p></div>' +
-          '<p class="text-neon font-bold text-lg">'+(v.margen||'—')+'%</p>';
-        cont.appendChild(div);
-      });
-    } catch(e){ document.getElementById('lista-margenes').innerHTML='<p class="text-gray-600">—</p>'; }
-  }
-
-  function abrirPedidoDetalle(p){
-    currentPedidoId = p.id;
-    document.getElementById('ped-id').textContent = String(p.id).padStart(5,'0');
-    document.getElementById('ped-cliente').textContent = p.cliente_nombre;
-    document.getElementById('ped-tel').textContent = p.cliente_telefono;
-    document.getElementById('ped-fecha').textContent = (p.fecha||'').slice(0,16).replace('T',' ');
-    document.getElementById('ped-estado').textContent = p.estado;
-    document.getElementById('ped-estado-sel').value = p.estado;
-    document.getElementById('ped-total').textContent = fmt(p.total);
-    var items_cont = document.getElementById('ped-items');
-    items_cont.innerHTML = '';
-    try {
-      var items = JSON.parse(p.items_json || '[]');
-      items.forEach(i => {
-        var fila = document.createElement('div');
-        fila.className = 'flex justify-between text-gray-400 border-b border-gray-700 py-1';
-        fila.innerHTML = '<span>'+i.cantidad+'× '+i.nombre+'</span><span>$ '+(parseFloat(i.precio)*i.cantidad).toFixed(2)+'</span>';
-        items_cont.appendChild(fila);
-      });
-    } catch(e){}
-    document.getElementById('modal-pedido-detalle').classList.remove('hidden');
-  }
-
-  function cerrarPedido(){ document.getElementById('modal-pedido-detalle').classList.add('hidden'); }
-
-  async function actualizarEstadoPedido(){
-    var estado = document.getElementById('ped-estado-sel').value;
-    try {
-      await fetch(API_URL+'/catalogo-pedidos/'+currentPedidoId+'/estado', {method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ estado: estado })});
-      alert('✓ Actualizado');
-      cerrarPedido();
-      renderPedidos();
+      var method = id ? 'PUT' : 'POST';
+      var url = id ? API_URL+'/reparto/clientes/'+id : API_URL+'/reparto/clientes';
+      var res = await fetch(url, {method, headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+      if (!res.ok){ alert('Error.'); return; }
+      alert('Cliente guardado ✓');
+      cerrarCliente();
+      cargarClientes();
     } catch(e){ alert('Error.'); }
   }
 
-  // ===== CATÁLOGO =====
-  async function cargarVendedoresParaCatalogo(){
-    try {
-      var resp = await fetch(API_URL+'/reparto/empleados', {cache:'no-store'}).then(r=>r.json()).catch(e => []);
-      var sel = document.getElementById('filtro-catalogo-vendedor');
-      sel.innerHTML = '<option value="">— Todos los vendedores —</option>';
-      (resp || []).forEach(e => {
-        sel.innerHTML += '<option value="'+e.id+'">'+e.nombre+' '+e.apellido+'</option>';
+  function abrirDetalle(c){
+    clienteActual = c;
+    document.getElementById('det-nombre').textContent = c.nombre;
+    document.getElementById('det-info').textContent = (c.direccion||'') + (c.localidad?' · '+c.localidad:'');
+    var tel = (c.telefono||'').replace(/[^0-9]/g,''); if(tel && !tel.startsWith('54')) tel='54'+tel;
+    document.getElementById('det-wsp').href = tel ? 'https://wa.me/'+tel : '#';
+    itemsVenta = [];
+    agregarItemVenta();
+    setTipoVenta('venta');
+    cargarHistorial(c.id);
+    document.getElementById('modal-detalle').classList.remove('hidden');
+  }
+
+  function cerrarDetalle(){ document.getElementById('modal-detalle').classList.add('hidden'); }
+
+  function editarClienteActual(){
+    if (!clienteActual) return;
+    document.getElementById('c-id').value = clienteActual.id;
+    document.getElementById('c-nombre').value = clienteActual.nombre||'';
+    document.getElementById('c-telefono').value = clienteActual.telefono||'';
+    document.getElementById('c-direccion').value = clienteActual.direccion||'';
+    document.getElementById('c-localidad').value = clienteActual.localidad||'';
+    cerrarDetalle();
+    document.getElementById('modal-cliente').classList.remove('hidden');
+  }
+
+  function setTipoVenta(t){
+    tipoVentaSel = t;
+    ['venta','pedido'].forEach(function(x){
+      document.getElementById('bt-'+x).className = (x===t)
+        ? 'flex-1 bg-neon text-black font-bold rounded-lg py-2 text-sm'
+        : 'flex-1 bg-gray-800 text-gray-300 rounded-lg py-2 text-sm';
+    });
+  }
+
+  function agregarItemVenta(){
+    itemsVenta.push({ id_producto: '', nombre: '', cantidad: 1, precio_unitario: 0 });
+    renderItemsVenta();
+  }
+
+  function renderItemsVenta(){
+    var cont = document.getElementById('lista-items-venta');
+    cont.innerHTML = '';
+    itemsVenta.forEach(function(it, idx){
+      var opts = '<option value="">— producto —</option>';
+      productos.forEach(function(p){
+        var precio = p.precio_mayorista || p.precio_minorista || 0;
+        opts += '<option value="'+p.id+'" data-precio="'+precio+'"'+(it.id_producto==p.id?' selected':'')+'>'+p.nombre+'</option>';
       });
+      var margenStr = margenVendedor ? '(+' + margenVendedor.toFixed(1) + '%)' : '(mayorista)';
+      var div = document.createElement('div');
+      div.className = 'border border-gray-700 rounded-lg p-2 bg-gray-800/50';
+      div.innerHTML =
+        '<select onchange="elegirProd('+idx+',this)" class="w-full bg-gray-900 border border-gray-700 rounded p-1.5 text-xs mb-1">'+opts+'</select>' +
+        '<div class="grid grid-cols-3 gap-1 mb-1">' +
+          '<input type="number" min="1" value="'+it.cantidad+'" oninput="setItem('+idx+',\'cantidad\',this.value)" class="bg-gray-900 border border-gray-700 rounded p-1.5 text-xs text-center">' +
+          '<div class="bg-green-900 border border-green-700 rounded p-1.5 text-xs text-right font-bold text-green-300">$ '+it.precio_unitario.toFixed(2)+'</div>' +
+          '<span class="text-xs text-gray-400 text-center">'+margenStr+'</span>' +
+        '</div>' +
+        '<button onclick="quitarItem('+idx+')" class="w-full text-red-500 font-bold text-xs py-1">✕</button>';
+      cont.appendChild(div);
+    });
+    calcularTotalVenta();
+  }
+
+  function elegirProd(idx, sel){
+    var opt = sel.options[sel.selectedIndex];
+    var precioMayorista = parseFloat(opt.dataset.precio) || 0;
+    var margenAplicado = margenVendedor || 0;
+    var precioFinal = precioMayorista * (1 + margenAplicado / 100);
+    itemsVenta[idx].id_producto = sel.value;
+    itemsVenta[idx].nombre = opt.textContent;
+    itemsVenta[idx].precio_unitario = precioFinal;
+    renderItemsVenta();
+  }
+
+  function setItem(idx, campo, val){ itemsVenta[idx][campo] = parseFloat(val)||0; calcularTotalVenta(); }
+
+  function quitarItem(idx){ itemsVenta.splice(idx,1); renderItemsVenta(); }
+
+  function calcularTotalVenta(){
+    var t = itemsVenta.reduce((a,b) => a + (b.cantidad||0)*(b.precio_unitario||0), 0);
+    document.getElementById('total-venta').textContent = fmt(t);
+  }
+
+  async function guardarVenta(){
+    var items = itemsVenta.filter(i => i.id_producto && i.cantidad>0);
+    if (!items.length){ alert('Agregá productos.'); return; }
+    items = items.map(i => Object.assign({}, i, { margen_venta_porcentaje: margenVendedor }));
+    var body = {
+      id_cliente: clienteActual.id,
+      id_empleado: empleado ? empleado.id_empleado || empleado.id : null,
+      tipo: tipoVentaSel,
+      items: items
+    };
+    try {
+      var res = await fetch(API_URL+'/reparto/ventas', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+      var r = await res.json();
+      if (!res.ok){ alert('Error: '+(r.detail||'')); return; }
+      alert('Registrado ✓');
+      itemsVenta = []; agregarItemVenta();
+      cargarHistorial(clienteActual.id);
+      cargarClientes();
+      cargarNotificaciones();
+    } catch(e){ alert('Error.'); }
+  }
+
+  async function registrarVisitaSinCompra(){
+    if (!clienteActual) return;
+    var coords = {};
+    try {
+      var pos = await new Promise((res,rej) => navigator.geolocation.getCurrentPosition(res, rej, {timeout:5000}));
+      coords = { latitud: pos.coords.latitude, longitud: pos.coords.longitude };
+    } catch(e){}
+    var body = Object.assign({ id_cliente: clienteActual.id, id_empleado: empleado?(empleado.id_empleado||empleado.id):null, resultado: 'sin_compra' }, coords);
+    try {
+      await fetch(API_URL+'/reparto/visitas', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+      alert('Registrada.');
+      cargarHistorial(clienteActual.id);
+    } catch(e){ alert('Error.'); }
+  }
+
+  async function cargarHistorial(id){
+    var cont = document.getElementById('det-historial');
+    try {
+      var h = await fetch(API_URL+'/reparto/clientes/'+id+'/historial', {cache:'no-store'}).then(r=>r.json());
+      var filas = [];
+      (h.ventas||[]).forEach(v => filas.push({fecha:v.fecha, id:v.id, clickable:true, txt:(v.tipo==='venta'?'💰':'📋')+' '+fmt(v.total)+(v.estado==='pendiente'?' (pend.)':'')}));
+      (h.visitas||[]).forEach(v => { if(v.resultado==='sin_compra') filas.push({fecha:v.fecha, clickable:false, txt:'👋 Sin compra'}); });
+      filas.sort((a,b) => (b.fecha||'').localeCompare(a.fecha||''));
+      cont.innerHTML = filas.length ? '' : '<p class="text-gray-600">Sin movimientos.</p>';
+      filas.slice(0,15).forEach(f => {
+        var row = document.createElement('div');
+        row.className = 'flex justify-between text-gray-400 border-b border-gray-800 py-1' + (f.clickable?' cursor-pointer hover:text-white':'');
+        row.innerHTML = '<span>'+f.txt+'</span><span class="text-gray-600 text-xs">'+(f.fecha||'').slice(0,10)+'</span>';
+        if (f.clickable) row.onclick = () => abrirAccionesVenta(f.id);
+        cont.appendChild(row);
+      });
+    } catch(e){ cont.innerHTML='<p class="text-gray-600">—</p>'; }
+  }
+
+  function abrirAccionesVenta(id){
+    ventaActualId = id;
+    document.getElementById('action-venta-id').textContent = String(id).padStart(5,'0');
+    document.getElementById('modal-venta-acciones').classList.remove('hidden');
+  }
+
+  function cerrarAcciones(){ document.getElementById('modal-venta-acciones').classList.add('hidden'); }
+
+  async function enviarComprobantePorWSP(id){
+    try {
+      var res = await fetch(API_URL+'/reparto/ventas/'+id+'/enviar-comprobante-wsp', {cache:'no-store'});
+      var data = await res.json();
+      if (!data.wa_link){ alert('Sin teléfono.'); return; }
+      cerrarAcciones();
+      window.open(data.wa_link, '_blank');
+    } catch(e){ alert('Error.'); }
+  }
+
+  async function generarComprobanteRepartidor(id){
+    try {
+      var d = await fetch(API_URL+'/reparto/ventas/'+id+'/detalle', {cache:'no-store'}).then(r=>r.json());
+      var jsPDF = window.jspdf.jsPDF;
+      var doc = new jsPDF({unit:'mm', format:[80, 200]});
+      var y = 10;
+      doc.setFont('helvetica','bold'); doc.setFontSize(12);
+      doc.text('PORTAL DEL VIENTO', 40, y, {align:'center'}); y+=5;
+      doc.setFont('helvetica','normal'); doc.setFontSize(8);
+      doc.text('Alfajores Artesanales', 40, y, {align:'center'}); y+=6;
+      doc.setFont('helvetica','bold'); doc.setFontSize(10);
+      doc.text(d.tipo==='venta'?'COMPROBANTE VENTA':'COMPROBANTE PEDIDO', 40, y, {align:'center'}); y+=5;
+      doc.setFont('helvetica','normal'); doc.setFontSize(7);
+      doc.text('N° '+String(d.id).padStart(5,'0')+'  ·  '+d.fecha.slice(0,16).replace('T',' '), 40, y, {align:'center'}); y+=6;
+      doc.setFontSize(8);
+      doc.text('Cliente: '+(d.cliente||''), 6, y); y+=4;
+      doc.line(6, y, 74, y); y+=4;
+      doc.setFont('helvetica','normal'); doc.setFontSize(7.5);
+      (d.items||[]).forEach(i => {
+        doc.text(i.cantidad+'x '+(i.nombre||''), 6, y);
+        doc.text('$ '+(parseFloat(i.subtotal)||0).toLocaleString('es-AR'), 74, y, {align:'right'});
+        y+=4;
+      });
+      doc.line(6, y, 74, y); y+=5;
+      doc.setFont('helvetica','bold'); doc.setFontSize(11);
+      doc.text('TOTAL', 6, y); doc.text('$ '+(parseFloat(d.total)||0).toLocaleString('es-AR'), 74, y, {align:'right'}); y+=8;
+      doc.setFont('helvetica','normal'); doc.setFontSize(6.5);
+      doc.text('Sin valor fiscal.', 40, y, {align:'center'});
+      doc.save('comprobante_'+String(d.id).padStart(5,'0')+'.pdf');
+      cerrarAcciones();
+    } catch(e){ alert('Error.'); }
+  }
+
+  async function abrirNotificaciones(){
+    try {
+      var id = empleado.id_empleado || empleado.id;
+      var notifs = await fetch(API_URL+'/notificaciones/sin-leer?id_empleado='+id, {cache:'no-store'}).then(r=>r.json());
+      var cont = document.getElementById('lista-notificaciones');
+      cont.innerHTML = '';
+      if (!notifs.length){ cont.innerHTML = '<p class="text-gray-600 text-sm">Sin notificaciones.</p>'; }
+      notifs.forEach(n => {
+        var div = document.createElement('div');
+        div.className = 'bg-gray-800 border border-gray-700 rounded-lg p-2 mb-2';
+        div.innerHTML = '<p class="font-bold text-sm text-neon">'+n.titulo+'</p><p class="text-xs text-gray-400 mt-1">'+n.detalle+'</p>';
+        cont.appendChild(div);
+        // Marcar como leída
+        fetch(API_URL+'/notificaciones/'+n.id+'/leer', {method:'PUT'});
+      });
+      document.getElementById('modal-notificaciones').classList.remove('hidden');
+      cargarNotificaciones();
     } catch(e){}
   }
 
-  async function renderCatalogoProducts(){
-    var id_vend = parseInt(document.getElementById('filtro-catalogo-vendedor').value||0) || null;
-    if (!id_vend){ alert('Selecciona un vendedor.'); return; }
-    
-    try {
-      var productos = await fetch(API_URL+'/catalogo/'+id_vend+'/productos-admin', {cache:'no-store'}).then(r=>r.json());
-      var cont = document.getElementById('lista-catalogo-productos');
-      cont.innerHTML = '';
-      
-      productos.forEach(p => {
-        var div = document.createElement('div');
-        div.className = 'bg-gray-800 border border-gray-700 rounded-lg p-3 flex items-center gap-3';
-        div.innerHTML =
-          '<input type="checkbox" id="vis-'+p.id+'" '+( p.visible ? 'checked' : '')+' onchange="toggleProductoVisible('+id_vend+','+p.id+',this.checked)" class="w-4 h-4">' +
-          '<div class="flex-1"><p class="text-sm font-bold">'+p.nombre+'</p><p class="text-xs text-gray-500">$ '+parseFloat(p.precio_mayorista||0).toFixed(2)+'</p></div>' +
-          '<input type="number" min="0" value="'+(p.orden||0)+'" onchange="cambiarOrden('+id_vend+','+p.id+',this.value)" placeholder="Orden" class="w-16 bg-black border border-gray-700 rounded px-2 py-1 text-xs">';
-        cont.appendChild(div);
-      });
-    } catch(e){
-      document.getElementById('lista-catalogo-productos').innerHTML = '<p class="text-red-400">Error cargando.</p>';
+  function cerrarNotificaciones(){ document.getElementById('modal-notificaciones').classList.add('hidden'); }
+
+  function abrirCompartirCatalogo(){
+    var id = empleado.id_empleado || empleado.id;
+    var link = window.location.origin + '/catalogo-publico?v=' + id;
+    document.getElementById('link-catalogo').textContent = link;
+    document.getElementById('modal-compartir').classList.remove('hidden');
+  }
+
+  function cerrarCompartir(){ document.getElementById('modal-compartir').classList.add('hidden'); }
+
+  function copiarLink(){
+    var text = document.getElementById('link-catalogo').textContent;
+    navigator.clipboard.writeText(text).then(() => alert('✓ Copiado'));
+  }
+
+  function compartirPorWSP(){
+    var tel = '';
+    if (clienteActual && clienteActual.telefono){
+      tel = (clienteActual.telefono||'').replace(/[^0-9]/g,'');
+      if (tel && !tel.startsWith('54')) tel = '54' + tel;
     }
+    var id = empleado.id_empleado || empleado.id;
+    var link = window.location.origin + '/catalogo-publico?v=' + id;
+    var msg = 'Hola, acá está mi catálogo de productos: ' + link;
+    var wa = tel ? 'https://wa.me/'+tel+'?text='+encodeURIComponent(msg) : 'https://wa.me/?text='+encodeURIComponent(msg);
+    cerrarCompartir();
+    window.open(wa, '_blank');
   }
 
-  async function toggleProductoVisible(id_vend, id_prod, visible){
+  function abrirEditarMargen(){
+    document.getElementById('input-margen').value = margenVendedor || '';
+    document.getElementById('modal-editar-margen').classList.remove('hidden');
+  }
+
+  function cerrarEditarMargen(){ document.getElementById('modal-editar-margen').classList.add('hidden'); }
+
+  async function guardarMargen(){
+    var margen = document.getElementById('input-margen').value;
+    margen = margen === '' ? null : parseFloat(margen);
+    if (margen !== null && margen < 0){ alert('No negativo.'); return; }
     try {
-      await fetch(API_URL+'/catalogo/'+id_vend+'/productos/'+id_prod+'/visible', {
-        method: 'POST',
-        headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({ visible: visible })
-      });
+      var id = empleado.id_empleado || empleado.id;
+      await fetch(API_URL+'/reparto/vendedor/margen/'+id, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ margen_venta_porcentaje_default: margen })});
+      margenVendedor = margen;
+      document.getElementById('margen-badge').textContent = margen ? margen.toFixed(1)+'%' : '—';
+      alert('✓');
+      cerrarEditarMargen();
     } catch(e){ alert('Error.'); }
   }
 
-  async function cambiarOrden(id_vend, id_prod, orden){
+  async function cargarLocalidades(){
     try {
-      await fetch(API_URL+'/catalogo/'+id_vend+'/productos/'+id_prod+'/visible', {
-        method: 'POST',
-        headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({ visible: true, orden: parseInt(orden)||0 })
-      });
-    } catch(e){ alert('Error.'); }
+      var locs = await fetch(API_URL+'/reparto/localidades', {cache:'no-store'}).then(r=>r.json());
+      var sel = document.getElementById('filtro-localidad');
+      sel.innerHTML = '<option value="">📍 Todas</option>';
+      locs.forEach(l => sel.innerHTML += '<option value="'+l+'">'+l+'</option>');
+    } catch(e){}
   }
 
-  cargarClientes();
-  cargarVentas();
-  cargarPedidos();
+  // INIT
+  cargarProductos().then(() => { cargarClientes(); cargarLocalidades(); cargarMargenVendedor(); cargarNotificaciones(); });
+  setInterval(cargarNotificaciones, 10000); // Actualizar notificaciones cada 10 seg
 </script>
 </body>
 </html>
