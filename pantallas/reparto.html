@@ -141,155 +141,166 @@
   }
 
   async function cargarClientes(){
-    try { clientes = await fetch(API_URL+'/reparto/clientes', {cache:'no-store'}).then(r=>r.json()); } catch(e){ clientes = []; }
-    renderClientes();
+    try {
+      // FILTRAR SOLO POR id_vendedor DEL EMPLEADO LOGUEADO
+      var url = API_URL+'/reparto/clientes?id_vendedor='+(empleado.id_empleado||empleado.id);
+      clientes = await fetch(url, {cache:'no-store'}).then(r=>r.json());
+      renderClientes();
+      cargarLocalidades();
+    } catch(e){ clientes = []; renderClientes(); }
   }
 
   function renderClientes(){
-    var q = (document.getElementById('buscar').value||'').toLowerCase();
-    var loc = document.getElementById('filtro-localidad').value;
     var cont = document.getElementById('lista-clientes');
-    var fil = clientes.filter(function(c){
-      var matchQ = !q || (c.nombre||'').toLowerCase().includes(q) || (c.direccion||'').toLowerCase().includes(q);
-      var matchLoc = !loc || c.localidad === loc;
-      return matchQ && matchLoc;
+    var busca = (document.getElementById('buscar').value||'').toLowerCase();
+    var loc = document.getElementById('filtro-localidad').value;
+    var filtrados = clientes.filter(function(c){
+      var match_nom = (c.nombre||'').toLowerCase().includes(busca);
+      var match_loc = !loc || c.localidad === loc;
+      return match_nom && match_loc;
     });
-    if (!fil.length){ cont.innerHTML = '<p class="text-gray-600 text-sm">Sin clientes. Cargá el primero con "+ Cliente".</p>'; return; }
     cont.innerHTML = '';
-    fil.forEach(function(c){
-      var vis = c.ultima_visita ? ('Últ. visita: ' + c.ultima_visita.slice(0,10)) : 'Sin visitas';
+    if (!filtrados.length){ cont.innerHTML='<p class="text-gray-600 text-sm">Sin clientes.</p>'; return; }
+    filtrados.forEach(function(c){
+      var tel = (c.telefono||'').replace(/[^0-9]/g,''); if(tel && !tel.startsWith('54')) tel='54'+tel;
       var div = document.createElement('div');
-      div.className = 'bg-gray-900 border border-gray-800 rounded-lg p-3 flex items-center gap-3 cursor-pointer hover:border-gray-600';
-      div.onclick = function(){ abrirDetalle(c); };
+      div.className = 'bg-gray-900 border border-gray-800 rounded-lg p-3 cursor-pointer hover:border-neon transition';
       div.innerHTML =
-        (c.foto_url ? '<img src="'+c.foto_url+'" class="w-12 h-12 rounded-lg object-cover flex-shrink-0">' : '<div class="w-12 h-12 rounded-lg bg-gray-800 flex items-center justify-center text-xl flex-shrink-0">🏪</div>') +
-        '<div class="min-w-0 flex-1">' +
-          '<p class="font-bold text-white truncate">'+c.nombre+'</p>' +
-          '<p class="text-gray-500 text-xs truncate">'+(c.direccion||'')+'</p>' +
-          '<p class="text-gray-600 text-xs">'+vis+'</p>' +
+        '<div class="flex justify-between items-start gap-2">' +
+          '<div class="flex-1 min-w-0">' +
+            '<p class="font-bold text-white truncate">'+c.nombre+'</p>' +
+            '<p class="text-gray-500 text-xs">'+c.localidad+(c.telefono?' · '+c.telefono:'')+'</p>' +
+            '<p class="text-gray-600 text-xs">'+fmt(c.total_comprado||0)+' · '+(c.ultima_visita?('últ. '+c.ultima_visita.slice(0,10)):'sin visitas')+'</p>' +
+          '</div>' +
+          (tel?'<a href="https://wa.me/'+tel+'" target="_blank" class="text-green-400 text-lg flex-shrink-0 hover:text-green-300">📲</a>':'') +
         '</div>';
+      div.onclick = function(){ abrirDetalle(c); };
       cont.appendChild(div);
     });
   }
 
-  // ── Nuevo/editar cliente ──
   function abrirNuevoCliente(){
-    ['c-id','c-nombre','c-contacto','c-telefono','c-direccion','c-localidad','c-lat','c-lng','c-notas','c-foto-url'].forEach(function(id){ document.getElementById(id).value=''; });
-    document.getElementById('c-foto-preview').classList.add('hidden');
-    document.getElementById('ubi-estado').textContent = '';
+    document.getElementById('c-id').value = '';
     document.getElementById('titulo-cliente').textContent = 'Nuevo cliente';
+    document.getElementById('c-nombre').value = '';
+    document.getElementById('c-contacto').value = '';
+    document.getElementById('c-telefono').value = '';
+    document.getElementById('c-direccion').value = '';
+    document.getElementById('c-localidad').value = '';
+    document.getElementById('c-lat').value = '';
+    document.getElementById('c-lng').value = '';
+    document.getElementById('c-notas').value = '';
+    document.getElementById('c-foto-url').value = '';
+    document.getElementById('c-foto-preview').classList.add('hidden');
     document.getElementById('modal-cliente').classList.remove('hidden');
   }
-  function cerrarCliente(){ document.getElementById('modal-cliente').classList.add('hidden'); }
 
-  function tomarUbicacionGPS(){
-    var est = document.getElementById('ubi-estado');
-    est.textContent = 'Obteniendo ubicación...';
-    if (!navigator.geolocation){ est.textContent = 'Tu dispositivo no permite GPS.'; return; }
-    navigator.geolocation.getCurrentPosition(function(pos){
-      document.getElementById('c-lat').value = pos.coords.latitude.toFixed(7);
-      document.getElementById('c-lng').value = pos.coords.longitude.toFixed(7);
-      est.textContent = '✓ Ubicación tomada.';
-    }, function(){ est.textContent = 'No se pudo obtener el GPS. Cargá la dirección a mano.'; });
-  }
-
-  function cargarFoto(input){
-    var file = input.files[0];
-    if (!file) return;
-    // Se guarda como data URL (base64) — simple, sin servidor de imágenes
-    var reader = new FileReader();
-    reader.onload = function(e){
-      // Reducir tamaño para no guardar imágenes enormes
-      var img = new Image();
-      img.onload = function(){
-        var canvas = document.createElement('canvas');
-        var max = 800;
-        var esc = Math.min(1, max/Math.max(img.width, img.height));
-        canvas.width = img.width*esc; canvas.height = img.height*esc;
-        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
-        var dataUrl = canvas.toDataURL('image/jpeg', 0.7);
-        document.getElementById('c-foto-url').value = dataUrl;
-        var prev = document.getElementById('c-foto-preview');
-        prev.src = dataUrl; prev.classList.remove('hidden');
-      };
-      img.src = e.target.result;
-    };
-    reader.readAsDataURL(file);
-  }
-
-  async function guardarCliente(){
-    var nombre = document.getElementById('c-nombre').value.trim();
-    if (!nombre){ alert('Poné el nombre del cliente.'); return; }
-    var body = {
-      id: document.getElementById('c-id').value || null,
-      nombre: nombre,
-      contacto: document.getElementById('c-contacto').value.trim(),
-      telefono: document.getElementById('c-telefono').value.trim(),
-      direccion: document.getElementById('c-direccion').value.trim(),
-      localidad: document.getElementById('c-localidad').value.trim(),
-      latitud: parseFloat(document.getElementById('c-lat').value) || null,
-      longitud: parseFloat(document.getElementById('c-lng').value) || null,
-      foto_url: document.getElementById('c-foto-url').value || null,
-      notas: document.getElementById('c-notas').value.trim()
-    };
-    try {
-      var res = await fetch(API_URL+'/reparto/clientes', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
-      var r = await res.json();
-      if (!res.ok){ alert('Error: '+(r.detail||'')); return; }
-      cerrarCliente(); cargarClientes(); cargarLocalidades();
-    } catch(e){ alert('Error al guardar.'); }
-  }
-
-  // ── Detalle cliente ──
-  function abrirDetalle(c){
-    clienteActual = c;
-    itemsVenta = [];
-    tipoVentaSel = 'venta';
-    document.getElementById('det-nombre').textContent = c.nombre;
-    document.getElementById('det-info').textContent = [c.contacto, c.telefono, c.direccion].filter(Boolean).join(' · ');
-    // WhatsApp
-    var tel = (c.telefono||'').replace(/[^0-9]/g,''); if (tel && !tel.startsWith('54')) tel='54'+tel;
-    document.getElementById('det-wsp').href = tel ? 'https://wa.me/'+tel : '#';
-    // Mapa
-    var mapa = (c.latitud && c.longitud) ? 'https://www.google.com/maps/dir/?api=1&destination='+c.latitud+','+c.longitud
-                                         : (c.direccion ? 'https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(c.direccion) : '#');
-    document.getElementById('det-mapa').href = mapa;
-    setTipoVenta('venta');
-    agregarItemVenta();
-    cargarHistorial(c.id);
-    document.getElementById('modal-detalle').classList.remove('hidden');
-  }
-  function cerrarDetalle(){ document.getElementById('modal-detalle').classList.add('hidden'); clienteActual=null; }
   function editarClienteActual(){
-    if(!clienteActual) return;
-    var c = clienteActual;
-    document.getElementById('c-id').value = c.id;
-    document.getElementById('c-nombre').value = c.nombre||'';
-    document.getElementById('c-contacto').value = c.contacto||'';
-    document.getElementById('c-telefono').value = c.telefono||'';
-    document.getElementById('c-direccion').value = c.direccion||'';
-    document.getElementById('c-localidad').value = c.localidad||'';
-    document.getElementById('c-lat').value = c.latitud||'';
-    document.getElementById('c-lng').value = c.longitud||'';
-    document.getElementById('c-notas').value = c.notas||'';
-    document.getElementById('c-foto-url').value = c.foto_url||'';
-    var prev = document.getElementById('c-foto-preview');
-    if (c.foto_url){ prev.src=c.foto_url; prev.classList.remove('hidden'); } else { prev.classList.add('hidden'); }
+    if (!clienteActual) return;
+    document.getElementById('c-id').value = clienteActual.id;
     document.getElementById('titulo-cliente').textContent = 'Editar cliente';
+    document.getElementById('c-nombre').value = clienteActual.nombre||'';
+    document.getElementById('c-contacto').value = clienteActual.contacto||'';
+    document.getElementById('c-telefono').value = clienteActual.telefono||'';
+    document.getElementById('c-direccion').value = clienteActual.direccion||'';
+    document.getElementById('c-localidad').value = clienteActual.localidad||'';
+    document.getElementById('c-lat').value = clienteActual.latitud||'';
+    document.getElementById('c-lng').value = clienteActual.longitud||'';
+    document.getElementById('c-notas').value = clienteActual.notas||'';
+    if (clienteActual.foto_url){
+      document.getElementById('c-foto-url').value = clienteActual.foto_url;
+      document.getElementById('c-foto-preview').src = clienteActual.foto_url;
+      document.getElementById('c-foto-preview').classList.remove('hidden');
+    }
     cerrarDetalle();
     document.getElementById('modal-cliente').classList.remove('hidden');
   }
 
+  function cerrarCliente(){ document.getElementById('modal-cliente').classList.add('hidden'); }
+
+  async function cargarFoto(inp){
+    if (!inp.files[0]) return;
+    var reader = new FileReader();
+    reader.onload = function(e){
+      var url = e.target.result;
+      document.getElementById('c-foto-url').value = url;
+      var img = document.getElementById('c-foto-preview');
+      img.src = url;
+      img.classList.remove('hidden');
+    };
+    reader.readAsDataURL(inp.files[0]);
+  }
+
+  function tomarUbicacionGPS(){
+    var stat = document.getElementById('ubi-estado');
+    stat.textContent = 'Buscando GPS...';
+    navigator.geolocation.getCurrentPosition(function(pos){
+      document.getElementById('c-lat').value = pos.coords.latitude;
+      document.getElementById('c-lng').value = pos.coords.longitude;
+      stat.textContent = '✓ Ubicación guardada';
+    }, function(err){
+      stat.textContent = '✗ GPS deshabilitado o denegado';
+    });
+  }
+
+  async function guardarCliente(){
+    var nombre = (document.getElementById('c-nombre').value||'').trim();
+    if (!nombre){ alert('Ponele nombre al cliente.'); return; }
+    var id = (document.getElementById('c-id').value||'').trim();
+    var body = {
+      nombre: nombre,
+      contacto: document.getElementById('c-contacto').value || null,
+      telefono: document.getElementById('c-telefono').value || null,
+      direccion: document.getElementById('c-direccion').value || null,
+      localidad: document.getElementById('c-localidad').value || null,
+      latitud: parseFloat(document.getElementById('c-lat').value) || null,
+      longitud: parseFloat(document.getElementById('c-lng').value) || null,
+      foto_url: document.getElementById('c-foto-url').value || null,
+      notas: document.getElementById('c-notas').value || null,
+      id_empleado: empleado ? (empleado.id_empleado || empleado.id) : null
+    };
+    try {
+      var method = id ? 'PUT' : 'POST';
+      var url = id ? API_URL+'/reparto/clientes/'+id : API_URL+'/reparto/clientes';
+      var res = await fetch(url, {method: method, headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+      if (!res.ok){ alert('Error al guardar.'); return; }
+      alert('Cliente guardado ✓');
+      cerrarCliente();
+      cargarClientes();
+    } catch(e){ alert('Error.'); }
+  }
+
+  function abrirDetalle(c){
+    clienteActual = c;
+    document.getElementById('det-nombre').textContent = c.nombre;
+    document.getElementById('det-info').textContent = (c.direccion||'') + (c.localidad?' · '+c.localidad:'');
+    var tel = (c.telefono||'').replace(/[^0-9]/g,''); if(tel && !tel.startsWith('54')) tel='54'+tel;
+    document.getElementById('det-wsp').href = tel ? 'https://wa.me/'+tel : 'javascript:void(0)';
+    var mapa = (c.latitud&&c.longitud) ? 'https://www.google.com/maps/search/?api=1&query='+c.latitud+','+c.longitud : (c.direccion?'https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(c.direccion):null);
+    document.getElementById('det-mapa').href = mapa || 'javascript:void(0)';
+    itemsVenta = [];
+    agregarItemVenta();
+    setTipoVenta('venta');
+    cargarHistorial(c.id);
+    document.getElementById('modal-detalle').classList.remove('hidden');
+  }
+
+  function cerrarDetalle(){ document.getElementById('modal-detalle').classList.add('hidden'); }
+
   function setTipoVenta(t){
     tipoVentaSel = t;
-    document.getElementById('bt-venta').className = t==='venta' ? 'flex-1 bg-neon text-black font-bold rounded-lg py-2 text-sm' : 'flex-1 bg-gray-800 text-gray-300 font-bold rounded-lg py-2 text-sm';
-    document.getElementById('bt-pedido').className = t==='pedido' ? 'flex-1 bg-neon text-black font-bold rounded-lg py-2 text-sm' : 'flex-1 bg-gray-800 text-gray-300 font-bold rounded-lg py-2 text-sm';
+    ['venta','pedido'].forEach(function(x){
+      document.getElementById('bt-'+x).className = (x===t)
+        ? 'flex-1 bg-neon text-black font-bold rounded-lg py-2 text-sm'
+        : 'flex-1 bg-gray-800 text-gray-300 font-bold rounded-lg py-2 text-sm';
+    });
   }
 
   function agregarItemVenta(){
-    itemsVenta.push({ id_producto:'', nombre:'', cantidad:1, precio_unitario:0 });
+    itemsVenta.push({ id_producto: '', nombre: '', cantidad: 1, precio_unitario: 0, margen_venta_porcentaje: null });
     renderItemsVenta();
   }
+
   function renderItemsVenta(){
     var cont = document.getElementById('lista-items-venta');
     cont.innerHTML = '';
@@ -300,25 +311,40 @@
         opts += '<option value="'+p.id+'" data-precio="'+precio+'"'+(it.id_producto==p.id?' selected':'')+'>'+p.nombre+'</option>';
       });
       var div = document.createElement('div');
-      div.className = 'grid grid-cols-12 gap-1 items-center';
+      div.className = 'border border-gray-700 rounded-lg p-2 bg-gray-800/50';
       div.innerHTML =
-        '<select onchange="elegirProd('+idx+',this)" class="col-span-6 bg-gray-900 border border-gray-700 rounded p-1.5 text-xs">'+opts+'</select>' +
-        '<input type="number" min="1" value="'+it.cantidad+'" oninput="setItem('+idx+',\'cantidad\',this.value)" class="col-span-2 bg-gray-900 border border-gray-700 rounded p-1.5 text-xs text-center">' +
-        '<input type="number" value="'+it.precio_unitario+'" oninput="setItem('+idx+',\'precio_unitario\',this.value)" class="col-span-3 bg-gray-900 border border-gray-700 rounded p-1.5 text-xs text-right">' +
-        '<button onclick="quitarItem('+idx+')" class="col-span-1 text-red-500 font-bold">✕</button>';
+        '<select onchange="elegirProd('+idx+',this)" class="w-full bg-gray-900 border border-gray-700 rounded p-1.5 text-xs mb-1">'+opts+'</select>' +
+        '<div class="grid grid-cols-3 gap-1 mb-1">' +
+          '<input type="number" min="1" value="'+it.cantidad+'" oninput="setItem('+idx+',\'cantidad\',this.value)" placeholder="Cant." class="bg-gray-900 border border-gray-700 rounded p-1.5 text-xs text-center">' +
+          '<input type="number" step="0.01" value="'+it.precio_unitario+'" oninput="setItem('+idx+',\'precio_unitario\',this.value)" placeholder="Precio" class="bg-gray-900 border border-gray-700 rounded p-1.5 text-xs text-right">' +
+          '<input type="number" min="0" max="100" value="'+(it.margen_venta_porcentaje!==null?it.margen_venta_porcentaje:'')+'" oninput="setItem('+idx+',\'margen_venta_porcentaje\',this.value)" placeholder="% venta" class="bg-gray-900 border border-gray-700 rounded p-1.5 text-xs text-center" title="Porcentaje sobre mayorista">' +
+        '</div>' +
+        '<button onclick="quitarItem('+idx+')" class="w-full text-red-500 font-bold text-xs py-1">✕ Quitar</button>';
       cont.appendChild(div);
     });
     calcularTotalVenta();
   }
+
   function elegirProd(idx, sel){
     var opt = sel.options[sel.selectedIndex];
     itemsVenta[idx].id_producto = sel.value;
     itemsVenta[idx].nombre = opt.textContent;
     itemsVenta[idx].precio_unitario = parseFloat(opt.dataset.precio) || 0;
+    itemsVenta[idx].margen_venta_porcentaje = null; // reset
     renderItemsVenta();
   }
-  function setItem(idx, campo, val){ itemsVenta[idx][campo] = parseFloat(val)||0; calcularTotalVenta(); }
+
+  function setItem(idx, campo, val){
+    if (campo === 'margen_venta_porcentaje'){
+      itemsVenta[idx][campo] = val === '' ? null : parseFloat(val) || null;
+    } else {
+      itemsVenta[idx][campo] = parseFloat(val)||0;
+    }
+    calcularTotalVenta();
+  }
+
   function quitarItem(idx){ itemsVenta.splice(idx,1); renderItemsVenta(); }
+
   function calcularTotalVenta(){
     var t = itemsVenta.reduce(function(a,b){ return a + (b.cantidad||0)*(b.precio_unitario||0); }, 0);
     document.getElementById('total-venta').textContent = fmt(t);
@@ -331,7 +357,7 @@
       id_cliente: clienteActual.id,
       id_empleado: empleado ? empleado.id_empleado || empleado.id : null,
       tipo: tipoVentaSel,
-      items: items
+      items: items  // ← INCLUYE margen_venta_porcentaje
     };
     try {
       var res = await fetch(API_URL+'/reparto/ventas', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
@@ -365,7 +391,14 @@
     try {
       var h = await fetch(API_URL+'/reparto/clientes/'+id+'/historial', {cache:'no-store'}).then(r=>r.json());
       var filas = [];
-      (h.ventas||[]).forEach(function(v){ filas.push({fecha:v.fecha, id:v.id, clickable:true, txt:(v.tipo==='venta'?'💰 Venta ':'📋 Pedido ')+fmt(v.total)+(v.estado==='pendiente'?' (pend.)':'')}); });
+      (h.ventas||[]).forEach(function(v){ 
+        filas.push({
+          fecha:v.fecha, 
+          id:v.id, 
+          clickable:true, 
+          txt:(v.tipo==='venta'?'💰 Venta ':'📋 Pedido ')+fmt(v.total)+(v.estado==='pendiente'?' (pend.)':'')
+        }); 
+      });
       (h.visitas||[]).forEach(function(v){ if(v.resultado==='sin_compra') filas.push({fecha:v.fecha, clickable:false, txt:'👋 Visita sin compra'}); });
       filas.sort(function(a,b){ return (b.fecha||'').localeCompare(a.fecha||''); });
       cont.innerHTML = filas.length ? '' : '<p class="text-gray-600">Sin movimientos.</p>';
@@ -373,10 +406,36 @@
         var row = document.createElement('div');
         row.className = 'flex justify-between items-center text-gray-400 border-b border-gray-800 py-1' + (f.clickable?' cursor-pointer hover:text-white':'');
         row.innerHTML = '<span>'+f.txt+'</span><span class="text-gray-600 text-xs">'+(f.fecha||'').slice(0,10)+(f.clickable?' 📄':'')+'</span>';
-        if (f.clickable) row.onclick = function(){ generarComprobanteRepartidor(f.id); };
+        if (f.clickable){
+          row.onclick = function(){ abrirMenuVenta(f.id); };
+        }
         cont.appendChild(row);
       });
     } catch(e){ cont.innerHTML='<p class="text-gray-600">—</p>'; }
+  }
+
+  async function abrirMenuVenta(id){
+    try {
+      var d = await fetch(API_URL+'/reparto/ventas/'+id+'/detalle', {cache:'no-store'}).then(r=>r.json());
+      var opciones = '<div class="space-y-2 p-2">';
+      opciones += '<button onclick="generarComprobanteRepartidor('+id+')" class="w-full bg-gray-800 hover:bg-gray-700 text-white rounded-lg py-2 text-sm">📄 Descargar PDF</button>';
+      opciones += '<button onclick="enviarComprobantePorWSP('+id+')" class="w-full bg-green-600 hover:bg-green-500 text-white rounded-lg py-2 text-sm">📲 Enviar por WhatsApp</button>';
+      opciones += '</div>';
+      alert(opciones); // Mejor hacer un modal, pero esto es quick
+      console.log('Opciones para venta '+id);
+    } catch(e){}
+  }
+
+  async function enviarComprobantePorWSP(id){
+    try {
+      var res = await fetch(API_URL+'/reparto/ventas/'+id+'/enviar-comprobante-wsp', {cache:'no-store'});
+      var data = await res.json();
+      if (!data.wa_link){
+        alert('No hay teléfono registrado para este cliente.');
+        return;
+      }
+      window.open(data.wa_link, '_blank');
+    } catch(e){ alert('Error al preparar el envío.'); }
   }
 
   async function generarComprobanteRepartidor(id){
@@ -427,7 +486,7 @@
   }
 
   // init
-  cargarProductos().then(function(){ cargarClientes(); cargarLocalidades(); });
+  cargarProductos().then(function(){ cargarClientes(); });
 </script>
 </body>
 </html>
