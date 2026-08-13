@@ -10764,7 +10764,186 @@ def reparto_logout(data: dict = Body(...)):
         return {"status": "ok"}
     finally:
         liberar_conexion(conn)
+# ============================================================================
+# ENDPOINTS: Catálogo público + Notificaciones en tiempo real
+# ============================================================================
+# AGREGAR AL main.py ANTES DE @app.get("/reparto-login")
 
+@app.get("/api/catalogo/{id_vendedor}")
+def catalogo_obtener(id_vendedor: int):
+    """Obtener catálogo de un vendedor (público, sin auth)."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        # Vendedor info
+        cur.execute("""SELECT e.id, e.nombre, e.apellido, 
+                              margen_venta_porcentaje_default as margen,
+                              (SELECT telefono FROM reparto_clientes WHERE id_vendedor=e.id LIMIT 1) as telefono_ejemplo
+                       FROM empleados e WHERE e.id=%s""", (id_vendedor,))
+        vendedor = cur.fetchone()
+        if not vendedor:
+            raise HTTPException(status_code=404, detail="Vendedor no encontrado.")
+        
+        # Productos activos
+        cur.execute("""SELECT id, nombre, precio_mayorista, precio_minorista, imagen_url
+                       FROM productos WHERE COALESCE(activo, true)=true
+                       ORDER BY nombre""")
+        productos = fetchall_dict(cur)
+        
+        return {
+            "vendedor": vendedor,
+            "productos": productos
+        }
+    finally:
+        liberar_conexion(conn)
+
+@app.post("/api/catalogo/{id_vendedor}/pedidos")
+def catalogo_crear_pedido(id_vendedor: int, data: dict = Body(...)):
+    """Crear un pedido desde el catálogo público."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        
+        cliente_nombre = (data.get('cliente_nombre') or '').strip()
+        cliente_telefono = (data.get('cliente_telefono') or '').strip()
+        items = data.get('items', [])
+        
+        if not cliente_nombre or not cliente_telefono:
+            raise HTTPException(status_code=400, detail="Falta nombre y teléfono del cliente.")
+        if not items:
+            raise HTTPException(status_code=400, detail="Falta agregar productos.")
+        
+        # Calcular total
+        total = sum(float(i.get('cantidad', 0)) * float(i.get('precio', 0)) for i in items)
+        
+        import json
+        cur.execute("""INSERT INTO catalogo_pedidos_externos 
+                       (id_vendedor, cliente_nombre, cliente_telefono, items_json, total, estado)
+                       VALUES (%s, %s, %s, %s, %s, 'nuevo')
+                       RETURNING id, fecha::text""",
+                    (id_vendedor, cliente_nombre, cliente_telefono, json.dumps(items), round(total, 2)))
+        pedido = cur.fetchone()
+        
+        # Crear notificación para el vendedor
+        try:
+            cur.execute("""INSERT INTO notificaciones_reparto 
+                           (id_empleado, tipo, titulo, detalle, id_referencia, leida)
+                           VALUES (%s, 'pedido_nuevo', %s, %s, %s, false)""",
+                        (id_vendedor, 
+                         f'Pedido nuevo de {cliente_nombre}',
+                         f'Cliente: {cliente_nombre} ({cliente_telefono})\nProductos: {len(items)}\nTotal: ${total:.2f}',
+                         pedido['id']))
+        except Exception:
+            pass  # Si falla notificación, el pedido se creó igual
+        
+        conn.commit()
+        return {
+            "status": "ok",
+            "id": pedido['id'],
+            "total": round(total, 2),
+            "fecha": pedido['fecha']
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
+@app.get("/api/notificaciones/sin-leer")
+def notificaciones_obtener_sin_leer(id_empleado: Optional[int] = None):
+    """Obtener notificaciones sin leer. Si id_empleado es pasado, filtra por ese empleado."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cond, params = "", []
+        if id_empleado is not None:
+            cond = " AND id_empleado=%s"
+            params.append(id_empleado)
+        
+        cur.execute(f"""SELECT id, id_empleado, tipo, titulo, detalle, id_referencia, fecha::text
+                        FROM notificaciones_reparto
+                        WHERE leida=false {cond}
+                        ORDER BY fecha DESC
+                        LIMIT 50""", params)
+        return fetchall_dict(cur)
+    finally:
+        liberar_conexion(conn)
+
+@app.put("/api/notificaciones/{id}/leer")
+def notificaciones_marcar_leida(id: int):
+    """Marcar una notificación como leída."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        cur.execute("UPDATE notificaciones_reparto SET leida=true WHERE id=%s", (id,))
+        conn.commit()
+        return {"status": "ok"}
+    finally:
+        liberar_conexion(conn)
+
+@app.get("/api/catalogo-pedidos")
+def catalogo_pedidos_listar(id_vendedor: Optional[int] = None, estado: Optional[str] = None):
+    """Listar pedidos del catálogo (para admin panel)."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cond, params = "", []
+        if id_vendedor is not None:
+            cond += " AND id_vendedor=%s"
+            params.append(id_vendedor)
+        if estado:
+            cond += " AND estado=%s"
+            params.append(estado)
+        
+        cur.execute(f"""SELECT id, id_vendedor, cliente_nombre, cliente_telefono, total, estado, 
+                               fecha::text, actualizado::text
+                        FROM catalogo_pedidos_externos
+                        WHERE 1=1 {cond}
+                        ORDER BY fecha DESC
+                        LIMIT 200""", params)
+        return fetchall_dict(cur)
+    finally:
+        liberar_conexion(conn)
+
+@app.get("/api/catalogo-pedidos/{id}/detalle")
+def catalogo_pedido_detalle(id: int):
+    """Detalle completo de un pedido del catálogo."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("""SELECT id, id_vendedor, cliente_nombre, cliente_telefono, items_json, total, 
+                              estado, notas, fecha::text
+                       FROM catalogo_pedidos_externos WHERE id=%s""", (id,))
+        pedido = cur.fetchone()
+        if not pedido:
+            raise HTTPException(status_code=404, detail="Pedido no encontrado.")
+        
+        import json
+        pedido['items'] = json.loads(pedido['items_json']) if pedido['items_json'] else []
+        del pedido['items_json']
+        
+        return pedido
+    finally:
+        liberar_conexion(conn)
+
+@app.put("/api/catalogo-pedidos/{id}/estado")
+def catalogo_pedido_cambiar_estado(id: int, estado: str):
+    """Cambiar estado de un pedido."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        cur.execute("UPDATE catalogo_pedidos_externos SET estado=%s, actualizado=NOW() WHERE id=%s",
+                   (estado, id))
+        conn.commit()
+        return {"status": "ok"}
+    finally:
+        liberar_conexion(conn)
+
+@app.get("/catalogo")
+def route_catalogo():
+    return serve_html("catalogo.html")
 @app.get("/reparto-login")
 def route_reparto_login():
     return serve_html("reparto_login.html")
