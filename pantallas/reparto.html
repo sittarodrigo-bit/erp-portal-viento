@@ -504,7 +504,7 @@
 
   function abrirCompartirCatalogo(){
     var id = empleado.id_empleado || empleado.id;
-    var link = window.location.origin + '/catalogo?v=' + id;
+    var link = window.location.origin + '/catalogo-publico?v=' + id;
     document.getElementById('link-catalogo').textContent = link;
     document.getElementById('modal-compartir').classList.remove('hidden');
   }
@@ -523,7 +523,7 @@
       if (tel && !tel.startsWith('54')) tel = '54' + tel;
     }
     var id = empleado.id_empleado || empleado.id;
-    var link = window.location.origin + '/catalogo?v=' + id;
+    var link = window.location.origin + '/catalogo-publico?v=' + id;
     var msg = 'Hola, acá está mi catálogo de productos: ' + link;
     var wa = tel ? 'https://wa.me/'+tel+'?text='+encodeURIComponent(msg) : 'https://wa.me/?text='+encodeURIComponent(msg);
     cerrarCompartir();
