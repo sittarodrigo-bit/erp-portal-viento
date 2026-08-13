@@ -19,7 +19,7 @@
       <h1 class="font-bold text-lg">Calculadora de Costos</h1>
       <p class="text-gray-500 text-xs">Costo y precio de un producto nuevo</p>
     </div>
-    <a href="/tablero" class="text-xs text-gray-400 hover:text-white border border-gray-700 rounded px-3 py-1.5">← Volver</a>
+    <a href="/admin" class="text-xs text-gray-400 hover:text-white border border-gray-700 rounded px-3 py-1.5">← Volver</a>
   </header>
 
   <div class="max-w-3xl mx-auto p-4 pb-32">
@@ -127,14 +127,31 @@
           '</div>' +
           '<div class="flex gap-1 flex-shrink-0">' +
             '<button class="text-xs border border-gray-700 rounded px-2 py-1 text-gray-300 hover:text-white">Abrir</button>' +
+            '<button class="text-xs border border-neon rounded px-2 py-1 text-neon hover:bg-neon hover:text-black">Copiar</button>' +
             '<button class="text-xs border border-red-800 rounded px-2 py-1 text-red-400 hover:text-red-300">✕</button>' +
           '</div>';
         var botones = div.querySelectorAll('button');
         botones[0].onclick = function(){ abrirReceta(r); };
-        botones[1].onclick = function(){ borrarReceta(r.id, r.nombre); };
+        botones[1].onclick = function(){ copiarReceta(r); };
+        botones[2].onclick = function(){ borrarReceta(r.id, r.nombre); };
         cont.appendChild(div);
       });
     } catch(e){ cont.innerHTML = '<p class="text-red-400 text-sm">No se pudieron cargar (¿falta correr el SQL?).</p>'; }
+  }
+
+  function copiarReceta(r){
+    // Carga toda la receta pero como cálculo NUEVO (sin id): al guardar crea otro, no pisa el original
+    recetaEditandoId = null;
+    document.getElementById('nombre-prod').value = (r.nombre || '') + ' (copia)';
+    document.getElementById('rinde').value = r.rinde || 1;
+    document.getElementById('margen').value = r.margen || 0;
+    try { ingredientes = (typeof r.ingredientes==='string' ? JSON.parse(r.ingredientes) : r.ingredientes) || []; } catch(e){ ingredientes = []; }
+    try { extras = (typeof r.extras==='string' ? JSON.parse(r.extras) : r.extras) || []; } catch(e){ extras = []; }
+    if (!ingredientes.length) ingredientes = [{ modo:'sistema', id_insumo:'', nombre:'', costoUnit:0, cantidad:1 }];
+    renderIngredientes();
+    renderExtras();
+    document.getElementById('btn-guardar').textContent = '💾 Guardar cálculo';
+    window.scrollTo({top:0, behavior:'smooth'});
   }
 
   function abrirReceta(r){
