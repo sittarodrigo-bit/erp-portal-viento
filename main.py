@@ -10442,6 +10442,66 @@ def reparto_resumen(desde: Optional[str] = None, hasta: Optional[str] = None):
     finally:
         liberar_conexion(conn)
 
+@app.get("/api/reparto/ventas")
+def reparto_listar_ventas(tipo: Optional[str] = None, estado: Optional[str] = None):
+    """Lista ventas/pedidos del reparto para el panel admin y el seguimiento."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cond, params = "", []
+        if tipo: cond += " AND rv.tipo=%s"; params.append(tipo)
+        if estado: cond += " AND rv.estado=%s"; params.append(estado)
+        cur.execute(f"""
+            SELECT rv.id, rv.fecha::text, rv.tipo, rv.total, rv.estado, rv.notas,
+                   c.nombre AS cliente, c.telefono, c.direccion,
+                   e.nombre AS repartidor
+            FROM reparto_ventas rv
+            JOIN reparto_clientes c ON rv.id_cliente = c.id
+            LEFT JOIN empleados e ON rv.id_empleado = e.id
+            WHERE 1=1 {cond}
+            ORDER BY rv.fecha DESC LIMIT 300
+        """, params)
+        return fetchall_dict(cur)
+    finally:
+        liberar_conexion(conn)
+
+@app.get("/api/reparto/ventas/{id}/detalle")
+def reparto_detalle_venta(id: int):
+    """Detalle completo de una venta/pedido: cabecera + productos."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("""
+            SELECT rv.id, rv.fecha::text, rv.tipo, rv.total, rv.estado, rv.notas,
+                   c.nombre AS cliente, c.contacto, c.telefono, c.direccion,
+                   e.nombre AS repartidor
+            FROM reparto_ventas rv
+            JOIN reparto_clientes c ON rv.id_cliente = c.id
+            LEFT JOIN empleados e ON rv.id_empleado = e.id
+            WHERE rv.id=%s
+        """, (id,))
+        cab = cur.fetchone()
+        if not cab:
+            raise HTTPException(status_code=404, detail="Venta no encontrada.")
+        cur.execute("""SELECT nombre, cantidad, precio_unitario, subtotal
+                       FROM reparto_ventas_detalle WHERE id_venta=%s ORDER BY id""", (id,))
+        cab['items'] = fetchall_dict(cur)
+        return cab
+    finally:
+        liberar_conexion(conn)
+
+@app.put("/api/reparto/ventas/{id}/estado")
+def reparto_cambiar_estado_venta(id: int, estado: str):
+    """Marcar un pedido como entregado (o volver a pendiente)."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        cur.execute("UPDATE reparto_ventas SET estado=%s WHERE id=%s", (estado, id))
+        conn.commit()
+        return {"status": "ok"}
+    finally:
+        liberar_conexion(conn)
+
 @app.get("/reparto")
 def route_reparto():
     return serve_html("reparto.html")
