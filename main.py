@@ -10293,6 +10293,52 @@ footer{text-align:center;color:#555;font-size:12px;margin-top:40px}
 
 # ════════════════════════════════════════════════════════════════════════════
 #  MÓDULO REPARTO — clientes geolocalizados, visitas y ventas en la calle
+
+# ============================================================================
+# ENDPOINTS NUEVOS: Margen de venta GLOBAL por vendedor
+# ============================================================================
+
+@app.get("/api/reparto/vendedor/margen/{id_empleado}")
+def reparto_obtener_margen_vendedor(id_empleado: int):
+    """Obtener el porcentaje de margen configurado para un vendedor."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("SELECT id, nombre, margen_venta_porcentaje_default FROM empleados WHERE id=%s", (id_empleado,))
+        emp = cur.fetchone()
+        if not emp:
+            raise HTTPException(status_code=404, detail="Empleado no encontrado.")
+        return {
+            "id": emp['id'],
+            "nombre": emp['nombre'],
+            "margen_venta_porcentaje_default": emp['margen_venta_porcentaje_default']
+        }
+    finally:
+        liberar_conexion(conn)
+
+@app.post("/api/reparto/vendedor/margen/{id_empleado}")
+def reparto_editar_margen_vendedor(id_empleado: int, data: dict = Body(...)):
+    """Editar el porcentaje de margen de un vendedor (se aplica a todos los productos)."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        margen = data.get('margen_venta_porcentaje_default')
+        if margen is not None:
+            margen = float(margen)
+            if margen < 0:
+                raise HTTPException(status_code=400, detail="El porcentaje no puede ser negativo.")
+        cur.execute("UPDATE empleados SET margen_venta_porcentaje_default=%s WHERE id=%s",
+                   (margen, id_empleado))
+        conn.commit()
+        return {"status": "ok", "margen_venta_porcentaje_default": margen}
+    except HTTPException:
+        raise
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
 # ============================================================================
 # REPARTO - ENDPOINTS MODIFICADOS (COPIAR Y REEMPLAZAR EN main.py)
 # ============================================================================
