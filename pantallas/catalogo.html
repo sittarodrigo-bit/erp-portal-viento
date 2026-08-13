@@ -66,6 +66,19 @@
   </div>
 
 <script>
+  // ===== DESACTIVAR AUTH.JS PARA CATÁLOGO PÚBLICO =====
+  window.preventinoAuth = true;
+  
+  // Bloquear redireccionamiento a login
+  const originalReplace = window.location.replace;
+  window.location.replace = function(url) {
+    if (url && (url.includes('/login') || url.includes('login.html'))) {
+      console.log('🔒 Auth bloqueado - Catálogo público');
+      return;
+    }
+    originalReplace.call(window.location, url);
+  };
+
   const API_URL = '/api';
   let vendedor = null;
   let productos = [];
