@@ -24,6 +24,7 @@
     <button class="tab-btn active" onclick="switchTab('clientes')">👥 Clientes</button>
     <button class="tab-btn" onclick="switchTab('ventas')">💰 Ventas</button>
     <button class="tab-btn" onclick="switchTab('pedidos')">📲 Pedidos catálogo</button>
+    <button class="tab-btn" onclick="switchTab('catalogo')">🎨 Catálogo</button>
     <button class="tab-btn" onclick="switchTab('margenes')">⚙️ Márgenes</button>
   </div>
 
@@ -65,6 +66,21 @@
         </select>
       </div>
       <div id="lista-pedidos-admin" class="space-y-2"></div>
+    </div>
+
+    <!-- TAB: Catálogo (control de visibilidad) -->
+    <div id="tab-catalogo" class="hidden">
+      <div class="mb-4">
+        <label class="block text-sm text-gray-500 mb-2">📦 Seleccionar vendedor</label>
+        <select id="filtro-catalogo-vendedor" onchange="renderCatalogoProducts()" class="w-full bg-gray-900 border border-gray-700 rounded-lg p-2 text-sm">
+          <option value="">— Todos los vendedores —</option>
+        </select>
+      </div>
+      <div class="bg-gray-900 border border-gray-700 rounded-xl p-4">
+        <h3 class="font-bold mb-3">Productos en catálogo</h3>
+        <p class="text-gray-500 text-xs mb-3">Marca los productos que querés mostrar en el catálogo público. Podés reordenarlos por número.</p>
+        <div id="lista-catalogo-productos" class="space-y-2"></div>
+      </div>
     </div>
 
     <!-- TAB: Márgenes -->
@@ -117,13 +133,14 @@
 
   function switchTab(tab){
     currentTab = tab;
-    ['clientes','ventas','pedidos','margenes'].forEach(t => {
+    ['clientes','ventas','pedidos','catalogo','margenes'].forEach(t => {
       document.getElementById('tab-'+t).classList[t===tab?'remove':'add']('hidden');
       document.querySelector('[onclick="switchTab(\''+t+'\')"]').classList[t===tab?'add':'remove']('active');
     });
     if (tab==='clientes') renderClientes();
     else if (tab==='ventas') renderVentas();
     else if (tab==='pedidos') renderPedidos();
+    else if (tab==='catalogo') cargarVendedoresParaCatalogo();
     else if (tab==='margenes') renderMargenes();
   }
 
@@ -273,6 +290,61 @@
       alert('✓ Actualizado');
       cerrarPedido();
       renderPedidos();
+    } catch(e){ alert('Error.'); }
+  }
+
+  // ===== CATÁLOGO =====
+  async function cargarVendedoresParaCatalogo(){
+    try {
+      var resp = await fetch(API_URL+'/reparto/empleados', {cache:'no-store'}).then(r=>r.json()).catch(e => []);
+      var sel = document.getElementById('filtro-catalogo-vendedor');
+      sel.innerHTML = '<option value="">— Todos los vendedores —</option>';
+      (resp || []).forEach(e => {
+        sel.innerHTML += '<option value="'+e.id+'">'+e.nombre+' '+e.apellido+'</option>';
+      });
+    } catch(e){}
+  }
+
+  async function renderCatalogoProducts(){
+    var id_vend = parseInt(document.getElementById('filtro-catalogo-vendedor').value||0) || null;
+    if (!id_vend){ alert('Selecciona un vendedor.'); return; }
+    
+    try {
+      var productos = await fetch(API_URL+'/catalogo/'+id_vend+'/productos-admin', {cache:'no-store'}).then(r=>r.json());
+      var cont = document.getElementById('lista-catalogo-productos');
+      cont.innerHTML = '';
+      
+      productos.forEach(p => {
+        var div = document.createElement('div');
+        div.className = 'bg-gray-800 border border-gray-700 rounded-lg p-3 flex items-center gap-3';
+        div.innerHTML =
+          '<input type="checkbox" id="vis-'+p.id+'" '+( p.visible ? 'checked' : '')+' onchange="toggleProductoVisible('+id_vend+','+p.id+',this.checked)" class="w-4 h-4">' +
+          '<div class="flex-1"><p class="text-sm font-bold">'+p.nombre+'</p><p class="text-xs text-gray-500">$ '+parseFloat(p.precio_mayorista||0).toFixed(2)+'</p></div>' +
+          '<input type="number" min="0" value="'+(p.orden||0)+'" onchange="cambiarOrden('+id_vend+','+p.id+',this.value)" placeholder="Orden" class="w-16 bg-black border border-gray-700 rounded px-2 py-1 text-xs">';
+        cont.appendChild(div);
+      });
+    } catch(e){
+      document.getElementById('lista-catalogo-productos').innerHTML = '<p class="text-red-400">Error cargando.</p>';
+    }
+  }
+
+  async function toggleProductoVisible(id_vend, id_prod, visible){
+    try {
+      await fetch(API_URL+'/catalogo/'+id_vend+'/productos/'+id_prod+'/visible', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ visible: visible })
+      });
+    } catch(e){ alert('Error.'); }
+  }
+
+  async function cambiarOrden(id_vend, id_prod, orden){
+    try {
+      await fetch(API_URL+'/catalogo/'+id_vend+'/productos/'+id_prod+'/visible', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ visible: true, orden: parseInt(orden)||0 })
+      });
     } catch(e){ alert('Error.'); }
   }
 
