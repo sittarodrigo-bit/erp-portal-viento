@@ -11217,6 +11217,11 @@ def route_catalogo():
     """Página pública de catálogo (sin autenticación)."""
     return serve_html("catalogo.html")
 
+@app.get("/catalogo-publico")
+def route_catalogo_publico():
+    """Catálogo público para vendedores (sin autenticación)."""
+    return serve_html("catalogo.html")
+
 @app.get("/reparto-login")
 def route_reparto_login():
     return serve_html("reparto_login.html")
