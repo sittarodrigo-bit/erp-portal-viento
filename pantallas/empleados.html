@@ -194,6 +194,7 @@
                     <label class="block text-xs text-gray-500 font-bold mb-1">Rol</label>
                     <select id="emp-rol" class="w-full bg-black border border-gray-700 text-white rounded p-2">
                         <option value="vendedor">Vendedor</option>
+                        <option value="repartidor">🚚 Repartidor</option>
                         <option value="produccion">Producción</option>
                         <option value="deposito">Depósito</option>
                         <option value="admin">Admin</option>
@@ -256,6 +257,7 @@
                     <label class="block text-xs text-neon font-bold mb-1">Rol</label>
                     <select id="edit-emp-rol" class="w-full bg-black border border-neon text-white rounded p-2">
                         <option value="admin">👑 Admin</option>
+                        <option value="repartidor">🚚 Repartidor</option>
                         <option value="produccion">🏭 Producción</option>
                         <option value="deposito">📦 Depósito</option>
                         <option value="vendedor">💼 Vendedor</option>
@@ -409,7 +411,7 @@
             empleados = await res.json();
             const tabla = document.getElementById('tabla-empleados');
             tabla.innerHTML = '';
-            const roles = { admin: '🔑 Admin', vendedor: '🏪 Vendedor', produccion: '🏭 Producción', deposito: '📦 Depósito', administrativo: '📋 Administrativo' };
+            const roles = { admin: '🔑 Admin', repartidor: '🚚 Repartidor', vendedor: '🏪 Vendedor', produccion: '🏭 Producción', deposito: '📦 Depósito', administrativo: '📋 Administrativo' };
             
             let opcionesSelect = '<option value="">Seleccione un empleado...</option>';
 
