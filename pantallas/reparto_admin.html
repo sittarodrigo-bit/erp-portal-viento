@@ -77,6 +77,7 @@
   let vendedorActual = null;
   let pedidos = [];
   let repartidores = [];
+  let catalogoActual = []; // Guardar estado de productos
 
   // INIT
   async function init(){
@@ -89,7 +90,6 @@
       var res = await fetch(API_URL+'/reparto/empleados');
       repartidores = await res.json();
       
-      // Cargar selectores
       ['filtro-vendedor-pedidos', 'select-vendedor-cat', 'select-vendedor-margen'].forEach(id => {
         var sel = document.getElementById(id);
         sel.innerHTML = '<option value="">— Selecciona vendedor —</option>';
@@ -162,22 +162,22 @@
     
     try {
       var res = await fetch(API_URL+'/catalogo/'+id+'/productos-admin');
-      var productos = await res.json();
+      catalogoActual = await res.json(); // Guardar en variable global
       
       var cont = document.getElementById('lista-catalogo');
       cont.innerHTML = '';
       
-      productos.forEach(p => {
+      catalogoActual.forEach(p => {
         var div = document.createElement('div');
         div.className = 'bg-gray-900 border border-gray-700 rounded-lg p-3 flex justify-between items-center';
         div.innerHTML = `
           <div class="flex-1">
             <p class="font-bold">${p.nombre}</p>
-            <p class="text-xs text-gray-500">$ ${p.precio_mayorista} + margen</p>
+            <p class="text-xs text-gray-500">$ ${p.precio_mayorista}</p>
           </div>
-          <div class="flex gap-2">
-            <input type="checkbox" ${p.visible?'checked':''} onchange="toggleVisibleProducto(${id}, ${p.id}, this.checked)" class="cursor-pointer">
-            <input type="number" value="${p.orden}" step="1" onchange="cambiarOrdenProducto(${id}, ${p.id}, this.value)" class="w-16 bg-black border border-gray-700 text-white rounded p-1 text-xs" placeholder="Orden">
+          <div class="flex gap-2 items-center">
+            <input type="checkbox" id="check-${p.id}" ${p.visible?'checked':''} onchange="toggleVisibleProducto(${id}, ${p.id}, this.checked)" class="cursor-pointer w-5 h-5">
+            <input type="number" id="orden-${p.id}" value="${p.orden}" step="1" onchange="cambiarOrdenProducto(${id}, ${p.id}, this.value, this.checked)" class="w-16 bg-black border border-gray-700 text-white rounded p-1 text-xs" placeholder="Orden">
           </div>
         `;
         cont.appendChild(div);
@@ -187,22 +187,31 @@
 
   async function toggleVisibleProducto(id_vendedor, id_producto, visible){
     try {
+      // Obtener el orden actual sin cambiar
+      var orden_input = document.getElementById('orden-'+id_producto);
+      var orden = orden_input ? parseInt(orden_input.value) : 0;
+      
       await fetch(API_URL+'/catalogo/'+id_vendedor+'/productos/'+id_producto+'/visible', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ visible: visible, orden: 0 })
+        body: JSON.stringify({ visible: visible, orden: orden })
       });
-      await cargarCatalogoCotrol();
+      console.log('✓ Visibilidad actualizada:', visible ? 'Visible' : 'Oculto');
     } catch(e){ console.error(e); }
   }
 
   async function cambiarOrdenProducto(id_vendedor, id_producto, orden){
     try {
+      // Obtener estado del checkbox (visible actual)
+      var check = document.getElementById('check-'+id_producto);
+      var visible = check ? check.checked : false;
+      
       await fetch(API_URL+'/catalogo/'+id_vendedor+'/productos/'+id_producto+'/visible', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ visible: true, orden: parseInt(orden) })
+        body: JSON.stringify({ visible: visible, orden: parseInt(orden) })
       });
+      console.log('✓ Orden actualizado:', orden);
     } catch(e){ console.error(e); }
   }
 
@@ -245,7 +254,6 @@
     window.location.href = '/reparto-login';
   }
 
-  // INIT
   init();
 </script>
 </body>
