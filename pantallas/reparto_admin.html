@@ -23,10 +23,21 @@
   </header>
 
   <div class="max-w-4xl mx-auto p-4">
-    <!-- Filtro fechas -->
-    <div class="flex gap-2 mb-4 items-end">
+    <!-- Quién está trabajando -->
+    <div id="trabajando-box" class="bg-gray-900 border border-gray-800 rounded-xl p-3 mb-4">
+      <p class="text-xs text-gray-500 font-bold mb-1">🟢 Trabajando ahora</p>
+      <div id="trabajando" class="text-sm text-gray-400">—</div>
+    </div>
+
+    <!-- Filtro fechas + localidad -->
+    <div class="flex gap-2 mb-4 items-end flex-wrap">
       <div><label class="block text-xs text-gray-500 mb-1">Desde</label><input id="desde" type="date" class="bg-gray-900 border border-gray-700 rounded-lg p-2 text-sm"></div>
       <div><label class="block text-xs text-gray-500 mb-1">Hasta</label><input id="hasta" type="date" class="bg-gray-900 border border-gray-700 rounded-lg p-2 text-sm"></div>
+      <div><label class="block text-xs text-gray-500 mb-1">Localidad</label>
+        <select id="filtro-localidad" onchange="cargarClientes()" class="bg-gray-900 border border-gray-700 rounded-lg p-2 text-sm">
+          <option value="">Todas</option>
+        </select>
+      </div>
       <button onclick="cargarResumen()" class="bg-neon text-black font-bold rounded-lg px-4 py-2 text-sm">Filtrar</button>
     </div>
 
@@ -180,8 +191,10 @@
 
   async function cargarClientes(){
     var cont = document.getElementById('lista-clientes');
+    var loc = document.getElementById('filtro-localidad') ? document.getElementById('filtro-localidad').value : '';
     try {
-      var cl = await fetch(API_URL+'/reparto/clientes', {cache:'no-store'}).then(r=>r.json());
+      var url = API_URL+'/reparto/clientes' + (loc ? '?localidad='+encodeURIComponent(loc) : '');
+      var cl = await fetch(url, {cache:'no-store'}).then(r=>r.json());
       document.getElementById('cont-cli').textContent = cl.length;
       if (!cl.length){ cont.innerHTML='<p class="text-gray-600 text-sm">Sin clientes cargados.</p>'; return; }
       cont.innerHTML = '';
@@ -204,9 +217,33 @@
     } catch(e){ cont.innerHTML='<p class="text-red-400 text-sm">No se pudieron cargar (¿falta el SQL?).</p>'; }
   }
 
+  async function cargarTrabajando(){
+    try {
+      var t = await fetch(API_URL+'/reparto/trabajando', {cache:'no-store'}).then(r=>r.json());
+      var cont = document.getElementById('trabajando');
+      if (!t.length){ cont.innerHTML = '<span class="text-gray-600">Nadie con sesión activa.</span>'; return; }
+      cont.innerHTML = t.map(function(s){
+        return '<span class="inline-block bg-green-600/20 text-green-400 rounded-full px-3 py-1 mr-2 mb-1">🟢 '+(s.nombre||'—')+' <span class="text-gray-500 text-xs">desde '+(s.inicio||'').slice(11,16)+'</span></span>';
+      }).join('');
+    } catch(e){}
+  }
+
+  async function cargarLocalidadesAdmin(){
+    try {
+      var locs = await fetch(API_URL+'/reparto/localidades', {cache:'no-store'}).then(r=>r.json());
+      var sel = document.getElementById('filtro-localidad');
+      var actual = sel.value;
+      sel.innerHTML = '<option value="">Todas</option>';
+      locs.forEach(function(l){ sel.innerHTML += '<option value="'+l+'"'+(l===actual?' selected':'')+'>'+l+'</option>'; });
+    } catch(e){}
+  }
+
   cargarResumen();
   cargarClientes();
   verVentas('todo');
+  cargarTrabajando();
+  cargarLocalidadesAdmin();
+  setInterval(cargarTrabajando, 60000); // refrescar quién trabaja cada minuto
 </script>
 </body>
 </html>
