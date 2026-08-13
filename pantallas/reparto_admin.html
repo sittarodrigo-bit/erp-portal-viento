@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Reparto — Reportes</title>
 <script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
   :root { --neon: #e4fc74; }
   .text-neon { color: var(--neon); }
@@ -37,13 +38,132 @@
       <div class="bg-gray-900 border border-gray-800 rounded-xl p-3"><p class="text-gray-500 text-xs">Pedidos pend.</p><p id="kpi-pedidos" class="text-orange-400 font-bold text-xl">0</p></div>
     </div>
 
+    <!-- Ventas y pedidos del reparto -->
+    <div class="flex gap-2 mb-3">
+      <button onclick="verVentas('todo')" id="vt-todo" class="bg-neon text-black font-bold rounded-lg px-4 py-2 text-sm">Todo</button>
+      <button onclick="verVentas('venta')" id="vt-venta" class="bg-gray-800 text-gray-300 font-bold rounded-lg px-4 py-2 text-sm">Ventas</button>
+      <button onclick="verVentas('pedido')" id="vt-pedido" class="bg-gray-800 text-gray-300 font-bold rounded-lg px-4 py-2 text-sm">Pedidos</button>
+    </div>
+    <div id="lista-ventas" class="space-y-2 mb-6"></div>
+
     <!-- Lista de clientes con ubicación -->
     <h3 class="font-bold text-sm text-gray-400 mb-2">Clientes (<span id="cont-cli">0</span>)</h3>
     <div id="lista-clientes" class="space-y-2"></div>
   </div>
 
+  <!-- Modal detalle de venta -->
+  <div id="modal-detalle" class="hidden fixed inset-0 bg-black/90 z-40 flex items-center justify-center p-4">
+    <div class="bg-gray-900 border border-gray-700 rounded-xl p-4 w-full max-w-md">
+      <div class="flex justify-between items-center mb-1">
+        <h3 class="font-bold" id="md-titulo">Detalle</h3>
+        <button onclick="cerrarDetalle()" class="text-gray-500 text-2xl">×</button>
+      </div>
+      <p id="md-info" class="text-gray-500 text-xs mb-3"></p>
+      <div id="md-items" class="mb-3"></div>
+      <p class="text-right font-bold mb-4">Total: <span id="md-total" class="text-neon text-lg">$ 0</span></p>
+      <button id="md-comprobante" class="w-full bg-neon text-black font-bold rounded-lg py-2.5 text-sm">📄 Descargar comprobante</button>
+    </div>
+  </div>
+
 <script>
   const API_URL = '/api';
+  let filtroVenta = 'todo';
+
+  async function verVentas(tipo){
+    filtroVenta = tipo;
+    ['todo','venta','pedido'].forEach(function(t){
+      document.getElementById('vt-'+t).className = (t===tipo)
+        ? 'bg-neon text-black font-bold rounded-lg px-4 py-2 text-sm'
+        : 'bg-gray-800 text-gray-300 font-bold rounded-lg px-4 py-2 text-sm';
+    });
+    var cont = document.getElementById('lista-ventas');
+    var url = API_URL + '/reparto/ventas' + (tipo!=='todo' ? '?tipo='+tipo : '');
+    try {
+      var ventas = await fetch(url, {cache:'no-store'}).then(r=>r.json());
+      if (!ventas.length){ cont.innerHTML = '<p class="text-gray-600 text-sm">Sin movimientos.</p>'; return; }
+      cont.innerHTML = '';
+      ventas.forEach(function(v){
+        var badge = v.tipo==='venta'
+          ? '<span class="text-xs bg-green-600/20 text-green-400 rounded-full px-2 py-0.5">💰 Venta</span>'
+          : '<span class="text-xs bg-orange-600/20 text-orange-400 rounded-full px-2 py-0.5">📋 Pedido'+(v.estado==='pendiente'?' pend.':'')+'</span>';
+        var div = document.createElement('div');
+        div.className = 'bg-gray-900 border border-gray-800 rounded-lg p-3';
+        div.innerHTML =
+          '<div class="flex justify-between items-start gap-2">' +
+            '<div class="min-w-0"><p class="font-bold text-white truncate">'+v.cliente+'</p>' +
+              '<p class="text-gray-500 text-xs">'+badge+' · '+v.fecha.slice(0,16).replace('T',' ')+(v.repartidor?' · '+v.repartidor:'')+'</p></div>' +
+            '<span class="text-neon font-bold flex-shrink-0">$ '+(parseFloat(v.total)||0).toLocaleString('es-AR')+'</span>' +
+          '</div>' +
+          '<div class="flex gap-2 mt-2">' +
+            '<button class="text-xs border border-gray-700 text-gray-300 rounded px-2 py-1 hover:text-white">Ver detalle</button>' +
+            '<button class="text-xs border border-neon text-neon rounded px-2 py-1">📄 Comprobante</button>' +
+            (v.tipo==='pedido' && v.estado==='pendiente' ? '<button class="text-xs border border-green-700 text-green-400 rounded px-2 py-1">✓ Marcar entregado</button>' : '') +
+          '</div>';
+        var btns = div.querySelectorAll('button');
+        btns[0].onclick = function(){ verDetalle(v.id); };
+        btns[1].onclick = function(){ generarComprobante(v.id); };
+        if (btns[2]) btns[2].onclick = function(){ marcarEntregado(v.id); };
+        cont.appendChild(div);
+      });
+    } catch(e){ cont.innerHTML = '<p class="text-red-400 text-sm">No se pudieron cargar.</p>'; }
+  }
+
+  async function verDetalle(id){
+    try {
+      var d = await fetch(API_URL+'/reparto/ventas/'+id+'/detalle', {cache:'no-store'}).then(r=>r.json());
+      var items = (d.items||[]).map(function(i){
+        return '<div class="flex justify-between text-sm border-b border-gray-800 py-1"><span>'+i.cantidad+'× '+i.nombre+'</span><span>$ '+(parseFloat(i.subtotal)||0).toLocaleString('es-AR')+'</span></div>';
+      }).join('');
+      document.getElementById('md-titulo').textContent = (d.tipo==='venta'?'Venta':'Pedido')+' — '+d.cliente;
+      document.getElementById('md-info').textContent = [d.fecha.slice(0,16).replace('T',' '), d.repartidor, d.direccion].filter(Boolean).join(' · ');
+      document.getElementById('md-items').innerHTML = items || '<p class="text-gray-600 text-sm">Sin ítems.</p>';
+      document.getElementById('md-total').textContent = '$ '+(parseFloat(d.total)||0).toLocaleString('es-AR');
+      document.getElementById('md-comprobante').onclick = function(){ generarComprobante(id); };
+      document.getElementById('modal-detalle').classList.remove('hidden');
+    } catch(e){ alert('No se pudo cargar el detalle.'); }
+  }
+  function cerrarDetalle(){ document.getElementById('modal-detalle').classList.add('hidden'); }
+
+  async function marcarEntregado(id){
+    if (!confirm('¿Marcar este pedido como entregado?')) return;
+    await fetch(API_URL+'/reparto/ventas/'+id+'/estado?estado=entregado', {method:'PUT'});
+    verVentas(filtroVenta);
+  }
+
+  async function generarComprobante(id){
+    var d = await fetch(API_URL+'/reparto/ventas/'+id+'/detalle', {cache:'no-store'}).then(r=>r.json());
+    var jsPDF = window.jspdf.jsPDF;
+    var doc = new jsPDF({unit:'mm', format:[80, 200]}); // ticket angosto
+    var y = 10;
+    doc.setFont('helvetica','bold'); doc.setFontSize(12);
+    doc.text('PORTAL DEL VIENTO', 40, y, {align:'center'}); y+=5;
+    doc.setFont('helvetica','normal'); doc.setFontSize(8);
+    doc.text('Alfajores Artesanales', 40, y, {align:'center'}); y+=6;
+    doc.setFont('helvetica','bold'); doc.setFontSize(10);
+    doc.text(d.tipo==='venta' ? 'COMPROBANTE DE VENTA' : 'COMPROBANTE DE PEDIDO', 40, y, {align:'center'}); y+=5;
+    doc.setFont('helvetica','normal'); doc.setFontSize(7);
+    doc.text('N° '+String(d.id).padStart(5,'0')+'  ·  '+d.fecha.slice(0,16).replace('T',' '), 40, y, {align:'center'}); y+=6;
+    doc.setFontSize(8);
+    doc.text('Cliente: '+(d.cliente||''), 6, y); y+=4;
+    if (d.repartidor){ doc.text('Repartidor: '+d.repartidor, 6, y); y+=4; }
+    doc.line(6, y, 74, y); y+=4;
+    doc.setFont('helvetica','bold');
+    doc.text('Producto', 6, y); doc.text('Subtotal', 74, y, {align:'right'}); y+=1;
+    doc.line(6, y, 74, y); y+=4;
+    doc.setFont('helvetica','normal'); doc.setFontSize(7.5);
+    (d.items||[]).forEach(function(i){
+      doc.text(i.cantidad+'x '+(i.nombre||''), 6, y);
+      doc.text('$ '+(parseFloat(i.subtotal)||0).toLocaleString('es-AR'), 74, y, {align:'right'});
+      y+=4;
+    });
+    doc.line(6, y, 74, y); y+=5;
+    doc.setFont('helvetica','bold'); doc.setFontSize(11);
+    doc.text('TOTAL', 6, y); doc.text('$ '+(parseFloat(d.total)||0).toLocaleString('es-AR'), 74, y, {align:'right'}); y+=8;
+    doc.setFont('helvetica','normal'); doc.setFontSize(6.5);
+    doc.text('Documento sin valor fiscal.', 40, y, {align:'center'});
+    if (d.tipo==='pedido'){ y+=3; doc.text('PEDIDO - pendiente de entrega', 40, y, {align:'center'}); }
+    doc.save('comprobante_reparto_'+String(d.id).padStart(5,'0')+'.pdf');
+  }
 
   async function cargarResumen(){
     var q = [];
@@ -86,6 +206,7 @@
 
   cargarResumen();
   cargarClientes();
+  verVentas('todo');
 </script>
 </body>
 </html>
