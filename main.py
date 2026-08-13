@@ -10719,24 +10719,50 @@ def reparto_localidades():
     finally:
         liberar_conexion(conn)
 
+@app.get("/api/reparto/empleados")
+def reparto_empleados_lista():
+    """Listar TODOS los repartidores (para seleccionar en admin panel del catálogo)."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("""
+            SELECT id, nombre, apellido, rol, activo
+            FROM empleados
+            WHERE rol='repartidor'
+            ORDER BY nombre
+        """)
+        return fetchall_dict(cur)
+    finally:
+        liberar_conexion(conn)
+
 @app.post("/api/reparto/login")
 def reparto_login(data: dict = Body(...)):
-    """Login del vendedor de reparto. Valida contra los usuarios/empleados existentes
-    y abre una sesión para saber quién está trabajando."""
+    """Login del vendedor de reparto. SOLO empleados con rol='repartidor'.
+    Valida contra usuarios/empleados existentes y abre sesión."""
     conn = obtener_conexion()
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
         username = (data.get('username') or '').strip()
         password = data.get('password') or ''
-        cur.execute("""SELECT u.password_hash, u.activo, e.id AS id_empleado, e.nombre, e.apellido
+        
+        # Buscar usuario y validar que sea REPARTIDOR
+        cur.execute("""SELECT u.password_hash, u.activo, e.id AS id_empleado, e.nombre, e.apellido, e.rol
                        FROM usuarios u JOIN empleados e ON u.id_empleado = e.id
                        WHERE u.username = %s""", (username,))
         u = cur.fetchone()
+        
         if not u or not u['activo']:
             raise HTTPException(status_code=401, detail="Usuario o contraseña incorrectos.")
+        
+        # VALIDAR ROLE
+        if u['rol'] != 'repartidor':
+            raise HTTPException(status_code=403, detail="Acceso denegado. Solo repartidores pueden acceder.")
+        
         if not bcrypt.checkpw(password.encode(), u['password_hash'].encode()):
             raise HTTPException(status_code=401, detail="Usuario o contraseña incorrectos.")
+        
         nombre_completo = (u['nombre'] or '') + ' ' + (u['apellido'] or '')
+        
         # Cerrar sesiones viejas de este empleado y abrir una nueva
         try:
             cur.execute("UPDATE reparto_sesiones SET activa=false, fin=NOW() WHERE id_empleado=%s AND activa=true", (u['id_empleado'],))
@@ -10744,7 +10770,15 @@ def reparto_login(data: dict = Body(...)):
             conn.commit()
         except Exception:
             conn.rollback()
-        return {"status": "ok", "id_empleado": u['id_empleado'], "nombre": u['nombre'], "apellido": u['apellido']}
+        
+        return {
+            "status": "ok",
+            "id_empleado": u['id_empleado'],
+            "id": u['id_empleado'],
+            "nombre": u['nombre'],
+            "apellido": u['apellido'],
+            "rol": u['rol']
+        }
     except HTTPException:
         raise
     except Exception as e:
@@ -10941,9 +10975,8 @@ def catalogo_pedido_cambiar_estado(id: int, estado: str):
     finally:
         liberar_conexion(conn)
 
-@app.get("/catalogo-publico")
-def route_catalogo_publico():
-    """Catálogo público para vendedores (sin auth)"""
+@app.get("/catalogo")
+def route_catalogo():
     return serve_html("catalogo.html")
 # ==============================================================================
 # CATÁLOGO PÚBLICO + NOTIFICACIONES + CONTROL
