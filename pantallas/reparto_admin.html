@@ -3,292 +3,282 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Reparto — Reportes</title>
+<title>Reparto Admin</title>
 <script src="https://cdn.tailwindcss.com"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
   :root { --neon: #e4fc74; }
   .text-neon { color: var(--neon); }
   .bg-neon { background-color: var(--neon); }
   body { background:#0a0a0a; }
+  .tab-btn { padding: 10px 16px; font-size: 14px; border-bottom: 2px solid transparent; cursor: pointer; transition: all 0.2s; }
+  .tab-btn.active { border-bottom-color: var(--neon); color: var(--neon); }
 </style>
 </head>
 <body class="text-white min-h-screen">
-  <header class="border-b border-gray-800 px-4 py-3 flex justify-between items-center sticky top-0 bg-black z-20">
-    <div>
-      <h1 class="font-bold text-lg">🚚 Reparto — Reportes</h1>
-      <p class="text-gray-500 text-xs">Seguimiento de clientes y ventas en la calle</p>
-    </div>
-    <a href="/admin" class="text-xs text-gray-400 hover:text-white border border-gray-700 rounded px-3 py-1.5">← Volver</a>
+  <header class="border-b border-gray-800 px-4 py-3 flex justify-between items-center sticky top-0 bg-black z-30">
+    <h1 class="font-bold text-lg">👨‍💼 Reparto Admin</h1>
+    <button onclick="salirAdmin()" class="border border-gray-700 text-gray-400 rounded-lg px-3 py-2 text-sm">Salir</button>
   </header>
 
-  <div class="max-w-4xl mx-auto p-4">
-    <!-- Quién está trabajando -->
-    <div id="trabajando-box" class="bg-gray-900 border border-gray-800 rounded-xl p-3 mb-4">
-      <p class="text-xs text-gray-500 font-bold mb-1">🟢 Trabajando ahora</p>
-      <div id="trabajando" class="text-sm text-gray-400">—</div>
-    </div>
-
-    <!-- Márgenes de vendedores -->
-    <div class="bg-gray-900 border border-gray-800 rounded-xl p-3 mb-4">
-      <p class="text-xs text-gray-500 font-bold mb-2">⚙️ Márgenes de venta</p>
-      <div id="margenes-list" class="space-y-1 text-xs"></div>
-    </div>
-
-    <!-- Filtro fechas + localidad -->
-    <div class="flex gap-2 mb-4 items-end flex-wrap">
-      <div><label class="block text-xs text-gray-500 mb-1">Desde</label><input id="desde" type="date" class="bg-gray-900 border border-gray-700 rounded-lg p-2 text-sm"></div>
-      <div><label class="block text-xs text-gray-500 mb-1">Hasta</label><input id="hasta" type="date" class="bg-gray-900 border border-gray-700 rounded-lg p-2 text-sm"></div>
-      <div><label class="block text-xs text-gray-500 mb-1">Localidad</label>
-        <select id="filtro-localidad" onchange="cargarClientes()" class="bg-gray-900 border border-gray-700 rounded-lg p-2 text-sm">
-          <option value="">Todas</option>
-        </select>
-      </div>
-      <button onclick="cargarResumen()" class="bg-neon text-black font-bold rounded-lg px-4 py-2 text-sm">Filtrar</button>
-    </div>
-
-    <!-- KPIs -->
-    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-      <div class="bg-gray-900 border border-gray-800 rounded-xl p-3"><p class="text-gray-500 text-xs">Visitas</p><p id="kpi-visitas" class="text-white font-bold text-xl">0</p></div>
-      <div class="bg-gray-900 border border-gray-800 rounded-xl p-3"><p class="text-gray-500 text-xs">Ventas $</p><p id="kpi-ventas" class="text-neon font-bold text-xl">$ 0</p></div>
-      <div class="bg-gray-900 border border-gray-800 rounded-xl p-3"><p class="text-gray-500 text-xs">Cant. ventas</p><p id="kpi-cant" class="text-white font-bold text-xl">0</p></div>
-      <div class="bg-gray-900 border border-gray-800 rounded-xl p-3"><p class="text-gray-500 text-xs">Pedidos pend.</p><p id="kpi-pedidos" class="text-orange-400 font-bold text-xl">0</p></div>
-    </div>
-
-    <!-- Ventas y pedidos del reparto -->
-    <div class="flex gap-2 mb-3">
-      <button onclick="verVentas('todo')" id="vt-todo" class="bg-neon text-black font-bold rounded-lg px-4 py-2 text-sm">Todo</button>
-      <button onclick="verVentas('venta')" id="vt-venta" class="bg-gray-800 text-gray-300 font-bold rounded-lg px-4 py-2 text-sm">Ventas</button>
-      <button onclick="verVentas('pedido')" id="vt-pedido" class="bg-gray-800 text-gray-300 font-bold rounded-lg px-4 py-2 text-sm">Pedidos</button>
-    </div>
-    <div id="lista-ventas" class="space-y-2 mb-6"></div>
-
-    <!-- Lista de clientes con ubicación y VENDEDOR -->
-    <h3 class="font-bold text-sm text-gray-400 mb-2">Clientes (<span id="cont-cli">0</span>)</h3>
-    <div id="lista-clientes" class="space-y-2"></div>
+  <div class="border-b border-gray-800 px-4 flex gap-2 bg-gray-950">
+    <button class="tab-btn active" onclick="switchTab('clientes')">👥 Clientes</button>
+    <button class="tab-btn" onclick="switchTab('ventas')">💰 Ventas</button>
+    <button class="tab-btn" onclick="switchTab('pedidos')">📲 Pedidos catálogo</button>
+    <button class="tab-btn" onclick="switchTab('margenes')">⚙️ Márgenes</button>
   </div>
 
-  <!-- Modal detalle de venta -->
-  <div id="modal-detalle" class="hidden fixed inset-0 bg-black/90 z-40 flex items-center justify-center p-4">
-    <div class="bg-gray-900 border border-gray-700 rounded-xl p-4 w-full max-w-md">
-      <div class="flex justify-between items-center mb-1">
-        <h3 class="font-bold" id="md-titulo">Detalle</h3>
-        <button onclick="cerrarDetalle()" class="text-gray-500 text-2xl">×</button>
+  <div class="p-4">
+    <!-- TAB: Clientes -->
+    <div id="tab-clientes" class="block">
+      <div class="flex gap-2 mb-4">
+        <input id="filtro-vendedor-cl" onchange="renderClientes()" placeholder="Filtrar vendedor..." class="flex-1 bg-gray-900 border border-gray-700 rounded-lg p-2 text-sm">
+        <input id="buscar-cliente" oninput="renderClientes()" placeholder="🔍 Buscar..." class="flex-1 bg-gray-900 border border-gray-700 rounded-lg p-2 text-sm">
       </div>
-      <p id="md-info" class="text-gray-500 text-xs mb-3"></p>
-      <div id="md-items" class="mb-3"></div>
-      <p class="text-right font-bold mb-4">Total: <span id="md-total" class="text-neon text-lg">$ 0</span></p>
+      <div id="lista-clientes-admin" class="space-y-2"></div>
+    </div>
+
+    <!-- TAB: Ventas -->
+    <div id="tab-ventas" class="hidden">
+      <div class="flex gap-2 mb-4">
+        <input id="filtro-vendedor" onchange="renderVentas()" placeholder="Filtrar vendedor..." class="flex-1 bg-gray-900 border border-gray-700 rounded-lg p-2 text-sm">
+        <select id="filtro-estado" onchange="renderVentas()" class="bg-gray-900 border border-gray-700 rounded-lg p-2 text-sm">
+          <option value="">— Todos los estados —</option>
+          <option value="pendiente">Pendiente</option>
+          <option value="entregado">Entregado</option>
+        </select>
+      </div>
+      <div id="lista-ventas-admin" class="space-y-2"></div>
+    </div>
+
+    <!-- TAB: Pedidos catálogo -->
+    <div id="tab-pedidos" class="hidden">
+      <div class="flex gap-2 mb-4">
+        <select id="filtro-vendedor-ped" onchange="renderPedidos()" class="flex-1 bg-gray-900 border border-gray-700 rounded-lg p-2 text-sm">
+          <option value="">— Todos los vendedores —</option>
+        </select>
+        <select id="filtro-estado-ped" onchange="renderPedidos()" class="bg-gray-900 border border-gray-700 rounded-lg p-2 text-sm">
+          <option value="">— Todos los estados —</option>
+          <option value="nuevo">Nuevo</option>
+          <option value="contactado">Contactado</option>
+          <option value="confirmado">Confirmado</option>
+          <option value="cancelado">Cancelado</option>
+        </select>
+      </div>
+      <div id="lista-pedidos-admin" class="space-y-2"></div>
+    </div>
+
+    <!-- TAB: Márgenes -->
+    <div id="tab-margenes" class="hidden">
+      <div class="bg-gray-900 border border-gray-700 rounded-xl p-4">
+        <h3 class="font-bold mb-3">Márgenes por vendedor (sesiones activas)</h3>
+        <div id="lista-margenes" class="space-y-2"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal detalle pedido -->
+  <div id="modal-pedido-detalle" class="hidden fixed inset-0 bg-black/90 z-40 overflow-y-auto p-4">
+    <div class="max-w-md mx-auto bg-gray-900 border border-gray-700 rounded-xl p-4 mt-4">
+      <div class="flex justify-between items-center mb-3">
+        <h3 class="font-bold">Pedido #<span id="ped-id">0</span></h3>
+        <button onclick="cerrarPedido()" class="text-gray-500 text-2xl">×</button>
+      </div>
+      <div class="bg-gray-800 rounded-lg p-3 mb-3 space-y-1 text-sm">
+        <p><span class="text-gray-500">Cliente:</span> <strong id="ped-cliente">—</strong></p>
+        <p><span class="text-gray-500">Teléfono:</span> <strong id="ped-tel">—</strong></p>
+        <p><span class="text-gray-500">Fecha:</span> <strong id="ped-fecha">—</strong></p>
+        <p><span class="text-gray-500">Estado:</span> <strong id="ped-estado">—</strong></p>
+      </div>
+      <h4 class="text-xs font-bold text-gray-500 mb-2">Productos</h4>
+      <div id="ped-items" class="space-y-1 text-xs mb-3"></div>
+      <p class="text-right text-sm font-bold mb-3">Total: <span class="text-neon" id="ped-total">$ 0</span></p>
       <div class="flex gap-2">
-        <button id="md-comprobante" class="flex-1 bg-neon text-black font-bold rounded-lg py-2.5 text-sm">📄 Descargar</button>
-        <button id="md-wsp" class="flex-1 bg-green-600 text-white font-bold rounded-lg py-2.5 text-sm">📲 WhatsApp</button>
+        <select id="ped-estado-sel" class="flex-1 bg-black border border-gray-700 rounded-lg p-2 text-sm">
+          <option value="nuevo">Nuevo</option>
+          <option value="contactado">Contactado</option>
+          <option value="confirmado">Confirmado</option>
+          <option value="cancelado">Cancelado</option>
+        </select>
+        <button onclick="actualizarEstadoPedido()" class="flex-1 bg-neon text-black font-bold rounded-lg px-3 text-sm">Guardar</button>
       </div>
+      <button onclick="cerrarPedido()" class="w-full border border-gray-700 text-gray-400 rounded-lg py-2 text-sm mt-2">Cerrar</button>
     </div>
   </div>
 
 <script>
   const API_URL = '/api';
-  let filtroVenta = 'todo';
+  let clientes = [];
+  let ventas = [];
+  let pedidos = [];
+  let currentTab = 'clientes';
+  let currentPedidoId = null;
 
-  async function verVentas(tipo){
-    filtroVenta = tipo;
-    ['todo','venta','pedido'].forEach(function(t){
-      document.getElementById('vt-'+t).className = (t===tipo)
-        ? 'bg-neon text-black font-bold rounded-lg px-4 py-2 text-sm'
-        : 'bg-gray-800 text-gray-300 font-bold rounded-lg px-4 py-2 text-sm';
+  function fmt(n){ return '$ ' + (Math.round((parseFloat(n)||0)*100)/100).toLocaleString('es-AR'); }
+
+  function switchTab(tab){
+    currentTab = tab;
+    ['clientes','ventas','pedidos','margenes'].forEach(t => {
+      document.getElementById('tab-'+t).classList[t===tab?'remove':'add']('hidden');
+      document.querySelector('[onclick="switchTab(\''+t+'\')"]').classList[t===tab?'add':'remove']('active');
     });
-    var cont = document.getElementById('lista-ventas');
-    var url = API_URL + '/reparto/ventas' + (tipo!=='todo' ? '?tipo='+tipo : '');
-    try {
-      var ventas = await fetch(url, {cache:'no-store'}).then(r=>r.json());
-      if (!ventas.length){ cont.innerHTML = '<p class="text-gray-600 text-sm">Sin movimientos.</p>'; return; }
-      cont.innerHTML = '';
-      ventas.forEach(function(v){
-        var badge = v.tipo==='venta'
-          ? '<span class="text-xs bg-green-600/20 text-green-400 rounded-full px-2 py-0.5">💰 Venta</span>'
-          : '<span class="text-xs bg-orange-600/20 text-orange-400 rounded-full px-2 py-0.5">📋 Pedido'+(v.estado==='pendiente'?' pend.':'')+'</span>';
-        var div = document.createElement('div');
-        div.className = 'bg-gray-900 border border-gray-800 rounded-lg p-3';
-        div.innerHTML =
-          '<div class="flex justify-between items-start gap-2">' +
-            '<div class="min-w-0"><p class="font-bold text-white truncate">'+v.cliente+'</p>' +
-              '<p class="text-gray-500 text-xs">'+badge+' · '+v.fecha.slice(0,16).replace('T',' ')+(v.repartidor?' · 👤 '+v.repartidor:'')+'</p></div>' +
-            '<span class="text-neon font-bold flex-shrink-0">$ '+(parseFloat(v.total)||0).toLocaleString('es-AR')+'</span>' +
-          '</div>' +
-          '<div class="flex gap-2 mt-2">' +
-            '<button class="text-xs border border-gray-700 text-gray-300 rounded px-2 py-1 hover:text-white">Ver detalle</button>' +
-            '<button class="text-xs border border-neon text-neon rounded px-2 py-1">📄 Comprobante</button>' +
-            '<button class="text-xs border border-green-700 text-green-400 rounded px-2 py-1">📲 WhatsApp</button>' +
-            (v.tipo==='pedido' && v.estado==='pendiente' ? '<button class="text-xs border border-green-700 text-green-400 rounded px-2 py-1">✓ Entregado</button>' : '') +
-          '</div>';
-        var btns = div.querySelectorAll('button');
-        btns[0].onclick = function(){ verDetalle(v.id); };
-        btns[1].onclick = function(){ generarComprobante(v.id); };
-        btns[2].onclick = function(){ enviarWSP(v.id); };
-        if (btns[3]) btns[3].onclick = function(){ marcarEntregado(v.id); };
-        cont.appendChild(div);
-      });
-    } catch(e){ cont.innerHTML = '<p class="text-red-400 text-sm">No se pudieron cargar.</p>'; }
+    if (tab==='clientes') renderClientes();
+    else if (tab==='ventas') renderVentas();
+    else if (tab==='pedidos') renderPedidos();
+    else if (tab==='margenes') renderMargenes();
   }
 
-  async function verDetalle(id){
-    try {
-      var d = await fetch(API_URL+'/reparto/ventas/'+id+'/detalle', {cache:'no-store'}).then(r=>r.json());
-      var items = (d.items||[]).map(function(i){
-        return '<div class="flex justify-between text-sm border-b border-gray-800 py-1"><span>'+i.cantidad+'× '+i.nombre+'</span><span>$ '+(parseFloat(i.subtotal)||0).toLocaleString('es-AR')+'</span></div>';
-      }).join('');
-      document.getElementById('md-titulo').textContent = (d.tipo==='venta'?'Venta':'Pedido')+' — '+d.cliente;
-      document.getElementById('md-info').textContent = [d.fecha.slice(0,16).replace('T',' '), d.repartidor, d.direccion].filter(Boolean).join(' · ');
-      document.getElementById('md-items').innerHTML = items || '<p class="text-gray-600 text-sm">Sin ítems.</p>';
-      document.getElementById('md-total').textContent = '$ '+(parseFloat(d.total)||0).toLocaleString('es-AR');
-      document.getElementById('md-comprobante').onclick = function(){ generarComprobante(id); };
-      document.getElementById('md-wsp').onclick = function(){ enviarWSP(id); };
-      document.getElementById('modal-detalle').classList.remove('hidden');
-    } catch(e){ alert('No se pudo cargar el detalle.'); }
-  }
-  function cerrarDetalle(){ document.getElementById('modal-detalle').classList.add('hidden'); }
-
-  async function marcarEntregado(id){
-    if (!confirm('¿Marcar este pedido como entregado?')) return;
-    await fetch(API_URL+'/reparto/ventas/'+id+'/estado?estado=entregado', {method:'PUT'});
-    verVentas(filtroVenta);
-  }
-
-  async function enviarWSP(id){
-    try {
-      var res = await fetch(API_URL+'/reparto/ventas/'+id+'/enviar-comprobante-wsp', {cache:'no-store'});
-      var data = await res.json();
-      if (!data.wa_link){
-        alert('No hay teléfono registrado para este cliente.');
-        return;
-      }
-      window.open(data.wa_link, '_blank');
-    } catch(e){ alert('Error al preparar el envío.'); }
-  }
-
-  async function generarComprobante(id){
-    var d = await fetch(API_URL+'/reparto/ventas/'+id+'/detalle', {cache:'no-store'}).then(r=>r.json());
-    var jsPDF = window.jspdf.jsPDF;
-    var doc = new jsPDF({unit:'mm', format:[80, 200]});
-    var y = 10;
-    doc.setFont('helvetica','bold'); doc.setFontSize(12);
-    doc.text('PORTAL DEL VIENTO', 40, y, {align:'center'}); y+=5;
-    doc.setFont('helvetica','normal'); doc.setFontSize(8);
-    doc.text('Alfajores Artesanales', 40, y, {align:'center'}); y+=6;
-    doc.setFont('helvetica','bold'); doc.setFontSize(10);
-    doc.text(d.tipo==='venta' ? 'COMPROBANTE DE VENTA' : 'COMPROBANTE DE PEDIDO', 40, y, {align:'center'}); y+=5;
-    doc.setFont('helvetica','normal'); doc.setFontSize(7);
-    doc.text('N° '+String(d.id).padStart(5,'0')+'  ·  '+d.fecha.slice(0,16).replace('T',' '), 40, y, {align:'center'}); y+=6;
-    doc.setFontSize(8);
-    doc.text('Cliente: '+(d.cliente||''), 6, y); y+=4;
-    if (d.repartidor){ doc.text('Repartidor: '+d.repartidor, 6, y); y+=4; }
-    doc.line(6, y, 74, y); y+=4;
-    doc.setFont('helvetica','bold');
-    doc.text('Producto', 6, y); doc.text('Subtotal', 74, y, {align:'right'}); y+=1;
-    doc.line(6, y, 74, y); y+=4;
-    doc.setFont('helvetica','normal'); doc.setFontSize(7.5);
-    (d.items||[]).forEach(function(i){
-      doc.text(i.cantidad+'x '+(i.nombre||''), 6, y);
-      doc.text('$ '+(parseFloat(i.subtotal)||0).toLocaleString('es-AR'), 74, y, {align:'right'});
-      y+=4;
-    });
-    doc.line(6, y, 74, y); y+=5;
-    doc.setFont('helvetica','bold'); doc.setFontSize(11);
-    doc.text('TOTAL', 6, y); doc.text('$ '+(parseFloat(d.total)||0).toLocaleString('es-AR'), 74, y, {align:'right'}); y+=8;
-    doc.setFont('helvetica','normal'); doc.setFontSize(6.5);
-    doc.text('Documento sin valor fiscal.', 40, y, {align:'center'});
-    if (d.tipo==='pedido'){ y+=3; doc.text('PEDIDO - pendiente de entrega', 40, y, {align:'center'}); }
-    doc.save('comprobante_reparto_'+String(d.id).padStart(5,'0')+'.pdf');
-  }
-
-  async function cargarResumen(){
-    var q = [];
-    var d = document.getElementById('desde').value, h = document.getElementById('hasta').value;
-    if (d) q.push('desde='+d); if (h) q.push('hasta='+h);
-    try {
-      var r = await fetch(API_URL+'/reparto/resumen'+(q.length?'?'+q.join('&'):''), {cache:'no-store'}).then(x=>x.json());
-      document.getElementById('kpi-visitas').textContent = r.visitas||0;
-      document.getElementById('kpi-ventas').textContent = '$ ' + (r.ventas_total||0).toLocaleString('es-AR');
-      document.getElementById('kpi-cant').textContent = r.ventas_cantidad||0;
-      document.getElementById('kpi-pedidos').textContent = r.pedidos_pendientes||0;
-    } catch(e){}
-  }
-
-  async function cargarMargenes(){
-    try {
-      var trabajando = await fetch(API_URL+'/reparto/trabajando', {cache:'no-store'}).then(r=>r.json());
-      var cont = document.getElementById('margenes-list');
-      if (!trabajando.length){ cont.innerHTML = '<span class="text-gray-600">—</span>'; return; }
-      cont.innerHTML = '';
-      for (var s of trabajando) {
-        try {
-          var emp = await fetch(API_URL+'/reparto/vendedor/margen/'+s.id_empleado, {cache:'no-store'}).then(r=>r.json());
-          var margen_txt = emp.margen_venta_porcentaje_default ? emp.margen_venta_porcentaje_default.toFixed(1)+'%' : '—';
-          var row = document.createElement('div');
-          row.className = 'flex justify-between items-center text-gray-300 border-b border-gray-800 py-1';
-          row.innerHTML = '<span>'+s.nombre+'</span><span class="text-neon">'+margen_txt+'</span>';
-          cont.appendChild(row);
-        } catch(e){}
-      }
-    } catch(e){}
-  }
+  function salirAdmin(){ window.location.href = '/reparto-admin-login'; }
 
   async function cargarClientes(){
-    var cont = document.getElementById('lista-clientes');
-    var loc = document.getElementById('filtro-localidad') ? document.getElementById('filtro-localidad').value : '';
-    try {
-      var url = API_URL+'/reparto/clientes' + (loc ? '?localidad='+encodeURIComponent(loc) : '');
-      var cl = await fetch(url, {cache:'no-store'}).then(r=>r.json());
-      document.getElementById('cont-cli').textContent = cl.length;
-      if (!cl.length){ cont.innerHTML='<p class="text-gray-600 text-sm">Sin clientes cargados.</p>'; return; }
-      cont.innerHTML = '';
-      cl.forEach(function(c){
-        var tel = (c.telefono||'').replace(/[^0-9]/g,''); if(tel && !tel.startsWith('54')) tel='54'+tel;
-        var mapa = (c.latitud&&c.longitud) ? 'https://www.google.com/maps/search/?api=1&query='+c.latitud+','+c.longitud : (c.direccion?'https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(c.direccion):null);
-        cont.innerHTML +=
-          '<div class="bg-gray-900 border border-gray-800 rounded-lg p-3 flex items-center gap-3">' +
-            (c.foto_url?'<img src="'+c.foto_url+'" class="w-12 h-12 rounded-lg object-cover flex-shrink-0">':'<div class="w-12 h-12 rounded-lg bg-gray-800 flex items-center justify-center flex-shrink-0">🏪</div>') +
-            '<div class="min-w-0 flex-1"><p class="font-bold text-white truncate">'+c.nombre+'</p>' +
-              '<p class="text-gray-500 text-xs truncate">'+(c.direccion||'')+'</p>' +
-              '<p class="text-gray-600 text-xs">👤 '+(c.nombre_vendedor||'—')+' · '+ ('$ '+(parseFloat(c.total_comprado)||0).toLocaleString('es-AR')) +' · '+(c.ultima_visita?('últ. '+c.ultima_visita.slice(0,10)):'sin visitas')+'</p>' +
-            '</div>' +
-            '<div class="flex flex-col gap-1 flex-shrink-0">' +
-              (tel?'<a href="https://wa.me/'+tel+'" target="_blank" class="text-xs text-green-400 border border-green-800 rounded px-2 py-1 hover:bg-green-900">📲</a>':'') +
-              (mapa?'<a href="'+mapa+'" target="_blank" class="text-xs text-blue-400 border border-blue-800 rounded px-2 py-1 hover:bg-blue-900">🗺️</a>':'') +
-            '</div>' +
-          '</div>';
+    try { clientes = await fetch(API_URL+'/reparto/clientes', {cache:'no-store'}).then(r=>r.json()); } catch(e){ clientes = []; }
+  }
+
+  async function cargarVentas(){
+    try { ventas = await fetch(API_URL+'/reparto/ventas', {cache:'no-store'}).then(r=>r.json()); } catch(e){ ventas = []; }
+  }
+
+  async function cargarPedidos(){
+    try { 
+      pedidos = await fetch(API_URL+'/catalogo-pedidos', {cache:'no-store'}).then(r=>r.json());
+      var sel = document.getElementById('filtro-vendedor-ped');
+      sel.innerHTML = '<option value="">— Todos los vendedores —</option>';
+    } catch(e){ pedidos = []; }
+  }
+
+  function renderClientes(){
+    cargarClientes().then(() => {
+      var cont = document.getElementById('lista-clientes-admin');
+      var filt_vend = (document.getElementById('filtro-vendedor-cl').value||'').toLowerCase();
+      var busca = (document.getElementById('buscar-cliente').value||'').toLowerCase();
+      var filtrados = clientes.filter(c => {
+        return (c.nombre||'').toLowerCase().includes(busca) && 
+               (filt_vend==='' || (c.nombre_vendedor||'').toLowerCase().includes(filt_vend));
       });
-    } catch(e){ cont.innerHTML='<p class="text-red-400 text-sm">No se pudieron cargar.</p>'; }
+      cont.innerHTML = '';
+      if (!filtrados.length){ cont.innerHTML='<p class="text-gray-600 text-sm">Sin clientes.</p>'; return; }
+      filtrados.slice(0,200).forEach(c => {
+        var div = document.createElement('div');
+        div.className = 'bg-gray-900 border border-gray-800 rounded-lg p-3 hover:border-neon';
+        div.innerHTML =
+          '<div class="flex justify-between items-start">' +
+            '<div class="flex-1"><p class="font-bold">'+c.nombre+'</p>' +
+              '<p class="text-gray-500 text-xs">'+c.localidad+(c.telefono?' · '+c.telefono:'')+'</p>' +
+              '<p class="text-gray-600 text-xs">👤 '+(c.nombre_vendedor||'Sin vendedor')+' • '+fmt(c.total_comprado||0)+'</p></div>' +
+          '</div>';
+        cont.appendChild(div);
+      });
+    });
   }
 
-  async function cargarTrabajando(){
+  function renderVentas(){
+    cargarVentas().then(() => {
+      var cont = document.getElementById('lista-ventas-admin');
+      var filt_vend = (document.getElementById('filtro-vendedor').value||'').toLowerCase();
+      var filt_estado = document.getElementById('filtro-estado').value||'';
+      var filtrados = ventas.filter(v => {
+        return (filt_vend==='' || (v.nombre_vendedor||'').toLowerCase().includes(filt_vend)) &&
+               (filt_estado==='' || v.estado===filt_estado);
+      });
+      cont.innerHTML = '';
+      if (!filtrados.length){ cont.innerHTML='<p class="text-gray-600 text-sm">Sin ventas.</p>'; return; }
+      filtrados.slice(0,200).forEach(v => {
+        var estado_cls = v.estado==='entregado' ? 'text-green-400' : 'text-yellow-400';
+        var div = document.createElement('div');
+        div.className = 'bg-gray-900 border border-gray-800 rounded-lg p-3 hover:border-neon';
+        div.innerHTML =
+          '<div class="flex justify-between">' +
+            '<div><p class="font-bold">#'+String(v.id).padStart(5,'0')+' · '+v.cliente_nombre+'</p>' +
+              '<p class="text-gray-500 text-xs">👤 '+(v.nombre_vendedor||'—')+' • '+v.tipo+' • '+(v.fecha||'').slice(0,10)+'</p></div>' +
+            '<div class="text-right"><p class="font-bold">'+fmt(v.total)+'</p>' +
+              '<p class="'+estado_cls+' text-xs">'+(v.estado||'pendiente')+'</p></div>' +
+          '</div>';
+        cont.appendChild(div);
+      });
+    });
+  }
+
+  function renderPedidos(){
+    cargarPedidos().then(() => {
+      var cont = document.getElementById('lista-pedidos-admin');
+      var filt_vend = parseInt(document.getElementById('filtro-vendedor-ped').value||0) || null;
+      var filt_estado = document.getElementById('filtro-estado-ped').value||'';
+      var filtrados = pedidos.filter(p => {
+        return (!filt_vend || p.id_vendedor===filt_vend) &&
+               (filt_estado==='' || p.estado===filt_estado);
+      });
+      cont.innerHTML = '';
+      if (!filtrados.length){ cont.innerHTML='<p class="text-gray-600 text-sm">Sin pedidos.</p>'; return; }
+      filtrados.slice(0,200).forEach(p => {
+        var estado_color = p.estado==='nuevo' ? 'bg-red-900' : (p.estado==='confirmado' ? 'bg-green-900' : 'bg-gray-800');
+        var div = document.createElement('div');
+        div.className = 'bg-gray-900 border border-gray-800 rounded-lg p-3 cursor-pointer hover:border-neon ' + estado_color;
+        div.innerHTML =
+          '<div class="flex justify-between">' +
+            '<div><p class="font-bold">#'+String(p.id).padStart(5,'0')+' · '+p.cliente_nombre+'</p>' +
+              '<p class="text-gray-500 text-xs">📲 '+p.cliente_telefono+'</p></div>' +
+            '<p class="font-bold">'+fmt(p.total)+'</p>' +
+          '</div>';
+        div.onclick = () => abrirPedidoDetalle(p);
+        cont.appendChild(div);
+      });
+    });
+  }
+
+  async function renderMargenes(){
     try {
-      var t = await fetch(API_URL+'/reparto/trabajando', {cache:'no-store'}).then(r=>r.json());
-      var cont = document.getElementById('trabajando');
-      if (!t.length){ cont.innerHTML = '<span class="text-gray-600">Nadie con sesión activa.</span>'; return; }
-      cont.innerHTML = t.map(function(s){
-        return '<span class="inline-block bg-green-600/20 text-green-400 rounded-full px-3 py-1 mr-2 mb-1">🟢 '+(s.nombre||'—')+' <span class="text-gray-500 text-xs">desde '+(s.inicio||'').slice(11,16)+'</span></span>';
-      }).join('');
-    } catch(e){}
+      var resp = await fetch(API_URL+'/reparto/margenes', {cache:'no-store'}).then(r=>r.json());
+      var cont = document.getElementById('lista-margenes');
+      cont.innerHTML = '';
+      if (!resp.length){ cont.innerHTML='<p class="text-gray-600">Sin vendedores activos.</p>'; return; }
+      resp.forEach(v => {
+        var div = document.createElement('div');
+        div.className = 'flex justify-between items-center bg-gray-800 rounded-lg p-3 border border-gray-700';
+        div.innerHTML =
+          '<div><p class="font-bold">'+v.nombre+' '+v.apellido+'</p><p class="text-gray-500 text-xs">Sesión activa</p></div>' +
+          '<p class="text-neon font-bold text-lg">'+(v.margen||'—')+'%</p>';
+        cont.appendChild(div);
+      });
+    } catch(e){ document.getElementById('lista-margenes').innerHTML='<p class="text-gray-600">—</p>'; }
   }
 
-  async function cargarLocalidadesAdmin(){
+  function abrirPedidoDetalle(p){
+    currentPedidoId = p.id;
+    document.getElementById('ped-id').textContent = String(p.id).padStart(5,'0');
+    document.getElementById('ped-cliente').textContent = p.cliente_nombre;
+    document.getElementById('ped-tel').textContent = p.cliente_telefono;
+    document.getElementById('ped-fecha').textContent = (p.fecha||'').slice(0,16).replace('T',' ');
+    document.getElementById('ped-estado').textContent = p.estado;
+    document.getElementById('ped-estado-sel').value = p.estado;
+    document.getElementById('ped-total').textContent = fmt(p.total);
+    var items_cont = document.getElementById('ped-items');
+    items_cont.innerHTML = '';
     try {
-      var locs = await fetch(API_URL+'/reparto/localidades', {cache:'no-store'}).then(r=>r.json());
-      var sel = document.getElementById('filtro-localidad');
-      var actual = sel.value;
-      sel.innerHTML = '<option value="">Todas</option>';
-      locs.forEach(function(l){ sel.innerHTML += '<option value="'+l+'"'+(l===actual?' selected':'')+'>'+l+'</option>'; });
+      var items = JSON.parse(p.items_json || '[]');
+      items.forEach(i => {
+        var fila = document.createElement('div');
+        fila.className = 'flex justify-between text-gray-400 border-b border-gray-700 py-1';
+        fila.innerHTML = '<span>'+i.cantidad+'× '+i.nombre+'</span><span>$ '+(parseFloat(i.precio)*i.cantidad).toFixed(2)+'</span>';
+        items_cont.appendChild(fila);
+      });
     } catch(e){}
+    document.getElementById('modal-pedido-detalle').classList.remove('hidden');
   }
 
-  cargarResumen();
+  function cerrarPedido(){ document.getElementById('modal-pedido-detalle').classList.add('hidden'); }
+
+  async function actualizarEstadoPedido(){
+    var estado = document.getElementById('ped-estado-sel').value;
+    try {
+      await fetch(API_URL+'/catalogo-pedidos/'+currentPedidoId+'/estado', {method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ estado: estado })});
+      alert('✓ Actualizado');
+      cerrarPedido();
+      renderPedidos();
+    } catch(e){ alert('Error.'); }
+  }
+
   cargarClientes();
-  verVentas('todo');
-  cargarTrabajando();
-  cargarMargenes();
-  cargarLocalidadesAdmin();
-  setInterval(cargarTrabajando, 60000);
-  setInterval(cargarMargenes, 60000);
+  cargarVentas();
+  cargarPedidos();
 </script>
 </body>
 </html>
