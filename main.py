@@ -10320,101 +10320,210 @@ def reparto_listar_clientes(localidad: Optional[str] = None):
     finally:
         liberar_conexion(conn)
 
+# ============================================================================
+# REPARTO - ENDPOINTS MODIFICADOS (COPIAR Y REEMPLAZAR EN main.py)
+# ============================================================================
+# Pegá estos endpoints EN TU main.py REEMPLAZANDO LOS VIEJOS
+
 @app.post("/api/reparto/clientes")
 def reparto_crear_cliente(data: dict = Body(...)):
+    """Crear un nuevo cliente de reparto. Asigna id_vendedor automáticamente."""
     conn = obtener_conexion()
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
-        nombre = (data.get('nombre') or '').strip()
-        if not nombre:
-            raise HTTPException(status_code=400, detail="El nombre del cliente es obligatorio.")
-        rid = data.get('id')
-        campos = (nombre, (data.get('contacto') or '').strip() or None,
-                  (data.get('telefono') or '').strip() or None,
-                  (data.get('direccion') or '').strip() or None,
-                  (data.get('localidad') or '').strip() or None,
-                  data.get('latitud'), data.get('longitud'),
-                  (data.get('foto_url') or '').strip() or None,
-                  (data.get('notas') or '').strip() or None)
-        if rid:
-            cur.execute("""UPDATE reparto_clientes SET nombre=%s, contacto=%s, telefono=%s, direccion=%s,
-                               localidad=%s, latitud=%s, longitud=%s, foto_url=%s, notas=%s WHERE id=%s RETURNING id""",
-                        campos + (rid,))
-        else:
-            cur.execute("""INSERT INTO reparto_clientes (nombre, contacto, telefono, direccion, localidad, latitud, longitud, foto_url, notas)
-                           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id""", campos)
-        nid = cur.fetchone()['id']
+        id_emp = data.get('id_empleado')
+        if not id_emp:
+            raise HTTPException(status_code=400, detail="Falta id_empleado.")
+        
+        cur.execute("""
+            INSERT INTO reparto_clientes 
+            (nombre, contacto, telefono, direccion, localidad, latitud, longitud, foto_url, notas, id_vendedor)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            RETURNING id, nombre, contacto, telefono, direccion, localidad, latitud, longitud, foto_url, notas, id_vendedor
+        """, (
+            (data.get('nombre') or '').strip() or None,
+            (data.get('contacto') or '').strip() or None,
+            (data.get('telefono') or '').strip() or None,
+            (data.get('direccion') or '').strip() or None,
+            (data.get('localidad') or '').strip() or None,
+            data.get('latitud'),
+            data.get('longitud'),
+            (data.get('foto_url') or '').strip() or None,
+            (data.get('notas') or '').strip() or None,
+            id_emp  # ← NUEVO: asignar vendedor
+        ))
+        cliente = cur.fetchone()
         conn.commit()
-        return {"status": "ok", "id": nid}
+        return cliente
     except HTTPException:
         raise
     except Exception as e:
         conn.rollback()
         raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
+@app.get("/api/reparto/clientes")
+def reparto_listar_clientes(localidad: Optional[str] = None, id_vendedor: Optional[int] = None):
+    """Lista clientes del reparto. 
+    Si id_vendedor es pasado, filtra solo los de ese vendedor.
+    Si no, devuelve TODOS (para admin).
+    """
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cond, params = "", []
+        if localidad:
+            cond += " AND localidad = %s"
+            params.append(localidad)
+        if id_vendedor is not None:
+            cond += " AND id_vendedor = %s"
+            params.append(id_vendedor)
+        
+        cur.execute(f"""
+            SELECT rc.id, rc.nombre, rc.contacto, rc.telefono, rc.direccion, rc.localidad,
+                   rc.latitud, rc.longitud, rc.foto_url, rc.notas, rc.id_vendedor,
+                   COALESCE(SUM(CASE WHEN rv.tipo='venta' THEN rv.total ELSE 0 END), 0) AS total_comprado,
+                   MAX(rv.fecha)::text AS ultima_visita,
+                   e.nombre AS nombre_vendedor
+            FROM reparto_clientes rc
+            LEFT JOIN reparto_ventas rv ON rc.id = rv.id_cliente
+            LEFT JOIN empleados e ON rc.id_vendedor = e.id
+            WHERE 1=1 {cond}
+            GROUP BY rc.id, rc.nombre, rc.contacto, rc.telefono, rc.direccion, rc.localidad,
+                     rc.latitud, rc.longitud, rc.foto_url, rc.notas, rc.id_vendedor,
+                     e.nombre
+            ORDER BY rc.nombre
+        """, params)
+        return fetchall_dict(cur)
+    finally:
+        liberar_conexion(conn)
+
+@app.get("/api/reparto/clientes/{id}")
+def reparto_obtener_cliente(id: int):
+    """Detalle de un cliente específico."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("""
+            SELECT rc.id, rc.nombre, rc.contacto, rc.telefono, rc.direccion, rc.localidad,
+                   rc.latitud, rc.longitud, rc.foto_url, rc.notas, rc.id_vendedor,
+                   COALESCE(SUM(CASE WHEN rv.tipo='venta' THEN rv.total ELSE 0 END), 0) AS total_comprado,
+                   MAX(rv.fecha)::text AS ultima_visita,
+                   e.nombre AS nombre_vendedor
+            FROM reparto_clientes rc
+            LEFT JOIN reparto_ventas rv ON rc.id = rv.id_cliente
+            LEFT JOIN empleados e ON rc.id_vendedor = e.id
+            WHERE rc.id = %s
+            GROUP BY rc.id, rc.nombre, rc.contacto, rc.telefono, rc.direccion, rc.localidad,
+                     rc.latitud, rc.longitud, rc.foto_url, rc.notas, rc.id_vendedor,
+                     e.nombre
+        """, (id,))
+        cliente = cur.fetchone()
+        if not cliente:
+            raise HTTPException(status_code=404, detail="Cliente no encontrado.")
+        return cliente
+    finally:
+        liberar_conexion(conn)
+
+@app.put("/api/reparto/clientes/{id}")
+def reparto_editar_cliente(id: int, data: dict = Body(...)):
+    """Editar datos de un cliente (excepto id_vendedor, que es inmutable)."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            UPDATE reparto_clientes
+            SET nombre=%s, contacto=%s, telefono=%s, direccion=%s, localidad=%s,
+                latitud=%s, longitud=%s, foto_url=%s, notas=%s
+            WHERE id=%s
+        """, (
+            (data.get('nombre') or '').strip() or None,
+            (data.get('contacto') or '').strip() or None,
+            (data.get('telefono') or '').strip() or None,
+            (data.get('direccion') or '').strip() or None,
+            (data.get('localidad') or '').strip() or None,
+            data.get('latitud'),
+            data.get('longitud'),
+            (data.get('foto_url') or '').strip() or None,
+            (data.get('notas') or '').strip() or None,
+            id
+        ))
+        conn.commit()
+        return {"status": "ok"}
     finally:
         liberar_conexion(conn)
 
 @app.get("/api/reparto/clientes/{id}/historial")
 def reparto_historial_cliente(id: int):
+    """Historial de visitas y ventas de un cliente."""
     conn = obtener_conexion()
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
-        cur.execute("""SELECT v.id, v.fecha::text, v.resultado, v.notas, e.nombre AS repartidor
-                       FROM reparto_visitas v LEFT JOIN empleados e ON v.id_empleado=e.id
-                       WHERE v.id_cliente=%s ORDER BY v.fecha DESC LIMIT 100""", (id,))
-        visitas = fetchall_dict(cur)
-        cur.execute("""SELECT rv.id, rv.fecha::text, rv.tipo, rv.total, rv.estado
-                       FROM reparto_ventas rv WHERE rv.id_cliente=%s ORDER BY rv.fecha DESC LIMIT 100""", (id,))
+        cur.execute("SELECT id, fecha::text, tipo, total, estado FROM reparto_ventas WHERE id_cliente=%s ORDER BY fecha DESC", (id,))
         ventas = fetchall_dict(cur)
-        return {"visitas": visitas, "ventas": ventas}
+        cur.execute("SELECT id, fecha::text, resultado FROM reparto_visitas WHERE id_cliente=%s ORDER BY fecha DESC", (id,))
+        visitas = fetchall_dict(cur)
+        return {"ventas": ventas, "visitas": visitas}
     finally:
         liberar_conexion(conn)
 
 @app.post("/api/reparto/visitas")
-def reparto_registrar_visita(data: dict = Body(...)):
+def reparto_crear_visita(data: dict = Body(...)):
+    """Registrar una visita sin compra (o con GPS)."""
     conn = obtener_conexion()
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
         id_cliente = data.get('id_cliente')
         if not id_cliente:
-            raise HTTPException(status_code=400, detail="Falta el cliente.")
-        cur.execute("""INSERT INTO reparto_visitas (id_cliente, id_empleado, resultado, latitud, longitud, notas)
-                       VALUES (%s,%s,%s,%s,%s,%s) RETURNING id""",
-                    (id_cliente, data.get('id_empleado'), data.get('resultado'),
-                     data.get('latitud'), data.get('longitud'), (data.get('notas') or '').strip() or None))
-        nid = cur.fetchone()['id']
+            raise HTTPException(status_code=400, detail="Falta id_cliente.")
+        
+        cur.execute("""
+            INSERT INTO reparto_visitas (id_cliente, id_empleado, resultado, latitud, longitud)
+            VALUES (%s,%s,%s,%s,%s)
+            RETURNING id
+        """, (id_cliente, data.get('id_empleado'), data.get('resultado') or 'sin_compra',
+              data.get('latitud'), data.get('longitud')))
+        id_visita = cur.fetchone()['id']
         conn.commit()
-        return {"status": "ok", "id": nid}
-    except HTTPException:
-        raise
-    except Exception as e:
-        conn.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
+        return {"status": "ok", "id": id_visita}
     finally:
         liberar_conexion(conn)
 
 @app.post("/api/reparto/ventas")
-def reparto_registrar_venta(data: dict = Body(...)):
+def reparto_crear_venta(data: dict = Body(...)):
+    """Crear venta/pedido con items (ahora guarda margen_venta_porcentaje)."""
     conn = obtener_conexion()
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
         id_cliente = data.get('id_cliente')
-        items = data.get('items') or []
-        if not id_cliente or not items:
-            raise HTTPException(status_code=400, detail="Falta el cliente o los productos.")
+        if not id_cliente:
+            raise HTTPException(status_code=400, detail="Falta id_cliente.")
+        
+        items = data.get('items', [])
+        if not items:
+            raise HTTPException(status_code=400, detail="Falta items.")
+        
         tipo = data.get('tipo') if data.get('tipo') in ('venta','pedido') else 'venta'
         total = sum(float(i.get('cantidad',0)) * float(i.get('precio_unitario',0)) for i in items)
         estado = 'entregado' if tipo == 'venta' else 'pendiente'
+        
         cur.execute("""INSERT INTO reparto_ventas (id_cliente, id_empleado, id_visita, tipo, total, estado, notas)
                        VALUES (%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
                     (id_cliente, data.get('id_empleado'), data.get('id_visita'), tipo, round(total,2), estado,
                      (data.get('notas') or '').strip() or None))
         id_venta = cur.fetchone()['id']
+        
+        # Guardar items CON margen_venta_porcentaje
         for i in items:
-            cant = float(i.get('cantidad',0)); precio = float(i.get('precio_unitario',0))
-            cur.execute("""INSERT INTO reparto_ventas_detalle (id_venta, id_producto, nombre, cantidad, precio_unitario, subtotal)
-                           VALUES (%s,%s,%s,%s,%s,%s)""",
-                        (id_venta, i.get('id_producto'), i.get('nombre'), cant, precio, round(cant*precio,2)))
+            cant = float(i.get('cantidad',0))
+            precio = float(i.get('precio_unitario',0))
+            margen = i.get('margen_venta_porcentaje')  # puede ser None, 0, 10, etc.
+            cur.execute("""INSERT INTO reparto_ventas_detalle 
+                           (id_venta, id_producto, nombre, cantidad, precio_unitario, subtotal, margen_venta_porcentaje)
+                           VALUES (%s,%s,%s,%s,%s,%s,%s)""",
+                        (id_venta, i.get('id_producto'), i.get('nombre'), cant, precio, round(cant*precio,2), margen))
+        
         conn.commit()
         return {"status": "ok", "id": id_venta, "total": round(total,2)}
     except HTTPException:
@@ -10422,27 +10531,6 @@ def reparto_registrar_venta(data: dict = Body(...)):
     except Exception as e:
         conn.rollback()
         raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        liberar_conexion(conn)
-
-@app.get("/api/reparto/resumen")
-def reparto_resumen(desde: Optional[str] = None, hasta: Optional[str] = None):
-    """Reporte para el admin: visitas y ventas del período."""
-    conn = obtener_conexion()
-    try:
-        cur = conn.cursor(cursor_factory=RealDictCursor)
-        cond, params = "", []
-        if desde: cond += " AND fecha >= %s"; params.append(desde)
-        if hasta: cond += " AND fecha <= %s"; params.append(hasta)
-        cur.execute(f"SELECT COUNT(*) AS n FROM reparto_visitas WHERE 1=1 {cond}", params)
-        visitas = int(cur.fetchone()['n'])
-        cur.execute(f"""SELECT COALESCE(SUM(total),0) AS total, COUNT(*) AS n
-                        FROM reparto_ventas WHERE tipo='venta' {cond}""", params)
-        rv = cur.fetchone()
-        cur.execute(f"""SELECT COUNT(*) AS n FROM reparto_ventas WHERE tipo='pedido' AND estado='pendiente' {cond}""", params)
-        pedidos_pend = int(cur.fetchone()['n'])
-        return {"visitas": visitas, "ventas_total": float(rv['total'] or 0),
-                "ventas_cantidad": int(rv['n']), "pedidos_pendientes": pedidos_pend}
     finally:
         liberar_conexion(conn)
 
@@ -10487,7 +10575,7 @@ def reparto_detalle_venta(id: int):
         cab = cur.fetchone()
         if not cab:
             raise HTTPException(status_code=404, detail="Venta no encontrada.")
-        cur.execute("""SELECT nombre, cantidad, precio_unitario, subtotal
+        cur.execute("""SELECT nombre, cantidad, precio_unitario, subtotal, margen_venta_porcentaje
                        FROM reparto_ventas_detalle WHERE id_venta=%s ORDER BY id""", (id,))
         cab['items'] = fetchall_dict(cur)
         return cab
@@ -10503,6 +10591,110 @@ def reparto_cambiar_estado_venta(id: int, estado: str):
         cur.execute("UPDATE reparto_ventas SET estado=%s WHERE id=%s", (estado, id))
         conn.commit()
         return {"status": "ok"}
+    finally:
+        liberar_conexion(conn)
+
+@app.post("/api/reparto/ventas/{id}/enviar-comprobante-wsp")
+def reparto_enviar_comprobante_wsp(id: int):
+    """Generar link de WhatsApp para enviar el comprobante.
+    Devuelve el link wa.me con el texto formateado.
+    """
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("""
+            SELECT rv.id, rv.fecha::text, rv.tipo, rv.total,
+                   c.nombre AS cliente, c.telefono,
+                   e.nombre AS repartidor
+            FROM reparto_ventas rv
+            JOIN reparto_clientes c ON rv.id_cliente = c.id
+            LEFT JOIN empleados e ON rv.id_empleado = e.id
+            WHERE rv.id=%s
+        """, (id,))
+        venta = cur.fetchone()
+        if not venta:
+            raise HTTPException(status_code=404, detail="Venta no encontrada.")
+        
+        # Obtener items
+        cur.execute("""SELECT nombre, cantidad, precio_unitario, subtotal
+                       FROM reparto_ventas_detalle WHERE id_venta=%s ORDER BY id""", (id,))
+        items = fetchall_dict(cur)
+        
+        # Construir mensaje
+        telefono = (venta['telefono'] or '').replace(/[^0-9]/g,'')
+        if telefono and not telefono.startswith('54'):
+            telefono = '54' + telefono
+        
+        mensaje = f"""*PORTAL DEL VIENTO*
+Comprobante de {venta['tipo'].upper()}
+
+N° {str(venta['id']).zfill(5)}
+Fecha: {venta['fecha'][:16]}
+Cliente: {venta['cliente']}
+
+{''.join([f"{i['cantidad']:.0f}× {i['nombre']} - ${i['subtotal']:.2f}\n" for i in items])}
+---
+*TOTAL: ${venta['total']:.2f}*
+
+{f"Repartidor: {venta['repartidor']}" if venta['repartidor'] else ""}"""
+        
+        mensaje_encoded = mensaje.replace('\n', '%0A').replace('*', '%2A')
+        wa_link = f"https://wa.me/{telefono}?text={mensaje_encoded}" if telefono else None
+        
+        return {"status": "ok", "wa_link": wa_link, "mensaje": mensaje, "telefono": telefono}
+    finally:
+        liberar_conexion(conn)
+
+@app.get("/api/reparto/resumen")
+def reparto_resumen(desde: Optional[str] = None, hasta: Optional[str] = None):
+    """Reporte para el admin: visitas y ventas del período."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cond, params = "", []
+        if desde: cond += " AND fecha >= %s"; params.append(desde)
+        if hasta: cond += " AND fecha <= %s"; params.append(hasta)
+        cur.execute(f"SELECT COUNT(*) AS n FROM reparto_visitas WHERE 1=1 {cond}", params)
+        visitas = int(cur.fetchone()['n'])
+        cur.execute(f"""SELECT COALESCE(SUM(total),0) AS total, COUNT(*) AS n
+                        FROM reparto_ventas WHERE tipo='venta' {cond}""", params)
+        rv = cur.fetchone()
+        cur.execute(f"""SELECT COUNT(*) AS n FROM reparto_ventas WHERE tipo='pedido' AND estado='pendiente' {cond}""", params)
+        pedidos_pend = int(cur.fetchone()['n'])
+        return {"visitas": visitas, "ventas_total": float(rv['total'] or 0),
+                "ventas_cantidad": int(rv['n']), "pedidos_pendientes": pedidos_pend}
+    finally:
+        liberar_conexion(conn)
+
+@app.get("/api/reparto/trabajando")
+def reparto_trabajando():
+    """Lista de vendedores con sesión activa (para el panel admin)."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            cur.execute("""SELECT id_empleado, nombre, inicio::text
+                           FROM reparto_sesiones WHERE activa=true ORDER BY inicio DESC""")
+            return fetchall_dict(cur)
+        except Exception:
+            conn.rollback()
+            return []
+    finally:
+        liberar_conexion(conn)
+
+@app.get("/api/reparto/localidades")
+def reparto_localidades():
+    """Lista de localidades distintas cargadas en los clientes (para los filtros)."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            cur.execute("""SELECT DISTINCT localidad FROM reparto_clientes
+                           WHERE localidad IS NOT NULL AND TRIM(localidad)<>'' ORDER BY localidad""")
+            return [r['localidad'] for r in fetchall_dict(cur)]
+        except Exception:
+            conn.rollback()
+            return []
     finally:
         liberar_conexion(conn)
 
@@ -10552,38 +10744,6 @@ def reparto_logout(data: dict = Body(...)):
     finally:
         liberar_conexion(conn)
 
-@app.get("/api/reparto/trabajando")
-def reparto_trabajando():
-    """Lista de vendedores con sesión activa (para el panel admin)."""
-    conn = obtener_conexion()
-    try:
-        cur = conn.cursor(cursor_factory=RealDictCursor)
-        try:
-            cur.execute("""SELECT id_empleado, nombre, inicio::text
-                           FROM reparto_sesiones WHERE activa=true ORDER BY inicio DESC""")
-            return fetchall_dict(cur)
-        except Exception:
-            conn.rollback()
-            return []
-    finally:
-        liberar_conexion(conn)
-
-@app.get("/api/reparto/localidades")
-def reparto_localidades():
-    """Lista de localidades distintas cargadas en los clientes (para los filtros)."""
-    conn = obtener_conexion()
-    try:
-        cur = conn.cursor(cursor_factory=RealDictCursor)
-        try:
-            cur.execute("""SELECT DISTINCT localidad FROM reparto_clientes
-                           WHERE localidad IS NOT NULL AND TRIM(localidad)<>'' ORDER BY localidad""")
-            return [r['localidad'] for r in fetchall_dict(cur)]
-        except Exception:
-            conn.rollback()
-            return []
-    finally:
-        liberar_conexion(conn)
-
 @app.get("/reparto-login")
 def route_reparto_login():
     return serve_html("reparto_login.html")
@@ -10595,7 +10755,6 @@ def route_reparto():
 @app.get("/reparto-admin")
 def route_reparto_admin():
     return serve_html("reparto_admin.html")
-
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
