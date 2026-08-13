@@ -90,21 +90,39 @@
   // Obtener id_vendedor de URL
   const params = new URLSearchParams(window.location.search);
   id_vendedor = params.get('v');
+  console.log('🔍 ID VENDEDOR:', id_vendedor);
+  console.log('🔍 URL PARAMS:', window.location.search);
+  
   if (!id_vendedor){
     document.body.innerHTML = '<div class="text-center p-8 text-red-400"><p>❌ Falta vendedor (parámetro ?v=)</p></div>';
   }
 
   async function cargarCatalogo(){
     try {
-      var res = await fetch(API_URL+'/catalogo/'+id_vendedor, {cache:'no-store'}).then(r=>r.json());
-      vendedor = res.vendedor;
-      productos = res.productos;
+      console.log('📡 Pidiendo:', API_URL+'/catalogo/'+id_vendedor);
+      var res = await fetch(API_URL+'/catalogo/'+id_vendedor, {cache:'no-store'});
+      console.log('📡 Respuesta status:', res.status);
+      var data = await res.json();
+      console.log('📡 Datos recibidos:', data);
       
-      document.getElementById('vendedor-info').textContent = `📍 ${vendedor.nombre} ${vendedor.apellido || ''}${vendedor.margen ? ` • Margen: +${vendedor.margen.toFixed(1)}%` : ''}`;
+      if (!res.ok) {
+        console.error('❌ Error:', data);
+        document.getElementById('vendedor-info').textContent = '❌ Error: ' + (data.detail || 'Desconocido');
+        return;
+      }
+      
+      vendedor = data.vendedor;
+      productos = data.productos;
+      
+      console.log('✅ Vendedor:', vendedor);
+      console.log('✅ Productos:', productos);
+      
+      document.getElementById('vendedor-info').textContent = `📍 ${vendedor.nombre} ${vendedor.apellido || ''}`;
       
       renderCatalogo();
     } catch(e){
-      document.getElementById('vendedor-info').textContent = '❌ Vendedor no encontrado';
+      console.error('❌ EXCEPCIÓN:', e);
+      document.getElementById('vendedor-info').textContent = '❌ Error: ' + e.message;
     }
   }
 
