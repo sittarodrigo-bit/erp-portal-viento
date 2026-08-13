@@ -29,6 +29,12 @@
       <div id="trabajando" class="text-sm text-gray-400">—</div>
     </div>
 
+    <!-- Márgenes de vendedores -->
+    <div class="bg-gray-900 border border-gray-800 rounded-xl p-3 mb-4">
+      <p class="text-xs text-gray-500 font-bold mb-2">⚙️ Márgenes de venta</p>
+      <div id="margenes-list" class="space-y-1 text-xs"></div>
+    </div>
+
     <!-- Filtro fechas + localidad -->
     <div class="flex gap-2 mb-4 items-end flex-wrap">
       <div><label class="block text-xs text-gray-500 mb-1">Desde</label><input id="desde" type="date" class="bg-gray-900 border border-gray-700 rounded-lg p-2 text-sm"></div>
@@ -128,8 +134,7 @@
     try {
       var d = await fetch(API_URL+'/reparto/ventas/'+id+'/detalle', {cache:'no-store'}).then(r=>r.json());
       var items = (d.items||[]).map(function(i){
-        var margen_txt = i.margen_venta_porcentaje !== null ? ' ('+i.margen_venta_porcentaje+'%)' : '';
-        return '<div class="flex justify-between text-sm border-b border-gray-800 py-1"><span>'+i.cantidad+'× '+i.nombre+margen_txt+'</span><span>$ '+(parseFloat(i.subtotal)||0).toLocaleString('es-AR')+'</span></div>';
+        return '<div class="flex justify-between text-sm border-b border-gray-800 py-1"><span>'+i.cantidad+'× '+i.nombre+'</span><span>$ '+(parseFloat(i.subtotal)||0).toLocaleString('es-AR')+'</span></div>';
       }).join('');
       document.getElementById('md-titulo').textContent = (d.tipo==='venta'?'Venta':'Pedido')+' — '+d.cliente;
       document.getElementById('md-info').textContent = [d.fecha.slice(0,16).replace('T',' '), d.repartidor, d.direccion].filter(Boolean).join(' · ');
@@ -163,7 +168,7 @@
   async function generarComprobante(id){
     var d = await fetch(API_URL+'/reparto/ventas/'+id+'/detalle', {cache:'no-store'}).then(r=>r.json());
     var jsPDF = window.jspdf.jsPDF;
-    var doc = new jsPDF({unit:'mm', format:[80, 200]}); // ticket angosto
+    var doc = new jsPDF({unit:'mm', format:[80, 200]});
     var y = 10;
     doc.setFont('helvetica','bold'); doc.setFontSize(12);
     doc.text('PORTAL DEL VIENTO', 40, y, {align:'center'}); y+=5;
@@ -208,11 +213,29 @@
     } catch(e){}
   }
 
+  async function cargarMargenes(){
+    try {
+      var trabajando = await fetch(API_URL+'/reparto/trabajando', {cache:'no-store'}).then(r=>r.json());
+      var cont = document.getElementById('margenes-list');
+      if (!trabajando.length){ cont.innerHTML = '<span class="text-gray-600">—</span>'; return; }
+      cont.innerHTML = '';
+      for (var s of trabajando) {
+        try {
+          var emp = await fetch(API_URL+'/reparto/vendedor/margen/'+s.id_empleado, {cache:'no-store'}).then(r=>r.json());
+          var margen_txt = emp.margen_venta_porcentaje_default ? emp.margen_venta_porcentaje_default.toFixed(1)+'%' : '—';
+          var row = document.createElement('div');
+          row.className = 'flex justify-between items-center text-gray-300 border-b border-gray-800 py-1';
+          row.innerHTML = '<span>'+s.nombre+'</span><span class="text-neon">'+margen_txt+'</span>';
+          cont.appendChild(row);
+        } catch(e){}
+      }
+    } catch(e){}
+  }
+
   async function cargarClientes(){
     var cont = document.getElementById('lista-clientes');
     var loc = document.getElementById('filtro-localidad') ? document.getElementById('filtro-localidad').value : '';
     try {
-      // NO FILTRA POR VENDEDOR - ADMIN VE TODOS, CON NOMBRE DEL VENDEDOR
       var url = API_URL+'/reparto/clientes' + (loc ? '?localidad='+encodeURIComponent(loc) : '');
       var cl = await fetch(url, {cache:'no-store'}).then(r=>r.json());
       document.getElementById('cont-cli').textContent = cl.length;
@@ -234,7 +257,7 @@
             '</div>' +
           '</div>';
       });
-    } catch(e){ cont.innerHTML='<p class="text-red-400 text-sm">No se pudieron cargar (¿falta el SQL?).</p>'; }
+    } catch(e){ cont.innerHTML='<p class="text-red-400 text-sm">No se pudieron cargar.</p>'; }
   }
 
   async function cargarTrabajando(){
@@ -262,8 +285,10 @@
   cargarClientes();
   verVentas('todo');
   cargarTrabajando();
+  cargarMargenes();
   cargarLocalidadesAdmin();
-  setInterval(cargarTrabajando, 60000); // refrescar quién trabaja cada minuto
+  setInterval(cargarTrabajando, 60000);
+  setInterval(cargarMargenes, 60000);
 </script>
 </body>
 </html>
