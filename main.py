@@ -10291,6 +10291,165 @@ footer{text-align:center;color:#555;font-size:12px;margin-top:40px}
     finally:
         liberar_conexion(conn)
 
+# ════════════════════════════════════════════════════════════════════════════
+#  MÓDULO REPARTO — clientes geolocalizados, visitas y ventas en la calle
+# ════════════════════════════════════════════════════════════════════════════
+
+@app.get("/api/reparto/clientes")
+def reparto_listar_clientes():
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            cur.execute("""
+                SELECT c.id, c.nombre, c.contacto, c.telefono, c.direccion,
+                       c.latitud, c.longitud, c.foto_url, c.notas,
+                       (SELECT MAX(v.fecha)::text FROM reparto_visitas v WHERE v.id_cliente=c.id) AS ultima_visita,
+                       COALESCE((SELECT SUM(rv.total) FROM reparto_ventas rv WHERE rv.id_cliente=c.id AND rv.tipo='venta'),0) AS total_comprado
+                FROM reparto_clientes c
+                WHERE COALESCE(c.activo,true)=true
+                ORDER BY c.nombre
+            """)
+            return fetchall_dict(cur)
+        except Exception:
+            conn.rollback()
+            raise HTTPException(status_code=400, detail="Falta correr CREAR_MODULO_REPARTO.sql en la base.")
+    finally:
+        liberar_conexion(conn)
+
+@app.post("/api/reparto/clientes")
+def reparto_crear_cliente(data: dict = Body(...)):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        nombre = (data.get('nombre') or '').strip()
+        if not nombre:
+            raise HTTPException(status_code=400, detail="El nombre del cliente es obligatorio.")
+        rid = data.get('id')
+        campos = (nombre, (data.get('contacto') or '').strip() or None,
+                  (data.get('telefono') or '').strip() or None,
+                  (data.get('direccion') or '').strip() or None,
+                  data.get('latitud'), data.get('longitud'),
+                  (data.get('foto_url') or '').strip() or None,
+                  (data.get('notas') or '').strip() or None)
+        if rid:
+            cur.execute("""UPDATE reparto_clientes SET nombre=%s, contacto=%s, telefono=%s, direccion=%s,
+                               latitud=%s, longitud=%s, foto_url=%s, notas=%s WHERE id=%s RETURNING id""",
+                        campos + (rid,))
+        else:
+            cur.execute("""INSERT INTO reparto_clientes (nombre, contacto, telefono, direccion, latitud, longitud, foto_url, notas)
+                           VALUES (%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id""", campos)
+        nid = cur.fetchone()['id']
+        conn.commit()
+        return {"status": "ok", "id": nid}
+    except HTTPException:
+        raise
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
+@app.get("/api/reparto/clientes/{id}/historial")
+def reparto_historial_cliente(id: int):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("""SELECT v.id, v.fecha::text, v.resultado, v.notas, e.nombre AS repartidor
+                       FROM reparto_visitas v LEFT JOIN empleados e ON v.id_empleado=e.id
+                       WHERE v.id_cliente=%s ORDER BY v.fecha DESC LIMIT 100""", (id,))
+        visitas = fetchall_dict(cur)
+        cur.execute("""SELECT rv.id, rv.fecha::text, rv.tipo, rv.total, rv.estado
+                       FROM reparto_ventas rv WHERE rv.id_cliente=%s ORDER BY rv.fecha DESC LIMIT 100""", (id,))
+        ventas = fetchall_dict(cur)
+        return {"visitas": visitas, "ventas": ventas}
+    finally:
+        liberar_conexion(conn)
+
+@app.post("/api/reparto/visitas")
+def reparto_registrar_visita(data: dict = Body(...)):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        id_cliente = data.get('id_cliente')
+        if not id_cliente:
+            raise HTTPException(status_code=400, detail="Falta el cliente.")
+        cur.execute("""INSERT INTO reparto_visitas (id_cliente, id_empleado, resultado, latitud, longitud, notas)
+                       VALUES (%s,%s,%s,%s,%s,%s) RETURNING id""",
+                    (id_cliente, data.get('id_empleado'), data.get('resultado'),
+                     data.get('latitud'), data.get('longitud'), (data.get('notas') or '').strip() or None))
+        nid = cur.fetchone()['id']
+        conn.commit()
+        return {"status": "ok", "id": nid}
+    except HTTPException:
+        raise
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
+@app.post("/api/reparto/ventas")
+def reparto_registrar_venta(data: dict = Body(...)):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        id_cliente = data.get('id_cliente')
+        items = data.get('items') or []
+        if not id_cliente or not items:
+            raise HTTPException(status_code=400, detail="Falta el cliente o los productos.")
+        tipo = data.get('tipo') if data.get('tipo') in ('venta','pedido') else 'venta'
+        total = sum(float(i.get('cantidad',0)) * float(i.get('precio_unitario',0)) for i in items)
+        estado = 'entregado' if tipo == 'venta' else 'pendiente'
+        cur.execute("""INSERT INTO reparto_ventas (id_cliente, id_empleado, id_visita, tipo, total, estado, notas)
+                       VALUES (%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
+                    (id_cliente, data.get('id_empleado'), data.get('id_visita'), tipo, round(total,2), estado,
+                     (data.get('notas') or '').strip() or None))
+        id_venta = cur.fetchone()['id']
+        for i in items:
+            cant = float(i.get('cantidad',0)); precio = float(i.get('precio_unitario',0))
+            cur.execute("""INSERT INTO reparto_ventas_detalle (id_venta, id_producto, nombre, cantidad, precio_unitario, subtotal)
+                           VALUES (%s,%s,%s,%s,%s,%s)""",
+                        (id_venta, i.get('id_producto'), i.get('nombre'), cant, precio, round(cant*precio,2)))
+        conn.commit()
+        return {"status": "ok", "id": id_venta, "total": round(total,2)}
+    except HTTPException:
+        raise
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
+@app.get("/api/reparto/resumen")
+def reparto_resumen(desde: Optional[str] = None, hasta: Optional[str] = None):
+    """Reporte para el admin: visitas y ventas del período."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cond, params = "", []
+        if desde: cond += " AND fecha >= %s"; params.append(desde)
+        if hasta: cond += " AND fecha <= %s"; params.append(hasta)
+        cur.execute(f"SELECT COUNT(*) AS n FROM reparto_visitas WHERE 1=1 {cond}", params)
+        visitas = int(cur.fetchone()['n'])
+        cur.execute(f"""SELECT COALESCE(SUM(total),0) AS total, COUNT(*) AS n
+                        FROM reparto_ventas WHERE tipo='venta' {cond}""", params)
+        rv = cur.fetchone()
+        cur.execute(f"""SELECT COUNT(*) AS n FROM reparto_ventas WHERE tipo='pedido' AND estado='pendiente' {cond}""", params)
+        pedidos_pend = int(cur.fetchone()['n'])
+        return {"visitas": visitas, "ventas_total": float(rv['total'] or 0),
+                "ventas_cantidad": int(rv['n']), "pedidos_pendientes": pedidos_pend}
+    finally:
+        liberar_conexion(conn)
+
+@app.get("/reparto")
+def route_reparto():
+    return serve_html("reparto.html")
+
+@app.get("/reparto-admin")
+def route_reparto_admin():
+    return serve_html("reparto_admin.html")
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
