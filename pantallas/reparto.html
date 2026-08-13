@@ -21,6 +21,7 @@
       <p class="text-gray-500 text-xs" id="nombre-repartidor">—</p>
     </div>
     <div class="flex items-center gap-2">
+      <button onclick="abrirEditarMargen()" class="bg-gray-800 text-gray-300 border border-gray-700 rounded-lg px-2.5 py-2 text-xs hover:border-neon hover:text-neon" title="Editar margen de venta">⚙️ <span id="margen-badge">0%</span></button>
       <button onclick="abrirNuevoCliente()" class="bg-neon text-black font-bold rounded-lg px-3 py-2 text-sm">+ Cliente</button>
       <button onclick="salirReparto()" class="border border-gray-700 text-gray-400 rounded-lg px-2 py-2 text-xs">Salir</button>
     </div>
@@ -111,6 +112,35 @@
     </div>
   </div>
 
+  <!-- Modal para acciones de venta (PDF + WhatsApp) -->
+  <div id="modal-venta-acciones" class="hidden fixed inset-0 bg-black/90 z-40 flex items-center justify-center p-4">
+    <div class="bg-gray-900 border border-gray-700 rounded-xl p-4 w-full max-w-sm">
+      <h3 class="font-bold mb-3">Comprobante #<span id="action-venta-id">0</span></h3>
+      <div class="space-y-2">
+        <button onclick="generarComprobanteRepartidor(ventaActualId)" class="w-full bg-gray-800 hover:bg-gray-700 text-white font-bold rounded-lg py-3 text-sm">📄 Descargar PDF</button>
+        <button onclick="enviarComprobantePorWSP(ventaActualId)" class="w-full bg-green-600 hover:bg-green-500 text-white font-bold rounded-lg py-3 text-sm">📲 Enviar por WhatsApp</button>
+      </div>
+      <button onclick="cerrarAcciones()" class="w-full border border-gray-700 text-gray-400 rounded-lg py-2 text-sm mt-2">Cerrar</button>
+    </div>
+  </div>
+
+  <!-- Modal editar margen de venta -->
+  <div id="modal-editar-margen" class="hidden fixed inset-0 bg-black/90 z-40 flex items-center justify-center p-4">
+    <div class="bg-gray-900 border border-gray-700 rounded-xl p-4 w-full max-w-sm">
+      <h3 class="font-bold mb-3">⚙️ Mi margen de venta</h3>
+      <p class="text-gray-500 text-xs mb-3">Este porcentaje se aplicará a todos los productos</p>
+      <div class="mb-3">
+        <label class="block text-xs text-gray-500 mb-1">Porcentaje (%)</label>
+        <input id="input-margen" type="number" min="0" step="0.1" placeholder="Ej: 15" class="w-full bg-black border border-gray-700 rounded-lg p-3 text-sm focus:border-neon focus:outline-none">
+      </div>
+      <p class="text-xs text-gray-500 mb-3">Si dejás vacío, usará el precio mayorista por defecto</p>
+      <div class="flex gap-2">
+        <button onclick="guardarMargen()" class="flex-1 bg-neon text-black font-bold rounded-lg py-2 text-sm">Guardar</button>
+        <button onclick="cerrarEditarMargen()" class="flex-1 border border-gray-700 text-gray-400 rounded-lg py-2 text-sm">Cancelar</button>
+      </div>
+    </div>
+  </div>
+
 <script>
   const API_URL = '/api';
   let empleado = null;
@@ -119,6 +149,8 @@
   let clienteActual = null;
   let itemsVenta = [];
   let tipoVentaSel = 'venta';
+  let ventaActualId = null;
+  let margenVendedor = null;
 
   function fmt(n){ return '$ ' + (Math.round((parseFloat(n)||0)*100)/100).toLocaleString('es-AR'); }
 
@@ -140,9 +172,18 @@
     try { productos = await fetch(API_URL+'/productos', {cache:'no-store'}).then(r=>r.json()); } catch(e){ productos = []; }
   }
 
+  async function cargarMargenVendedor(){
+    try {
+      var id = empleado.id_empleado || empleado.id;
+      var res = await fetch(API_URL+'/reparto/vendedor/margen/'+id, {cache:'no-store'}).then(r=>r.json());
+      margenVendedor = res.margen_venta_porcentaje_default;
+      var badge = document.getElementById('margen-badge');
+      badge.textContent = margenVendedor ? margenVendedor.toFixed(1)+'%' : '—';
+    } catch(e){ margenVendedor = null; }
+  }
+
   async function cargarClientes(){
     try {
-      // FILTRAR SOLO POR id_vendedor DEL EMPLEADO LOGUEADO
       var url = API_URL+'/reparto/clientes?id_vendedor='+(empleado.id_empleado||empleado.id);
       clientes = await fetch(url, {cache:'no-store'}).then(r=>r.json());
       renderClientes();
@@ -297,7 +338,7 @@
   }
 
   function agregarItemVenta(){
-    itemsVenta.push({ id_producto: '', nombre: '', cantidad: 1, precio_unitario: 0, margen_venta_porcentaje: null });
+    itemsVenta.push({ id_producto: '', nombre: '', cantidad: 1, precio_unitario: 0 });
     renderItemsVenta();
   }
 
@@ -317,7 +358,7 @@
         '<div class="grid grid-cols-3 gap-1 mb-1">' +
           '<input type="number" min="1" value="'+it.cantidad+'" oninput="setItem('+idx+',\'cantidad\',this.value)" placeholder="Cant." class="bg-gray-900 border border-gray-700 rounded p-1.5 text-xs text-center">' +
           '<input type="number" step="0.01" value="'+it.precio_unitario+'" oninput="setItem('+idx+',\'precio_unitario\',this.value)" placeholder="Precio" class="bg-gray-900 border border-gray-700 rounded p-1.5 text-xs text-right">' +
-          '<input type="number" min="0" max="100" value="'+(it.margen_venta_porcentaje!==null?it.margen_venta_porcentaje:'')+'" oninput="setItem('+idx+',\'margen_venta_porcentaje\',this.value)" placeholder="% venta" class="bg-gray-900 border border-gray-700 rounded p-1.5 text-xs text-center" title="Porcentaje sobre mayorista">' +
+          '<span class="text-xs text-gray-400 flex items-center justify-center">Margen: '+(margenVendedor?margenVendedor.toFixed(1):'—')+'%</span>' +
         '</div>' +
         '<button onclick="quitarItem('+idx+')" class="w-full text-red-500 font-bold text-xs py-1">✕ Quitar</button>';
       cont.appendChild(div);
@@ -330,16 +371,11 @@
     itemsVenta[idx].id_producto = sel.value;
     itemsVenta[idx].nombre = opt.textContent;
     itemsVenta[idx].precio_unitario = parseFloat(opt.dataset.precio) || 0;
-    itemsVenta[idx].margen_venta_porcentaje = null; // reset
     renderItemsVenta();
   }
 
   function setItem(idx, campo, val){
-    if (campo === 'margen_venta_porcentaje'){
-      itemsVenta[idx][campo] = val === '' ? null : parseFloat(val) || null;
-    } else {
-      itemsVenta[idx][campo] = parseFloat(val)||0;
-    }
+    itemsVenta[idx][campo] = parseFloat(val)||0;
     calcularTotalVenta();
   }
 
@@ -353,11 +389,13 @@
   async function guardarVenta(){
     var items = itemsVenta.filter(function(i){ return i.id_producto && i.cantidad>0; });
     if (!items.length){ alert('Agregá al menos un producto.'); return; }
+    // Agregar margen global a cada item
+    items = items.map(function(i){ return Object.assign({}, i, { margen_venta_porcentaje: margenVendedor }); });
     var body = {
       id_cliente: clienteActual.id,
       id_empleado: empleado ? empleado.id_empleado || empleado.id : null,
       tipo: tipoVentaSel,
-      items: items  // ← INCLUYE margen_venta_porcentaje
+      items: items
     };
     try {
       var res = await fetch(API_URL+'/reparto/ventas', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
@@ -407,23 +445,21 @@
         row.className = 'flex justify-between items-center text-gray-400 border-b border-gray-800 py-1' + (f.clickable?' cursor-pointer hover:text-white':'');
         row.innerHTML = '<span>'+f.txt+'</span><span class="text-gray-600 text-xs">'+(f.fecha||'').slice(0,10)+(f.clickable?' 📄':'')+'</span>';
         if (f.clickable){
-          row.onclick = function(){ abrirMenuVenta(f.id); };
+          row.onclick = function(){ abrirAccionesVenta(f.id); };
         }
         cont.appendChild(row);
       });
     } catch(e){ cont.innerHTML='<p class="text-gray-600">—</p>'; }
   }
 
-  async function abrirMenuVenta(id){
-    try {
-      var d = await fetch(API_URL+'/reparto/ventas/'+id+'/detalle', {cache:'no-store'}).then(r=>r.json());
-      var opciones = '<div class="space-y-2 p-2">';
-      opciones += '<button onclick="generarComprobanteRepartidor('+id+')" class="w-full bg-gray-800 hover:bg-gray-700 text-white rounded-lg py-2 text-sm">📄 Descargar PDF</button>';
-      opciones += '<button onclick="enviarComprobantePorWSP('+id+')" class="w-full bg-green-600 hover:bg-green-500 text-white rounded-lg py-2 text-sm">📲 Enviar por WhatsApp</button>';
-      opciones += '</div>';
-      alert(opciones); // Mejor hacer un modal, pero esto es quick
-      console.log('Opciones para venta '+id);
-    } catch(e){}
+  function abrirAccionesVenta(id){
+    ventaActualId = id;
+    document.getElementById('action-venta-id').textContent = String(id).padStart(5,'0');
+    document.getElementById('modal-venta-acciones').classList.remove('hidden');
+  }
+
+  function cerrarAcciones(){
+    document.getElementById('modal-venta-acciones').classList.add('hidden');
   }
 
   async function enviarComprobantePorWSP(id){
@@ -434,6 +470,7 @@
         alert('No hay teléfono registrado para este cliente.');
         return;
       }
+      cerrarAcciones();
       window.open(data.wa_link, '_blank');
     } catch(e){ alert('Error al preparar el envío.'); }
   }
@@ -467,7 +504,38 @@
       doc.setFont('helvetica','normal'); doc.setFontSize(6.5);
       doc.text('Documento sin valor fiscal.', 40, y, {align:'center'});
       doc.save('comprobante_'+String(d.id).padStart(5,'0')+'.pdf');
+      cerrarAcciones();
     } catch(e){ alert('No se pudo generar el comprobante.'); }
+  }
+
+  function abrirEditarMargen(){
+    var val = margenVendedor || '';
+    document.getElementById('input-margen').value = val;
+    document.getElementById('modal-editar-margen').classList.remove('hidden');
+  }
+
+  function cerrarEditarMargen(){
+    document.getElementById('modal-editar-margen').classList.add('hidden');
+  }
+
+  async function guardarMargen(){
+    var margen = document.getElementById('input-margen').value;
+    margen = margen === '' ? null : parseFloat(margen);
+    if (margen !== null && margen < 0){ alert('El porcentaje no puede ser negativo.'); return; }
+    try {
+      var id = empleado.id_empleado || empleado.id;
+      var res = await fetch(API_URL+'/reparto/vendedor/margen/'+id, {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ margen_venta_porcentaje_default: margen })
+      });
+      if (!res.ok){ alert('Error al guardar.'); return; }
+      margenVendedor = margen;
+      var badge = document.getElementById('margen-badge');
+      badge.textContent = margen ? margen.toFixed(1)+'%' : '—';
+      alert('Margen actualizado ✓');
+      cerrarEditarMargen();
+    } catch(e){ alert('Error.'); }
   }
 
   async function cargarLocalidades(){
@@ -486,7 +554,7 @@
   }
 
   // init
-  cargarProductos().then(function(){ cargarClientes(); });
+  cargarProductos().then(function(){ cargarClientes(); cargarLocalidades(); cargarMargenVendedor(); });
 </script>
 </body>
 </html>
