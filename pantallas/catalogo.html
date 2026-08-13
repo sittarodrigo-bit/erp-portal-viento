@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Catálogo Portal del Viento</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  :root { --neon: #e4fc74; }
+  .text-neon { color: var(--neon); }
+  .bg-neon { background-color: var(--neon); }
+  body { background:#0a0a0a; }
+</style>
+</head>
+<body class="text-white min-h-screen">
+  <header class="border-b border-gray-800 px-4 py-4 sticky top-0 bg-black z-30">
+    <div class="max-w-4xl mx-auto">
+      <h1 class="font-bold text-2xl text-neon mb-1">🍯 Portal del Viento</h1>
+      <p id="vendedor-info" class="text-gray-400 text-sm">Cargando...</p>
+    </div>
+  </header>
+
+  <div class="max-w-4xl mx-auto p-4">
+    <!-- Carrito resumen -->
+    <div id="carrito-float" class="fixed bottom-4 right-4 bg-neon text-black rounded-lg p-3 font-bold cursor-pointer hover:bg-opacity-90 z-20 shadow-lg" onclick="abrirCarrito()">
+      🛒 <span id="cart-count">0</span> | $ <span id="cart-total">0</span>
+    </div>
+
+    <!-- Catálogo -->
+    <div id="catalogo" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8"></div>
+
+    <!-- Modal carrito -->
+    <div id="modal-carrito" class="hidden fixed inset-0 bg-black/90 z-40 overflow-y-auto p-4">
+      <div class="max-w-md mx-auto bg-gray-900 border border-gray-700 rounded-xl p-4 mt-8">
+        <div class="flex justify-between items-center mb-3">
+          <h3 class="font-bold text-lg">🛒 Tu pedido</h3>
+          <button onclick="cerrarCarrito()" class="text-gray-500 text-2xl">×</button>
+        </div>
+
+        <div id="carrito-items" class="space-y-2 mb-4"></div>
+
+        <div class="bg-gray-800 rounded-lg p-3 mb-4">
+          <p class="text-gray-400 text-xs mb-2">Total: <span class="text-neon font-bold text-lg">$ <span id="cart-total-modal">0</span></span></p>
+        </div>
+
+        <!-- Datos cliente -->
+        <div class="mb-4">
+          <label class="block text-xs text-gray-500 mb-1">Tu nombre *</label>
+          <input id="cliente-nombre" placeholder="Ej: Juan García" class="w-full bg-black border border-gray-700 rounded-lg p-2.5 text-sm focus:border-neon focus:outline-none">
+        </div>
+
+        <div class="mb-4">
+          <label class="block text-xs text-gray-500 mb-1">Tu teléfono (WhatsApp) *</label>
+          <input id="cliente-telefono" placeholder="Ej: 2614567890" class="w-full bg-black border border-gray-700 rounded-lg p-2.5 text-sm focus:border-neon focus:outline-none">
+        </div>
+
+        <div class="mb-4">
+          <label class="block text-xs text-gray-500 mb-1">Notas (opcional)</label>
+          <textarea id="cliente-notas" placeholder="Ej: Sin ají, envío a domicilio..." rows="2" class="w-full bg-black border border-gray-700 rounded-lg p-2.5 text-sm focus:border-neon focus:outline-none"></textarea>
+        </div>
+
+        <button onclick="enviarPedido()" class="w-full bg-neon text-black font-bold rounded-lg py-3 mb-2">📲 Enviar pedido por WhatsApp</button>
+        <button onclick="cerrarCarrito()" class="w-full border border-gray-700 text-gray-400 rounded-lg py-2 text-sm">Cancelar</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+  const API_URL = '/api';
+  let vendedor = null;
+  let productos = [];
+  let carrito = [];
+  let id_vendedor = null;
+
+  function fmt(n){ return (Math.round((parseFloat(n)||0)*100)/100).toLocaleString('es-AR'); }
+
+  // Obtener id_vendedor de URL
+  const params = new URLSearchParams(window.location.search);
+  id_vendedor = params.get('v');
+  if (!id_vendedor){
+    document.body.innerHTML = '<div class="text-center p-8 text-red-400"><p>❌ Falta vendedor (parámetro ?v=)</p></div>';
+  }
+
+  async function cargarCatalogo(){
+    try {
+      var res = await fetch(API_URL+'/catalogo/'+id_vendedor, {cache:'no-store'}).then(r=>r.json());
+      vendedor = res.vendedor;
+      productos = res.productos;
+      
+      document.getElementById('vendedor-info').textContent = `📍 ${vendedor.nombre} ${vendedor.apellido || ''}${vendedor.margen ? ` • Margen: +${vendedor.margen.toFixed(1)}%` : ''}`;
+      
+      renderCatalogo();
+    } catch(e){
+      document.getElementById('vendedor-info').textContent = '❌ Vendedor no encontrado';
+    }
+  }
+
+  function renderCatalogo(){
+    var cont = document.getElementById('catalogo');
+    cont.innerHTML = '';
+    productos.forEach(function(p){
+      var precio_mayorista = p.precio_mayorista || 0;
+      var margen = vendedor.margen || 0;
+      var precio_final = precio_mayorista * (1 + margen / 100);
+      
+      var div = document.createElement('div');
+      div.className = 'bg-gray-900 border border-gray-800 rounded-lg overflow-hidden hover:border-neon transition';
+      div.innerHTML =
+        (p.imagen_url ? '<img src="'+p.imagen_url+'" class="w-full h-40 object-cover">' : '<div class="w-full h-40 bg-gray-800 flex items-center justify-center text-4xl">🍯</div>') +
+        '<div class="p-3">' +
+          '<p class="font-bold text-white mb-1">'+p.nombre+'</p>' +
+          '<p class="text-neon font-bold text-lg mb-2">$ '+precio_final.toFixed(2)+'</p>' +
+          '<div class="flex gap-2 mb-2">' +
+            '<input type="number" min="1" value="1" id="qty-'+p.id+'" class="flex-1 bg-black border border-gray-700 rounded p-2 text-sm text-center">' +
+            '<button onclick="agregarAlCarrito('+p.id+', \''+p.nombre.replace(/'/g, '')+'\', '+precio_final+')" class="flex-1 bg-neon text-black font-bold rounded py-2 text-sm">Agregar</button>' +
+          '</div>' +
+        '</div>';
+      cont.appendChild(div);
+    });
+  }
+
+  function agregarAlCarrito(id, nombre, precio){
+    var qty = parseInt(document.getElementById('qty-'+id).value) || 1;
+    var item = carrito.find(i => i.id_producto === id);
+    if (item){
+      item.cantidad += qty;
+    } else {
+      carrito.push({ id_producto: id, nombre: nombre, precio: precio, cantidad: qty });
+    }
+    actualizarCarrito();
+    document.getElementById('qty-'+id).value = 1;
+  }
+
+  function actualizarCarrito(){
+    var total = carrito.reduce((a, i) => a + (i.cantidad * i.precio), 0);
+    document.getElementById('cart-count').textContent = carrito.reduce((a, i) => a + i.cantidad, 0);
+    document.getElementById('cart-total').textContent = fmt(total);
+    document.getElementById('cart-total-modal').textContent = fmt(total);
+  }
+
+  function abrirCarrito(){
+    if (carrito.length === 0){ alert('Agregá productos al carrito.'); return; }
+    var cont = document.getElementById('carrito-items');
+    cont.innerHTML = '';
+    carrito.forEach(function(item, idx){
+      var fila = document.createElement('div');
+      fila.className = 'flex justify-between items-center bg-gray-800 rounded-lg p-2';
+      fila.innerHTML =
+        '<div class="flex-1">' +
+          '<p class="text-sm font-bold">'+item.nombre+'</p>' +
+          '<p class="text-xs text-gray-400">$ '+item.precio.toFixed(2)+' × '+item.cantidad+'</p>' +
+        '</div>' +
+        '<p class="text-neon font-bold">$ '+(item.cantidad * item.precio).toFixed(2)+'</p>' +
+        '<button onclick="quitarDelCarrito('+idx+')" class="ml-2 text-red-500 font-bold">✕</button>';
+      cont.appendChild(fila);
+    });
+    document.getElementById('modal-carrito').classList.remove('hidden');
+  }
+
+  function cerrarCarrito(){
+    document.getElementById('modal-carrito').classList.add('hidden');
+  }
+
+  function quitarDelCarrito(idx){
+    carrito.splice(idx, 1);
+    actualizarCarrito();
+    if (carrito.length === 0){ cerrarCarrito(); } else { abrirCarrito(); }
+  }
+
+  async function enviarPedido(){
+    var nombre = (document.getElementById('cliente-nombre').value || '').trim();
+    var telefono = (document.getElementById('cliente-telefono').value || '').trim();
+    if (!nombre || !telefono){ alert('Completá nombre y teléfono.'); return; }
+    
+    var items = carrito.map(i => ({ id_producto: i.id_producto, nombre: i.nombre, cantidad: i.cantidad, precio: i.precio }));
+    var body = {
+      cliente_nombre: nombre,
+      cliente_telefono: telefono,
+      items: items
+    };
+
+    try {
+      var res = await fetch(API_URL+'/catalogo/'+id_vendedor+'/pedidos', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(body)
+      });
+      var r = await res.json();
+      if (!res.ok){ alert('Error: '+(r.detail||'')); return; }
+      
+      // Abre WhatsApp con resumen
+      var total = carrito.reduce((a, i) => a + (i.cantidad * i.precio), 0);
+      var msg = `Hola, acabo de hacer un pedido en el catálogo:\n\n`;
+      carrito.forEach(i => { msg += `${i.cantidad}× ${i.nombre} - $${(i.cantidad*i.precio).toFixed(2)}\n`; });
+      msg += `\nTOTAL: $${total.toFixed(2)}\n\nPedido #${r.id}`;
+      
+      var wa_link = 'https://wa.me/'+telefono+'?text='+encodeURIComponent(msg);
+      cerrarCarrito();
+      carrito = [];
+      actualizarCarrito();
+      alert('✓ Pedido creado. Se abrirá WhatsApp para confirmar.');
+      window.open(wa_link, '_blank');
+    } catch(e){ alert('Error al enviar.'); }
+  }
+
+  // init
+  cargarCatalogo();
+</script>
+</body>
+</html>
