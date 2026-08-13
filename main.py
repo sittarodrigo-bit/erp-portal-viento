@@ -10941,8 +10941,9 @@ def catalogo_pedido_cambiar_estado(id: int, estado: str):
     finally:
         liberar_conexion(conn)
 
-@app.get("/catalogo")
-def route_catalogo():
+@app.get("/catalogo-publico")
+def route_catalogo_publico():
+    """Catálogo público para vendedores (sin auth)"""
     return serve_html("catalogo.html")
 # ==============================================================================
 # CATÁLOGO PÚBLICO + NOTIFICACIONES + CONTROL
