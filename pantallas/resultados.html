@@ -1,138 +1,560 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<script>window.PANEL_ACTUAL = "admin";</script>
-<script src="/static/auth.js"></script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Estado de Resultados | Portal del Viento</title>
+<title>Reparto</title>
 <script src="https://cdn.tailwindcss.com"></script>
-<script>tailwind.config={theme:{extend:{colors:{neon:'#e4fc74'}}}}</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+  :root { --neon: #e4fc74; }
+  .text-neon { color: var(--neon); }
+  .bg-neon { background-color: var(--neon); }
+  .border-neon { border-color: var(--neon); }
+  body { background:#0a0a0a; }
+</style>
 </head>
-<body class="bg-gray-950 text-gray-200 font-sans min-h-screen">
-
-<header class="bg-gray-900 border-b border-gray-800 py-3 px-6 flex items-center justify-between">
-    <div class="flex items-center gap-3">
-        <a href="/admin" class="text-gray-500 hover:text-white text-sm">← Panel</a>
-        <h1 class="text-white font-bold text-lg">📊 Estado de Resultados</h1>
-    </div>
-    <p class="text-gray-600 text-xs hidden md:block">ALFAJORES PORTAL DEL VIENTO · CUIT 30717499014</p>
-</header>
-
-<!-- Filtros -->
-<div class="bg-gray-900 border-b border-gray-800 px-6 py-3 flex flex-wrap gap-3 items-end">
+<body class="text-white min-h-screen">
+  <header class="border-b border-gray-800 px-4 py-3 flex justify-between items-center sticky top-0 bg-black z-30">
     <div>
-        <p class="text-gray-500 text-xs mb-1">Período rápido</p>
-        <div class="flex gap-2">
-            <button onclick="setPeriodo('mes')"       class="text-xs border border-gray-700 text-gray-400 hover:text-white px-3 py-1.5 rounded">Este mes</button>
-            <button onclick="setPeriodo('mes_ant')"   class="text-xs border border-gray-700 text-gray-400 hover:text-white px-3 py-1.5 rounded">Mes anterior</button>
-            <button onclick="setPeriodo('trimestre')" class="text-xs border border-gray-700 text-gray-400 hover:text-white px-3 py-1.5 rounded">Trimestre</button>
-            <button onclick="setPeriodo('anio')"      class="text-xs border border-gray-700 text-gray-400 hover:text-white px-3 py-1.5 rounded">Este año</button>
-        </div>
+      <h1 class="font-bold text-lg">🚚 Reparto</h1>
+      <p class="text-gray-500 text-xs" id="nombre-repartidor">—</p>
     </div>
-    <div class="flex gap-2 items-center">
-        <input type="date" id="f-desde" class="bg-gray-800 border border-gray-700 text-white rounded p-2 text-sm">
-        <span class="text-gray-500">→</span>
-        <input type="date" id="f-hasta" class="bg-gray-800 border border-gray-700 text-white rounded p-2 text-sm">
-        <button onclick="cargar()" class="bg-neon text-black font-bold px-4 py-2 rounded text-sm">🔍 Ver</button>
+    <div class="flex items-center gap-2">
+      <button onclick="abrirEditarMargen()" class="bg-gray-800 text-gray-300 border border-gray-700 rounded-lg px-2.5 py-2 text-xs hover:border-neon hover:text-neon" title="Editar margen de venta">⚙️ <span id="margen-badge">0%</span></button>
+      <button onclick="abrirNuevoCliente()" class="bg-neon text-black font-bold rounded-lg px-3 py-2 text-sm">+ Cliente</button>
+      <button onclick="salirReparto()" class="border border-gray-700 text-gray-400 rounded-lg px-2 py-2 text-xs">Salir</button>
     </div>
-</div>
+  </header>
 
-<!-- Contenido -->
-<div class="p-4 md:p-6 max-w-4xl mx-auto" id="contenido">
-    <p class="text-gray-500 text-center py-16">Elegí un período y tocá Ver.</p>
-</div>
+  <div class="p-4 pb-24">
+    <select id="filtro-localidad" onchange="renderClientes()" class="w-full bg-gray-900 border border-gray-700 rounded-lg p-3 text-sm mb-2 focus:outline-none">
+      <option value="">📍 Todas las localidades</option>
+    </select>
+    <input id="buscar" oninput="renderClientes()" placeholder="🔍 Buscar cliente..." class="w-full bg-gray-900 border border-gray-700 rounded-lg p-3 text-sm mb-4 focus:border-neon focus:outline-none">
+    <div id="lista-clientes" class="space-y-2"></div>
+  </div>
+
+  <!-- Modal nuevo/editar cliente -->
+  <div id="modal-cliente" class="hidden fixed inset-0 bg-black/90 z-40 overflow-y-auto p-4">
+    <div class="max-w-md mx-auto bg-gray-900 border border-gray-700 rounded-xl p-4 mt-4">
+      <div class="flex justify-between items-center mb-3">
+        <h3 class="font-bold" id="titulo-cliente">Nuevo cliente</h3>
+        <button onclick="cerrarCliente()" class="text-gray-500 text-2xl">×</button>
+      </div>
+      <input id="c-nombre" placeholder="Nombre del kiosco/comercio *" class="w-full bg-black border border-gray-700 rounded-lg p-2.5 text-sm mb-2 focus:border-neon focus:outline-none">
+      <div class="grid grid-cols-2 gap-2 mb-2">
+        <input id="c-contacto" placeholder="Contacto" class="bg-black border border-gray-700 rounded-lg p-2.5 text-sm focus:border-neon focus:outline-none">
+        <input id="c-telefono" placeholder="Teléfono" class="bg-black border border-gray-700 rounded-lg p-2.5 text-sm focus:border-neon focus:outline-none">
+      </div>
+      <input id="c-direccion" placeholder="Dirección" class="w-full bg-black border border-gray-700 rounded-lg p-2.5 text-sm mb-2 focus:border-neon focus:outline-none">
+      <input id="c-localidad" placeholder="Localidad (ej: Godoy Cruz)" class="w-full bg-black border border-gray-700 rounded-lg p-2.5 text-sm mb-2 focus:border-neon focus:outline-none" list="localidades-sugeridas">
+      <datalist id="localidades-sugeridas"></datalist>
+
+      <!-- Ubicación -->
+      <div class="bg-black border border-gray-700 rounded-lg p-3 mb-2">
+        <p class="text-xs text-gray-500 font-bold mb-2">📍 Ubicación</p>
+        <button onclick="tomarUbicacionGPS()" class="w-full bg-blue-700 hover:bg-blue-600 text-white rounded-lg py-2 text-sm mb-2">Usar mi ubicación actual (GPS)</button>
+        <div class="grid grid-cols-2 gap-2">
+          <input id="c-lat" placeholder="Latitud" class="bg-gray-900 border border-gray-700 rounded p-2 text-xs focus:border-neon focus:outline-none">
+          <input id="c-lng" placeholder="Longitud" class="bg-gray-900 border border-gray-700 rounded p-2 text-xs focus:border-neon focus:outline-none">
+        </div>
+        <p id="ubi-estado" class="text-xs text-gray-500 mt-1"></p>
+      </div>
+
+      <!-- Foto -->
+      <div class="bg-black border border-gray-700 rounded-lg p-3 mb-2">
+        <p class="text-xs text-gray-500 font-bold mb-2">📷 Foto del local</p>
+        <input id="c-foto-file" type="file" accept="image/*" capture="environment" onchange="cargarFoto(this)" class="text-xs text-gray-400 w-full">
+        <img id="c-foto-preview" class="hidden mt-2 rounded-lg max-h-40 w-full object-cover">
+        <input id="c-foto-url" type="hidden">
+      </div>
+
+      <textarea id="c-notas" placeholder="Notas (opcional)" rows="2" class="w-full bg-black border border-gray-700 rounded-lg p-2.5 text-sm mb-3 focus:border-neon focus:outline-none"></textarea>
+      <input id="c-id" type="hidden">
+      <button onclick="guardarCliente()" class="w-full bg-neon text-black font-bold rounded-lg py-3">Guardar cliente</button>
+    </div>
+  </div>
+
+  <!-- Modal detalle cliente (visita + venta) -->
+  <div id="modal-detalle" class="hidden fixed inset-0 bg-black/90 z-40 overflow-y-auto p-4">
+    <div class="max-w-md mx-auto bg-gray-900 border border-gray-700 rounded-xl p-4 mt-4">
+      <div class="flex justify-between items-center mb-1">
+        <h3 class="font-bold" id="det-nombre">Cliente</h3>
+        <button onclick="cerrarDetalle()" class="text-gray-500 text-2xl">×</button>
+      </div>
+      <p id="det-info" class="text-gray-500 text-xs mb-3"></p>
+
+      <div class="flex gap-2 mb-4">
+        <a id="det-wsp" href="#" target="_blank" class="flex-1 bg-green-600 hover:bg-green-500 text-white font-bold rounded-lg py-2.5 text-sm text-center">📲 WhatsApp</a>
+        <a id="det-mapa" href="#" target="_blank" class="flex-1 bg-blue-700 hover:bg-blue-600 text-white font-bold rounded-lg py-2.5 text-sm text-center">🗺️ Cómo llegar</a>
+        <button onclick="editarClienteActual()" class="border border-gray-600 text-gray-300 rounded-lg px-3 text-sm">✏️</button>
+      </div>
+
+      <!-- Cargar venta/pedido -->
+      <div class="bg-black border border-gray-800 rounded-lg p-3 mb-3">
+        <div class="flex gap-2 mb-2">
+          <button onclick="setTipoVenta('venta')" id="bt-venta" class="flex-1 bg-neon text-black font-bold rounded-lg py-2 text-sm">Venta (entregada)</button>
+          <button onclick="setTipoVenta('pedido')" id="bt-pedido" class="flex-1 bg-gray-800 text-gray-300 font-bold rounded-lg py-2 text-sm">Pedido (a entregar)</button>
+        </div>
+        <div id="lista-items-venta" class="space-y-2 mb-2"></div>
+        <button onclick="agregarItemVenta()" class="w-full border border-gray-700 text-gray-300 rounded-lg py-2 text-sm mb-2">+ Agregar producto</button>
+        <p class="text-right text-sm mb-2">Total: <span id="total-venta" class="text-neon font-bold text-lg">$ 0</span></p>
+        <button onclick="guardarVenta()" class="w-full bg-neon text-black font-bold rounded-lg py-2.5 text-sm">Registrar</button>
+      </div>
+
+      <!-- Registrar visita sin compra -->
+      <button onclick="registrarVisitaSinCompra()" class="w-full border border-gray-700 text-gray-400 rounded-lg py-2 text-sm mb-3">Registrar visita sin compra</button>
+
+      <!-- Historial -->
+      <h4 class="text-xs text-gray-500 font-bold mb-2">Historial</h4>
+      <div id="det-historial" class="space-y-1 text-xs"></div>
+    </div>
+  </div>
+
+  <!-- Modal para acciones de venta (PDF + WhatsApp) -->
+  <div id="modal-venta-acciones" class="hidden fixed inset-0 bg-black/90 z-40 flex items-center justify-center p-4">
+    <div class="bg-gray-900 border border-gray-700 rounded-xl p-4 w-full max-w-sm">
+      <h3 class="font-bold mb-3">Comprobante #<span id="action-venta-id">0</span></h3>
+      <div class="space-y-2">
+        <button onclick="generarComprobanteRepartidor(ventaActualId)" class="w-full bg-gray-800 hover:bg-gray-700 text-white font-bold rounded-lg py-3 text-sm">📄 Descargar PDF</button>
+        <button onclick="enviarComprobantePorWSP(ventaActualId)" class="w-full bg-green-600 hover:bg-green-500 text-white font-bold rounded-lg py-3 text-sm">📲 Enviar por WhatsApp</button>
+      </div>
+      <button onclick="cerrarAcciones()" class="w-full border border-gray-700 text-gray-400 rounded-lg py-2 text-sm mt-2">Cerrar</button>
+    </div>
+  </div>
+
+  <!-- Modal editar margen de venta -->
+  <div id="modal-editar-margen" class="hidden fixed inset-0 bg-black/90 z-40 flex items-center justify-center p-4">
+    <div class="bg-gray-900 border border-gray-700 rounded-xl p-4 w-full max-w-sm">
+      <h3 class="font-bold mb-3">⚙️ Mi margen de venta</h3>
+      <p class="text-gray-500 text-xs mb-3">Este porcentaje se aplicará a todos los productos</p>
+      <div class="mb-3">
+        <label class="block text-xs text-gray-500 mb-1">Porcentaje (%)</label>
+        <input id="input-margen" type="number" min="0" step="0.1" placeholder="Ej: 15" class="w-full bg-black border border-gray-700 rounded-lg p-3 text-sm focus:border-neon focus:outline-none">
+      </div>
+      <p class="text-xs text-gray-500 mb-3">Si dejás vacío, usará el precio mayorista por defecto</p>
+      <div class="flex gap-2">
+        <button onclick="guardarMargen()" class="flex-1 bg-neon text-black font-bold rounded-lg py-2 text-sm">Guardar</button>
+        <button onclick="cerrarEditarMargen()" class="flex-1 border border-gray-700 text-gray-400 rounded-lg py-2 text-sm">Cancelar</button>
+      </div>
+    </div>
+  </div>
 
 <script>
-const API_URL = window.location.origin + '/api';
-function fmt(n){ return '$ '+(parseFloat(n)||0).toLocaleString('es-AR'); }
-function hoy(){ return new Date().toISOString().split('T')[0]; }
-function primerDia(d){ return new Date(d.getFullYear(),d.getMonth(),1).toISOString().split('T')[0]; }
+  const API_URL = '/api';
+  let empleado = null;
+  let clientes = [];
+  let productos = [];
+  let clienteActual = null;
+  let itemsVenta = [];
+  let tipoVentaSel = 'venta';
+  let ventaActualId = null;
+  let margenVendedor = null;
 
-function setPeriodo(p){
-    var h=new Date(), d, f;
-    if(p==='mes'){ d=primerDia(h); f=hoy(); }
-    else if(p==='mes_ant'){ var pa=new Date(h.getFullYear(),h.getMonth()-1,1); d=primerDia(pa); f=new Date(h.getFullYear(),h.getMonth(),0).toISOString().split('T')[0]; }
-    else if(p==='trimestre'){ var t=new Date(h.getFullYear(),h.getMonth()-2,1); d=primerDia(t); f=hoy(); }
-    else if(p==='anio'){ d=h.getFullYear()+'-01-01'; f=hoy(); }
-    document.getElementById('f-desde').value=d;
-    document.getElementById('f-hasta').value=f;
-    cargar();
-}
+  function fmt(n){ return '$ ' + (Math.round((parseFloat(n)||0)*100)/100).toLocaleString('es-AR'); }
 
-function seccion(titulo, filas, total, colorTotal, nota){
-    if(!filas.length) return '<div class="bg-gray-900 border border-gray-800 rounded-xl p-4 mb-4"><p class="text-gray-500 font-bold mb-1">'+titulo+'</p><p class="text-gray-600 text-sm">Sin datos en este período.</p></div>';
-    var rows = filas.map(f=>{
-        var nombre = f.local||f.nombre||f.categoria||f.proveedor||'—';
-        return '<div class="flex justify-between py-1.5 border-b border-gray-800 last:border-0"><span class="text-gray-300">'+nombre+'</span><span class="text-white font-bold">'+fmt(f.total)+'</span></div>';
-    }).join('');
-    return '<div class="bg-gray-900 border border-gray-800 rounded-xl p-4 mb-4">'+
-        '<p class="text-gray-400 font-bold text-xs uppercase mb-3 tracking-widest">'+titulo+(nota?'  <span class="text-gray-600 font-normal normal-case">'+nota+'</span>':'')+'</p>'+
-        rows+
-        '<div class="flex justify-between pt-2 mt-2 border-t border-gray-700"><span class="text-white font-bold">Subtotal</span><span class="'+colorTotal+' font-bold text-lg">'+fmt(total)+'</span></div>'+
+  // Sesión: si no hay, mandar al login del reparto
+  try { empleado = JSON.parse(sessionStorage.getItem('empleado') || 'null'); } catch(e){}
+  if (!empleado || !(empleado.id_empleado || empleado.id)) {
+    window.location.href = '/reparto-login';
+  } else {
+    document.getElementById('nombre-repartidor').textContent = (empleado.nombre||'') + ' ' + (empleado.apellido||'');
+  }
+
+  async function salirReparto(){
+    try { await fetch(API_URL+'/reparto/logout', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ id_empleado: empleado.id_empleado||empleado.id })}); } catch(e){}
+    sessionStorage.removeItem('empleado');
+    window.location.href = '/reparto-login';
+  }
+
+  async function cargarProductos(){
+    try { productos = await fetch(API_URL+'/productos', {cache:'no-store'}).then(r=>r.json()); } catch(e){ productos = []; }
+  }
+
+  async function cargarMargenVendedor(){
+    try {
+      var id = empleado.id_empleado || empleado.id;
+      var res = await fetch(API_URL+'/reparto/vendedor/margen/'+id, {cache:'no-store'}).then(r=>r.json());
+      margenVendedor = res.margen_venta_porcentaje_default;
+      var badge = document.getElementById('margen-badge');
+      badge.textContent = margenVendedor ? margenVendedor.toFixed(1)+'%' : '—';
+    } catch(e){ margenVendedor = null; }
+  }
+
+  async function cargarClientes(){
+    try {
+      var url = API_URL+'/reparto/clientes?id_vendedor='+(empleado.id_empleado||empleado.id);
+      clientes = await fetch(url, {cache:'no-store'}).then(r=>r.json());
+      renderClientes();
+      cargarLocalidades();
+    } catch(e){ clientes = []; renderClientes(); }
+  }
+
+  function renderClientes(){
+    var cont = document.getElementById('lista-clientes');
+    var busca = (document.getElementById('buscar').value||'').toLowerCase();
+    var loc = document.getElementById('filtro-localidad').value;
+    var filtrados = clientes.filter(function(c){
+      var match_nom = (c.nombre||'').toLowerCase().includes(busca);
+      var match_loc = !loc || c.localidad === loc;
+      return match_nom && match_loc;
+    });
+    cont.innerHTML = '';
+    if (!filtrados.length){ cont.innerHTML='<p class="text-gray-600 text-sm">Sin clientes.</p>'; return; }
+    filtrados.forEach(function(c){
+      var tel = (c.telefono||'').replace(/[^0-9]/g,''); if(tel && !tel.startsWith('54')) tel='54'+tel;
+      var div = document.createElement('div');
+      div.className = 'bg-gray-900 border border-gray-800 rounded-lg p-3 cursor-pointer hover:border-neon transition';
+      div.innerHTML =
+        '<div class="flex justify-between items-start gap-2">' +
+          '<div class="flex-1 min-w-0">' +
+            '<p class="font-bold text-white truncate">'+c.nombre+'</p>' +
+            '<p class="text-gray-500 text-xs">'+c.localidad+(c.telefono?' · '+c.telefono:'')+'</p>' +
+            '<p class="text-gray-600 text-xs">'+fmt(c.total_comprado||0)+' · '+(c.ultima_visita?('últ. '+c.ultima_visita.slice(0,10)):'sin visitas')+'</p>' +
+          '</div>' +
+          (tel?'<a href="https://wa.me/'+tel+'" target="_blank" class="text-green-400 text-lg flex-shrink-0 hover:text-green-300">📲</a>':'') +
         '</div>';
-}
+      div.onclick = function(){ abrirDetalle(c); };
+      cont.appendChild(div);
+    });
+  }
 
-async function cargar(){
-    var desde=document.getElementById('f-desde').value;
-    var hasta=document.getElementById('f-hasta').value;
-    if(!desde||!hasta){ alert('Elegí un rango de fechas'); return; }
-    document.getElementById('contenido').innerHTML='<p class="text-gray-500 text-center py-16">Cargando...</p>';
-    try{
-        var d=await fetch(API_URL+'/resultados?desde='+desde+'&hasta='+hasta).then(r=>r.json());
-        var res=d.resultado;
-        var resColor=res>=0?'text-neon':'text-red-400';
-        var resBg=res>=0?'border-neon':'border-red-600';
+  function abrirNuevoCliente(){
+    document.getElementById('c-id').value = '';
+    document.getElementById('titulo-cliente').textContent = 'Nuevo cliente';
+    document.getElementById('c-nombre').value = '';
+    document.getElementById('c-contacto').value = '';
+    document.getElementById('c-telefono').value = '';
+    document.getElementById('c-direccion').value = '';
+    document.getElementById('c-localidad').value = '';
+    document.getElementById('c-lat').value = '';
+    document.getElementById('c-lng').value = '';
+    document.getElementById('c-notas').value = '';
+    document.getElementById('c-foto-url').value = '';
+    document.getElementById('c-foto-preview').classList.add('hidden');
+    document.getElementById('modal-cliente').classList.remove('hidden');
+  }
 
-        var html='';
-
-        // Resultado destacado arriba
-        html+='<div class="bg-black border-2 '+resBg+' rounded-2xl p-6 mb-6 text-center">'+
-            '<p class="text-gray-500 text-sm mb-1">Resultado neto · '+desde+' → '+hasta+'</p>'+
-            '<p class="'+resColor+' font-bold text-4xl md:text-5xl">'+fmt(res)+'</p>'+
-            '<p class="text-gray-600 text-xs mt-2">'+(res>=0?'✅ Positivo — el negocio generó ganancia':'⚠️ Negativo — los egresos superan los ingresos')+'</p>'+
-            '</div>';
-
-        // Dos columnas
-        html+='<div class="grid md:grid-cols-2 gap-4">';
-
-        // INGRESOS
-        html+='<div>';
-        html+='<div class="flex justify-between items-center mb-3"><p class="text-green-400 font-bold uppercase text-sm tracking-widest">💰 Ingresos</p><p class="text-green-400 font-bold text-xl">'+fmt(d.ingresos.total)+'</p></div>';
-        html+=seccion('Ventas en locales', d.ingresos.ventas_local, d.ingresos.total_ventas, 'text-green-400', '');
-        html+=seccion('Cobros de distribuidores', d.ingresos.cobros_dist, d.ingresos.total_cobros, 'text-green-400', '');
-        html+='</div>';
-
-        // EGRESOS
-        html+='<div>';
-        html+='<div class="flex justify-between items-center mb-3"><p class="text-red-400 font-bold uppercase text-sm tracking-widest">💸 Egresos</p><p class="text-red-400 font-bold text-xl">'+fmt(d.egresos.total)+'</p></div>';
-        html+=seccion('Gastos por categoría', d.egresos.gastos, d.egresos.total_gastos, 'text-red-400', '');
-        html+=seccion('Pagos a proveedores', d.egresos.pagos_prov, d.egresos.total_pagos, 'text-red-400', '');
-        var todasDeudas=d.egresos.deudas_manual.concat(d.egresos.deudas_auto);
-        html+=seccion('Deudas pendientes', todasDeudas, d.egresos.total_deudas, 'text-orange-400', '(sin filtro de fecha — lo que debés hoy)');
-        html+='</div>';
-
-        html+='</div>'; // fin grid
-
-        // Tabla resumen final
-        html+='<div class="bg-gray-900 border border-gray-800 rounded-xl p-5 mt-4">'+
-            '<p class="text-white font-bold mb-4 text-center">Resumen</p>'+
-            '<div class="space-y-2">'+
-            '<div class="flex justify-between"><span class="text-gray-400">💰 Total ingresos</span><span class="text-green-400 font-bold">'+fmt(d.ingresos.total)+'</span></div>'+
-            '<div class="flex justify-between"><span class="text-gray-400">💸 Gastos</span><span class="text-red-400 font-bold">- '+fmt(d.egresos.total_gastos)+'</span></div>'+
-            '<div class="flex justify-between"><span class="text-gray-400">🏪 Pagos proveedores</span><span class="text-red-400 font-bold">- '+fmt(d.egresos.total_pagos)+'</span></div>'+
-            '<div class="flex justify-between"><span class="text-gray-400">📕 Deudas pendientes</span><span class="text-orange-400 font-bold">- '+fmt(d.egresos.total_deudas)+'</span></div>'+
-            '<div class="flex justify-between border-t border-gray-700 pt-3 mt-2"><span class="text-white font-bold text-lg">Resultado neto</span><span class="'+resColor+' font-bold text-2xl">'+fmt(res)+'</span></div>'+
-            '</div></div>';
-
-        document.getElementById('contenido').innerHTML=html;
-    }catch(e){
-        document.getElementById('contenido').innerHTML='<p class="text-red-400 text-center py-16">No se pudo cargar. '+e.message+'</p>';
+  function editarClienteActual(){
+    if (!clienteActual) return;
+    document.getElementById('c-id').value = clienteActual.id;
+    document.getElementById('titulo-cliente').textContent = 'Editar cliente';
+    document.getElementById('c-nombre').value = clienteActual.nombre||'';
+    document.getElementById('c-contacto').value = clienteActual.contacto||'';
+    document.getElementById('c-telefono').value = clienteActual.telefono||'';
+    document.getElementById('c-direccion').value = clienteActual.direccion||'';
+    document.getElementById('c-localidad').value = clienteActual.localidad||'';
+    document.getElementById('c-lat').value = clienteActual.latitud||'';
+    document.getElementById('c-lng').value = clienteActual.longitud||'';
+    document.getElementById('c-notas').value = clienteActual.notas||'';
+    if (clienteActual.foto_url){
+      document.getElementById('c-foto-url').value = clienteActual.foto_url;
+      document.getElementById('c-foto-preview').src = clienteActual.foto_url;
+      document.getElementById('c-foto-preview').classList.remove('hidden');
     }
-}
+    cerrarDetalle();
+    document.getElementById('modal-cliente').classList.remove('hidden');
+  }
 
-// Arrancar con este mes
-window.addEventListener('load', function(){ setPeriodo('mes'); });
+  function cerrarCliente(){ document.getElementById('modal-cliente').classList.add('hidden'); }
+
+  async function cargarFoto(inp){
+    if (!inp.files[0]) return;
+    var reader = new FileReader();
+    reader.onload = function(e){
+      var url = e.target.result;
+      document.getElementById('c-foto-url').value = url;
+      var img = document.getElementById('c-foto-preview');
+      img.src = url;
+      img.classList.remove('hidden');
+    };
+    reader.readAsDataURL(inp.files[0]);
+  }
+
+  function tomarUbicacionGPS(){
+    var stat = document.getElementById('ubi-estado');
+    stat.textContent = 'Buscando GPS...';
+    navigator.geolocation.getCurrentPosition(function(pos){
+      document.getElementById('c-lat').value = pos.coords.latitude;
+      document.getElementById('c-lng').value = pos.coords.longitude;
+      stat.textContent = '✓ Ubicación guardada';
+    }, function(err){
+      stat.textContent = '✗ GPS deshabilitado o denegado';
+    });
+  }
+
+  async function guardarCliente(){
+    var nombre = (document.getElementById('c-nombre').value||'').trim();
+    if (!nombre){ alert('Ponele nombre al cliente.'); return; }
+    var id = (document.getElementById('c-id').value||'').trim();
+    var body = {
+      nombre: nombre,
+      contacto: document.getElementById('c-contacto').value || null,
+      telefono: document.getElementById('c-telefono').value || null,
+      direccion: document.getElementById('c-direccion').value || null,
+      localidad: document.getElementById('c-localidad').value || null,
+      latitud: parseFloat(document.getElementById('c-lat').value) || null,
+      longitud: parseFloat(document.getElementById('c-lng').value) || null,
+      foto_url: document.getElementById('c-foto-url').value || null,
+      notas: document.getElementById('c-notas').value || null,
+      id_empleado: empleado ? (empleado.id_empleado || empleado.id) : null
+    };
+    try {
+      var method = id ? 'PUT' : 'POST';
+      var url = id ? API_URL+'/reparto/clientes/'+id : API_URL+'/reparto/clientes';
+      var res = await fetch(url, {method: method, headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+      if (!res.ok){ alert('Error al guardar.'); return; }
+      alert('Cliente guardado ✓');
+      cerrarCliente();
+      cargarClientes();
+    } catch(e){ alert('Error.'); }
+  }
+
+  function abrirDetalle(c){
+    clienteActual = c;
+    document.getElementById('det-nombre').textContent = c.nombre;
+    document.getElementById('det-info').textContent = (c.direccion||'') + (c.localidad?' · '+c.localidad:'');
+    var tel = (c.telefono||'').replace(/[^0-9]/g,''); if(tel && !tel.startsWith('54')) tel='54'+tel;
+    document.getElementById('det-wsp').href = tel ? 'https://wa.me/'+tel : 'javascript:void(0)';
+    var mapa = (c.latitud&&c.longitud) ? 'https://www.google.com/maps/search/?api=1&query='+c.latitud+','+c.longitud : (c.direccion?'https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(c.direccion):null);
+    document.getElementById('det-mapa').href = mapa || 'javascript:void(0)';
+    itemsVenta = [];
+    agregarItemVenta();
+    setTipoVenta('venta');
+    cargarHistorial(c.id);
+    document.getElementById('modal-detalle').classList.remove('hidden');
+  }
+
+  function cerrarDetalle(){ document.getElementById('modal-detalle').classList.add('hidden'); }
+
+  function setTipoVenta(t){
+    tipoVentaSel = t;
+    ['venta','pedido'].forEach(function(x){
+      document.getElementById('bt-'+x).className = (x===t)
+        ? 'flex-1 bg-neon text-black font-bold rounded-lg py-2 text-sm'
+        : 'flex-1 bg-gray-800 text-gray-300 font-bold rounded-lg py-2 text-sm';
+    });
+  }
+
+  function agregarItemVenta(){
+    itemsVenta.push({ id_producto: '', nombre: '', cantidad: 1, precio_unitario: 0 });
+    renderItemsVenta();
+  }
+
+  function renderItemsVenta(){
+    var cont = document.getElementById('lista-items-venta');
+    cont.innerHTML = '';
+    itemsVenta.forEach(function(it, idx){
+      var opts = '<option value="">— producto —</option>';
+      productos.forEach(function(p){
+        var precio = p.precio_mayorista || p.precio_minorista || 0;
+        opts += '<option value="'+p.id+'" data-precio="'+precio+'"'+(it.id_producto==p.id?' selected':'')+'>'+p.nombre+'</option>';
+      });
+      var div = document.createElement('div');
+      div.className = 'border border-gray-700 rounded-lg p-2 bg-gray-800/50';
+      div.innerHTML =
+        '<select onchange="elegirProd('+idx+',this)" class="w-full bg-gray-900 border border-gray-700 rounded p-1.5 text-xs mb-1">'+opts+'</select>' +
+        '<div class="grid grid-cols-3 gap-1 mb-1">' +
+          '<input type="number" min="1" value="'+it.cantidad+'" oninput="setItem('+idx+',\'cantidad\',this.value)" placeholder="Cant." class="bg-gray-900 border border-gray-700 rounded p-1.5 text-xs text-center">' +
+          '<input type="number" step="0.01" value="'+it.precio_unitario+'" oninput="setItem('+idx+',\'precio_unitario\',this.value)" placeholder="Precio" class="bg-gray-900 border border-gray-700 rounded p-1.5 text-xs text-right">' +
+          '<span class="text-xs text-gray-400 flex items-center justify-center">Margen: '+(margenVendedor?margenVendedor.toFixed(1):'—')+'%</span>' +
+        '</div>' +
+        '<button onclick="quitarItem('+idx+')" class="w-full text-red-500 font-bold text-xs py-1">✕ Quitar</button>';
+      cont.appendChild(div);
+    });
+    calcularTotalVenta();
+  }
+
+  function elegirProd(idx, sel){
+    var opt = sel.options[sel.selectedIndex];
+    itemsVenta[idx].id_producto = sel.value;
+    itemsVenta[idx].nombre = opt.textContent;
+    itemsVenta[idx].precio_unitario = parseFloat(opt.dataset.precio) || 0;
+    renderItemsVenta();
+  }
+
+  function setItem(idx, campo, val){
+    itemsVenta[idx][campo] = parseFloat(val)||0;
+    calcularTotalVenta();
+  }
+
+  function quitarItem(idx){ itemsVenta.splice(idx,1); renderItemsVenta(); }
+
+  function calcularTotalVenta(){
+    var t = itemsVenta.reduce(function(a,b){ return a + (b.cantidad||0)*(b.precio_unitario||0); }, 0);
+    document.getElementById('total-venta').textContent = fmt(t);
+  }
+
+  async function guardarVenta(){
+    var items = itemsVenta.filter(function(i){ return i.id_producto && i.cantidad>0; });
+    if (!items.length){ alert('Agregá al menos un producto.'); return; }
+    // Agregar margen global a cada item
+    items = items.map(function(i){ return Object.assign({}, i, { margen_venta_porcentaje: margenVendedor }); });
+    var body = {
+      id_cliente: clienteActual.id,
+      id_empleado: empleado ? empleado.id_empleado || empleado.id : null,
+      tipo: tipoVentaSel,
+      items: items
+    };
+    try {
+      var res = await fetch(API_URL+'/reparto/ventas', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+      var r = await res.json();
+      if (!res.ok){ alert('Error: '+(r.detail||'')); return; }
+      alert((tipoVentaSel==='venta'?'Venta':'Pedido')+' registrado: '+fmt(r.total));
+      itemsVenta = []; agregarItemVenta();
+      cargarHistorial(clienteActual.id);
+      cargarClientes();
+    } catch(e){ alert('Error al registrar.'); }
+  }
+
+  async function registrarVisitaSinCompra(){
+    if (!clienteActual) return;
+    var coords = {};
+    try {
+      var pos = await new Promise(function(res,rej){ navigator.geolocation.getCurrentPosition(res, rej, {timeout:5000}); });
+      coords = { latitud: pos.coords.latitude, longitud: pos.coords.longitude };
+    } catch(e){}
+    var body = Object.assign({ id_cliente: clienteActual.id, id_empleado: empleado?(empleado.id_empleado||empleado.id):null, resultado: 'sin_compra' }, coords);
+    try {
+      await fetch(API_URL+'/reparto/visitas', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+      alert('Visita registrada.');
+      cargarHistorial(clienteActual.id);
+      cargarClientes();
+    } catch(e){ alert('Error.'); }
+  }
+
+  async function cargarHistorial(id){
+    var cont = document.getElementById('det-historial');
+    try {
+      var h = await fetch(API_URL+'/reparto/clientes/'+id+'/historial', {cache:'no-store'}).then(r=>r.json());
+      var filas = [];
+      (h.ventas||[]).forEach(function(v){ 
+        filas.push({
+          fecha:v.fecha, 
+          id:v.id, 
+          clickable:true, 
+          txt:(v.tipo==='venta'?'💰 Venta ':'📋 Pedido ')+fmt(v.total)+(v.estado==='pendiente'?' (pend.)':'')
+        }); 
+      });
+      (h.visitas||[]).forEach(function(v){ if(v.resultado==='sin_compra') filas.push({fecha:v.fecha, clickable:false, txt:'👋 Visita sin compra'}); });
+      filas.sort(function(a,b){ return (b.fecha||'').localeCompare(a.fecha||''); });
+      cont.innerHTML = filas.length ? '' : '<p class="text-gray-600">Sin movimientos.</p>';
+      filas.slice(0,15).forEach(function(f){
+        var row = document.createElement('div');
+        row.className = 'flex justify-between items-center text-gray-400 border-b border-gray-800 py-1' + (f.clickable?' cursor-pointer hover:text-white':'');
+        row.innerHTML = '<span>'+f.txt+'</span><span class="text-gray-600 text-xs">'+(f.fecha||'').slice(0,10)+(f.clickable?' 📄':'')+'</span>';
+        if (f.clickable){
+          row.onclick = function(){ abrirAccionesVenta(f.id); };
+        }
+        cont.appendChild(row);
+      });
+    } catch(e){ cont.innerHTML='<p class="text-gray-600">—</p>'; }
+  }
+
+  function abrirAccionesVenta(id){
+    ventaActualId = id;
+    document.getElementById('action-venta-id').textContent = String(id).padStart(5,'0');
+    document.getElementById('modal-venta-acciones').classList.remove('hidden');
+  }
+
+  function cerrarAcciones(){
+    document.getElementById('modal-venta-acciones').classList.add('hidden');
+  }
+
+  async function enviarComprobantePorWSP(id){
+    try {
+      var res = await fetch(API_URL+'/reparto/ventas/'+id+'/enviar-comprobante-wsp', {cache:'no-store'});
+      var data = await res.json();
+      if (!data.wa_link){
+        alert('No hay teléfono registrado para este cliente.');
+        return;
+      }
+      cerrarAcciones();
+      window.open(data.wa_link, '_blank');
+    } catch(e){ alert('Error al preparar el envío.'); }
+  }
+
+  async function generarComprobanteRepartidor(id){
+    try {
+      var d = await fetch(API_URL+'/reparto/ventas/'+id+'/detalle', {cache:'no-store'}).then(r=>r.json());
+      var jsPDF = window.jspdf.jsPDF;
+      var doc = new jsPDF({unit:'mm', format:[80, 200]});
+      var y = 10;
+      doc.setFont('helvetica','bold'); doc.setFontSize(12);
+      doc.text('PORTAL DEL VIENTO', 40, y, {align:'center'}); y+=5;
+      doc.setFont('helvetica','normal'); doc.setFontSize(8);
+      doc.text('Alfajores Artesanales', 40, y, {align:'center'}); y+=6;
+      doc.setFont('helvetica','bold'); doc.setFontSize(10);
+      doc.text(d.tipo==='venta'?'COMPROBANTE DE VENTA':'COMPROBANTE DE PEDIDO', 40, y, {align:'center'}); y+=5;
+      doc.setFont('helvetica','normal'); doc.setFontSize(7);
+      doc.text('N° '+String(d.id).padStart(5,'0')+'  ·  '+d.fecha.slice(0,16).replace('T',' '), 40, y, {align:'center'}); y+=6;
+      doc.setFontSize(8);
+      doc.text('Cliente: '+(d.cliente||''), 6, y); y+=4;
+      doc.line(6, y, 74, y); y+=4;
+      doc.setFont('helvetica','normal'); doc.setFontSize(7.5);
+      (d.items||[]).forEach(function(i){
+        doc.text(i.cantidad+'x '+(i.nombre||''), 6, y);
+        doc.text('$ '+(parseFloat(i.subtotal)||0).toLocaleString('es-AR'), 74, y, {align:'right'});
+        y+=4;
+      });
+      doc.line(6, y, 74, y); y+=5;
+      doc.setFont('helvetica','bold'); doc.setFontSize(11);
+      doc.text('TOTAL', 6, y); doc.text('$ '+(parseFloat(d.total)||0).toLocaleString('es-AR'), 74, y, {align:'right'}); y+=8;
+      doc.setFont('helvetica','normal'); doc.setFontSize(6.5);
+      doc.text('Documento sin valor fiscal.', 40, y, {align:'center'});
+      doc.save('comprobante_'+String(d.id).padStart(5,'0')+'.pdf');
+      cerrarAcciones();
+    } catch(e){ alert('No se pudo generar el comprobante.'); }
+  }
+
+  function abrirEditarMargen(){
+    var val = margenVendedor || '';
+    document.getElementById('input-margen').value = val;
+    document.getElementById('modal-editar-margen').classList.remove('hidden');
+  }
+
+  function cerrarEditarMargen(){
+    document.getElementById('modal-editar-margen').classList.add('hidden');
+  }
+
+  async function guardarMargen(){
+    var margen = document.getElementById('input-margen').value;
+    margen = margen === '' ? null : parseFloat(margen);
+    if (margen !== null && margen < 0){ alert('El porcentaje no puede ser negativo.'); return; }
+    try {
+      var id = empleado.id_empleado || empleado.id;
+      var res = await fetch(API_URL+'/reparto/vendedor/margen/'+id, {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ margen_venta_porcentaje_default: margen })
+      });
+      if (!res.ok){ alert('Error al guardar.'); return; }
+      margenVendedor = margen;
+      var badge = document.getElementById('margen-badge');
+      badge.textContent = margen ? margen.toFixed(1)+'%' : '—';
+      alert('Margen actualizado ✓');
+      cerrarEditarMargen();
+    } catch(e){ alert('Error.'); }
+  }
+
+  async function cargarLocalidades(){
+    try {
+      var locs = await fetch(API_URL+'/reparto/localidades', {cache:'no-store'}).then(r=>r.json());
+      var sel = document.getElementById('filtro-localidad');
+      var actual = sel.value;
+      sel.innerHTML = '<option value="">📍 Todas las localidades</option>';
+      var dl = document.getElementById('localidades-sugeridas');
+      dl.innerHTML = '';
+      locs.forEach(function(l){
+        sel.innerHTML += '<option value="'+l+'"'+(l===actual?' selected':'')+'>'+l+'</option>';
+        dl.innerHTML += '<option value="'+l+'">';
+      });
+    } catch(e){}
+  }
+
+  // init
+  cargarProductos().then(function(){ cargarClientes(); cargarLocalidades(); cargarMargenVendedor(); });
 </script>
 </body>
 </html>
