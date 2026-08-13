@@ -10293,33 +10293,6 @@ footer{text-align:center;color:#555;font-size:12px;margin-top:40px}
 
 # ════════════════════════════════════════════════════════════════════════════
 #  MÓDULO REPARTO — clientes geolocalizados, visitas y ventas en la calle
-# ════════════════════════════════════════════════════════════════════════════
-
-@app.get("/api/reparto/clientes")
-def reparto_listar_clientes(localidad: Optional[str] = None):
-    conn = obtener_conexion()
-    try:
-        cur = conn.cursor(cursor_factory=RealDictCursor)
-        try:
-            cond, params = "", []
-            if localidad:
-                cond = " AND c.localidad = %s"; params.append(localidad)
-            cur.execute(f"""
-                SELECT c.id, c.nombre, c.contacto, c.telefono, c.direccion, c.localidad,
-                       c.latitud, c.longitud, c.foto_url, c.notas,
-                       (SELECT MAX(v.fecha)::text FROM reparto_visitas v WHERE v.id_cliente=c.id) AS ultima_visita,
-                       COALESCE((SELECT SUM(rv.total) FROM reparto_ventas rv WHERE rv.id_cliente=c.id AND rv.tipo='venta'),0) AS total_comprado
-                FROM reparto_clientes c
-                WHERE COALESCE(c.activo,true)=true {cond}
-                ORDER BY c.nombre
-            """, params)
-            return fetchall_dict(cur)
-        except Exception:
-            conn.rollback()
-            raise HTTPException(status_code=400, detail="Falta correr CREAR_MODULO_REPARTO.sql en la base.")
-    finally:
-        liberar_conexion(conn)
-
 # ============================================================================
 # REPARTO - ENDPOINTS MODIFICADOS (COPIAR Y REEMPLAZAR EN main.py)
 # ============================================================================
@@ -10621,7 +10594,9 @@ def reparto_enviar_comprobante_wsp(id: int):
         items = fetchall_dict(cur)
         
         # Construir mensaje
-        telefono = (venta['telefono'] or '').replace(/[^0-9]/g,'')
+        import re
+        telefono = (venta['telefono'] or '')
+        telefono = re.sub(r'[^0-9]', '', telefono)
         if telefono and not telefono.startswith('54'):
             telefono = '54' + telefono
         
@@ -10755,7 +10730,7 @@ def route_reparto():
 @app.get("/reparto-admin")
 def route_reparto_admin():
     return serve_html("reparto_admin.html")
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
-                
