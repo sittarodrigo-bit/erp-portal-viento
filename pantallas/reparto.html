@@ -20,10 +20,16 @@
       <h1 class="font-bold text-lg">🚚 Reparto</h1>
       <p class="text-gray-500 text-xs" id="nombre-repartidor">—</p>
     </div>
-    <button onclick="abrirNuevoCliente()" class="bg-neon text-black font-bold rounded-lg px-3 py-2 text-sm">+ Cliente</button>
+    <div class="flex items-center gap-2">
+      <button onclick="abrirNuevoCliente()" class="bg-neon text-black font-bold rounded-lg px-3 py-2 text-sm">+ Cliente</button>
+      <button onclick="salirReparto()" class="border border-gray-700 text-gray-400 rounded-lg px-2 py-2 text-xs">Salir</button>
+    </div>
   </header>
 
   <div class="p-4 pb-24">
+    <select id="filtro-localidad" onchange="renderClientes()" class="w-full bg-gray-900 border border-gray-700 rounded-lg p-3 text-sm mb-2 focus:outline-none">
+      <option value="">📍 Todas las localidades</option>
+    </select>
     <input id="buscar" oninput="renderClientes()" placeholder="🔍 Buscar cliente..." class="w-full bg-gray-900 border border-gray-700 rounded-lg p-3 text-sm mb-4 focus:border-neon focus:outline-none">
     <div id="lista-clientes" class="space-y-2"></div>
   </div>
@@ -41,6 +47,8 @@
         <input id="c-telefono" placeholder="Teléfono" class="bg-black border border-gray-700 rounded-lg p-2.5 text-sm focus:border-neon focus:outline-none">
       </div>
       <input id="c-direccion" placeholder="Dirección" class="w-full bg-black border border-gray-700 rounded-lg p-2.5 text-sm mb-2 focus:border-neon focus:outline-none">
+      <input id="c-localidad" placeholder="Localidad (ej: Godoy Cruz)" class="w-full bg-black border border-gray-700 rounded-lg p-2.5 text-sm mb-2 focus:border-neon focus:outline-none" list="localidades-sugeridas">
+      <datalist id="localidades-sugeridas"></datalist>
 
       <!-- Ubicación -->
       <div class="bg-black border border-gray-700 rounded-lg p-3 mb-2">
@@ -114,9 +122,19 @@
 
   function fmt(n){ return '$ ' + (Math.round((parseFloat(n)||0)*100)/100).toLocaleString('es-AR'); }
 
-  // Sesión (usa el login de empleados existente)
-  try { empleado = JSON.parse(sessionStorage.getItem('empleado') || sessionStorage.getItem('pos_empleado') || 'null'); } catch(e){}
-  if (empleado) { document.getElementById('nombre-repartidor').textContent = (empleado.nombre||'') + ' ' + (empleado.apellido||''); }
+  // Sesión: si no hay, mandar al login del reparto
+  try { empleado = JSON.parse(sessionStorage.getItem('empleado') || 'null'); } catch(e){}
+  if (!empleado || !(empleado.id_empleado || empleado.id)) {
+    window.location.href = '/reparto-login';
+  } else {
+    document.getElementById('nombre-repartidor').textContent = (empleado.nombre||'') + ' ' + (empleado.apellido||'');
+  }
+
+  async function salirReparto(){
+    try { await fetch(API_URL+'/reparto/logout', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ id_empleado: empleado.id_empleado||empleado.id })}); } catch(e){}
+    sessionStorage.removeItem('empleado');
+    window.location.href = '/reparto-login';
+  }
 
   async function cargarProductos(){
     try { productos = await fetch(API_URL+'/productos', {cache:'no-store'}).then(r=>r.json()); } catch(e){ productos = []; }
@@ -129,8 +147,13 @@
 
   function renderClientes(){
     var q = (document.getElementById('buscar').value||'').toLowerCase();
+    var loc = document.getElementById('filtro-localidad').value;
     var cont = document.getElementById('lista-clientes');
-    var fil = clientes.filter(function(c){ return !q || (c.nombre||'').toLowerCase().includes(q) || (c.direccion||'').toLowerCase().includes(q); });
+    var fil = clientes.filter(function(c){
+      var matchQ = !q || (c.nombre||'').toLowerCase().includes(q) || (c.direccion||'').toLowerCase().includes(q);
+      var matchLoc = !loc || c.localidad === loc;
+      return matchQ && matchLoc;
+    });
     if (!fil.length){ cont.innerHTML = '<p class="text-gray-600 text-sm">Sin clientes. Cargá el primero con "+ Cliente".</p>'; return; }
     cont.innerHTML = '';
     fil.forEach(function(c){
@@ -151,7 +174,7 @@
 
   // ── Nuevo/editar cliente ──
   function abrirNuevoCliente(){
-    ['c-id','c-nombre','c-contacto','c-telefono','c-direccion','c-lat','c-lng','c-notas','c-foto-url'].forEach(function(id){ document.getElementById(id).value=''; });
+    ['c-id','c-nombre','c-contacto','c-telefono','c-direccion','c-localidad','c-lat','c-lng','c-notas','c-foto-url'].forEach(function(id){ document.getElementById(id).value=''; });
     document.getElementById('c-foto-preview').classList.add('hidden');
     document.getElementById('ubi-estado').textContent = '';
     document.getElementById('titulo-cliente').textContent = 'Nuevo cliente';
@@ -203,6 +226,7 @@
       contacto: document.getElementById('c-contacto').value.trim(),
       telefono: document.getElementById('c-telefono').value.trim(),
       direccion: document.getElementById('c-direccion').value.trim(),
+      localidad: document.getElementById('c-localidad').value.trim(),
       latitud: parseFloat(document.getElementById('c-lat').value) || null,
       longitud: parseFloat(document.getElementById('c-lng').value) || null,
       foto_url: document.getElementById('c-foto-url').value || null,
@@ -212,7 +236,7 @@
       var res = await fetch(API_URL+'/reparto/clientes', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
       var r = await res.json();
       if (!res.ok){ alert('Error: '+(r.detail||'')); return; }
-      cerrarCliente(); cargarClientes();
+      cerrarCliente(); cargarClientes(); cargarLocalidades();
     } catch(e){ alert('Error al guardar.'); }
   }
 
@@ -244,6 +268,7 @@
     document.getElementById('c-contacto').value = c.contacto||'';
     document.getElementById('c-telefono').value = c.telefono||'';
     document.getElementById('c-direccion').value = c.direccion||'';
+    document.getElementById('c-localidad').value = c.localidad||'';
     document.getElementById('c-lat').value = c.latitud||'';
     document.getElementById('c-lng').value = c.longitud||'';
     document.getElementById('c-notas').value = c.notas||'';
@@ -386,8 +411,23 @@
     } catch(e){ alert('No se pudo generar el comprobante.'); }
   }
 
+  async function cargarLocalidades(){
+    try {
+      var locs = await fetch(API_URL+'/reparto/localidades', {cache:'no-store'}).then(r=>r.json());
+      var sel = document.getElementById('filtro-localidad');
+      var actual = sel.value;
+      sel.innerHTML = '<option value="">📍 Todas las localidades</option>';
+      var dl = document.getElementById('localidades-sugeridas');
+      dl.innerHTML = '';
+      locs.forEach(function(l){
+        sel.innerHTML += '<option value="'+l+'"'+(l===actual?' selected':'')+'>'+l+'</option>';
+        dl.innerHTML += '<option value="'+l+'">';
+      });
+    } catch(e){}
+  }
+
   // init
-  cargarProductos().then(cargarClientes);
+  cargarProductos().then(function(){ cargarClientes(); cargarLocalidades(); });
 </script>
 </body>
 </html>
