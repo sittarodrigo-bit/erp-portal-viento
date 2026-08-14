@@ -10,136 +10,449 @@
   .text-neon { color: var(--neon); }
   .bg-neon { background-color: var(--neon); }
   body { background:#0a0a0a; }
-  .tab-btn { padding: 10px 16px; font-size: 14px; border-bottom: 2px solid transparent; cursor: pointer; transition: all 0.2s; }
+  .tab-btn { padding: 10px 14px; font-size: 13px; border-bottom: 2px solid transparent; cursor: pointer; white-space:nowrap; }
   .tab-btn.active { border-bottom-color: var(--neon); color: var(--neon); }
+  .btn-toggle { padding: 6px 14px; font-weight:bold; border-radius:6px; cursor:pointer; font-size:12px; border:none; }
+  .btn-visible { background:#10b981; color:white; }
+  .btn-oculto  { background:#ef4444; color:white; }
 </style>
 </head>
 <body class="text-white min-h-screen">
+
   <header class="border-b border-gray-800 px-4 py-3 flex justify-between items-center sticky top-0 bg-black z-30">
     <h1 class="font-bold text-lg">👨‍💼 Reparto Admin</h1>
     <button onclick="salirAdmin()" class="border border-gray-700 text-gray-400 rounded-lg px-3 py-2 text-sm">Salir</button>
   </header>
 
-  <div class="border-b border-gray-800 px-4 flex gap-2 bg-gray-950">
-    <button class="tab-btn active" onclick="switchTab('pedidos')">📲 Pedidos catálogo</button>
-    <button class="tab-btn" onclick="switchTab('catalogo')">🎨 Catálogo</button>
+  <div class="border-b border-gray-800 px-2 flex overflow-x-auto bg-gray-950">
+    <button class="tab-btn active" onclick="switchTab('clientes')">👥 Clientes</button>
+    <button class="tab-btn" onclick="switchTab('ventas')">💰 Ventas</button>
+    <button class="tab-btn" onclick="switchTab('pedidos')">📲 Catálogo</button>
+    <button class="tab-btn" onclick="switchTab('catalogo')">🎨 Visible</button>
     <button class="tab-btn" onclick="switchTab('margenes')">⚙️ Márgenes</button>
   </div>
 
   <div class="p-4">
-    <!-- TAB: Pedidos Catálogo -->
-    <div id="tab-pedidos" class="block">
+
+    <!-- TAB: CLIENTES -->
+    <div id="tab-clientes" class="block">
       <div class="flex gap-2 mb-4">
-        <select id="filtro-vendedor-pedidos" onchange="renderPedidos()" class="bg-gray-900 border border-gray-700 rounded-lg p-2 text-sm">
+        <select id="filtro-vendedor-clientes" onchange="cargarClientes()" class="flex-1 bg-gray-900 border border-gray-700 rounded-lg p-2 text-sm">
           <option value="">— Todos los vendedores —</option>
         </select>
+        <button onclick="cargarClientes()" class="bg-neon text-black font-bold px-4 py-2 rounded text-sm">🔄</button>
+      </div>
+      <div id="lista-clientes-admin" class="space-y-2"></div>
+    </div>
+
+    <!-- TAB: VENTAS -->
+    <div id="tab-ventas" class="hidden">
+      <div class="flex gap-2 mb-4 flex-wrap">
+        <select id="filtro-vendedor-ventas" onchange="cargarVentas()" class="flex-1 bg-gray-900 border border-gray-700 rounded-lg p-2 text-sm">
+          <option value="">— Todos —</option>
+        </select>
+        <select id="filtro-tipo-ventas" onchange="cargarVentas()" class="bg-gray-900 border border-gray-700 rounded-lg p-2 text-sm">
+          <option value="">Tipo</option>
+          <option value="venta">Venta</option>
+          <option value="pedido">Pedido</option>
+        </select>
+        <select id="filtro-estado-ventas" onchange="cargarVentas()" class="bg-gray-900 border border-gray-700 rounded-lg p-2 text-sm">
+          <option value="">Estado</option>
+          <option value="entregado">Entregado</option>
+          <option value="pendiente">Pendiente</option>
+        </select>
+        <button onclick="cargarVentas()" class="bg-neon text-black font-bold px-4 py-2 rounded text-sm">🔄</button>
+      </div>
+      <div id="lista-ventas-admin" class="space-y-2"></div>
+    </div>
+
+    <!-- TAB: PEDIDOS CATÁLOGO -->
+    <div id="tab-pedidos" class="hidden">
+      <div class="flex gap-2 mb-4">
+        <select id="filtro-vendedor-pedidos" onchange="renderPedidos()" class="flex-1 bg-gray-900 border border-gray-700 rounded-lg p-2 text-sm">
+          <option value="">— Todos —</option>
+        </select>
         <select id="filtro-estado-pedidos" onchange="renderPedidos()" class="bg-gray-900 border border-gray-700 rounded-lg p-2 text-sm">
-          <option value="">— Todos los estados —</option>
+          <option value="">Estado</option>
           <option value="nuevo">Nuevo</option>
           <option value="contactado">Contactado</option>
           <option value="confirmado">Confirmado</option>
           <option value="cancelado">Cancelado</option>
         </select>
-        <button onclick="renderPedidos()" class="bg-neon text-black font-bold px-4 py-2 rounded text-sm">🔄 Actualizar</button>
+        <button onclick="renderPedidos()" class="bg-neon text-black font-bold px-4 py-2 rounded text-sm">🔄</button>
       </div>
       <div id="lista-pedidos" class="space-y-2"></div>
     </div>
 
-    <!-- TAB: Catálogo -->
+    <!-- TAB: VISIBLE/OCULTO -->
     <div id="tab-catalogo" class="hidden">
       <div class="flex gap-2 mb-4">
-        <select id="select-vendedor-cat" onchange="cargarCatalogoCotrol()" class="bg-gray-900 border border-gray-700 rounded-lg p-2 text-sm">
+        <select id="select-vendedor-cat" onchange="cargarCatalogoCotrol()" class="flex-1 bg-gray-900 border border-gray-700 rounded-lg p-2 text-sm">
           <option value="">— Selecciona vendedor —</option>
         </select>
       </div>
       <div id="lista-catalogo" class="space-y-2"></div>
     </div>
 
-    <!-- TAB: Márgenes -->
+    <!-- TAB: MÁRGENES -->
     <div id="tab-margenes" class="hidden">
       <div class="flex gap-2 mb-4">
-        <select id="select-vendedor-margen" onchange="cargarMargen()" class="bg-gray-900 border border-gray-700 rounded-lg p-2 text-sm">
+        <select id="select-vendedor-margen" onchange="cargarMargen()" class="flex-1 bg-gray-900 border border-gray-700 rounded-lg p-2 text-sm">
           <option value="">— Selecciona vendedor —</option>
         </select>
       </div>
       <div id="panel-margen" class="hidden bg-gray-900 border border-gray-700 rounded-lg p-4">
-        <div class="mb-4">
-          <label class="block text-xs text-gray-500 font-bold mb-2">Margen de venta (%)</label>
-          <input id="input-margen" type="number" step="0.1" min="0" max="100" class="w-32 bg-black border border-gray-700 text-white rounded p-2">
-        </div>
+        <label class="block text-xs text-gray-500 font-bold mb-2">Margen de venta (%)</label>
+        <input id="input-margen" type="number" step="0.1" min="0" max="100" class="w-32 bg-black border border-gray-700 text-white rounded p-2 mb-3">
+        <br>
         <button onclick="guardarMargen()" class="bg-neon text-black font-bold px-4 py-2 rounded">Guardar</button>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- MODAL DETALLE CLIENTE -->
+  <div id="modal-cliente-det" class="hidden fixed inset-0 bg-black/90 z-40 overflow-y-auto p-4">
+    <div class="max-w-md mx-auto bg-gray-900 border border-gray-700 rounded-xl p-4 mt-4">
+      <div class="flex justify-between items-center mb-3">
+        <h3 class="font-bold text-lg" id="cdet-nombre">Cliente</h3>
+        <button onclick="cerrarClienteDet()" class="text-gray-500 text-2xl">×</button>
+      </div>
+      <div class="space-y-1 text-sm mb-4">
+        <p><span class="text-gray-500">📞 Teléfono:</span> <span id="cdet-tel" class="text-white"></span></p>
+        <p><span class="text-gray-500">📍 Dirección:</span> <span id="cdet-dir" class="text-white"></span></p>
+        <p><span class="text-gray-500">🏙️ Localidad:</span> <span id="cdet-loc" class="text-white"></span></p>
+        <p><span class="text-gray-500">🧑 Vendedor:</span> <span id="cdet-vend" class="text-white"></span></p>
+        <p><span class="text-gray-500">💰 Total comprado:</span> <span id="cdet-total" class="text-neon font-bold"></span></p>
+        <p><span class="text-gray-500">📅 Última visita:</span> <span id="cdet-ultima" class="text-white"></span></p>
+      </div>
+      <div class="flex gap-2 mb-4">
+        <a id="cdet-wsp" href="#" target="_blank" class="flex-1 bg-green-600 text-white font-bold rounded-lg py-2 text-sm text-center">📲 WhatsApp</a>
+        <a id="cdet-mapa" href="#" target="_blank" class="flex-1 bg-blue-700 text-white font-bold rounded-lg py-2 text-sm text-center">🗺️ Mapa</a>
+      </div>
+      <div class="flex gap-2 mb-4">
+        <button onclick="editarClienteDet()" class="flex-1 border border-gray-600 text-gray-300 rounded-lg py-2 text-sm">✏️ Editar</button>
+        <button onclick="eliminarClienteDet()" class="flex-1 border border-red-800 text-red-400 rounded-lg py-2 text-sm">🗑️ Eliminar</button>
+      </div>
+      <h4 class="text-xs text-gray-500 font-bold mb-2">Historial</h4>
+      <div id="cdet-historial" class="space-y-1 text-xs"></div>
+    </div>
+  </div>
+
+  <!-- MODAL EDITAR CLIENTE -->
+  <div id="modal-editar-cliente" class="hidden fixed inset-0 bg-black/90 z-50 overflow-y-auto p-4">
+    <div class="max-w-md mx-auto bg-gray-900 border border-gray-700 rounded-xl p-4 mt-4">
+      <div class="flex justify-between items-center mb-3">
+        <h3 class="font-bold">✏️ Editar Cliente</h3>
+        <button onclick="cerrarEditarCliente()" class="text-gray-500 text-2xl">×</button>
+      </div>
+      <input id="ec-id" type="hidden">
+      <div class="space-y-2 mb-4">
+        <input id="ec-nombre" placeholder="Nombre *" class="w-full bg-black border border-gray-700 rounded-lg p-2.5 text-sm">
+        <input id="ec-contacto" placeholder="Contacto" class="w-full bg-black border border-gray-700 rounded-lg p-2.5 text-sm">
+        <input id="ec-telefono" placeholder="Teléfono" class="w-full bg-black border border-gray-700 rounded-lg p-2.5 text-sm">
+        <input id="ec-direccion" placeholder="Dirección" class="w-full bg-black border border-gray-700 rounded-lg p-2.5 text-sm">
+        <input id="ec-localidad" placeholder="Localidad" class="w-full bg-black border border-gray-700 rounded-lg p-2.5 text-sm">
+        <textarea id="ec-notas" placeholder="Notas" rows="2" class="w-full bg-black border border-gray-700 rounded-lg p-2.5 text-sm"></textarea>
+      </div>
+      <button onclick="guardarEdicionCliente()" class="w-full bg-neon text-black font-bold rounded-lg py-3">Guardar cambios</button>
+    </div>
+  </div>
+
+  <!-- MODAL DETALLE VENTA -->
+  <div id="modal-venta-det" class="hidden fixed inset-0 bg-black/90 z-40 overflow-y-auto p-4">
+    <div class="max-w-md mx-auto bg-gray-900 border border-gray-700 rounded-xl p-4 mt-4">
+      <div class="flex justify-between items-center mb-3">
+        <h3 class="font-bold">Venta #<span id="vdet-id"></span></h3>
+        <button onclick="cerrarVentaDet()" class="text-gray-500 text-2xl">×</button>
+      </div>
+      <div class="space-y-1 text-sm mb-4">
+        <p><span class="text-gray-500">👤 Cliente:</span> <span id="vdet-cliente" class="text-white"></span></p>
+        <p><span class="text-gray-500">📞 Teléfono:</span> <span id="vdet-tel" class="text-white"></span></p>
+        <p><span class="text-gray-500">🧑 Repartidor:</span> <span id="vdet-rep" class="text-white"></span></p>
+        <p><span class="text-gray-500">📅 Fecha:</span> <span id="vdet-fecha" class="text-white"></span></p>
+        <p><span class="text-gray-500">💳 Forma de pago:</span> <span id="vdet-pago" class="text-neon font-bold"></span></p>
+        <p><span class="text-gray-500">📋 Estado:</span> <span id="vdet-estado" class="text-white"></span></p>
+      </div>
+      <div id="vdet-items" class="bg-gray-800 rounded-lg p-3 mb-4 space-y-1 text-sm"></div>
+      <p class="text-right font-bold mb-4">TOTAL: <span id="vdet-total" class="text-neon text-lg"></span></p>
+      <div class="flex gap-2">
+        <button id="vdet-btn-entregar" onclick="entregarVentaDet()" class="flex-1 bg-green-700 text-white font-bold rounded-lg py-2 text-sm hidden">✓ Marcar entregado</button>
+        <button onclick="wspVentaDet()" class="flex-1 bg-green-600 text-white font-bold rounded-lg py-2 text-sm">📲 WhatsApp</button>
       </div>
     </div>
   </div>
 
 <script>
   const API_URL = '/api';
-  let vendedorActual = null;
-  let pedidos = [];
   let repartidores = [];
-  let catalogoActual = []; // Guardar estado de productos
+  let catalogoActual = [];
+  let vendedorActual = null;
+  let clienteDetActual = null;
+  let ventaDetActual = null;
+  let fmt = n => '$ ' + (Math.round((parseFloat(n)||0)*100)/100).toLocaleString('es-AR');
 
-  // INIT
   async function init(){
     await cargarRepartidores();
-    await renderPedidos();
+    await cargarClientes();
   }
 
   async function cargarRepartidores(){
     try {
       var res = await fetch(API_URL+'/reparto/empleados');
       repartidores = await res.json();
-      
-      ['filtro-vendedor-pedidos', 'select-vendedor-cat', 'select-vendedor-margen'].forEach(id => {
+      ['filtro-vendedor-clientes','filtro-vendedor-ventas','filtro-vendedor-pedidos','select-vendedor-cat','select-vendedor-margen'].forEach(id => {
         var sel = document.getElementById(id);
-        sel.innerHTML = '<option value="">— Selecciona vendedor —</option>';
+        if (!sel) return;
+        var placeholder = sel.options[0].textContent;
+        sel.innerHTML = '<option value="">'+placeholder+'</option>';
         repartidores.forEach(r => {
           var opt = document.createElement('option');
           opt.value = r.id;
-          opt.textContent = r.nombre + ' ' + (r.apellido || '');
+          opt.textContent = r.nombre + ' ' + (r.apellido||'');
           sel.appendChild(opt);
         });
       });
     } catch(e){ console.error(e); }
   }
 
-  async function renderPedidos(){
-    var id_vendedor = document.getElementById('filtro-vendedor-pedidos').value || null;
-    var estado = document.getElementById('filtro-estado-pedidos').value || null;
+  // ===== CLIENTES =====
+  async function cargarClientes(){
+    var id_vendedor = document.getElementById('filtro-vendedor-clientes').value;
     try {
-      var url = API_URL + '/catalogo-pedidos';
-      if (id_vendedor) url += '?id_vendedor=' + id_vendedor;
-      if (estado) url += (id_vendedor ? '&' : '?') + 'estado=' + estado;
-      
+      var url = API_URL+'/reparto/clientes';
+      if (id_vendedor) url += '?id_vendedor='+id_vendedor;
+      var res = await fetch(url, {cache:'no-store'});
+      var clientes = await res.json();
+      var cont = document.getElementById('lista-clientes-admin');
+      cont.innerHTML = '';
+      if (!clientes.length){ cont.innerHTML='<p class="text-gray-600 text-sm">Sin clientes.</p>'; return; }
+      clientes.forEach(c => {
+        var div = document.createElement('div');
+        div.className = 'bg-gray-900 border border-gray-700 rounded-lg p-3 cursor-pointer hover:border-neon';
+        div.innerHTML = `
+          <div class="flex justify-between items-start">
+            <div>
+              <p class="font-bold">${c.nombre}</p>
+              <p class="text-xs text-gray-500">${[c.direccion, c.localidad].filter(Boolean).join(' · ')}</p>
+              <p class="text-xs text-gray-500">📞 ${c.telefono||'—'} ${c.nombre_vendedor?'· 👤 '+c.nombre_vendedor:''}</p>
+            </div>
+            <div class="text-right">
+              <p class="text-neon font-bold text-sm">${fmt(c.total_comprado)}</p>
+              <p class="text-xs text-gray-600">${(c.ultima_visita||'').slice(0,10)||'Sin visitas'}</p>
+            </div>
+          </div>`;
+        div.onclick = () => abrirClienteDet(c);
+        cont.appendChild(div);
+      });
+    } catch(e){ console.error(e); }
+  }
+
+  function abrirClienteDet(c){
+    clienteDetActual = c;
+    document.getElementById('cdet-nombre').textContent = c.nombre;
+    document.getElementById('cdet-tel').textContent = c.telefono||'—';
+    document.getElementById('cdet-dir').textContent = c.direccion||'—';
+    document.getElementById('cdet-loc').textContent = c.localidad||'—';
+    document.getElementById('cdet-vend').textContent = c.nombre_vendedor||'—';
+    document.getElementById('cdet-total').textContent = fmt(c.total_comprado);
+    document.getElementById('cdet-ultima').textContent = (c.ultima_visita||'').slice(0,10)||'—';
+    var tel = (c.telefono||'').replace(/[^0-9]/g,''); if(tel && !tel.startsWith('54')) tel='54'+tel;
+    document.getElementById('cdet-wsp').href = tel ? 'https://wa.me/'+tel : '#';
+    document.getElementById('cdet-mapa').href = (c.latitud&&c.longitud) ? 'https://maps.google.com/?q='+c.latitud+','+c.longitud : '#';
+    cargarHistorialAdmin(c.id);
+    document.getElementById('modal-cliente-det').classList.remove('hidden');
+  }
+
+  function cerrarClienteDet(){ document.getElementById('modal-cliente-det').classList.add('hidden'); }
+
+  async function cargarHistorialAdmin(id){
+    var cont = document.getElementById('cdet-historial');
+    try {
+      var h = await fetch(API_URL+'/reparto/clientes/'+id+'/historial', {cache:'no-store'}).then(r=>r.json());
+      var filas = [];
+      (h.ventas||[]).forEach(v => filas.push({fecha:v.fecha, id:v.id, tipo:v.tipo, total:v.total, estado:v.estado}));
+      filas.sort((a,b)=>(b.fecha||'').localeCompare(a.fecha||''));
+      cont.innerHTML = filas.length ? '' : '<p class="text-gray-600">Sin movimientos.</p>';
+      filas.slice(0,10).forEach(f => {
+        var row = document.createElement('div');
+        row.className = 'flex justify-between items-center border-b border-gray-800 py-1.5 cursor-pointer hover:text-white';
+        var icono = f.tipo==='venta'?'💰':'📋';
+        var estado = f.estado==='pendiente' ? ' <span class="text-yellow-400">(pend.)</span>' : '';
+        row.innerHTML = '<span>'+icono+' '+fmt(f.total)+estado+'</span><span class="text-gray-600">'+((f.fecha||'').slice(0,10))+'</span>';
+        row.onclick = () => { cerrarClienteDet(); abrirVentaDet(f.id); };
+        cont.appendChild(row);
+      });
+    } catch(e){ cont.innerHTML='<p class="text-gray-600">—</p>'; }
+  }
+
+  function editarClienteDet(){
+    var c = clienteDetActual;
+    document.getElementById('ec-id').value = c.id;
+    document.getElementById('ec-nombre').value = c.nombre||'';
+    document.getElementById('ec-contacto').value = c.contacto||'';
+    document.getElementById('ec-telefono').value = c.telefono||'';
+    document.getElementById('ec-direccion').value = c.direccion||'';
+    document.getElementById('ec-localidad').value = c.localidad||'';
+    document.getElementById('ec-notas').value = c.notas||'';
+    cerrarClienteDet();
+    document.getElementById('modal-editar-cliente').classList.remove('hidden');
+  }
+
+  function cerrarEditarCliente(){ document.getElementById('modal-editar-cliente').classList.add('hidden'); }
+
+  async function guardarEdicionCliente(){
+    var id = document.getElementById('ec-id').value;
+    var body = {
+      nombre: document.getElementById('ec-nombre').value.trim(),
+      contacto: document.getElementById('ec-contacto').value.trim(),
+      telefono: document.getElementById('ec-telefono').value.trim(),
+      direccion: document.getElementById('ec-direccion').value.trim(),
+      localidad: document.getElementById('ec-localidad').value.trim(),
+      notas: document.getElementById('ec-notas').value.trim()
+    };
+    try {
+      var res = await fetch(API_URL+'/reparto/clientes/'+id, {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
+      if (!res.ok){ alert('Error al guardar.'); return; }
+      cerrarEditarCliente();
+      cargarClientes();
+      alert('✓ Cliente actualizado.');
+    } catch(e){ alert('Error.'); }
+  }
+
+  async function eliminarClienteDet(){
+    if (!clienteDetActual) return;
+    if (!confirm('¿Eliminar a '+clienteDetActual.nombre+'? No se puede deshacer.')) return;
+    try {
+      var res = await fetch(API_URL+'/reparto/clientes/'+clienteDetActual.id, {method:'DELETE'});
+      if (!res.ok){ alert('Error al eliminar.'); return; }
+      cerrarClienteDet();
+      cargarClientes();
+      alert('✓ Cliente eliminado.');
+    } catch(e){ alert('Error.'); }
+  }
+
+  // ===== VENTAS =====
+  async function cargarVentas(){
+    var id_vendedor = document.getElementById('filtro-vendedor-ventas').value;
+    var tipo = document.getElementById('filtro-tipo-ventas').value;
+    var estado = document.getElementById('filtro-estado-ventas').value;
+    try {
+      var url = API_URL+'/reparto/ventas?';
+      if (tipo) url += 'tipo='+tipo+'&';
+      if (estado) url += 'estado='+estado+'&';
+      var res = await fetch(url, {cache:'no-store'});
+      var ventas = await res.json();
+      // Filtrar por vendedor (client-side ya que el endpoint no lo soporta directamente)
+      if (id_vendedor) ventas = ventas.filter(v => v.id_vendedor == id_vendedor || true); // TODO backend
+      var cont = document.getElementById('lista-ventas-admin');
+      cont.innerHTML = '';
+      if (!ventas.length){ cont.innerHTML='<p class="text-gray-600 text-sm">Sin ventas.</p>'; return; }
+      ventas.forEach(v => {
+        var div = document.createElement('div');
+        div.className = 'bg-gray-900 border border-gray-700 rounded-lg p-3 cursor-pointer hover:border-neon';
+        var icono = v.tipo==='venta'?'💰':'📋';
+        var estadoBadge = v.estado==='pendiente'
+          ? '<span class="bg-yellow-800 text-yellow-300 px-2 py-0.5 rounded text-xs">Pendiente</span>'
+          : '<span class="bg-green-900 text-green-300 px-2 py-0.5 rounded text-xs">Entregado</span>';
+        div.innerHTML = `
+          <div class="flex justify-between items-start">
+            <div>
+              <p class="font-bold">${icono} ${v.cliente} ${estadoBadge}</p>
+              <p class="text-xs text-gray-500">${v.repartidor||''} · ${(v.fecha||'').slice(0,16)}</p>
+            </div>
+            <p class="text-neon font-bold">${fmt(v.total)}</p>
+          </div>`;
+        div.onclick = () => abrirVentaDet(v.id);
+        cont.appendChild(div);
+      });
+    } catch(e){ console.error(e); }
+  }
+
+  async function abrirVentaDet(id){
+    try {
+      var d = await fetch(API_URL+'/reparto/ventas/'+id+'/detalle', {cache:'no-store'}).then(r=>r.json());
+      ventaDetActual = d;
+      document.getElementById('vdet-id').textContent = String(id).padStart(5,'0');
+      document.getElementById('vdet-cliente').textContent = d.cliente||'—';
+      document.getElementById('vdet-tel').textContent = d.telefono||'—';
+      document.getElementById('vdet-rep').textContent = d.repartidor||'—';
+      document.getElementById('vdet-fecha').textContent = (d.fecha||'').slice(0,16);
+      document.getElementById('vdet-pago').textContent = d.notas && d.notas.includes('corriente') ? 'Cuenta corriente' : (d.notas||'Efectivo');
+      document.getElementById('vdet-estado').textContent = d.estado==='pendiente' ? '⏳ Pendiente' : '✅ Entregado';
+      document.getElementById('vdet-total').textContent = fmt(d.total);
+      // Items
+      var cont = document.getElementById('vdet-items');
+      cont.innerHTML = '';
+      (d.items||[]).forEach(i => {
+        var row = document.createElement('div');
+        row.className = 'flex justify-between text-xs';
+        row.innerHTML = '<span>'+i.cantidad+'× '+i.nombre+'</span><span class="text-neon">'+fmt(i.subtotal)+'</span>';
+        cont.appendChild(row);
+      });
+      // Botón entregar si pendiente
+      var btnEntregar = document.getElementById('vdet-btn-entregar');
+      if (d.estado === 'pendiente') {
+        btnEntregar.classList.remove('hidden');
+      } else {
+        btnEntregar.classList.add('hidden');
+      }
+      document.getElementById('modal-venta-det').classList.remove('hidden');
+    } catch(e){ alert('Error cargando venta.'); }
+  }
+
+  function cerrarVentaDet(){ document.getElementById('modal-venta-det').classList.add('hidden'); }
+
+  async function entregarVentaDet(){
+    if (!ventaDetActual) return;
+    try {
+      await fetch(API_URL+'/reparto/ventas/'+ventaDetActual.id+'/estado?estado=entregado', {method:'PUT'});
+      cerrarVentaDet();
+      cargarVentas();
+      alert('✓ Marcado como entregado.');
+    } catch(e){ alert('Error.'); }
+  }
+
+  async function wspVentaDet(){
+    if (!ventaDetActual) return;
+    try {
+      var res = await fetch(API_URL+'/reparto/ventas/'+ventaDetActual.id+'/enviar-comprobante-wsp', {cache:'no-store'});
+      var data = await res.json();
+      if (data.wa_link) window.open(data.wa_link, '_blank');
+      else alert('Sin teléfono registrado.');
+    } catch(e){ alert('Error.'); }
+  }
+
+  // ===== PEDIDOS CATÁLOGO =====
+  async function renderPedidos(){
+    var id_vendedor = document.getElementById('filtro-vendedor-pedidos').value;
+    var estado = document.getElementById('filtro-estado-pedidos').value;
+    try {
+      var url = API_URL+'/catalogo-pedidos';
+      if (id_vendedor) url += '?id_vendedor='+id_vendedor;
+      if (estado) url += (id_vendedor?'&':'?')+'estado='+estado;
       var res = await fetch(url);
-      pedidos = await res.json();
-      
+      var pedidos = await res.json();
       var cont = document.getElementById('lista-pedidos');
       cont.innerHTML = '';
-      if (!pedidos.length){ cont.innerHTML = '<p class="text-gray-600 text-sm">Sin pedidos.</p>'; return; }
-      
+      if (!pedidos.length){ cont.innerHTML='<p class="text-gray-600 text-sm">Sin pedidos.</p>'; return; }
       pedidos.forEach(p => {
         var div = document.createElement('div');
         div.className = 'bg-gray-900 border border-gray-700 rounded-lg p-3';
         div.innerHTML = `
           <div class="flex justify-between items-start mb-2">
             <div>
-              <p class="font-bold">#${p.id} - ${p.cliente_nombre}</p>
-              <p class="text-xs text-gray-500">${p.cliente_telefono}</p>
+              <p class="font-bold">#${p.id} · ${p.cliente_nombre}</p>
+              <p class="text-xs text-gray-500">📞 ${p.cliente_telefono} · ${(p.fecha||'').slice(0,10)}</p>
             </div>
-            <p class="text-neon font-bold">$ ${p.total.toFixed(2)}</p>
+            <p class="text-neon font-bold">${fmt(p.total)}</p>
           </div>
-          <div class="flex gap-2 mb-2 text-xs">
-            <span class="bg-gray-800 px-2 py-1 rounded">${p.estado}</span>
-            <span class="bg-gray-800 px-2 py-1 rounded">${new Date(p.fecha).toLocaleDateString()}</span>
-          </div>
-          <select onchange="cambiarEstadoPedido(${p.id}, this.value)" class="w-full bg-black border border-gray-700 text-white rounded p-1 text-xs mb-2">
-            <option value="nuevo" ${p.estado=='nuevo'?'selected':''}>Nuevo</option>
-            <option value="contactado" ${p.estado=='contactado'?'selected':''}>Contactado</option>
-            <option value="confirmado" ${p.estado=='confirmado'?'selected':''}>Confirmado</option>
-            <option value="cancelado" ${p.estado=='cancelado'?'selected':''}>Cancelado</option>
-          </select>
-        `;
+          <select onchange="cambiarEstadoPedido(${p.id}, this.value)" class="w-full bg-black border border-gray-700 text-white rounded p-1.5 text-xs">
+            <option value="nuevo" ${p.estado=='nuevo'?'selected':''}>🆕 Nuevo</option>
+            <option value="contactado" ${p.estado=='contactado'?'selected':''}>📞 Contactado</option>
+            <option value="confirmado" ${p.estado=='confirmado'?'selected':''}>✅ Confirmado</option>
+            <option value="cancelado" ${p.estado=='cancelado'?'selected':''}>❌ Cancelado</option>
+          </select>`;
         cont.appendChild(div);
       });
     } catch(e){ console.error(e); }
@@ -147,83 +460,74 @@
 
   async function cambiarEstadoPedido(id, estado){
     try {
-      await fetch(API_URL+'/catalogo-pedidos/'+id+'/estado', {
-        method: 'PUT',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify(estado)
-      });
+      await fetch(API_URL+'/catalogo-pedidos/'+id+'/estado', {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(estado)});
       await renderPedidos();
     } catch(e){ console.error(e); }
   }
 
+  // ===== CATÁLOGO VISIBLE =====
   async function cargarCatalogoCotrol(){
     var id = document.getElementById('select-vendedor-cat').value;
-    if (!id){ document.getElementById('lista-catalogo').innerHTML = ''; return; }
-    
+    if (!id){ document.getElementById('lista-catalogo').innerHTML=''; return; }
     try {
       var res = await fetch(API_URL+'/catalogo/'+id+'/productos-admin');
-      catalogoActual = await res.json(); // Guardar en variable global
-      
+      catalogoActual = await res.json();
       var cont = document.getElementById('lista-catalogo');
       cont.innerHTML = '';
-      
       catalogoActual.forEach(p => {
         var div = document.createElement('div');
-        div.className = 'bg-gray-900 border border-gray-700 rounded-lg p-3 flex justify-between items-center';
+        div.className = 'bg-gray-900 border border-gray-700 rounded-lg p-3 mb-2';
+        var btnClass = p.visible ? 'btn-toggle btn-visible' : 'btn-toggle btn-oculto';
+        var btnText  = p.visible ? '✅ VISIBLE' : '❌ OCULTO';
         div.innerHTML = `
-          <div class="flex-1">
-            <p class="font-bold">${p.nombre}</p>
-            <p class="text-xs text-gray-500">$ ${p.precio_mayorista}</p>
+          <div class="flex justify-between items-center mb-2">
+            <div class="flex-1">
+              <p class="font-bold text-sm">${p.nombre}</p>
+              <p class="text-xs text-gray-500">$ ${p.precio_mayorista}</p>
+            </div>
+            <button onclick="toggleVisible(${id}, ${p.id}, ${!p.visible})" class="${btnClass}">${btnText}</button>
           </div>
-          <div class="flex gap-2 items-center">
-            <input type="checkbox" id="check-${p.id}" ${p.visible?'checked':''} onchange="toggleVisibleProducto(${id}, ${p.id}, this.checked)" class="cursor-pointer w-5 h-5">
-            <input type="number" id="orden-${p.id}" value="${p.orden}" step="1" onchange="cambiarOrdenProducto(${id}, ${p.id}, this.value, this.checked)" class="w-16 bg-black border border-gray-700 text-white rounded p-1 text-xs" placeholder="Orden">
-          </div>
-        `;
+          <div>
+            <label class="text-xs text-gray-500">Orden (1, 2, 3...)</label>
+            <input type="number" id="orden-${p.id}" value="${p.orden}" step="1" onchange="cambiarOrden(${id}, ${p.id}, this.value)" class="w-full bg-black border border-gray-700 text-white rounded p-1.5 text-sm mt-1">
+          </div>`;
         cont.appendChild(div);
       });
     } catch(e){ console.error(e); }
   }
 
-  async function toggleVisibleProducto(id_vendedor, id_producto, visible){
+  async function toggleVisible(id_vendedor, id_producto, visible){
     try {
-      // Obtener el orden actual sin cambiar
       var orden_input = document.getElementById('orden-'+id_producto);
-      var orden = orden_input ? parseInt(orden_input.value) : 0;
-      
+      var orden = orden_input ? parseInt(orden_input.value)||0 : 0;
       await fetch(API_URL+'/catalogo/'+id_vendedor+'/productos/'+id_producto+'/visible', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ visible: visible, orden: orden })
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({visible, orden})
       });
-      console.log('✓ Visibilidad actualizada:', visible ? 'Visible' : 'Oculto');
+      await cargarCatalogoCotrol();
     } catch(e){ console.error(e); }
   }
 
-  async function cambiarOrdenProducto(id_vendedor, id_producto, orden){
+  async function cambiarOrden(id_vendedor, id_producto, orden){
     try {
-      // Obtener estado del checkbox (visible actual)
-      var check = document.getElementById('check-'+id_producto);
-      var visible = check ? check.checked : false;
-      
+      var prod = catalogoActual.find(p => p.id == id_producto);
+      var visible = prod ? prod.visible : false;
       await fetch(API_URL+'/catalogo/'+id_vendedor+'/productos/'+id_producto+'/visible', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ visible: visible, orden: parseInt(orden) })
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({visible, orden: parseInt(orden)||0})
       });
-      console.log('✓ Orden actualizado:', orden);
     } catch(e){ console.error(e); }
   }
 
+  // ===== MÁRGENES =====
   async function cargarMargen(){
     var id = document.getElementById('select-vendedor-margen').value;
     if (!id){ document.getElementById('panel-margen').classList.add('hidden'); return; }
-    
     try {
       var res = await fetch(API_URL+'/reparto/vendedor/margen/'+id);
       var data = await res.json();
       vendedorActual = id;
-      document.getElementById('input-margen').value = data.margen || 0;
+      document.getElementById('input-margen').value = data.margen||0;
       document.getElementById('panel-margen').classList.remove('hidden');
     } catch(e){ console.error(e); }
   }
@@ -233,20 +537,21 @@
     var margen = parseFloat(document.getElementById('input-margen').value);
     try {
       await fetch(API_URL+'/reparto/vendedor/margen/'+vendedorActual, {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ margen_venta_porcentaje_default: margen })
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({margen_venta_porcentaje_default: margen})
       });
       alert('✓ Margen guardado');
     } catch(e){ console.error(e); }
   }
 
   function switchTab(tab){
-    ['pedidos', 'catalogo', 'margenes'].forEach(t => {
+    ['clientes','ventas','pedidos','catalogo','margenes'].forEach(t => {
       document.getElementById('tab-'+t).classList[t===tab?'remove':'add']('hidden');
     });
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
     event.target.classList.add('active');
+    if (tab==='ventas') cargarVentas();
+    if (tab==='pedidos') renderPedidos();
   }
 
   function salirAdmin(){
