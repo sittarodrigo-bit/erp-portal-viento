@@ -79,11 +79,13 @@
         <h3 class="font-bold" id="det-nombre">Cliente</h3>
         <button onclick="cerrarDetalle()" class="text-gray-500 text-2xl">×</button>
       </div>
-      <p id="det-info" class="text-gray-500 text-xs mb-3"></p>
+      <p id="det-info" class="text-gray-500 text-xs mb-1"></p>
+      <p id="det-tel" class="text-gray-400 text-xs mb-3"></p>
       <div class="flex gap-2 mb-4">
         <a id="det-wsp" href="#" target="_blank" class="flex-1 bg-green-600 text-white font-bold rounded-lg py-2.5 text-sm text-center">📲 WSP</a>
         <a id="det-mapa" href="#" target="_blank" class="flex-1 bg-blue-700 text-white font-bold rounded-lg py-2.5 text-sm text-center">🗺️</a>
         <button onclick="editarClienteActual()" class="border border-gray-600 text-gray-300 rounded-lg px-3 text-sm">✏️</button>
+        <button onclick="eliminarClienteActual()" class="border border-red-800 text-red-400 rounded-lg px-3 text-sm">🗑️</button>
       </div>
       <div class="bg-black border border-gray-800 rounded-lg p-3 mb-3">
         <div class="flex gap-2 mb-2">
@@ -93,6 +95,15 @@
         <div id="lista-items-venta" class="space-y-2 mb-2"></div>
         <button onclick="agregarItemVenta()" class="w-full border border-gray-700 text-gray-300 rounded-lg py-2 text-sm mb-2">+ Agregar producto</button>
         <p class="text-right text-sm mb-2">Total: <span id="total-venta" class="text-neon font-bold">$ 0</span></p>
+        <div class="mb-2">
+          <label class="block text-xs text-gray-500 mb-1">Forma de pago</label>
+          <div class="grid grid-cols-2 gap-1">
+            <button onclick="setFormaPago('Efectivo')" id="fp-Efectivo" class="fp-btn bg-neon text-black font-bold rounded py-2 text-xs">💵 Efectivo</button>
+            <button onclick="setFormaPago('Transferencia')" id="fp-Transferencia" class="fp-btn bg-gray-800 text-gray-300 rounded py-2 text-xs">🏦 Transferencia</button>
+            <button onclick="setFormaPago('QR')" id="fp-QR" class="fp-btn bg-gray-800 text-gray-300 rounded py-2 text-xs">📱 QR</button>
+            <button onclick="setFormaPago('Cuenta corriente')" id="fp-Cuenta corriente" class="fp-btn bg-gray-800 text-gray-300 rounded py-2 text-xs">📋 Cta. Cte.</button>
+          </div>
+        </div>
         <button onclick="guardarVenta()" class="w-full bg-neon text-black font-bold rounded-lg py-2.5 text-sm">Registrar</button>
       </div>
       <button onclick="registrarVisitaSinCompra()" class="w-full border border-gray-700 text-gray-400 rounded-lg py-2 text-sm mb-3">Visita sin compra</button>
@@ -158,6 +169,7 @@
   const API_URL = '/api';
   let empleado = null;
   let clientes = [];
+  let formaPagoSel = 'Efectivo';
   let productos = [];
   let clienteActual = null;
   let itemsVenta = [];
@@ -291,14 +303,39 @@
   function abrirDetalle(c){
     clienteActual = c;
     document.getElementById('det-nombre').textContent = c.nombre;
-    document.getElementById('det-info').textContent = (c.direccion||'') + (c.localidad?' · '+c.localidad:'');
+    document.getElementById('det-info').textContent = [c.direccion, c.localidad].filter(Boolean).join(' · ');
+    document.getElementById('det-tel').textContent = c.telefono ? '📞 ' + c.telefono : '';
     var tel = (c.telefono||'').replace(/[^0-9]/g,''); if(tel && !tel.startsWith('54')) tel='54'+tel;
     document.getElementById('det-wsp').href = tel ? 'https://wa.me/'+tel : '#';
+    var lat = c.latitud, lng = c.longitud;
+    document.getElementById('det-mapa').href = (lat && lng) ? 'https://maps.google.com/?q='+lat+','+lng : '#';
     itemsVenta = [];
     agregarItemVenta();
     setTipoVenta('venta');
+    setFormaPago('Efectivo');
     cargarHistorial(c.id);
     document.getElementById('modal-detalle').classList.remove('hidden');
+  }
+
+  function setFormaPago(fp){
+    formaPagoSel = fp;
+    document.querySelectorAll('.fp-btn').forEach(b => {
+      b.className = b.id === 'fp-'+fp
+        ? 'fp-btn bg-neon text-black font-bold rounded py-2 text-xs'
+        : 'fp-btn bg-gray-800 text-gray-300 rounded py-2 text-xs';
+    });
+  }
+
+  async function eliminarClienteActual(){
+    if (!clienteActual) return;
+    if (!confirm('¿Eliminar a ' + clienteActual.nombre + '? Esta acción no se puede deshacer.')) return;
+    try {
+      var res = await fetch(API_URL+'/reparto/clientes/'+clienteActual.id, { method: 'DELETE' });
+      if (!res.ok){ alert('Error al eliminar.'); return; }
+      cerrarDetalle();
+      cargarClientes();
+      alert('✓ Cliente eliminado.');
+    } catch(e){ alert('Error.'); }
   }
 
   function cerrarDetalle(){ document.getElementById('modal-detalle').classList.add('hidden'); }
@@ -381,17 +418,24 @@
       id_cliente: clienteActual.id,
       id_empleado: empleado ? empleado.id_empleado || empleado.id : null,
       tipo: tipoVentaSel,
+      forma_pago: formaPagoSel,
+      notas: formaPagoSel === 'Cuenta corriente' ? 'Pago en cuenta corriente' : null,
       items: items
     };
     try {
       var res = await fetch(API_URL+'/reparto/ventas', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
       var r = await res.json();
       if (!res.ok){ alert('Error: '+(r.detail||'')); return; }
-      alert('Registrado ✓');
+      var id_venta = r.id;
       itemsVenta = []; agregarItemVenta();
+      setFormaPago('Efectivo');
       cargarHistorial(clienteActual.id);
       cargarClientes();
       cargarNotificaciones();
+      // Preguntar si quiere comprobante
+      if (confirm('✓ Registrado. ¿Enviar comprobante por WhatsApp?')){
+        enviarComprobantePorWSP(id_venta);
+      }
     } catch(e){ alert('Error.'); }
   }
 
@@ -415,18 +459,47 @@
     try {
       var h = await fetch(API_URL+'/reparto/clientes/'+id+'/historial', {cache:'no-store'}).then(r=>r.json());
       var filas = [];
-      (h.ventas||[]).forEach(v => filas.push({fecha:v.fecha, id:v.id, clickable:true, txt:(v.tipo==='venta'?'💰':'📋')+' '+fmt(v.total)+(v.estado==='pendiente'?' (pend.)':'')}));
-      (h.visitas||[]).forEach(v => { if(v.resultado==='sin_compra') filas.push({fecha:v.fecha, clickable:false, txt:'👋 Sin compra'}); });
+      (h.ventas||[]).forEach(v => {
+        var icono = v.tipo==='venta' ? '💰' : '📋';
+        var estado = v.estado==='pendiente' ? ' <span class="text-yellow-400">(pendiente)</span>' : '';
+        var fp = v.forma_pago ? ' · '+v.forma_pago : '';
+        filas.push({
+          fecha: v.fecha,
+          id: v.id,
+          clickable: true,
+          pendiente: v.estado === 'pendiente',
+          txt: icono + ' ' + fmt(v.total) + fp + estado
+        });
+      });
+      (h.visitas||[]).forEach(v => {
+        if(v.resultado==='sin_compra') filas.push({fecha:v.fecha, clickable:false, txt:'👋 Sin compra'});
+      });
       filas.sort((a,b) => (b.fecha||'').localeCompare(a.fecha||''));
       cont.innerHTML = filas.length ? '' : '<p class="text-gray-600">Sin movimientos.</p>';
       filas.slice(0,15).forEach(f => {
         var row = document.createElement('div');
-        row.className = 'flex justify-between text-gray-400 border-b border-gray-800 py-1' + (f.clickable?' cursor-pointer hover:text-white':'');
-        row.innerHTML = '<span>'+f.txt+'</span><span class="text-gray-600 text-xs">'+(f.fecha||'').slice(0,10)+'</span>';
+        row.className = 'border-b border-gray-800 py-2' + (f.clickable?' cursor-pointer':'');
+        var html = '<div class="flex justify-between items-center">';
+        html += '<span class="text-xs text-gray-300">'+f.txt+'</span>';
+        html += '<span class="text-gray-600 text-xs">'+(f.fecha||'').slice(0,10)+'</span>';
+        html += '</div>';
+        if (f.pendiente) {
+          html += '<button onclick="event.stopPropagation(); entregarPedido('+f.id+')" class="mt-1 w-full bg-green-700 text-white rounded py-1 text-xs font-bold">✓ Marcar entregado</button>';
+        }
+        row.innerHTML = html;
         if (f.clickable) row.onclick = () => abrirAccionesVenta(f.id);
         cont.appendChild(row);
       });
     } catch(e){ cont.innerHTML='<p class="text-gray-600">—</p>'; }
+  }
+
+  async function entregarPedido(id){
+    try {
+      await fetch(API_URL+'/reparto/ventas/'+id+'/estado?estado=entregado', {method:'PUT'});
+      cargarHistorial(clienteActual.id);
+      cargarClientes();
+      alert('✓ Pedido marcado como entregado.');
+    } catch(e){ alert('Error.'); }
   }
 
   function abrirAccionesVenta(id){
@@ -463,6 +536,7 @@
       doc.text('N° '+String(d.id).padStart(5,'0')+'  ·  '+d.fecha.slice(0,16).replace('T',' '), 40, y, {align:'center'}); y+=6;
       doc.setFontSize(8);
       doc.text('Cliente: '+(d.cliente||''), 6, y); y+=4;
+      if (d.repartidor) { doc.text('Vendedor: '+d.repartidor, 6, y); y+=4; }
       doc.line(6, y, 74, y); y+=4;
       doc.setFont('helvetica','normal'); doc.setFontSize(7.5);
       (d.items||[]).forEach(i => {
@@ -472,7 +546,15 @@
       });
       doc.line(6, y, 74, y); y+=5;
       doc.setFont('helvetica','bold'); doc.setFontSize(11);
-      doc.text('TOTAL', 6, y); doc.text('$ '+(parseFloat(d.total)||0).toLocaleString('es-AR'), 74, y, {align:'right'}); y+=8;
+      doc.text('TOTAL', 6, y); doc.text('$ '+(parseFloat(d.total)||0).toLocaleString('es-AR'), 74, y, {align:'right'}); y+=6;
+      if (d.notas && d.notas.includes('Cuenta corriente')){
+        doc.setFont('helvetica','normal'); doc.setFontSize(8);
+        doc.text('Forma de pago: Cuenta corriente', 6, y); y+=4;
+      } else if (d.notas) {
+        doc.setFont('helvetica','normal'); doc.setFontSize(8);
+        doc.text('Pago: '+(d.notas||''), 6, y); y+=4;
+      }
+      y+=2;
       doc.setFont('helvetica','normal'); doc.setFontSize(6.5);
       doc.text('Sin valor fiscal.', 40, y, {align:'center'});
       doc.save('comprobante_'+String(d.id).padStart(5,'0')+'.pdf');
