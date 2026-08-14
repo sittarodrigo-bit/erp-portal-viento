@@ -27,6 +27,7 @@
   <div class="border-b border-gray-800 px-2 flex overflow-x-auto bg-gray-950">
     <button class="tab-btn active" onclick="switchTab('clientes')">👥 Clientes</button>
     <button class="tab-btn" onclick="switchTab('ventas')">💰 Ventas</button>
+    <button class="tab-btn" onclick="switchTab('resumen')">📊 Hoy</button>
     <button class="tab-btn" onclick="switchTab('pedidos')">📲 Catálogo</button>
     <button class="tab-btn" onclick="switchTab('catalogo')">🎨 Visible</button>
     <button class="tab-btn" onclick="switchTab('margenes')">⚙️ Márgenes</button>
@@ -43,6 +44,46 @@
         <button onclick="cargarClientes()" class="bg-neon text-black font-bold px-4 py-2 rounded text-sm">🔄</button>
       </div>
       <div id="lista-clientes-admin" class="space-y-2"></div>
+    </div>
+
+    <!-- TAB: RESUMEN DEL DÍA -->
+    <div id="tab-resumen" class="hidden">
+      <div class="flex gap-2 mb-4">
+        <input type="date" id="filtro-fecha-resumen" class="flex-1 bg-gray-900 border border-gray-700 rounded-lg p-2 text-sm">
+        <button onclick="cargarResumen()" class="bg-neon text-black font-bold px-4 py-2 rounded text-sm">🔄 Ver</button>
+      </div>
+
+      <!-- Tarjetas resumen -->
+      <div class="grid grid-cols-2 gap-3 mb-6">
+        <div class="bg-gray-900 border border-gray-700 rounded-lg p-3 text-center">
+          <p class="text-xs text-gray-500 mb-1">💰 Total recaudado</p>
+          <p id="res-total" class="text-neon font-bold text-xl">$ 0</p>
+        </div>
+        <div class="bg-gray-900 border border-gray-700 rounded-lg p-3 text-center">
+          <p class="text-xs text-gray-500 mb-1">🧾 Ventas</p>
+          <p id="res-cant" class="text-white font-bold text-xl">0</p>
+        </div>
+        <div class="bg-gray-900 border border-gray-700 rounded-lg p-3 text-center">
+          <p class="text-xs text-gray-500 mb-1">📋 Pedidos pendientes</p>
+          <p id="res-pedidos" class="text-yellow-400 font-bold text-xl">0</p>
+        </div>
+        <div class="bg-gray-900 border border-gray-700 rounded-lg p-3 text-center">
+          <p class="text-xs text-gray-500 mb-1">👋 Visitas sin compra</p>
+          <p id="res-visitas" class="text-gray-400 font-bold text-xl">0</p>
+        </div>
+      </div>
+
+      <!-- Por forma de pago -->
+      <h3 class="text-sm font-bold text-gray-400 mb-2">💳 Por forma de pago</h3>
+      <div id="res-formas-pago" class="space-y-2 mb-6"></div>
+
+      <!-- Por repartidor -->
+      <h3 class="text-sm font-bold text-gray-400 mb-2">👤 Por repartidor</h3>
+      <div id="res-por-repartidor" class="space-y-2 mb-6"></div>
+
+      <!-- Ventas del día -->
+      <h3 class="text-sm font-bold text-gray-400 mb-2">🧾 Ventas del día</h3>
+      <div id="res-ventas-dia" class="space-y-2"></div>
     </div>
 
     <!-- TAB: VENTAS -->
@@ -193,6 +234,8 @@
   let fmt = n => '$ ' + (Math.round((parseFloat(n)||0)*100)/100).toLocaleString('es-AR');
 
   async function init(){
+    // Poner fecha de hoy en el filtro
+    document.getElementById('filtro-fecha-resumen').value = new Date().toISOString().slice(0,10);
     await cargarRepartidores();
     await cargarClientes();
   }
@@ -544,14 +587,121 @@
     } catch(e){ console.error(e); }
   }
 
+  // ===== RESUMEN DEL DÍA =====
+  async function cargarResumen(){
+    var fecha = document.getElementById('filtro-fecha-resumen').value;
+    try {
+      // Traer todas las ventas del día
+      var url = API_URL+'/reparto/ventas?';
+      var res = await fetch(url, {cache:'no-store'});
+      var todasVentas = await res.json();
+
+      // Filtrar por fecha
+      var hoy = fecha || new Date().toISOString().slice(0,10);
+      var ventasDia = todasVentas.filter(v => (v.fecha||'').slice(0,10) === hoy && v.tipo === 'venta' && v.estado === 'entregado');
+      var pedidosDia = todasVentas.filter(v => (v.fecha||'').slice(0,10) === hoy && v.estado === 'pendiente');
+
+      // Traer visitas
+      var totalRecaudado = ventasDia.reduce((a,v) => a + (parseFloat(v.total)||0), 0);
+      var cantVentas = ventasDia.length;
+      var cantPedidos = pedidosDia.length;
+
+      // Actualizar tarjetas
+      document.getElementById('res-total').textContent = fmt(totalRecaudado);
+      document.getElementById('res-cant').textContent = cantVentas;
+      document.getElementById('res-pedidos').textContent = cantPedidos;
+
+      // Por forma de pago
+      var formasPago = {};
+      ventasDia.forEach(v => {
+        var fp = 'Efectivo';
+        if (v.notas && v.notas.toLowerCase().includes('corriente')) fp = 'Cuenta corriente';
+        else if (v.notas && v.notas.toLowerCase().includes('transfer')) fp = 'Transferencia';
+        else if (v.notas && v.notas.toLowerCase().includes('qr')) fp = 'QR';
+        formasPago[fp] = (formasPago[fp]||0) + (parseFloat(v.total)||0);
+      });
+      var iconosFP = { 'Efectivo':'💵', 'Transferencia':'🏦', 'QR':'📱', 'Cuenta corriente':'📋' };
+      var contFP = document.getElementById('res-formas-pago');
+      contFP.innerHTML = '';
+      if (!Object.keys(formasPago).length) {
+        contFP.innerHTML = '<p class="text-gray-600 text-sm">Sin ventas entregadas.</p>';
+      } else {
+        Object.entries(formasPago).sort((a,b) => b[1]-a[1]).forEach(([fp, monto]) => {
+          var div = document.createElement('div');
+          div.className = 'flex justify-between items-center bg-gray-900 border border-gray-700 rounded-lg p-3';
+          div.innerHTML = `<span class="text-sm">${iconosFP[fp]||'💳'} ${fp}</span><span class="text-neon font-bold">${fmt(monto)}</span>`;
+          contFP.appendChild(div);
+        });
+      }
+
+      // Por repartidor
+      var porRep = {};
+      ventasDia.forEach(v => {
+        var rep = v.repartidor || 'Sin asignar';
+        if (!porRep[rep]) porRep[rep] = { total: 0, cant: 0 };
+        porRep[rep].total += parseFloat(v.total)||0;
+        porRep[rep].cant++;
+      });
+      var contRep = document.getElementById('res-por-repartidor');
+      contRep.innerHTML = '';
+      if (!Object.keys(porRep).length) {
+        contRep.innerHTML = '<p class="text-gray-600 text-sm">Sin datos.</p>';
+      } else {
+        Object.entries(porRep).sort((a,b) => b[1].total-a[1].total).forEach(([rep, data]) => {
+          var div = document.createElement('div');
+          div.className = 'flex justify-between items-center bg-gray-900 border border-gray-700 rounded-lg p-3';
+          div.innerHTML = `
+            <div>
+              <p class="text-sm font-bold">🚚 ${rep}</p>
+              <p class="text-xs text-gray-500">${data.cant} venta${data.cant!==1?'s':''}</p>
+            </div>
+            <span class="text-neon font-bold">${fmt(data.total)}</span>`;
+          contRep.appendChild(div);
+        });
+      }
+
+      // Ventas del día detalle
+      var contVentas = document.getElementById('res-ventas-dia');
+      contVentas.innerHTML = '';
+      var todasDia = todasVentas.filter(v => (v.fecha||'').slice(0,10) === hoy);
+      if (!todasDia.length) {
+        contVentas.innerHTML = '<p class="text-gray-600 text-sm">Sin movimientos.</p>';
+      } else {
+        todasDia.sort((a,b) => (b.fecha||'').localeCompare(a.fecha||'')).forEach(v => {
+          var div = document.createElement('div');
+          div.className = 'bg-gray-900 border border-gray-700 rounded-lg p-3 cursor-pointer hover:border-neon';
+          var icono = v.tipo==='venta' ? '💰' : '📋';
+          var estadoBadge = v.estado==='pendiente'
+            ? '<span class="bg-yellow-800 text-yellow-300 px-2 py-0.5 rounded text-xs ml-1">Pendiente</span>'
+            : '<span class="bg-green-900 text-green-300 px-2 py-0.5 rounded text-xs ml-1">Entregado</span>';
+          div.innerHTML = `
+            <div class="flex justify-between items-center">
+              <div>
+                <p class="text-sm font-bold">${icono} ${v.cliente} ${estadoBadge}</p>
+                <p class="text-xs text-gray-500">🚚 ${v.repartidor||'—'} · ${(v.fecha||'').slice(11,16)}</p>
+              </div>
+              <p class="text-neon font-bold">${fmt(v.total)}</p>
+            </div>`;
+          div.onclick = () => abrirVentaDet(v.id);
+          contVentas.appendChild(div);
+        });
+      }
+
+      // Visitas sin compra (aproximar)
+      document.getElementById('res-visitas').textContent = todasDia.filter(v=>v.tipo==='venta'&&v.estado!=='entregado').length || '—';
+
+    } catch(e){ console.error(e); alert('Error cargando resumen.'); }
+  }
+
   function switchTab(tab){
-    ['clientes','ventas','pedidos','catalogo','margenes'].forEach(t => {
+    ['clientes','ventas','resumen','pedidos','catalogo','margenes'].forEach(t => {
       document.getElementById('tab-'+t).classList[t===tab?'remove':'add']('hidden');
     });
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
     event.target.classList.add('active');
     if (tab==='ventas') cargarVentas();
     if (tab==='pedidos') renderPedidos();
+    if (tab==='resumen') cargarResumen();
   }
 
   function salirAdmin(){
