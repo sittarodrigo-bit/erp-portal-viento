@@ -10818,10 +10818,16 @@ def catalogo_obtener(id_vendedor: int):
         if not vendedor:
             raise HTTPException(status_code=404, detail="Vendedor no encontrado.")
         
-      # Productos activos
-        cur.execute("""SELECT id, nombre, precio_mayorista, precio_minorista, imagen_url
-                       FROM productos WHERE COALESCE(activo, true)=true
-                       ORDER BY nombre""")
+     # Productos VISIBLES en catálogo
+        cur.execute("""
+            SELECT p.id, p.nombre, p.precio_mayorista, p.precio_minorista, p.imagen_url
+            FROM productos p
+            INNER JOIN catalogo_productos_visibles cpv 
+                ON p.id = cpv.id_producto 
+                AND cpv.id_vendedor = %s 
+                AND cpv.visible = true
+            ORDER BY cpv.orden, p.nombre
+        """, (id_vendedor,))
         productos = fetchall_dict(cur)
         
         return {
