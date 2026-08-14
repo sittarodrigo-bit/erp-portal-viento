@@ -10818,7 +10818,7 @@ def catalogo_obtener(id_vendedor: int):
         if not vendedor:
             raise HTTPException(status_code=404, detail="Vendedor no encontrado.")
         
-        # Productos activos
+      # Productos activos
         cur.execute("""SELECT id, nombre, precio_mayorista, precio_minorista, imagen_url
                        FROM productos WHERE COALESCE(activo, true)=true
                        ORDER BY nombre""")
