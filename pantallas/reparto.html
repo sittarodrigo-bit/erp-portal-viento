@@ -95,6 +95,21 @@
         <div id="lista-items-venta" class="space-y-2 mb-2"></div>
         <button onclick="agregarItemVenta()" class="w-full border border-gray-700 text-gray-300 rounded-lg py-2 text-sm mb-2">+ Agregar producto</button>
         <p class="text-right text-sm mb-2">Total: <span id="total-venta" class="text-neon font-bold">$ 0</span></p>
+        <!-- DESCUENTO / BONIFICACIÓN -->
+        <div class="bg-gray-900 border border-gray-700 rounded-lg p-2 mb-2">
+          <div class="flex items-center gap-2 mb-1">
+            <label class="text-xs text-gray-500 flex-1">🏷️ Descuento / Bonificación</label>
+            <div class="flex gap-1">
+              <button onclick="setTipoDesc('%')" id="desc-tipo-pct" class="px-2 py-1 text-xs font-bold rounded bg-neon text-black">%</button>
+              <button onclick="setTipoDesc('$')" id="desc-tipo-monto" class="px-2 py-1 text-xs font-bold rounded bg-gray-700 text-gray-300">$</button>
+            </div>
+          </div>
+          <div class="flex gap-2 items-center">
+            <input id="input-descuento" type="number" min="0" step="0.5" value="0" oninput="calcularTotalVenta()" placeholder="0" class="flex-1 bg-black border border-gray-700 text-white rounded p-1.5 text-sm text-center">
+            <span id="desc-ahorro" class="text-green-400 text-xs font-bold"></span>
+          </div>
+        </div>
+        <p class="text-right text-sm font-bold mb-2">A pagar: <span id="total-con-descuento" class="text-neon text-lg font-bold">$ 0</span></p>
         <div class="mb-2">
           <label class="block text-xs text-gray-500 mb-1">Forma de pago</label>
           <div class="grid grid-cols-2 gap-1">
@@ -173,6 +188,24 @@
   let productos = [];
   let clienteActual = null;
   let itemsVenta = [];
+  let tipoDescuento = '%'; // '%' o '$'
+
+  function setTipoDesc(tipo){
+    tipoDescuento = tipo;
+    document.getElementById('desc-tipo-pct').className = 'px-2 py-1 text-xs font-bold rounded ' + (tipo==='%' ? 'bg-neon text-black' : 'bg-gray-700 text-gray-300');
+    document.getElementById('desc-tipo-monto').className = 'px-2 py-1 text-xs font-bold rounded ' + (tipo==='$' ? 'bg-neon text-black' : 'bg-gray-700 text-gray-300');
+    calcularTotalVenta();
+  }
+
+  function calcularDescuento(subtotal){
+    var val = parseFloat(document.getElementById('input-descuento').value) || 0;
+    if (tipoDescuento === '%') {
+      val = Math.min(val, 100);
+      return subtotal * val / 100;
+    } else {
+      return Math.min(val, subtotal);
+    }
+  }
   let tipoVentaSel = 'venta';
   let ventaActualId = null;
   let margenVendedor = null;
@@ -313,6 +346,10 @@
     agregarItemVenta();
     setTipoVenta('venta');
     setFormaPago('Efectivo');
+    // Resetear descuento
+    var inp = document.getElementById('input-descuento');
+    if (inp) { inp.value = 0; }
+    calcularTotalVenta();
     cargarHistorial(c.id);
     document.getElementById('modal-detalle').classList.remove('hidden');
   }
@@ -406,20 +443,49 @@
   function quitarItem(idx){ itemsVenta.splice(idx,1); renderItemsVenta(); }
 
   function calcularTotalVenta(){
-    var t = itemsVenta.reduce((a,b) => a + (b.cantidad||0)*(b.precio_unitario||0), 0);
-    document.getElementById('total-venta').textContent = fmt(t);
+    var subtotal = itemsVenta.reduce((a,b) => a + (b.cantidad||0)*(b.precio_unitario||0), 0);
+    var descuento = calcularDescuento(subtotal);
+    var total = Math.max(0, subtotal - descuento);
+    document.getElementById('total-venta').textContent = fmt(subtotal);
+    document.getElementById('total-con-descuento').textContent = fmt(total);
+    if (descuento > 0) {
+      var etiqueta = tipoDescuento === '%'
+        ? '-' + (parseFloat(document.getElementById('input-descuento').value)||0) + '%'
+        : '';
+      document.getElementById('desc-ahorro').textContent = '- ' + fmt(descuento) + ' ' + etiqueta;
+    } else {
+      document.getElementById('desc-ahorro').textContent = '';
+    }
   }
 
   async function guardarVenta(){
     var items = itemsVenta.filter(i => i.id_producto && i.cantidad>0);
     if (!items.length){ alert('Agregá productos.'); return; }
     items = items.map(i => Object.assign({}, i, { margen_venta_porcentaje: margenVendedor }));
+    
+    var subtotal = items.reduce((a,b) => a + (b.cantidad||0)*(b.precio_unitario||0), 0);
+    var descuento = calcularDescuento(subtotal);
+    var totalFinal = Math.max(0, subtotal - descuento);
+    var descValor = parseFloat(document.getElementById('input-descuento').value) || 0;
+    
+    // Armar notas con descuento + forma de pago
+    var notas = [];
+    if (formaPagoSel === 'Cuenta corriente') notas.push('Pago en cuenta corriente');
+    else notas.push('Forma de pago: ' + formaPagoSel);
+    if (descuento > 0) {
+      var descTexto = tipoDescuento === '%' ? descValor + '% desc.' : '$ ' + descuento.toFixed(2) + ' desc.';
+      notas.push('Bonificación: ' + descTexto);
+    }
+    
     var body = {
       id_cliente: clienteActual.id,
       id_empleado: empleado ? empleado.id_empleado || empleado.id : null,
       tipo: tipoVentaSel,
-      forma_pago: formaPagoSel,
-      notas: formaPagoSel === 'Cuenta corriente' ? 'Pago en cuenta corriente' : null,
+      total_override: totalFinal,
+      descuento_monto: descuento,
+      descuento_tipo: tipoDescuento,
+      descuento_valor: descValor,
+      notas: notas.join(' · '),
       items: items
     };
     try {
@@ -429,10 +495,11 @@
       var id_venta = r.id;
       itemsVenta = []; agregarItemVenta();
       setFormaPago('Efectivo');
+      document.getElementById('input-descuento').value = 0;
+      calcularTotalVenta();
       cargarHistorial(clienteActual.id);
       cargarClientes();
       cargarNotificaciones();
-      // Preguntar si quiere comprobante
       if (confirm('✓ Registrado. ¿Enviar comprobante por WhatsApp?')){
         enviarComprobantePorWSP(id_venta);
       }
