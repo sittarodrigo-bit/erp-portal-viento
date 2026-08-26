@@ -11054,6 +11054,10 @@ def route_catalogo():
     """Página pública de catálogo (sin autenticación)."""
     return serve_html("catalogo.html")
 
+@app.get("/costo-produccion")
+def route_costo_produccion():
+    return serve_html("costo_real_produccion.html")
+
 @app.get("/catalogo-publico")
 def route_catalogo_publico():
     """Catálogo público para vendedores (sin autenticación)."""
