@@ -1,0 +1,640 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<script>window.PANEL_ACTUAL = "produccion";</script>
+<script src="/static/auth.js"></script>
+<meta charset="UTF-8">
+<title>Costo Real | Portal del Viento</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  :root {
+    --neon: #e4fc74;
+    --bg: #0a0a0a;
+    --surface: #111;
+    --border: #1f1f1f;
+    --text-muted: #666;
+  }
+  body { background: var(--bg); color: #e0e0e0; font-family: ui-sans-serif, system-ui, sans-serif; }
+  .neon { color: var(--neon); }
+  .bg-neon { background: var(--neon); }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; }
+  .input-dark { background: #000; border: 1px solid #2a2a2a; border-radius: 8px; color: #fff; padding: 8px 12px; width: 100%; font-size: 14px; outline: none; }
+  .input-dark:focus { border-color: var(--neon); }
+  .btn-neon { background: var(--neon); color: #000; font-weight: 700; border-radius: 8px; padding: 8px 18px; font-size: 13px; border: none; cursor: pointer; }
+  .btn-neon:hover { opacity: 0.88; }
+  .btn-ghost { background: transparent; border: 1px solid #333; color: #aaa; border-radius: 8px; padding: 7px 14px; font-size: 13px; cursor: pointer; }
+  .btn-ghost:hover { border-color: #666; color: #fff; }
+  .tag { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 4px; font-weight: 600; }
+  .tab-pill { padding: 6px 16px; border-radius: 20px; font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.15s; border: none; }
+  .tab-pill.active { background: var(--neon); color: #000; }
+  .tab-pill:not(.active) { background: #1a1a1a; color: #888; }
+  .tab-pill:not(.active):hover { background: #222; color: #ccc; }
+  .pct-bar { height: 6px; border-radius: 3px; background: #1a1a1a; overflow: hidden; }
+  .pct-bar-fill { height: 100%; border-radius: 3px; background: var(--neon); }
+  .pct-bar-fill.orange { background: #f97316; }
+  .pct-bar-fill.blue { background: #60a5fa; }
+  .pct-bar-fill.purple { background: #a78bfa; }
+  .section-label { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #555; margin-bottom: 12px; }
+  .cost-row { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid #161616; }
+  .cost-row:last-child { border-bottom: none; }
+  aside { width: 220px; background: #000; border-right: 1px solid #1a1a1a; flex-shrink: 0; }
+</style>
+</head>
+<body class="flex h-screen overflow-hidden">
+
+<!-- SIDEBAR -->
+<aside class="flex flex-col">
+  <div class="p-5 border-b border-gray-900 text-center">
+    <h1 class="neon font-bold text-sm tracking-widest uppercase">Portal del Viento</h1>
+    <p class="text-white text-xs mt-1 italic">ALFAJORES</p>
+  </div>
+  <nav class="flex-1 p-3 space-y-1 text-sm overflow-y-auto">
+    <a href="/admin"          class="block text-gray-500 hover:text-white py-2 px-3 rounded-lg">📊 Tablero</a>
+    <a href="/catalogo"       class="block text-gray-500 hover:text-white py-2 px-3 rounded-lg">📦 Catálogo</a>
+    <a href="/insumos"        class="block text-gray-500 hover:text-white py-2 px-3 rounded-lg">🧪 Insumos</a>
+    <a href="/produccion"     class="block text-gray-500 hover:text-white py-2 px-3 rounded-lg">🏭 Producción</a>
+    <a href="#"               class="block bg-gray-900 text-white py-2 px-3 rounded-lg border-l-4 neon font-medium" style="border-left-color:var(--neon)">💹 Costo Real</a>
+    <a href="/proveedores"    class="block text-gray-500 hover:text-white py-2 px-3 rounded-lg">🏪 Proveedores</a>
+    <a href="/distribuidores" class="block text-gray-500 hover:text-white py-2 px-3 rounded-lg">🚚 Distribuidores</a>
+    <a href="/empleados"      class="block text-gray-500 hover:text-white py-2 px-3 rounded-lg">👥 Empleados</a>
+    <a href="/reportes"       class="block text-gray-500 hover:text-white py-2 px-3 rounded-lg">📈 Reportes</a>
+  </nav>
+  <div id="usuario-info" class="p-3 border-t border-gray-900 text-xs text-gray-600 text-center"></div>
+</aside>
+
+<!-- MAIN -->
+<main class="flex-1 flex flex-col overflow-hidden">
+
+  <!-- HEADER -->
+  <header class="bg-black border-b border-gray-900 py-4 px-8 flex justify-between items-center shrink-0">
+    <div>
+      <h2 class="text-xl font-bold text-white">💹 Costo Real de Producción</h2>
+      <p class="text-xs text-gray-600 mt-0.5">Insumos + Mano de obra + Costos fijos → Costo real por unidad</p>
+    </div>
+    <div class="flex gap-2 items-center">
+      <!-- Selector de semana -->
+      <input type="week" id="semana-sel" class="input-dark w-44" onchange="cargarTodo()">
+      <button onclick="cargarTodo()" class="btn-ghost">↻ Actualizar</button>
+      <button onclick="calcularYMostrar()" class="btn-neon">📊 Calcular costo real</button>
+    </div>
+  </header>
+
+  <!-- TABS -->
+  <div class="bg-black border-b border-gray-900 px-8 py-3 flex gap-2 shrink-0">
+    <button class="tab-pill active" onclick="switchTab('resumen')">📊 Resumen</button>
+    <button class="tab-pill" onclick="switchTab('mano-obra')">👷 Mano de obra</button>
+    <button class="tab-pill" onclick="switchTab('costos-fijos')">🏭 Costos fijos</button>
+    <button class="tab-pill" onclick="switchTab('por-producto')">📦 Por producto</button>
+  </div>
+
+  <!-- CONTENT -->
+  <div class="flex-1 overflow-y-auto p-8">
+
+    <!-- TAB: RESUMEN -->
+    <div id="tab-resumen">
+
+      <!-- Tarjetas de resumen -->
+      <div class="grid grid-cols-4 gap-4 mb-8">
+        <div class="card p-4">
+          <p class="section-label">Unidades producidas</p>
+          <p id="res-unidades" class="text-3xl font-bold neon">—</p>
+          <p class="text-xs text-gray-600 mt-1">en la semana</p>
+        </div>
+        <div class="card p-4">
+          <p class="section-label">Costo insumos</p>
+          <p id="res-insumos" class="text-3xl font-bold text-orange-400">—</p>
+          <p class="text-xs text-gray-600 mt-1">según producción registrada</p>
+        </div>
+        <div class="card p-4">
+          <p class="section-label">Mano de obra</p>
+          <p id="res-mano-obra" class="text-3xl font-bold text-blue-400">—</p>
+          <p class="text-xs text-gray-600 mt-1">horas × valor/hora</p>
+        </div>
+        <div class="card p-4">
+          <p class="section-label">Costos fijos prorrateados</p>
+          <p id="res-fijos" class="text-3xl font-bold text-purple-400">—</p>
+          <p class="text-xs text-gray-600 mt-1">del período</p>
+        </div>
+      </div>
+
+      <!-- Costo total y por unidad -->
+      <div class="grid grid-cols-2 gap-6 mb-8">
+        <div class="card p-6">
+          <p class="section-label">Composición del costo total</p>
+          <div id="composicion-costo" class="space-y-3">
+            <p class="text-gray-600 text-sm">Calculá para ver el desglose.</p>
+          </div>
+        </div>
+        <div class="card p-6">
+          <p class="section-label">Costo real promedio por unidad</p>
+          <div id="costo-por-unidad" class="space-y-3">
+            <p class="text-gray-600 text-sm">Calculá para ver el costo por unidad.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Alerta de margen -->
+      <div id="alertas-margen" class="space-y-2"></div>
+    </div>
+
+    <!-- TAB: MANO DE OBRA -->
+    <div id="tab-mano-obra" class="hidden">
+      <div class="flex justify-between items-center mb-4">
+        <div>
+          <p class="section-label">Horas trabajadas en la semana</p>
+          <p class="text-xs text-gray-600">Traído automáticamente desde los fichajes del sistema</p>
+        </div>
+        <button onclick="cargarManoObra()" class="btn-ghost">↻ Recargar fichajes</button>
+      </div>
+
+      <div id="tabla-mano-obra" class="card overflow-hidden mb-6">
+        <table class="w-full text-sm">
+          <thead class="border-b border-gray-900">
+            <tr class="text-xs text-gray-600 uppercase">
+              <th class="p-4 text-left">Empleado</th>
+              <th class="p-4 text-center">Horas registradas</th>
+              <th class="p-4 text-center">Valor hora</th>
+              <th class="p-4 text-center">Total semana</th>
+              <th class="p-4 text-center">Asignación</th>
+            </tr>
+          </thead>
+          <tbody id="body-mano-obra" class="divide-y divide-gray-900">
+            <tr><td colspan="5" class="p-4 text-center text-gray-600">Cargando fichajes...</td></tr>
+          </tbody>
+          <tfoot class="border-t border-gray-800 bg-black">
+            <tr>
+              <td class="p-4 font-bold text-gray-400" colspan="2">TOTAL MANO DE OBRA</td>
+              <td class="p-4"></td>
+              <td class="p-4 text-center font-bold neon text-lg" id="total-mano-obra">$ 0</td>
+              <td class="p-4 text-center text-xs text-gray-600">100% fábrica</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+
+      <!-- Empleados sin fichaje -->
+      <div id="sin-fichaje" class="hidden card p-4 border-yellow-900">
+        <p class="text-yellow-400 text-sm font-bold mb-2">⚠️ Empleados sin horas registradas esta semana</p>
+        <div id="lista-sin-fichaje" class="text-xs text-gray-500 space-y-1"></div>
+      </div>
+    </div>
+
+    <!-- TAB: COSTOS FIJOS -->
+    <div id="tab-costos-fijos" class="hidden">
+      <div class="grid grid-cols-2 gap-8">
+
+        <!-- Ingresar costos -->
+        <div>
+          <p class="section-label mb-4">Cargar costos fijos del período</p>
+          <div class="card p-5 mb-4">
+            <div class="grid grid-cols-2 gap-3 mb-3">
+              <div>
+                <label class="text-xs text-gray-600 mb-1 block">Concepto</label>
+                <input id="cf-concepto" type="text" placeholder="Ej: Luz eléctrica" class="input-dark">
+              </div>
+              <div>
+                <label class="text-xs text-gray-600 mb-1 block">Categoría</label>
+                <select id="cf-categoria" class="input-dark">
+                  <option value="servicios">💡 Servicios (luz, gas, agua)</option>
+                  <option value="impuestos">🏛️ Impuestos y tasas</option>
+                  <option value="alquiler">🏠 Alquiler</option>
+                  <option value="seguros">🛡️ Seguros</option>
+                  <option value="mantenimiento">🔧 Mantenimiento</option>
+                  <option value="otro">📌 Otro</option>
+                </select>
+              </div>
+            </div>
+            <div class="grid grid-cols-2 gap-3 mb-3">
+              <div>
+                <label class="text-xs text-gray-600 mb-1 block">Monto $</label>
+                <input id="cf-monto" type="number" min="0" step="100" placeholder="0" class="input-dark">
+              </div>
+              <div>
+                <label class="text-xs text-gray-600 mb-1 block">Período</label>
+                <select id="cf-periodo" class="input-dark">
+                  <option value="semanal">Semanal</option>
+                  <option value="mensual">Mensual (÷4)</option>
+                  <option value="anual">Anual (÷52)</option>
+                </select>
+              </div>
+            </div>
+            <button onclick="agregarCostoFijo()" class="btn-neon w-full">+ Agregar costo fijo</button>
+          </div>
+
+          <!-- Costos rápidos frecuentes -->
+          <p class="section-label">Costos frecuentes (click para pre-cargar)</p>
+          <div class="flex flex-wrap gap-2 mb-4">
+            <button onclick="preCarga('Energía eléctrica','servicios')" class="tag bg-gray-900 text-gray-400 cursor-pointer hover:text-white">💡 Luz</button>
+            <button onclick="preCarga('Gas natural','servicios')" class="tag bg-gray-900 text-gray-400 cursor-pointer hover:text-white">🔥 Gas</button>
+            <button onclick="preCarga('Agua','servicios')" class="tag bg-gray-900 text-gray-400 cursor-pointer hover:text-white">💧 Agua</button>
+            <button onclick="preCarga('Tasa municipal','impuestos')" class="tag bg-gray-900 text-gray-400 cursor-pointer hover:text-white">🏛️ Municipio</button>
+            <button onclick="preCarga('Ingresos brutos','impuestos')" class="tag bg-gray-900 text-gray-400 cursor-pointer hover:text-white">🏛️ IIBB</button>
+            <button onclick="preCarga('Alquiler fábrica','alquiler')" class="tag bg-gray-900 text-gray-400 cursor-pointer hover:text-white">🏠 Alquiler</button>
+            <button onclick="preCarga('Seguro','seguros')" class="tag bg-gray-900 text-gray-400 cursor-pointer hover:text-white">🛡️ Seguro</button>
+            <button onclick="preCarga('Mantenimiento','mantenimiento')" class="tag bg-gray-900 text-gray-400 cursor-pointer hover:text-white">🔧 Mant.</button>
+          </div>
+        </div>
+
+        <!-- Lista de costos cargados -->
+        <div>
+          <div class="flex justify-between items-center mb-4">
+            <p class="section-label">Costos cargados</p>
+            <p class="text-xs text-gray-600">Total: <span id="total-fijos-label" class="text-purple-400 font-bold">$ 0</span></p>
+          </div>
+          <div id="lista-costos-fijos" class="card p-4 space-y-1 min-h-48">
+            <p class="text-gray-600 text-sm text-center py-6">Sin costos cargados.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB: POR PRODUCTO -->
+    <div id="tab-por-producto" class="hidden">
+      <p class="text-xs text-gray-600 mb-6">El costo total de la semana se divide proporcionalmente según las unidades producidas de cada categoría y producto.</p>
+      <div id="tabla-por-producto">
+        <p class="text-gray-600 text-sm">Hacé click en "📊 Calcular costo real" para ver el desglose por producto.</p>
+      </div>
+    </div>
+
+  </div>
+</main>
+
+<script>
+const API_URL = window.location.origin + '/api';
+const usr = JSON.parse(sessionStorage.getItem('usuario') || '{}');
+if (usr.nombre) document.getElementById('usuario-info').textContent = usr.nombre + ' · ' + usr.rol;
+
+// ── Estado global ──
+let costosFijos = JSON.parse(localStorage.getItem('costos_fijos_pdv') || '[]');
+let datosManoObra = [];
+let datosProduccion = [];
+let categorias = [];
+let empleados = [];
+
+// ── Init ──
+window.onload = async function() {
+  // Semana actual por defecto
+  var hoy = new Date();
+  var año = hoy.getFullYear();
+  var semana = getSemanaISO(hoy);
+  document.getElementById('semana-sel').value = año + '-W' + String(semana).padStart(2,'0');
+  await cargarTodo();
+};
+
+function getSemanaISO(fecha) {
+  var d = new Date(Date.UTC(fecha.getFullYear(), fecha.getMonth(), fecha.getDate()));
+  var dayNum = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+  var yearStart = new Date(Date.UTC(d.getUTCFullYear(),0,1));
+  return Math.ceil((((d - yearStart) / 86400000) + 1)/7);
+}
+
+function getSemanaDates() {
+  var val = document.getElementById('semana-sel').value;
+  if (!val) return { desde: null, hasta: null };
+  var [año, semStr] = val.split('-W');
+  var semana = parseInt(semStr);
+  var lunes = new Date(parseInt(año), 0, 1 + (semana - 1) * 7);
+  while (lunes.getDay() !== 1) lunes.setDate(lunes.getDate() - 1);
+  var domingo = new Date(lunes); domingo.setDate(domingo.getDate() + 6);
+  return {
+    desde: lunes.toISOString().split('T')[0],
+    hasta: domingo.toISOString().split('T')[0]
+  };
+}
+
+async function cargarTodo() {
+  await Promise.all([cargarManoObra(), cargarProduccionSemana(), cargarCategorias()]);
+  renderCostosFijos();
+}
+
+async function cargarCategorias() {
+  try {
+    categorias = await fetch(API_URL + '/categorias').then(r => r.json());
+  } catch(e) { categorias = []; }
+}
+
+async function cargarProduccionSemana() {
+  var { desde, hasta } = getSemanaDates();
+  try {
+    var lista = await fetch(API_URL + '/produccion/historial').then(r => r.json());
+    if (desde && hasta) {
+      lista = lista.filter(o => {
+        var d = new Date(o.fecha);
+        return d >= new Date(desde + 'T00:00:00') && d <= new Date(hasta + 'T23:59:59');
+      });
+    }
+    datosProduccion = lista;
+    // Actualizar tarjeta de unidades
+    var totalUnidades = lista.reduce((s,o) => s + (o.cantidad_producida||0), 0);
+    var totalInsumos  = lista.reduce((s,o) => s + (parseFloat(o.costo_total)||0), 0);
+    document.getElementById('res-unidades').textContent = totalUnidades.toLocaleString('es-AR');
+    document.getElementById('res-insumos').textContent = '$ ' + totalInsumos.toLocaleString('es-AR', {maximumFractionDigits:0});
+  } catch(e) { console.error(e); }
+}
+
+async function cargarManoObra() {
+  var { desde, hasta } = getSemanaDates();
+  try {
+    // Cargar empleados y horas
+    var [empRes, fichajeRes] = await Promise.all([
+      fetch(API_URL + '/empleados').then(r => r.json()),
+      fetch(API_URL + '/liquidacion/detalle?fecha_desde=' + desde + '&fecha_hasta=' + hasta).then(r => r.json())
+    ]);
+    empleados = empRes.filter(e => e.activo);
+    datosManoObra = fichajeRes.filter(e => e.horas_totales > 0);
+
+    var tbody = document.getElementById('body-mano-obra');
+    tbody.innerHTML = '';
+    var totalMO = 0;
+    var sinFichaje = empleados.filter(e => !datosManoObra.find(d => d.id_empleado === e.id));
+
+    if (!datosManoObra.length) {
+      tbody.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-gray-600">Sin fichajes registrados en esta semana.</td></tr>';
+    } else {
+      datosManoObra.forEach(function(e) {
+        var valorHora = parseFloat(e.valor_hora) || 0;
+        var totalEmp  = Math.round(e.horas_totales * valorHora);
+        totalMO += totalEmp;
+        var tr = document.createElement('tr');
+        tr.className = 'text-sm hover:bg-gray-900';
+        tr.innerHTML =
+          '<td class="p-4 font-bold text-white">' + e.nombre + ' ' + e.apellido + '</td>' +
+          '<td class="p-4 text-center text-blue-400 font-bold">' + e.horas_totales + ' hs</td>' +
+          '<td class="p-4 text-center text-gray-400">' + (valorHora > 0 ? '$ ' + valorHora.toLocaleString('es-AR') : '<span class="text-yellow-600">Sin definir</span>') + '</td>' +
+          '<td class="p-4 text-center font-bold ' + (totalEmp > 0 ? 'text-blue-300' : 'text-gray-600') + '">' + (totalEmp > 0 ? '$ ' + totalEmp.toLocaleString('es-AR') : '—') + '</td>' +
+          '<td class="p-4 text-center"><span class="tag bg-blue-900 text-blue-300">100% Fábrica</span></td>';
+        tbody.appendChild(tr);
+      });
+    }
+
+    document.getElementById('total-mano-obra').textContent = '$ ' + totalMO.toLocaleString('es-AR');
+    document.getElementById('res-mano-obra').textContent   = '$ ' + totalMO.toLocaleString('es-AR', {maximumFractionDigits:0});
+
+    // Sin fichaje
+    var divSinF = document.getElementById('sin-fichaje');
+    var listaSinF = document.getElementById('lista-sin-fichaje');
+    if (sinFichaje.length) {
+      divSinF.classList.remove('hidden');
+      listaSinF.innerHTML = sinFichaje.map(e => '<p>· ' + e.nombre + ' ' + e.apellido + ' (sin horas registradas)</p>').join('');
+    } else {
+      divSinF.classList.add('hidden');
+    }
+  } catch(e) {
+    console.error(e);
+    document.getElementById('body-mano-obra').innerHTML = '<tr><td colspan="5" class="p-4 text-center text-red-400">Error al cargar fichajes.</td></tr>';
+  }
+}
+
+// ── COSTOS FIJOS ──
+function preCarga(concepto, categoria) {
+  document.getElementById('cf-concepto').value  = concepto;
+  document.getElementById('cf-categoria').value = categoria;
+  document.getElementById('cf-monto').focus();
+}
+
+function agregarCostoFijo() {
+  var concepto  = document.getElementById('cf-concepto').value.trim();
+  var categoria = document.getElementById('cf-categoria').value;
+  var monto     = parseFloat(document.getElementById('cf-monto').value) || 0;
+  var periodo   = document.getElementById('cf-periodo').value;
+  if (!concepto || monto <= 0) { alert('Completá concepto y monto.'); return; }
+
+  // Convertir a semanal
+  var montoSemanal = monto;
+  if (periodo === 'mensual') montoSemanal = monto / 4.33;
+  if (periodo === 'anual')   montoSemanal = monto / 52;
+
+  costosFijos.push({ id: Date.now(), concepto, categoria, monto, periodo, montoSemanal: Math.round(montoSemanal) });
+  localStorage.setItem('costos_fijos_pdv', JSON.stringify(costosFijos));
+
+  // Limpiar
+  document.getElementById('cf-concepto').value = '';
+  document.getElementById('cf-monto').value = '';
+  renderCostosFijos();
+}
+
+var iconosCat = { servicios:'💡', impuestos:'🏛️', alquiler:'🏠', seguros:'🛡️', mantenimiento:'🔧', otro:'📌' };
+var colorCat  = { servicios:'yellow', impuestos:'red', alquiler:'blue', seguros:'green', mantenimiento:'orange', otro:'gray' };
+
+function renderCostosFijos() {
+  var cont = document.getElementById('lista-costos-fijos');
+  cont.innerHTML = '';
+  var totalFijos = 0;
+
+  if (!costosFijos.length) {
+    cont.innerHTML = '<p class="text-gray-600 text-sm text-center py-6">Sin costos cargados.</p>';
+    document.getElementById('total-fijos-label').textContent = '$ 0';
+    document.getElementById('res-fijos').textContent = '$ 0';
+    return;
+  }
+
+  // Agrupar por categoría
+  var grupos = {};
+  costosFijos.forEach(c => {
+    if (!grupos[c.categoria]) grupos[c.categoria] = [];
+    grupos[c.categoria].push(c);
+    totalFijos += c.montoSemanal;
+  });
+
+  Object.entries(grupos).forEach(([cat, items]) => {
+    var totalCat = items.reduce((s,i) => s + i.montoSemanal, 0);
+    var divCat = document.createElement('div');
+    divCat.className = 'mb-3';
+    divCat.innerHTML = '<p class="text-xs text-gray-600 font-bold mb-1">' + (iconosCat[cat]||'📌') + ' ' + cat.toUpperCase() + ' <span class="text-purple-400 ml-1">$ ' + totalCat.toLocaleString('es-AR') + '/sem</span></p>';
+    items.forEach(item => {
+      var row = document.createElement('div');
+      row.className = 'cost-row';
+      row.innerHTML =
+        '<span class="flex-1 text-sm text-gray-300">' + item.concepto + '</span>' +
+        '<span class="text-xs text-gray-600">' + item.periodo + '</span>' +
+        '<span class="text-sm font-bold text-purple-400 w-28 text-right">$ ' + item.montoSemanal.toLocaleString('es-AR') + '/sem</span>' +
+        '<button onclick="quitarCostoFijo(' + item.id + ')" class="text-gray-700 hover:text-red-500 font-bold ml-2">×</button>';
+      divCat.appendChild(row);
+    });
+    cont.appendChild(divCat);
+  });
+
+  document.getElementById('total-fijos-label').textContent = '$ ' + totalFijos.toLocaleString('es-AR') + '/sem';
+  document.getElementById('res-fijos').textContent = '$ ' + totalFijos.toLocaleString('es-AR', {maximumFractionDigits:0});
+}
+
+function quitarCostoFijo(id) {
+  costosFijos = costosFijos.filter(c => c.id !== id);
+  localStorage.setItem('costos_fijos_pdv', JSON.stringify(costosFijos));
+  renderCostosFijos();
+}
+
+// ── CALCULAR COSTO REAL ──
+function calcularYMostrar() {
+  if (!datosProduccion.length) { alert('No hay producción registrada en esta semana.'); return; }
+
+  // Totales
+  var totalUnidades = datosProduccion.reduce((s,o) => s + (o.cantidad_producida||0), 0);
+  var totalInsumos  = datosProduccion.reduce((s,o) => s + (parseFloat(o.costo_total)||0), 0);
+  var totalMO       = datosManoObra.reduce((s,e) => s + Math.round(e.horas_totales * (parseFloat(e.valor_hora)||0)), 0);
+  var totalFijos    = costosFijos.reduce((s,c) => s + c.montoSemanal, 0);
+  var totalGeneral  = totalInsumos + totalMO + totalFijos;
+  var costoUnit     = totalUnidades > 0 ? totalGeneral / totalUnidades : 0;
+
+  // ── Composición del costo ──
+  var pctIns = totalGeneral > 0 ? (totalInsumos / totalGeneral * 100).toFixed(1) : 0;
+  var pctMO  = totalGeneral > 0 ? (totalMO      / totalGeneral * 100).toFixed(1) : 0;
+  var pctFij = totalGeneral > 0 ? (totalFijos   / totalGeneral * 100).toFixed(1) : 0;
+
+  document.getElementById('composicion-costo').innerHTML =
+    '<div class="mb-4 text-center"><p class="text-4xl font-bold neon">$ ' + totalGeneral.toLocaleString('es-AR', {maximumFractionDigits:0}) + '</p><p class="text-xs text-gray-600 mt-1">Costo total de la semana</p></div>' +
+    barraItem('🧪 Insumos', totalInsumos, pctIns, 'orange') +
+    barraItem('👷 Mano de obra', totalMO, pctMO, 'blue') +
+    barraItem('🏭 Costos fijos', totalFijos, pctFij, 'purple');
+
+  // ── Costo por unidad general ──
+  document.getElementById('costo-por-unidad').innerHTML =
+    '<div class="text-center mb-4">' +
+      '<p class="text-5xl font-bold neon">$ ' + costoUnit.toFixed(2) + '</p>' +
+      '<p class="text-xs text-gray-600 mt-1">costo real por unidad promedio</p>' +
+    '</div>' +
+    '<div class="grid grid-cols-3 gap-3 text-center">' +
+      '<div class="bg-black rounded-lg p-3"><p class="text-xs text-gray-600 mb-1">Insumos</p><p class="text-orange-400 font-bold">$ ' + (totalUnidades>0?(totalInsumos/totalUnidades).toFixed(2):'0') + '</p></div>' +
+      '<div class="bg-black rounded-lg p-3"><p class="text-xs text-gray-600 mb-1">Mano obra</p><p class="text-blue-400 font-bold">$ ' + (totalUnidades>0?(totalMO/totalUnidades).toFixed(2):'0') + '</p></div>' +
+      '<div class="bg-black rounded-lg p-3"><p class="text-xs text-gray-600 mb-1">Fijos</p><p class="text-purple-400 font-bold">$ ' + (totalUnidades>0?(totalFijos/totalUnidades).toFixed(2):'0') + '</p></div>' +
+    '</div>';
+
+  // ── Alertas de margen ──
+  renderAlertasMargen(costoUnit);
+
+  // ── Por categoría y producto ──
+  renderPorProducto(totalInsumos, totalMO, totalFijos, totalUnidades, costoUnit);
+
+  // Ir a resumen
+  switchTab('resumen');
+}
+
+function barraItem(label, monto, pct, color) {
+  return '<div class="mb-3"><div class="flex justify-between text-xs mb-1"><span class="text-gray-400">' + label + '</span><span class="font-bold ' + colorClass(color) + '">$ ' + Math.round(monto).toLocaleString('es-AR') + ' (' + pct + '%)</span></div><div class="pct-bar"><div class="pct-bar-fill ' + color + '" style="width:' + pct + '%"></div></div></div>';
+}
+function colorClass(c) { return c==='orange'?'text-orange-400':(c==='blue'?'text-blue-400':'text-purple-400'); }
+
+function renderAlertasMargen(costoUnit) {
+  // Traer precios de los productos producidos
+  var alertas = [];
+  var productosProducidos = {};
+  datosProduccion.forEach(o => {
+    if (!productosProducidos[o.id_producto]) {
+      productosProducidos[o.id_producto] = { nombre: o.producto, precio: o.precio_minorista || 0 };
+    }
+  });
+  var cont = document.getElementById('alertas-margen');
+  cont.innerHTML = '';
+  if (costoUnit > 0) {
+    var aviso = document.createElement('div');
+    aviso.className = 'card p-4 border-gray-800';
+    aviso.innerHTML = '<p class="section-label">💡 Análisis de margen</p>' +
+      '<p class="text-sm text-gray-400">El costo real promedio por unidad es <span class="neon font-bold">$ ' + costoUnit.toFixed(2) + '</span>. ' +
+      'Para tener un margen del 40%, el precio de venta mínimo sería <span class="text-green-400 font-bold">$ ' + (costoUnit / 0.6).toFixed(2) + '</span>. ' +
+      'Para un margen del 50%, el precio mínimo sería <span class="text-green-400 font-bold">$ ' + (costoUnit / 0.5).toFixed(2) + '</span>.</p>';
+    cont.appendChild(aviso);
+  }
+}
+
+function renderPorProducto(totalInsumos, totalMO, totalFijos, totalUnidades, costoUnitProm) {
+  // Agrupar por categoría
+  var porCat = {};
+  datosProduccion.forEach(o => {
+    var cat = (categorias.find(c => c.id === o.id_categoria) || {}).nombre || 'Sin categoría';
+    if (!porCat[cat]) porCat[cat] = { unidades: 0, insumos: 0, productos: {} };
+    porCat[cat].unidades += o.cantidad_producida || 0;
+    porCat[cat].insumos  += parseFloat(o.costo_total) || 0;
+    var prod = o.producto || '—';
+    if (!porCat[cat].productos[prod]) porCat[cat].productos[prod] = { unidades: 0, insumos: 0, precio: o.precio_minorista || 0 };
+    porCat[cat].productos[prod].unidades += o.cantidad_producida || 0;
+    porCat[cat].productos[prod].insumos  += parseFloat(o.costo_total) || 0;
+  });
+
+  var cont = document.getElementById('tabla-por-producto');
+  cont.innerHTML = '';
+
+  Object.entries(porCat).sort((a,b) => b[1].unidades - a[1].unidades).forEach(([cat, data]) => {
+    // Prorrateo proporcional de MO y fijos
+    var pct = totalUnidades > 0 ? data.unidades / totalUnidades : 0;
+    var moAsig  = totalMO    * pct;
+    var fijAsig = totalFijos * pct;
+    var costoTotalCat = data.insumos + moAsig + fijAsig;
+    var costoUnitCat  = data.unidades > 0 ? costoTotalCat / data.unidades : 0;
+
+    var div = document.createElement('div');
+    div.className = 'card mb-6 overflow-hidden';
+
+    // Header categoría
+    div.innerHTML =
+      '<div class="flex justify-between items-center px-6 py-4 border-b border-gray-900" style="background:#0d0d0d">' +
+        '<div><p class="text-neon font-bold uppercase text-sm">' + cat + '</p>' +
+        '<p class="text-xs text-gray-600">' + data.unidades.toLocaleString('es-AR') + ' unidades · ' + (pct*100).toFixed(1) + '% de la producción</p></div>' +
+        '<div class="text-right">' +
+          '<p class="text-2xl font-bold text-white">$ ' + costoUnitCat.toFixed(2) + '</p>' +
+          '<p class="text-xs text-gray-600">costo real por unidad</p>' +
+        '</div>' +
+      '</div>' +
+      // Barra de composición
+      '<div class="px-6 py-3 border-b border-gray-900" style="background:#0a0a0a">' +
+        barraItem('Insumos', data.insumos, totalInsumos>0?(data.insumos/(data.insumos+moAsig+fijAsig)*100).toFixed(1):0, 'orange') +
+        barraItem('Mano de obra (prorr.)', moAsig, costoTotalCat>0?(moAsig/costoTotalCat*100).toFixed(1):0, 'blue') +
+        barraItem('Costos fijos (prorr.)', fijAsig, costoTotalCat>0?(fijAsig/costoTotalCat*100).toFixed(1):0, 'purple') +
+      '</div>';
+
+    // Tabla de productos dentro de la categoría
+    var tabla = '<table class="w-full text-sm"><thead><tr class="text-xs text-gray-600 border-b border-gray-900">' +
+      '<th class="px-6 py-2 text-left">Producto</th>' +
+      '<th class="px-4 py-2 text-center">Unidades</th>' +
+      '<th class="px-4 py-2 text-center">Insumos/u</th>' +
+      '<th class="px-4 py-2 text-center">MO+Fijos/u</th>' +
+      '<th class="px-4 py-2 text-center">Costo real/u</th>' +
+      '<th class="px-4 py-2 text-center">Precio venta</th>' +
+      '<th class="px-4 py-2 text-center">Margen</th>' +
+      '</tr></thead><tbody class="divide-y divide-gray-900">';
+
+    Object.entries(data.productos).sort((a,b) => b[1].unidades - a[1].unidades).forEach(([prod, pd]) => {
+      var pctProd  = data.unidades > 0 ? pd.unidades / data.unidades : 0;
+      var moUnit   = pd.unidades > 0 ? (moAsig  * pctProd) / pd.unidades : 0;
+      var fijUnit  = pd.unidades > 0 ? (fijAsig * pctProd) / pd.unidades : 0;
+      var insUnit  = pd.unidades > 0 ? pd.insumos / pd.unidades : 0;
+      var costoRealUnit = insUnit + moUnit + fijUnit;
+      var precio   = pd.precio || 0;
+      var margen   = precio > 0 ? ((precio - costoRealUnit) / precio * 100) : null;
+      var margenHtml = margen !== null
+        ? '<span class="font-bold ' + (margen > 35 ? 'text-green-400' : (margen > 15 ? 'text-yellow-400' : 'text-red-400')) + '">' + margen.toFixed(1) + '%</span>'
+        : '<span class="text-gray-600">—</span>';
+
+      tabla += '<tr class="hover:bg-gray-900">' +
+        '<td class="px-6 py-3 font-bold text-white">' + prod + '</td>' +
+        '<td class="px-4 py-3 text-center text-neon font-bold">' + pd.unidades.toLocaleString('es-AR') + '</td>' +
+        '<td class="px-4 py-3 text-center text-orange-400">$ ' + insUnit.toFixed(2) + '</td>' +
+        '<td class="px-4 py-3 text-center text-blue-400">$ ' + (moUnit + fijUnit).toFixed(2) + '</td>' +
+        '<td class="px-4 py-3 text-center font-bold text-white bg-gray-900">$ ' + costoRealUnit.toFixed(2) + '</td>' +
+        '<td class="px-4 py-3 text-center text-gray-400">' + (precio > 0 ? '$ ' + precio.toLocaleString('es-AR') : '—') + '</td>' +
+        '<td class="px-4 py-3 text-center">' + margenHtml + '</td>' +
+      '</tr>';
+    });
+
+    tabla += '</tbody></table>';
+    div.innerHTML += tabla;
+    cont.appendChild(div);
+  });
+
+  if (!Object.keys(porCat).length) {
+    cont.innerHTML = '<p class="text-gray-600 text-sm">Sin producción registrada en esta semana.</p>';
+  }
+}
+
+// ── TABS ──
+function switchTab(tab) {
+  ['resumen','mano-obra','costos-fijos','por-producto'].forEach(t => {
+    document.getElementById('tab-' + t).classList.toggle('hidden', t !== tab);
+  });
+  document.querySelectorAll('.tab-pill').forEach(b => b.classList.remove('active'));
+  event.target.classList.add('active');
+  if (tab === 'mano-obra') cargarManoObra();
+}
+</script>
+</body>
+</html>
