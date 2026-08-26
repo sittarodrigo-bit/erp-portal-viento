@@ -3,7 +3,6 @@
 <head>
 <script>window.PANEL_ACTUAL = "produccion";</script>
 <script src="/static/auth.js"></script>
-
     <meta charset="UTF-8">
     <title>Producción | Portal del Viento</title>
     <script src="https://cdn.tailwindcss.com"></script>
@@ -47,6 +46,7 @@
 
         <div class="bg-gray-900 border-b border-gray-800 px-8 flex gap-6 shrink-0">
             <button onclick="cambiarTab('historial')" id="tab-hist" class="py-3 text-sm font-bold tab-activa">🏭 Historial</button>
+            <button onclick="cambiarTab('totales')"   id="tab-tot"  class="py-3 text-sm font-bold text-gray-400 hover:text-white">📊 Totales</button>
             <button onclick="cambiarTab('producir')"  id="tab-prod" class="py-3 text-sm font-bold text-gray-400 hover:text-white">📦 Qué producir</button>
             <button onclick="cambiarTab('recetas')"   id="tab-rec"  class="py-3 text-sm font-bold text-gray-400 hover:text-white">📋 Recetas</button>
         </div>
@@ -69,7 +69,6 @@
                 <button onclick="cargarHistorial()" class="text-neon text-sm hover:text-yellow-300">↻</button>
                 <button onclick="imprimirProduccion()" class="border border-gray-600 text-gray-300 hover:text-white font-bold py-2 px-4 rounded-lg text-sm transition">🖨️ Imprimir</button>
             </div>
-
             <div class="bg-black rounded-xl border border-gray-800 overflow-hidden">
                 <table class="w-full text-left">
                     <thead class="bg-gray-950 text-xs text-gray-400 uppercase">
@@ -93,7 +92,65 @@
             </div>
         </div>
 
-        <!-- Panel Recetas -->
+        <!-- Panel TOTALES (NUEVO) -->
+        <div id="panel-totales" class="hidden flex-1 overflow-y-auto p-8">
+            <div class="flex flex-wrap gap-3 mb-6 items-center">
+                <div class="flex gap-2">
+                    <button onclick="setRangoTotales('semana')" id="btn-tot-semana" class="px-4 py-2 rounded-lg text-sm font-bold bg-neon text-black">Esta semana</button>
+                    <button onclick="setRangoTotales('mes')"    id="btn-tot-mes"    class="px-4 py-2 rounded-lg text-sm font-bold bg-gray-800 text-gray-300">Este mes</button>
+                    <button onclick="setRangoTotales('custom')" id="btn-tot-custom" class="px-4 py-2 rounded-lg text-sm font-bold bg-gray-800 text-gray-300">Personalizado</button>
+                </div>
+                <div id="rango-custom" class="hidden flex gap-2 items-center">
+                    <input type="date" id="tot-desde" class="bg-gray-900 border border-gray-700 text-white rounded p-2 text-sm">
+                    <span class="text-gray-500">→</span>
+                    <input type="date" id="tot-hasta" class="bg-gray-900 border border-gray-700 text-white rounded p-2 text-sm">
+                    <button onclick="cargarTotales()" class="bg-neon text-black font-bold px-3 py-2 rounded text-sm">Ver</button>
+                </div>
+                <button onclick="cargarTotales()" class="text-neon text-sm hover:text-yellow-300">↻ Actualizar</button>
+            </div>
+
+            <!-- Resumen general -->
+            <div id="tot-resumen-general" class="grid grid-cols-3 gap-4 mb-8"></div>
+
+            <!-- Por categoría - SEMANA -->
+            <h3 class="text-sm font-bold text-gray-400 uppercase mb-3" id="tot-titulo-periodo">Producción por categoría</h3>
+            <div id="tot-por-categoria" class="space-y-4 mb-8"></div>
+
+            <!-- Comparativa semana vs mes -->
+            <h3 class="text-sm font-bold text-gray-400 uppercase mb-3">📈 Comparativa semana vs mes</h3>
+            <div id="tot-comparativa" class="bg-black rounded-xl border border-gray-800 overflow-hidden mb-8">
+                <table class="w-full text-sm">
+                    <thead class="bg-gray-950 text-xs text-gray-400 uppercase">
+                        <tr>
+                            <th class="p-4 text-left">Categoría</th>
+                            <th class="p-4 text-center">Esta semana</th>
+                            <th class="p-4 text-center">Este mes</th>
+                            <th class="p-4 text-center">% del mes</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tabla-comparativa" class="divide-y divide-gray-800"></tbody>
+                </table>
+            </div>
+
+            <!-- Top productos -->
+            <h3 class="text-sm font-bold text-gray-400 uppercase mb-3">🏆 Top productos del período</h3>
+            <div id="tot-top-productos" class="bg-black rounded-xl border border-gray-800 overflow-hidden">
+                <table class="w-full text-sm">
+                    <thead class="bg-gray-950 text-xs text-gray-400 uppercase">
+                        <tr>
+                            <th class="p-4 text-left">Producto</th>
+                            <th class="p-4 text-left">Categoría</th>
+                            <th class="p-4 text-center">Unidades</th>
+                            <th class="p-4 text-center">Costo total</th>
+                            <th class="p-4 text-center">Veces producido</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tabla-top-productos" class="divide-y divide-gray-800"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Panel Qué Producir -->
         <div id="panel-producir" class="hidden flex-1 overflow-y-auto p-8">
             <div class="flex justify-between items-center mb-5">
                 <p class="text-gray-400 text-sm">Resumen de lo que falta fabricar para cubrir todos los pedidos <span class="text-white font-bold">pendientes</span>.</p>
@@ -102,6 +159,7 @@
             <div id="lista-producir"></div>
         </div>
 
+        <!-- Panel Recetas -->
         <div id="panel-recetas" class="hidden flex-1 overflow-y-auto p-8">
             <div class="grid grid-cols-3 gap-6">
                 <div class="col-span-1">
@@ -243,120 +301,279 @@
         let productos = [], insumos = [], empleados = [], categorias = [];
         let productoRecetaActual = null;
         const cacheRecetas = {}, cachePres = {};
+        let rangoTotales = 'semana';
 
         function cambiarTab(tab) {
-            document.getElementById('panel-historial').classList.toggle('hidden', tab !== 'historial');
-            document.getElementById('panel-recetas').classList.toggle('hidden', tab !== 'recetas');
-            document.getElementById('panel-producir').classList.toggle('hidden', tab !== 'producir');
+            ['historial','totales','recetas','producir'].forEach(function(t){
+                document.getElementById('panel-' + (t==='recetas'?'recetas':t)).classList.toggle('hidden', tab !== t);
+            });
             var act = 'py-3 text-sm font-bold tab-activa';
             var inact = 'py-3 text-sm font-bold text-gray-400 hover:text-white';
             document.getElementById('tab-hist').className = tab === 'historial' ? act : inact;
+            document.getElementById('tab-tot').className  = tab === 'totales'   ? act : inact;
             document.getElementById('tab-rec').className  = tab === 'recetas'   ? act : inact;
             document.getElementById('tab-prod').className = tab === 'producir'  ? act : inact;
-            if (tab === 'recetas') renderListaProductos();
+            if (tab === 'recetas')  renderListaProductos();
             if (tab === 'producir') cargarNecesidades();
+            if (tab === 'totales')  cargarTotales();
         }
+
+        // ══════════════════════════════════════════════════════
+        // TOTALES POR CATEGORÍA - SEMANAL Y MENSUAL
+        // ══════════════════════════════════════════════════════
+        function setRangoTotales(rango) {
+            rangoTotales = rango;
+            ['semana','mes','custom'].forEach(function(r){
+                var btn = document.getElementById('btn-tot-' + r);
+                btn.className = 'px-4 py-2 rounded-lg text-sm font-bold ' + (r === rango ? 'bg-neon text-black' : 'bg-gray-800 text-gray-300');
+            });
+            document.getElementById('rango-custom').classList.toggle('hidden', rango !== 'custom');
+            if (rango !== 'custom') cargarTotales();
+        }
+
+        function getFechaRango(rango) {
+            var hoy = new Date(); hoy.setHours(23,59,59,999);
+            var desde = new Date();
+            if (rango === 'semana') {
+                desde = new Date(); desde.setDate(desde.getDate() - desde.getDay()); desde.setHours(0,0,0,0);
+            } else if (rango === 'mes') {
+                desde = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
+            }
+            return { desde: desde, hasta: hoy };
+        }
+
+        async function cargarTotales() {
+            var lista;
+            try {
+                var res = await fetch(API_URL + '/produccion/historial');
+                lista = await res.json();
+            } catch(e) {
+                document.getElementById('tot-por-categoria').innerHTML = '<p class="text-red-400">Error al cargar.</p>';
+                return;
+            }
+
+            // Determinar rango
+            var desde, hasta;
+            if (rangoTotales === 'custom') {
+                desde = new Date(document.getElementById('tot-desde').value + 'T00:00:00');
+                hasta = new Date(document.getElementById('tot-hasta').value + 'T23:59:59');
+            } else {
+                var rango = getFechaRango(rangoTotales);
+                desde = rango.desde; hasta = rango.hasta;
+            }
+
+            // Rango semana y mes para comparativa (siempre calculados)
+            var semana = getFechaRango('semana');
+            var mes    = getFechaRango('mes');
+
+            // Filtrar por rango elegido
+            var filtrada = lista.filter(function(o){ var d = new Date(o.fecha); return d >= desde && d <= hasta; });
+
+            // Filtrar semana y mes para comparativa
+            var listaSemana = lista.filter(function(o){ var d = new Date(o.fecha); return d >= semana.desde && d <= semana.hasta; });
+            var listaMes    = lista.filter(function(o){ var d = new Date(o.fecha); return d >= mes.desde    && d <= mes.hasta; });
+
+            var titulos = { semana: 'Esta semana', mes: 'Este mes', custom: 'Período personalizado' };
+            document.getElementById('tot-titulo-periodo').textContent = 'Producción por categoría — ' + titulos[rangoTotales];
+
+            // ── Resumen general ──
+            var totalUnidades = filtrada.reduce(function(s,o){ return s + (o.cantidad_producida||0); }, 0);
+            var totalCosto    = filtrada.reduce(function(s,o){ return s + (parseFloat(o.costo_total)||0); }, 0);
+            var totalLotes    = filtrada.length;
+            var resHtml =
+                '<div class="bg-black border border-gray-800 rounded-xl p-4 text-center">' +
+                    '<p class="text-xs text-gray-500 mb-1">📦 Total producido</p>' +
+                    '<p class="text-neon font-bold text-2xl">' + totalUnidades.toLocaleString('es-AR') + ' un.</p>' +
+                '</div>' +
+                '<div class="bg-black border border-gray-800 rounded-xl p-4 text-center">' +
+                    '<p class="text-xs text-gray-500 mb-1">💰 Costo total</p>' +
+                    '<p class="text-orange-400 font-bold text-2xl">$ ' + totalCosto.toLocaleString('es-AR', {maximumFractionDigits:0}) + '</p>' +
+                '</div>' +
+                '<div class="bg-black border border-gray-800 rounded-xl p-4 text-center">' +
+                    '<p class="text-xs text-gray-500 mb-1">🏭 Lotes registrados</p>' +
+                    '<p class="text-white font-bold text-2xl">' + totalLotes + '</p>' +
+                '</div>';
+            document.getElementById('tot-resumen-general').innerHTML = resHtml;
+
+            // ── Por categoría ──
+            function agruparPorCategoria(items) {
+                var grupos = {};
+                items.forEach(function(o){
+                    var cat = (categorias.find(function(c){ return c.id === o.id_categoria; }) || {}).nombre || 'Sin categoría';
+                    if (!grupos[cat]) grupos[cat] = { unidades: 0, costo: 0, lotes: 0, productos: {} };
+                    grupos[cat].unidades += o.cantidad_producida || 0;
+                    grupos[cat].costo    += parseFloat(o.costo_total) || 0;
+                    grupos[cat].lotes    += 1;
+                    var prod = o.producto || '—';
+                    if (!grupos[cat].productos[prod]) grupos[cat].productos[prod] = { unidades: 0, costo: 0 };
+                    grupos[cat].productos[prod].unidades += o.cantidad_producida || 0;
+                    grupos[cat].productos[prod].costo    += parseFloat(o.costo_total) || 0;
+                });
+                return grupos;
+            }
+
+            var gruposPeriodo = agruparPorCategoria(filtrada);
+            var cont = document.getElementById('tot-por-categoria');
+            cont.innerHTML = '';
+            if (!Object.keys(gruposPeriodo).length) {
+                cont.innerHTML = '<p class="text-gray-500 text-sm">Sin producción en este período.</p>';
+            } else {
+                Object.entries(gruposPeriodo)
+                    .sort(function(a,b){ return b[1].unidades - a[1].unidades; })
+                    .forEach(function(entry){
+                        var cat = entry[0], data = entry[1];
+                        var barW = totalUnidades > 0 ? Math.round(data.unidades / totalUnidades * 100) : 0;
+                        var prodsHtml = Object.entries(data.productos)
+                            .sort(function(a,b){ return b[1].unidades - a[1].unidades; })
+                            .map(function(pe){
+                                return '<div class="flex justify-between text-xs py-1 border-b border-gray-800">' +
+                                    '<span class="text-gray-300">' + pe[0] + '</span>' +
+                                    '<span class="text-neon font-bold">' + pe[1].unidades.toLocaleString('es-AR') + ' un.</span>' +
+                                '</div>';
+                            }).join('');
+                        var div = document.createElement('div');
+                        div.className = 'bg-black border border-gray-800 rounded-xl overflow-hidden';
+                        div.innerHTML =
+                            '<div class="flex justify-between items-center px-5 py-3 bg-gray-950 border-b border-gray-800">' +
+                                '<span class="text-neon font-bold uppercase text-sm">' + cat + '</span>' +
+                                '<div class="text-right">' +
+                                    '<span class="text-white font-bold text-lg">' + data.unidades.toLocaleString('es-AR') + ' un.</span>' +
+                                    '<span class="text-gray-500 text-xs ml-2">(' + data.lotes + ' lotes)</span>' +
+                                '</div>' +
+                            '</div>' +
+                            '<div class="px-5 py-2">' +
+                                '<div class="h-2 bg-gray-800 rounded-full mb-3 mt-1">' +
+                                    '<div class="h-2 bg-neon rounded-full" style="width:' + barW + '%"></div>' +
+                                '</div>' +
+                                prodsHtml +
+                                '<div class="flex justify-between text-xs pt-2 text-gray-600">' +
+                                    '<span>Costo total</span>' +
+                                    '<span class="text-orange-400">$ ' + data.costo.toLocaleString('es-AR', {maximumFractionDigits:0}) + '</span>' +
+                                '</div>' +
+                            '</div>';
+                        cont.appendChild(div);
+                    });
+            }
+
+            // ── Comparativa semana vs mes ──
+            var gruposSemana = agruparPorCategoria(listaSemana);
+            var gruposMes    = agruparPorCategoria(listaMes);
+            var todasCats    = new Set([...Object.keys(gruposSemana), ...Object.keys(gruposMes)]);
+            var tbody = document.getElementById('tabla-comparativa');
+            tbody.innerHTML = '';
+            var totalSem = Object.values(gruposSemana).reduce(function(s,g){ return s + g.unidades; }, 0);
+            var totalMes = Object.values(gruposMes).reduce(function(s,g){ return s + g.unidades; }, 0);
+            Array.from(todasCats).sort().forEach(function(cat){
+                var sem = (gruposSemana[cat] || {}).unidades || 0;
+                var mes = (gruposMes[cat]    || {}).unidades || 0;
+                var pct = mes > 0 ? Math.round(sem / mes * 100) : 0;
+                var pctColor = pct > 50 ? 'text-green-400' : (pct > 20 ? 'text-yellow-400' : 'text-gray-400');
+                var tr = document.createElement('tr');
+                tr.className = 'hover:bg-gray-900';
+                tr.innerHTML =
+                    '<td class="p-4 font-bold text-white">' + cat + '</td>' +
+                    '<td class="p-4 text-center text-neon font-bold">' + sem.toLocaleString('es-AR') + ' un.</td>' +
+                    '<td class="p-4 text-center text-gray-300">' + mes.toLocaleString('es-AR') + ' un.</td>' +
+                    '<td class="p-4 text-center font-bold ' + pctColor + '">' + pct + '%</td>';
+                tbody.appendChild(tr);
+            });
+            // Fila total
+            var trTotal = document.createElement('tr');
+            trTotal.className = 'bg-gray-950 font-bold';
+            trTotal.innerHTML =
+                '<td class="p-4 text-neon">TOTAL</td>' +
+                '<td class="p-4 text-center text-neon">' + totalSem.toLocaleString('es-AR') + ' un.</td>' +
+                '<td class="p-4 text-center text-white">' + totalMes.toLocaleString('es-AR') + ' un.</td>' +
+                '<td class="p-4 text-center text-gray-400">' + (totalMes > 0 ? Math.round(totalSem/totalMes*100) : 0) + '%</td>';
+            tbody.appendChild(trTotal);
+
+            // ── Top productos ──
+            var porProd = {};
+            filtrada.forEach(function(o){
+                var cat = (categorias.find(function(c){ return c.id === o.id_categoria; }) || {}).nombre || '—';
+                var key = (o.producto || '—') + '||' + cat;
+                if (!porProd[key]) porProd[key] = { nombre: o.producto||'—', cat: cat, unidades: 0, costo: 0, veces: 0 };
+                porProd[key].unidades += o.cantidad_producida || 0;
+                porProd[key].costo    += parseFloat(o.costo_total) || 0;
+                porProd[key].veces    += 1;
+            });
+            var tbodyTop = document.getElementById('tabla-top-productos');
+            tbodyTop.innerHTML = '';
+            Object.values(porProd)
+                .sort(function(a,b){ return b.unidades - a.unidades; })
+                .slice(0, 15)
+                .forEach(function(p, i){
+                    var tr = document.createElement('tr');
+                    tr.className = 'hover:bg-gray-900';
+                    tr.innerHTML =
+                        '<td class="p-4 font-bold text-white">' + (i===0?'🥇 ':(i===1?'🥈 ':(i===2?'🥉 ':''))) + p.nombre + '</td>' +
+                        '<td class="p-4"><span class="text-xs bg-gray-800 px-2 py-0.5 rounded">' + p.cat + '</span></td>' +
+                        '<td class="p-4 text-center text-neon font-bold">' + p.unidades.toLocaleString('es-AR') + ' un.</td>' +
+                        '<td class="p-4 text-center text-orange-400">$ ' + p.costo.toLocaleString('es-AR', {maximumFractionDigits:0}) + '</td>' +
+                        '<td class="p-4 text-center text-gray-400">' + p.veces + '</td>';
+                    tbodyTop.appendChild(tr);
+                });
+            if (!Object.keys(porProd).length) {
+                tbodyTop.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-gray-500">Sin datos en este período.</td></tr>';
+            }
+        }
+
+        // ══════════════════════════════════════════════════════
+        // RESTO DE FUNCIONES (IGUAL QUE ANTES)
+        // ══════════════════════════════════════════════════════
 
         async function cargarNecesidades() {
             var cont = document.getElementById('lista-producir');
             cont.innerHTML = '<p class="text-gray-500 text-sm">Calculando...</p>';
             try {
                 var resp = await fetch(API_URL + '/produccion/necesidades').then(function(r){ return r.json(); });
-                var categorias = resp.categorias || [];
-                var productos = resp.productos || [];
-                if (productos.length === 0) {
-                    cont.innerHTML = '<p class="text-gray-500 text-sm">No hay pedidos ni reposiciones pendientes.</p>';
-                    return;
-                }
-                var conFalta = productos.filter(function(d){ return d.falta_producir > 0; });
-                var totalUnidades = productos.reduce(function(s,d){ return s + (d.falta_unidades||0); }, 0);
-
+                var cats = resp.categorias || [];
+                var prods = resp.productos || [];
+                if (prods.length === 0) { cont.innerHTML = '<p class="text-gray-500 text-sm">No hay pedidos ni reposiciones pendientes.</p>'; return; }
+                var conFalta = prods.filter(function(d){ return d.falta_producir > 0; });
+                var totalUnidades = prods.reduce(function(s,d){ return s + (d.falta_unidades||0); }, 0);
                 var html = '';
-                // Encabezado resumen
                 if (conFalta.length === 0) {
                     html += '<div class="bg-green-900/30 border border-green-800 rounded-lg p-4 text-green-300 text-sm mb-4">✅ Tenés stock para cubrir todos los pedidos y reposiciones pendientes.</div>';
                 } else {
-                    html += '<div class="bg-orange-900/20 border border-orange-700 rounded-lg p-4 mb-4">' +
-                           '<p class="text-orange-300 text-sm mb-1">⚠️ Hay ' + conFalta.length + ' producto(s) que necesitás producir (incluye pedidos B2B + reposiciones de locales).</p>' +
-                           '<p class="text-white font-bold text-lg">Total a fabricar: ' + totalUnidades.toLocaleString('es-AR') + ' unidades</p>' +
-                           '</div>';
+                    html += '<div class="bg-orange-900/20 border border-orange-700 rounded-lg p-4 mb-4"><p class="text-orange-300 text-sm mb-1">⚠️ Hay ' + conFalta.length + ' producto(s) que necesitás producir.</p><p class="text-white font-bold text-lg">Total a fabricar: ' + totalUnidades.toLocaleString('es-AR') + ' unidades</p></div>';
                 }
-
-                // Por categoría
-                categorias.forEach(function(cat){
-                    // Mostrar solo categorías que tienen algo para producir
+                cats.forEach(function(cat){
                     var prodsConFalta = cat.productos.filter(function(p){ return p.falta_producir > 0; });
                     if (prodsConFalta.length === 0) return;
-
-                    html += '<div class="mb-4 bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">' +
-                        '<div class="flex justify-between items-center px-4 py-3 bg-gray-950 border-b border-gray-700">' +
-                            '<span class="text-neon font-bold uppercase text-sm">' + cat.categoria + '</span>' +
-                            '<span class="text-white font-bold">' + cat.total_falta_unidades.toLocaleString('es-AR') + ' un. a producir</span>' +
-                        '</div>' +
-                        '<table class="w-full text-sm"><thead class="text-xs text-gray-500 border-b border-gray-800"><tr>' +
-                            '<th class="py-2 px-4 text-left">Producto</th>' +
-                            '<th class="py-2 px-4 text-center">Pedido</th>' +
-                            '<th class="py-2 px-4 text-center">Stock</th>' +
-                            '<th class="py-2 px-4 text-center">Faltan (cajas)</th>' +
-                            '<th class="py-2 px-4 text-center">A PRODUCIR (un.)</th>' +
-                            '<th class="py-2 px-4 text-center"></th>' +
-                        '</tr></thead><tbody class="divide-y divide-gray-800">';
-
+                    html += '<div class="mb-4 bg-gray-900 border border-gray-800 rounded-xl overflow-hidden"><div class="flex justify-between items-center px-4 py-3 bg-gray-950 border-b border-gray-700"><span class="text-neon font-bold uppercase text-sm">' + cat.categoria + '</span><span class="text-white font-bold">' + cat.total_falta_unidades.toLocaleString('es-AR') + ' un. a producir</span></div><table class="w-full text-sm"><thead class="text-xs text-gray-500 border-b border-gray-800"><tr><th class="py-2 px-4 text-left">Producto</th><th class="py-2 px-4 text-center">Pedido</th><th class="py-2 px-4 text-center">Stock</th><th class="py-2 px-4 text-center">Faltan (cajas)</th><th class="py-2 px-4 text-center">A PRODUCIR (un.)</th><th class="py-2 px-4 text-center"></th></tr></thead><tbody class="divide-y divide-gray-800">';
                     prodsConFalta.forEach(function(d){
-                        var falta = d.falta_producir;
-                        var faltaU = d.falta_unidades || 0;
-                        html += '<tr class="bg-yellow-900/10">' +
-                            '<td class="py-3 px-4 text-white font-bold">' + (d.nombre||'—') + ' <span class="text-gray-600 text-xs">(x' + (d.unidades_por_caja||1) + ')</span></td>' +
-                            '<td class="py-3 px-4 text-center text-gray-300">' + d.pedido + '</td>' +
-                            '<td class="py-3 px-4 text-center text-gray-300">' + d.stock + '</td>' +
-                            '<td class="py-3 px-4 text-center font-bold text-yellow-400">' + falta + '</td>' +
-                            '<td class="py-3 px-4 text-center font-bold text-orange-400 text-base">' + faltaU.toLocaleString('es-AR') + '</td>' +
-                            '<td class="py-3 px-4 text-center"><button onclick="corregirCategoria(' + d.id_producto + ', \'' + (d.nombre||'').replace(/'/g,"\\'") + '\', ' + (d.id_categoria||'null') + ')" class="text-xs border border-gray-700 text-gray-400 hover:text-white px-2 py-1 rounded">🏷️ Categoría</button></td>' +
-                        '</tr>';
+                        html += '<tr class="bg-yellow-900/10"><td class="py-3 px-4 text-white font-bold">' + (d.nombre||'—') + ' <span class="text-gray-600 text-xs">(x' + (d.unidades_por_caja||1) + ')</span></td><td class="py-3 px-4 text-center text-gray-300">' + d.pedido + '</td><td class="py-3 px-4 text-center text-gray-300">' + d.stock + '</td><td class="py-3 px-4 text-center font-bold text-yellow-400">' + d.falta_producir + '</td><td class="py-3 px-4 text-center font-bold text-orange-400 text-base">' + (d.falta_unidades||0).toLocaleString('es-AR') + '</td><td class="py-3 px-4 text-center"><button onclick="corregirCategoria(' + d.id_producto + ', \'' + (d.nombre||'').replace(/\'/g,"\\'") + '\', ' + (d.id_categoria||'null') + ')" class="text-xs border border-gray-700 text-gray-400 hover:text-white px-2 py-1 rounded">🏷️ Categoría</button></td></tr>';
                     });
                     html += '</tbody></table></div>';
                 });
-
                 cont.innerHTML = html;
             } catch(e) {
-                cont.innerHTML = '<p class="text-red-400 text-sm">No se pudo calcular: ' + (e && e.message ? e.message : e) + '</p>';
+                cont.innerHTML = '<p class="text-red-400 text-sm">No se pudo calcular.</p>';
             }
         }
 
         async function corregirCategoria(idProducto, nombre, idCategoriaActual) {
-            // Asegurar que las categorías estén cargadas
             if (!categorias || !categorias.length) {
                 try { categorias = await fetch(API_URL + '/categorias').then(r => r.json()); } catch(e) { categorias = []; }
             }
-            var opciones = '<option value="">— Sin categoría —</option>' +
-                categorias.map(function(c){
-                    return '<option value="' + c.id + '"' + (c.id === idCategoriaActual ? ' selected' : '') + '>' + c.nombre + '</option>';
-                }).join('');
+            var opciones = '<option value="">— Sin categoría —</option>' + categorias.map(function(c){ return '<option value="' + c.id + '"' + (c.id === idCategoriaActual ? ' selected' : '') + '>' + c.nombre + '</option>'; }).join('');
             document.getElementById('cat-prod-id').value = idProducto;
             document.getElementById('cat-prod-nombre').textContent = nombre;
             document.getElementById('cat-prod-select').innerHTML = opciones;
             document.getElementById('modal-cat-prod').classList.replace('modal-oculto', 'modal-visible');
         }
-
-        function cerrarModalCat() {
-            document.getElementById('modal-cat-prod').classList.replace('modal-visible', 'modal-oculto');
-        }
-
+        function cerrarModalCat() { document.getElementById('modal-cat-prod').classList.replace('modal-visible', 'modal-oculto'); }
         async function guardarCategoriaProd() {
             var idProducto = document.getElementById('cat-prod-id').value;
             var idCat = document.getElementById('cat-prod-select').value;
             try {
-                var res = await fetch(API_URL + '/productos/' + idProducto + '/categoria', {
-                    method: 'PUT', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ id_categoria: idCat ? parseInt(idCat) : null })
-                });
+                var res = await fetch(API_URL + '/productos/' + idProducto + '/categoria', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id_categoria: idCat ? parseInt(idCat) : null }) });
                 if (!res.ok) { alert('No se pudo guardar.'); return; }
-                cerrarModalCat();
-                cargarNecesidades();  // recargar para reagrupar
+                cerrarModalCat(); cargarNecesidades();
             } catch(e) { alert('Error al guardar.'); }
         }
 
-        // ─── COPIAR RECETA A OTROS PRODUCTOS ──────────────────────────────────
         async function abrirCopiarReceta() {
             if (!productoRecetaActual) { alert('Primero seleccioná un producto con receta.'); return; }
             var lista = document.getElementById('copiar-lista');
@@ -366,57 +583,24 @@
                 var prodNombre = productoRecetaActual.nombre || document.getElementById('receta-titulo').textContent || '';
                 document.getElementById('copiar-origen-nombre').textContent = 'Origen: ' + prodNombre;
                 var d = await fetch(API_URL + '/recetas/copiar/candidatos/' + productoRecetaActual.id).then(r => r.json());
-                if (!d.categoria) {
-                    lista.innerHTML = '<p class="text-yellow-400 text-sm">Este producto no tiene categoría asignada. Asignale una categoría para poder copiar a productos similares.</p>';
-                    document.getElementById('copiar-categoria').textContent = '';
-                    return;
-                }
+                if (!d.categoria) { lista.innerHTML = '<p class="text-yellow-400 text-sm">Este producto no tiene categoría asignada.</p>'; document.getElementById('copiar-categoria').textContent = ''; return; }
                 document.getElementById('copiar-categoria').textContent = 'Categoría: ' + d.categoria;
-                if (!d.productos.length) {
-                    lista.innerHTML = '<p class="text-gray-500 text-sm">No hay otros productos en esta categoría.</p>';
-                    return;
-                }
-                lista.innerHTML = d.productos.map(function(p){
-                    var aviso = p.tiene_receta
-                        ? '<span class="text-xs text-orange-400 ml-2">⚠️ ya tiene receta</span>'
-                        : '<span class="text-xs text-gray-600 ml-2">sin receta</span>';
-                    return '<label class="flex items-center gap-2 bg-black border border-gray-800 rounded-lg p-3 cursor-pointer hover:border-gray-600">' +
-                        '<input type="checkbox" class="copia-check" value="' + p.id + '" data-tiene="' + (p.tiene_receta?'1':'0') + '" style="width:16px;height:16px">' +
-                        '<span class="text-white text-sm">' + p.nombre + '</span>' + aviso +
-                    '</label>';
-                }).join('');
-            } catch(e) {
-                lista.innerHTML = '<p class="text-red-400 text-sm">Error al cargar.</p>';
-            }
+                if (!d.productos.length) { lista.innerHTML = '<p class="text-gray-500 text-sm">No hay otros productos en esta categoría.</p>'; return; }
+                lista.innerHTML = d.productos.map(function(p){ var aviso = p.tiene_receta ? '<span class="text-xs text-orange-400 ml-2">⚠️ ya tiene receta</span>' : '<span class="text-xs text-gray-600 ml-2">sin receta</span>'; return '<label class="flex items-center gap-2 bg-black border border-gray-800 rounded-lg p-3 cursor-pointer hover:border-gray-600"><input type="checkbox" class="copia-check" value="' + p.id + '" data-tiene="' + (p.tiene_receta?'1':'0') + '" style="width:16px;height:16px"><span class="text-white text-sm">' + p.nombre + '</span>' + aviso + '</label>'; }).join('');
+            } catch(e) { lista.innerHTML = '<p class="text-red-400 text-sm">Error al cargar.</p>'; }
         }
-
-        function cerrarCopiarReceta() {
-            document.getElementById('modal-copiar-receta').classList.replace('modal-visible', 'modal-oculto');
-        }
-
-        function toggleTodosCopia(marcar) {
-            document.querySelectorAll('.copia-check').forEach(function(c){ c.checked = marcar; });
-        }
-
+        function cerrarCopiarReceta() { document.getElementById('modal-copiar-receta').classList.replace('modal-visible', 'modal-oculto'); }
+        function toggleTodosCopia(marcar) { document.querySelectorAll('.copia-check').forEach(function(c){ c.checked = marcar; }); }
         async function ejecutarCopiaReceta() {
             var checks = Array.from(document.querySelectorAll('.copia-check:checked'));
             if (!checks.length) { alert('Elegí al menos un producto destino.'); return; }
-            // Avisar de los que ya tienen receta
             var conReceta = checks.filter(function(c){ return c.getAttribute('data-tiene') === '1'; });
-            if (conReceta.length) {
-                var ok = confirm('⚠️ ' + conReceta.length + ' de los productos seleccionados YA tienen receta.\n\nSi continuás, se REEMPLAZARÁN por la receta que estás copiando.\n\n¿Querés continuar?');
-                if (!ok) return;
-            }
+            if (conReceta.length) { if (!confirm('⚠️ ' + conReceta.length + ' de los productos YA tienen receta. ¿Reemplazar?')) return; }
             var destinos = checks.map(function(c){ return parseInt(c.value); });
             try {
-                var res = await fetch(API_URL + '/recetas/copiar', {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ id_origen: productoRecetaActual.id, id_destinos: destinos })
-                });
+                var res = await fetch(API_URL + '/recetas/copiar', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id_origen: productoRecetaActual.id, id_destinos: destinos }) });
                 if (!res.ok) { var e = await res.json(); alert('No se pudo copiar: ' + (e.detail||'')); return; }
-                var r = await res.json();
-                cerrarCopiarReceta();
-                alert('✅ Receta copiada a ' + r.copiados + ' producto(s).');
+                var r = await res.json(); cerrarCopiarReceta(); alert('✅ Receta copiada a ' + r.copiados + ' producto(s).');
             } catch(e) { alert('Error al copiar.'); }
         }
 
@@ -431,17 +615,18 @@
             insumos    = rIns;
             empleados  = rEmp.filter(e => e.activo);
             categorias = rCat;
-
             document.getElementById('ord-producto').innerHTML  = productos.map(p => '<option value="' + p.id + '">' + p.nombre + '</option>').join('');
             document.getElementById('ord-empleado').innerHTML  = empleados.map(e => '<option value="' + e.id + '">' + e.apellido + ', ' + e.nombre + '</option>').join('');
             document.getElementById('filtro-cat-hist').innerHTML = '<option value="">Todas las categorías</option>' + categorias.map(c => '<option value="' + c.id + '">' + c.nombre + '</option>').join('');
             document.getElementById('filtro-emp-hist').innerHTML = '<option value="">Todos los empleados</option>' + empleados.map(e => '<option value="' + e.id + '">' + e.apellido + ', ' + e.nombre + '</option>').join('');
-
             const hoy = new Date();
             document.getElementById('ord-fecha').value = hoy.toISOString().split('T')[0];
             const venc = new Date(hoy); venc.setDate(venc.getDate() + 90);
             document.getElementById('ord-vencimiento').value = venc.toISOString().split('T')[0];
-
+            // Fechas para rango custom
+            var mesInicio = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
+            document.getElementById('tot-desde').value = mesInicio.toISOString().split('T')[0];
+            document.getElementById('tot-hasta').value = hoy.toISOString().split('T')[0];
             await cargarHistorial();
         }
 
@@ -460,33 +645,28 @@
             const catFiltro  = document.getElementById('filtro-cat-hist').value;
             const empFiltro  = document.getElementById('filtro-emp-hist').value;
             const fechaDesde = getFechaDesde();
-
             let filtrada = lista;
             if (fechaDesde)  filtrada = filtrada.filter(o => new Date(o.fecha) >= fechaDesde);
             if (catFiltro)   filtrada = filtrada.filter(o => String(o.id_categoria) === catFiltro);
             if (empFiltro)   filtrada = filtrada.filter(o => String(o.id_empleado)  === empFiltro);
-
             const tabla = document.getElementById('tabla-produccion');
             tabla.innerHTML = '';
-            if (!filtrada.length) {
-                tabla.innerHTML = '<tr><td colspan="10" class="p-4 text-center text-gray-500">Sin registros.</td></tr>';
-                return;
-            }
+            if (!filtrada.length) { tabla.innerHTML = '<tr><td colspan="10" class="p-4 text-center text-gray-500">Sin registros.</td></tr>'; return; }
             filtrada.forEach(function(o) {
                 const fecha = new Date(o.fecha).toLocaleString('es-AR', {dateStyle:'short', timeStyle:'short'});
                 const venc  = o.fecha_vencimiento ? new Date(o.fecha_vencimiento + 'T00:00:00').toLocaleDateString('es-AR') : '—';
                 const hoyD  = new Date(); hoyD.setHours(0,0,0,0);
-                const vencDate   = o.fecha_vencimiento ? new Date(o.fecha_vencimiento + 'T00:00:00') : null;
-                const vencColor  = vencDate && vencDate < hoyD ? 'text-red-400 font-bold' : (vencDate && (vencDate - hoyD) < 7*24*3600*1000 ? 'text-yellow-400' : 'text-gray-300');
+                const vencDate  = o.fecha_vencimiento ? new Date(o.fecha_vencimiento + 'T00:00:00') : null;
+                const vencColor = vencDate && vencDate < hoyD ? 'text-red-400 font-bold' : (vencDate && (vencDate - hoyD) < 7*24*3600*1000 ? 'text-yellow-400' : 'text-gray-300');
                 const cat        = (categorias.find(c => c.id === o.id_categoria) || {}).nombre || '—';
                 const costoTotal = o.costo_total ? '$ ' + parseFloat(o.costo_total).toLocaleString('es-AR') : '—';
                 const ingreso    = o.precio_venta_unit ? '$ ' + parseFloat(o.precio_venta_unit * o.cantidad_producida).toLocaleString('es-AR') : '—';
                 let margenHTML = '—';
                 if (o.costo_total && o.precio_venta_unit) {
-                    const ing    = o.precio_venta_unit * o.cantidad_producida;
+                    const ing = o.precio_venta_unit * o.cantidad_producida;
                     const margen = ((ing - o.costo_total) / ing * 100).toFixed(1);
-                    const mc     = margen > 30 ? 'text-green-400' : (margen > 10 ? 'text-yellow-400' : 'text-red-400');
-                    margenHTML   = '<span class="' + mc + ' font-bold">' + margen + '%</span>';
+                    const mc = margen > 30 ? 'text-green-400' : (margen > 10 ? 'text-yellow-400' : 'text-red-400');
+                    margenHTML = '<span class="' + mc + ' font-bold">' + margen + '%</span>';
                 }
                 const obs  = (o.observaciones || '').replace(/'/g, "\\'");
                 const prod = (o.producto || '').replace(/'/g, "\\'");
@@ -503,19 +683,10 @@
                     '<td class="p-4 text-orange-400 text-xs">' + costoTotal + '</td>' +
                     '<td class="p-4 text-gray-300 text-xs">' + ingreso + '</td>' +
                     '<td class="p-4 text-xs">' + margenHTML + '</td>' +
-                    '<td class="p-4 text-right">' +
-                        '<div class="flex justify-end gap-1">' +
-                            '<button class="text-xs border border-gray-700 bg-gray-800 hover:border-gray-500 px-2 py-1 rounded text-gray-400 hover:text-white" ' +
-                                'onclick="abrirModalEditar(' + o.id + ', \'' + prod + '\', ' + o.cantidad_producida + ', \'' + vencVal + '\', \'' + obs + '\')">Editar</button>' +
-                            '<button class="text-xs bg-red-900/50 hover:bg-red-700 text-red-400 hover:text-white px-2 py-1 rounded" ' +
-                                'onclick="confirmarEliminar(' + o.id + ')">✕</button>' +
-                        '</div>' +
-                    '</td>';
+                    '<td class="p-4 text-right"><div class="flex justify-end gap-1"><button class="text-xs border border-gray-700 bg-gray-800 hover:border-gray-500 px-2 py-1 rounded text-gray-400 hover:text-white" onclick="abrirModalEditar(' + o.id + ', \'' + prod + '\', ' + o.cantidad_producida + ', \'' + vencVal + '\', \'' + obs + '\')">Editar</button><button class="text-xs bg-red-900/50 hover:bg-red-700 text-red-400 hover:text-white px-2 py-1 rounded" onclick="confirmarEliminar(' + o.id + ')">✕</button></div></td>';
                 tabla.appendChild(tr);
             });
         }
-
-        // ── RECETAS ──────────────────────────────────────────────
 
         function renderListaProductos() {
             const lista = document.getElementById('lista-prods-rec');
@@ -535,20 +706,13 @@
             document.getElementById('receta-vacia').classList.add('hidden');
             document.getElementById('receta-contenido').classList.remove('hidden');
             document.getElementById('receta-titulo').textContent = 'Receta: ' + nombre;
-
             if (!cacheRecetas[id_producto]) {
-                const [rRec, rPres] = await Promise.all([
-                    fetch(API_URL + '/recetas/' + id_producto).then(r => r.json()),
-                    fetch(API_URL + '/productos/' + id_producto + '/presentaciones').then(r => r.json())
-                ]);
-                cacheRecetas[id_producto] = rRec;
-                cachePres[id_producto]    = rPres;
+                const [rRec, rPres] = await Promise.all([ fetch(API_URL + '/recetas/' + id_producto).then(r => r.json()), fetch(API_URL + '/productos/' + id_producto + '/presentaciones').then(r => r.json()) ]);
+                cacheRecetas[id_producto] = rRec; cachePres[id_producto] = rPres;
             }
-
-            const presUnit    = cachePres[id_producto].find(function(p) { return p.nombre === 'Unidad'; }) || cachePres[id_producto][0];
+            const presUnit = cachePres[id_producto].find(function(p) { return p.nombre === 'Unidad'; }) || cachePres[id_producto][0];
             const precioVenta = presUnit ? parseFloat(presUnit.precio_minorista) : 0;
             document.getElementById('precio-venta-rec').textContent = '$ ' + precioVenta.toLocaleString('es-AR');
-
             renderItemsReceta(cacheRecetas[id_producto], precioVenta);
         }
 
@@ -557,20 +721,13 @@
             cont.innerHTML = '';
             let costoTotal = 0;
             items.forEach(function(item, idx) {
-                const ins      = insumos.find(function(i) { return i.id === item.id_insumo; });
+                const ins = insumos.find(function(i) { return i.id === item.id_insumo; });
                 const costoItem = ins ? parseFloat(ins.costo || 0) * parseFloat(item.cantidad_necesaria) : 0;
                 costoTotal += costoItem;
-                const opts = insumos.map(function(i) {
-                    return '<option value="' + i.id + '"' + (i.id == item.id_insumo ? ' selected' : '') + '>' + i.nombre + ' (' + i.unidad + ')</option>';
-                }).join('');
+                const opts = insumos.map(function(i) { return '<option value="' + i.id + '"' + (i.id == item.id_insumo ? ' selected' : '') + '>' + i.nombre + ' (' + i.unidad + ')</option>'; }).join('');
                 const div = document.createElement('div');
                 div.className = 'flex gap-3 items-center bg-black border border-gray-800 rounded-lg px-3 py-2';
-                div.id = 'linea-rec-' + idx;
-                div.innerHTML =
-                    '<select class="flex-1 bg-gray-900 border border-gray-700 text-white rounded p-2 text-xs rec-insumo" onchange="recalcularCostoReceta()">' + opts + '</select>' +
-                    '<input type="number" value="' + item.cantidad_necesaria + '" step="0.001" class="w-24 bg-gray-900 border border-gray-700 text-white rounded p-2 text-xs rec-cant" oninput="recalcularCostoReceta()">' +
-                    '<span class="text-xs text-gray-500 w-20 text-right rec-costo-item">$ ' + costoItem.toLocaleString('es-AR', {minimumFractionDigits:2}) + '</span>' +
-                    '<button class="text-gray-600 hover:text-red-500 font-bold" onclick="this.parentElement.remove(); recalcularCostoReceta();">×</button>';
+                div.innerHTML = '<select class="flex-1 bg-gray-900 border border-gray-700 text-white rounded p-2 text-xs rec-insumo" onchange="recalcularCostoReceta()">' + opts + '</select><input type="number" value="' + item.cantidad_necesaria + '" step="0.001" class="w-24 bg-gray-900 border border-gray-700 text-white rounded p-2 text-xs rec-cant" oninput="recalcularCostoReceta()"><span class="text-xs text-gray-500 w-20 text-right rec-costo-item">$ ' + costoItem.toLocaleString('es-AR', {minimumFractionDigits:2}) + '</span><button class="text-gray-600 hover:text-red-500 font-bold" onclick="this.parentElement.remove(); recalcularCostoReceta();">×</button>';
                 cont.appendChild(div);
             });
             actualizarResumenCosto(costoTotal, precioVenta);
@@ -579,9 +736,9 @@
         function recalcularCostoReceta() {
             let costo = 0;
             document.querySelectorAll('#items-receta > div').forEach(function(row) {
-                const idIns    = parseInt(row.querySelector('.rec-insumo').value);
-                const cant     = parseFloat(row.querySelector('.rec-cant').value) || 0;
-                const ins      = insumos.find(function(i) { return i.id === idIns; });
+                const idIns = parseInt(row.querySelector('.rec-insumo').value);
+                const cant  = parseFloat(row.querySelector('.rec-cant').value) || 0;
+                const ins   = insumos.find(function(i) { return i.id === idIns; });
                 const costoItem = ins ? parseFloat(ins.costo || 0) * cant : 0;
                 costo += costoItem;
                 const span = row.querySelector('.rec-costo-item');
@@ -606,11 +763,7 @@
             const opts = insumos.map(function(i) { return '<option value="' + i.id + '">' + i.nombre + ' (' + i.unidad + ')</option>'; }).join('');
             const div = document.createElement('div');
             div.className = 'flex gap-3 items-center bg-black border border-gray-800 rounded-lg px-3 py-2';
-            div.innerHTML =
-                '<select class="flex-1 bg-gray-900 border border-gray-700 text-white rounded p-2 text-xs rec-insumo" onchange="recalcularCostoReceta()">' + opts + '</select>' +
-                '<input type="number" step="0.001" placeholder="Cantidad" class="w-24 bg-gray-900 border border-gray-700 text-white rounded p-2 text-xs rec-cant" oninput="recalcularCostoReceta()">' +
-                '<span class="text-xs text-gray-500 w-20 text-right rec-costo-item">$ 0</span>' +
-                '<button class="text-gray-600 hover:text-red-500 font-bold" onclick="this.parentElement.remove(); recalcularCostoReceta();">×</button>';
+            div.innerHTML = '<select class="flex-1 bg-gray-900 border border-gray-700 text-white rounded p-2 text-xs rec-insumo" onchange="recalcularCostoReceta()">' + opts + '</select><input type="number" step="0.001" placeholder="Cantidad" class="w-24 bg-gray-900 border border-gray-700 text-white rounded p-2 text-xs rec-cant" oninput="recalcularCostoReceta()"><span class="text-xs text-gray-500 w-20 text-right rec-costo-item">$ 0</span><button class="text-gray-600 hover:text-red-500 font-bold" onclick="this.parentElement.remove(); recalcularCostoReceta();">×</button>';
             cont.appendChild(div);
         }
 
@@ -622,15 +775,10 @@
                 const cant      = parseFloat(row.querySelector('.rec-cant').value);
                 if (id_insumo && cant > 0) items.push({ id_insumo: id_insumo, cantidad_necesaria: cant });
             });
-            await fetch(API_URL + '/recetas/guardar', {
-                method:'POST', headers:{'Content-Type':'application/json'},
-                body: JSON.stringify({ id_producto: productoRecetaActual.id, items: items })
-            });
+            await fetch(API_URL + '/recetas/guardar', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ id_producto: productoRecetaActual.id, items: items }) });
             delete cacheRecetas[productoRecetaActual.id];
             alert('✅ Receta guardada');
         }
-
-        // ── MODAL ORDEN ──────────────────────────────────────────
 
         async function abrirModalOrden() {
             const hoy = new Date();
@@ -649,33 +797,21 @@
             const prod = productos.find(function(p) { return p.id === idProd; });
             const cat  = (categorias.find(function(c) { return c.id === prod.id_categoria; }) || {}).nombre || '—';
             document.getElementById('ord-categoria-display').value = cat;
-
             if (!cacheRecetas[idProd]) {
-                const [rRec, rPres] = await Promise.all([
-                    fetch(API_URL + '/recetas/' + idProd).then(r => r.json()),
-                    fetch(API_URL + '/productos/' + idProd + '/presentaciones').then(r => r.json())
-                ]);
-                cacheRecetas[idProd] = rRec;
-                cachePres[idProd]    = rPres;
+                const [rRec, rPres] = await Promise.all([ fetch(API_URL + '/recetas/' + idProd).then(r => r.json()), fetch(API_URL + '/productos/' + idProd + '/presentaciones').then(r => r.json()) ]);
+                cacheRecetas[idProd] = rRec; cachePres[idProd] = rPres;
             }
-
-            const receta    = cacheRecetas[idProd];
-            const pres      = cachePres[idProd];
-            const presUnit  = pres.find(function(p) { return p.nombre === 'Unidad'; }) || pres[0];
-            const precioV   = presUnit ? parseFloat(presUnit.precio_minorista) : 0;
-
+            const receta = cacheRecetas[idProd];
+            const pres   = cachePres[idProd];
+            const presUnit = pres.find(function(p) { return p.nombre === 'Unidad'; }) || pres[0];
+            const precioV  = presUnit ? parseFloat(presUnit.precio_minorista) : 0;
             const cont = document.getElementById('lista-receta-orden');
-            if (!receta.length) {
-                cont.innerHTML = '<p class="text-yellow-500">⚠ Sin receta configurada.</p>';
-                return;
-            }
-
-            let costoUnit = 0;
-            cont.innerHTML = '';
+            if (!receta.length) { cont.innerHTML = '<p class="text-yellow-500">⚠ Sin receta configurada.</p>'; return; }
+            let costoUnit = 0; cont.innerHTML = '';
             receta.forEach(function(item) {
-                const ins   = insumos.find(function(i) { return i.id === item.id_insumo; });
+                const ins = insumos.find(function(i) { return i.id === item.id_insumo; });
                 const costo = ins ? parseFloat(ins.costo || 0) * parseFloat(item.cantidad_necesaria) : 0;
-                costoUnit  += costo;
+                costoUnit += costo;
                 const p = document.createElement('p');
                 p.innerHTML = '• ' + item.insumo + ': ' + item.cantidad_necesaria + ' ' + item.unidad + ' = <span class="text-orange-400">$ ' + costo.toLocaleString('es-AR', {minimumFractionDigits:2}) + '</span>';
                 cont.appendChild(p);
@@ -684,7 +820,7 @@
         }
 
         function calcularCostoOrden(costoUnit, precioVenta) {
-            const cant       = parseInt(document.getElementById('ord-cantidad').value) || 1;
+            const cant = parseInt(document.getElementById('ord-cantidad').value) || 1;
             const costoTotal = costoUnit * cant;
             document.getElementById('ord-costo-unit').textContent  = '$ ' + costoUnit.toLocaleString('es-AR', {minimumFractionDigits:2});
             document.getElementById('ord-costo-total').textContent = '$ ' + costoTotal.toLocaleString('es-AR');
@@ -692,7 +828,7 @@
                 const margen = ((precioVenta - costoUnit) / precioVenta * 100).toFixed(1);
                 const el = document.getElementById('ord-margen');
                 el.textContent = margen + '%';
-                el.className   = 'font-bold ' + (margen > 30 ? 'text-green-400' : (margen > 10 ? 'text-yellow-400' : 'text-red-400'));
+                el.className = 'font-bold ' + (margen > 30 ? 'text-green-400' : (margen > 10 ? 'text-yellow-400' : 'text-red-400'));
             }
         }
 
@@ -700,41 +836,19 @@
             const idProd = parseInt(document.getElementById('ord-producto').value);
             const cant   = parseInt(document.getElementById('ord-cantidad').value);
             if (!idProd || !cant) { alert('Completá producto y cantidad.'); return; }
-
             const btn = document.getElementById('btn-guardar-ord');
             btn.disabled = true; btn.textContent = 'Registrando...';
-
             try {
                 const receta = cacheRecetas[idProd] || [];
                 let costoUnit = 0;
-                receta.forEach(function(item) {
-                    const ins = insumos.find(function(i) { return i.id === item.id_insumo; });
-                    costoUnit += ins ? parseFloat(ins.costo || 0) * parseFloat(item.cantidad_necesaria) : 0;
-                });
-
+                receta.forEach(function(item) { const ins = insumos.find(function(i) { return i.id === item.id_insumo; }); costoUnit += ins ? parseFloat(ins.costo || 0) * parseFloat(item.cantidad_necesaria) : 0; });
                 const prod = productos.find(function(p) { return p.id === idProd; });
-                const data = {
-                    id_producto:        idProd,
-                    id_empleado:        parseInt(document.getElementById('ord-empleado').value),
-                    cantidad_producida: cant,
-                    observaciones:      document.getElementById('ord-obs').value || null,
-                    fecha_vencimiento:  document.getElementById('ord-vencimiento').value || null,
-                    costo_total:        costoUnit * cant,
-                    id_categoria:       prod ? prod.id_categoria : null
-                };
-
-                const res = await fetch(API_URL + '/produccion/registrar', {
-                    method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(data)
-                });
+                const data = { id_producto: idProd, id_empleado: parseInt(document.getElementById('ord-empleado').value), cantidad_producida: cant, observaciones: document.getElementById('ord-obs').value || null, fecha_vencimiento: document.getElementById('ord-vencimiento').value || null, costo_total: costoUnit * cant, id_categoria: prod ? prod.id_categoria : null };
+                const res = await fetch(API_URL + '/produccion/registrar', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(data) });
                 if (!res.ok) { const e = await res.json(); alert('Error: ' + e.detail); return; }
-                cerrarModales();
-                await cargarHistorial();
-            } finally {
-                btn.disabled = false; btn.textContent = 'Registrar';
-            }
+                cerrarModales(); await cargarHistorial();
+            } finally { btn.disabled = false; btn.textContent = 'Registrar'; }
         }
-
-        // ── EDITAR ───────────────────────────────────────────────
 
         function abrirModalEditar(id, producto, cantidad, vencimiento, obs) {
             document.getElementById('edit-ord-id').value          = id;
@@ -747,19 +861,10 @@
 
         async function guardarEdicionOrden() {
             const id   = document.getElementById('edit-ord-id').value;
-            const data = {
-                cantidad_producida: parseInt(document.getElementById('edit-ord-cantidad').value),
-                fecha_vencimiento:  document.getElementById('edit-ord-vencimiento').value || null,
-                observaciones:      document.getElementById('edit-ord-obs').value || null
-            };
-            await fetch(API_URL + '/produccion/' + id, {
-                method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(data)
-            });
-            cerrarModales();
-            cargarHistorial();
+            const data = { cantidad_producida: parseInt(document.getElementById('edit-ord-cantidad').value), fecha_vencimiento: document.getElementById('edit-ord-vencimiento').value || null, observaciones: document.getElementById('edit-ord-obs').value || null };
+            await fetch(API_URL + '/produccion/' + id, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(data) });
+            cerrarModales(); cargarHistorial();
         }
-
-        // ── ELIMINAR ─────────────────────────────────────────────
 
         async function confirmarEliminar(id) {
             if (!confirm('¿Eliminar este registro de producción?')) return;
@@ -767,68 +872,47 @@
             cargarHistorial();
         }
 
-        // ── IMPRIMIR ─────────────────────────────────────────────
-
         async function imprimirProduccion() {
-            const res        = await fetch(API_URL + '/produccion/historial');
-            const lista      = await res.json();
+            const res = await fetch(API_URL + '/produccion/historial');
+            const lista = await res.json();
             const fechaDesde = getFechaDesde();
             const catFiltro  = document.getElementById('filtro-cat-hist').value;
             const empFiltro  = document.getElementById('filtro-emp-hist').value;
             const periodoEl  = document.getElementById('filtro-periodo');
             const periodoTxt = periodoEl.options[periodoEl.selectedIndex].text;
-
             let filtrada = lista;
             if (fechaDesde) filtrada = filtrada.filter(function(o) { return new Date(o.fecha) >= fechaDesde; });
             if (catFiltro)  filtrada = filtrada.filter(function(o) { return String(o.id_categoria) === catFiltro; });
             if (empFiltro)  filtrada = filtrada.filter(function(o) { return String(o.id_empleado)  === empFiltro; });
-
             if (!filtrada.length) { alert('Sin registros para imprimir.'); return; }
-
             const { jsPDF } = window.jspdf;
             const doc = new jsPDF();
-            doc.setFontSize(18); doc.setTextColor(40,40,40);
-            doc.text('Portal del Viento — Producción', 14, 18);
-            doc.setFontSize(11); doc.setTextColor(100,100,100);
-            doc.text('Período: ' + periodoTxt, 14, 26);
-            doc.setFontSize(9);
-            doc.text('Generado: ' + new Date().toLocaleString('es-AR'), 14, 32);
-
+            doc.setFontSize(18); doc.text('Portal del Viento — Producción', 14, 18);
+            doc.setFontSize(11); doc.text('Período: ' + periodoTxt, 14, 26);
+            doc.setFontSize(9);  doc.text('Generado: ' + new Date().toLocaleString('es-AR'), 14, 32);
             const filas = filtrada.map(function(o) {
-                const fecha  = new Date(o.fecha).toLocaleDateString('es-AR');
-                const venc   = o.fecha_vencimiento ? new Date(o.fecha_vencimiento + 'T00:00:00').toLocaleDateString('es-AR') : '—';
-                const cat    = (categorias.find(function(c) { return c.id === o.id_categoria; }) || {}).nombre || '—';
-                const costo  = o.costo_total ? '$ ' + parseFloat(o.costo_total).toLocaleString('es-AR') : '—';
+                const fecha = new Date(o.fecha).toLocaleDateString('es-AR');
+                const venc  = o.fecha_vencimiento ? new Date(o.fecha_vencimiento + 'T00:00:00').toLocaleDateString('es-AR') : '—';
+                const cat   = (categorias.find(function(c) { return c.id === o.id_categoria; }) || {}).nombre || '—';
+                const costo = o.costo_total ? '$ ' + parseFloat(o.costo_total).toLocaleString('es-AR') : '—';
                 return [fecha, o.producto, cat, o.cantidad_producida + ' un.', o.empleado_apellido + ' ' + o.empleado_nombre, venc, costo];
             });
-
-            doc.autoTable({
-                startY: 38,
-                head: [['Fecha','Producto','Categoría','Cantidad','Encargado','Vencimiento','Costo']],
-                body: filas,
-                headStyles: { fillColor: [30,30,30], textColor: [228,252,116], fontStyle:'bold' },
-                alternateRowStyles: { fillColor: [245,245,245] },
-                styles: { fontSize: 8, cellPadding: 3 }
-            });
-
+            doc.autoTable({ startY: 38, head: [['Fecha','Producto','Categoría','Cantidad','Encargado','Vencimiento','Costo']], body: filas, headStyles: { fillColor: [30,30,30], textColor: [228,252,116], fontStyle:'bold' }, alternateRowStyles: { fillColor: [245,245,245] }, styles: { fontSize: 8, cellPadding: 3 } });
             doc.save('produccion_' + new Date().toISOString().split('T')[0] + '.pdf');
         }
 
-        function cerrarModales() {
-            document.querySelectorAll('.modal-visible').forEach(function(m) { m.classList.replace('modal-visible','modal-oculto'); });
-        }
-
+        function cerrarModales() { document.querySelectorAll('.modal-visible').forEach(function(m) { m.classList.replace('modal-visible','modal-oculto'); }); }
         window.onload = cargarDatos;
     </script>
+
 <!-- MODAL CORREGIR CATEGORÍA -->
 <div id="modal-cat-prod" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50 p-4">
     <div class="bg-gray-900 border border-gray-700 rounded-xl p-6 w-96 shadow-2xl">
         <h3 class="text-lg font-bold text-white mb-1 border-l-4 border-neon pl-2">🏷️ Corregir categoría</h3>
         <p id="cat-prod-nombre" class="text-gray-400 text-sm mb-4 pl-2"></p>
         <input type="hidden" id="cat-prod-id">
-        <label class="block text-xs text-gray-500 font-bold mb-1">Categoría del producto</label>
         <select id="cat-prod-select" class="w-full bg-black border border-gray-700 text-white rounded p-3 mb-2 focus:border-neon focus:outline-none"></select>
-        <p class="text-gray-600 text-xs mb-5">Este cambio se guarda en el catálogo y afecta todo el sistema.</p>
+        <p class="text-gray-600 text-xs mb-5">Este cambio afecta todo el sistema.</p>
         <div class="flex justify-end gap-3">
             <button onclick="cerrarModalCat()" class="px-4 py-2 text-gray-400 hover:text-white font-bold">Cancelar</button>
             <button onclick="guardarCategoriaProd()" class="bg-neon text-black px-6 py-2 rounded font-bold hover:bg-yellow-300">💾 Guardar</button>
@@ -854,6 +938,5 @@
         </div>
     </div>
 </div>
-
 </body>
 </html>
