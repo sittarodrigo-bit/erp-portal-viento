@@ -257,7 +257,7 @@
                     <div class="bg-black rounded-xl border border-gray-800 overflow-hidden">
                         <table class="w-full text-left">
                             <thead class="bg-gray-950 text-xs text-gray-400 uppercase">
-                                <tr><th class="p-4">Producto</th><th class="p-4">Categoría</th><th class="p-4 text-right">Precio</th><th class="p-4 text-right">Stock</th><th class="p-4 text-right">Acciones</th></tr>
+                                <tr><th class="p-4">Producto</th><th class="p-4">Categoría</th><th class="p-4 text-right">Precio</th><th class="p-4 text-right">Stock</th><th class="p-4 text-right">Vendido este mes</th><th class="p-4 text-right">Acciones</th></tr>
                             </thead>
                             <tbody id="tabla-productos" class="divide-y divide-gray-800 text-sm"></tbody>
                         </table>
@@ -1140,14 +1140,29 @@
 
         // ── PRODUCTOS Y STOCK ──
         async function cargarProductos() {
-            const lista = await fetch(`${API_URL}/pos/productos?id_local=${localActual.id}`).then(r=>r.json()).catch(()=>[]);
             const tabla = document.getElementById('tabla-productos');
+            tabla.innerHTML = '<tr><td colspan="6" class="p-4 text-center text-gray-600">Cargando...</td></tr>';
+
+            // Fecha inicio de mes para ventas
+            var hoy = new Date();
+            var mesDesde = hoy.getFullYear() + '-' + String(hoy.getMonth()+1).padStart(2,'0') + '-01';
+
+            const [lista, vendidos] = await Promise.all([
+                fetch(`${API_URL}/pos/productos?id_local=${localActual.id}`).then(r=>r.json()).catch(()=>[]),
+                fetch(`${API_URL}/locales/${localActual.id}/mas_vendidos?desde=${mesDesde}&orden=unidades`).then(r=>r.json()).catch(()=>[])
+            ]);
+
+            // Mapear vendidos por nombre de producto
+            var mapVendidos = {};
+            vendidos.forEach(v => { mapVendidos[(v.nombre_producto||'').toLowerCase()] = v.unidades; });
+
             tabla.innerHTML = '';
-            if (!lista.length) { tabla.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-gray-500">Sin productos en este local.</td></tr>'; return; }
+            if (!lista.length) { tabla.innerHTML = '<tr><td colspan="6" class="p-4 text-center text-gray-500">Sin productos en este local.</td></tr>'; return; }
             lista.forEach(p => {
                 const stock = parseFloat(p.stock)||0;
                 const alerta = parseFloat(p.stock_alerta)||0;
                 const bajo = alerta>0 && stock<=alerta;
+                const vendidoMes = mapVendidos[(p.nombre||'').toLowerCase()] || 0;
                 const tr = document.createElement('tr');
                 tr.className = 'hover:bg-gray-900 transition fila-prod-local';
                 tr.setAttribute('data-buscar', ((p.nombre||'') + ' ' + (p.sku||'') + ' ' + (p.categoria||'')).toLowerCase());
@@ -1156,6 +1171,11 @@
                     <td class="p-4 text-gray-400 text-xs">${p.categoria||'—'}</td>
                     <td class="p-4 text-right text-neon font-bold">${fmt(p.precio)}</td>
                     <td class="p-4 text-right ${bajo?'text-red-400 font-bold':'text-white'}">${stock}${bajo?' ⚠️':''}</td>
+                    <td class="p-4 text-right">
+                        ${vendidoMes > 0
+                            ? `<span class="text-neon font-bold">${vendidoMes} u</span>`
+                            : `<span class="text-gray-600">—</span>`}
+                    </td>
                     <td class="p-4 text-right">
                         <div class="flex justify-end gap-1">
                             <button class="text-xs border border-gray-700 bg-gray-800 hover:border-neon px-2 py-1 rounded text-gray-400 hover:text-white btn-sumar">+ Stock</button>
@@ -1166,15 +1186,15 @@
                         </div>
                     </td>`;
                 tr.querySelector('.btn-sumar').onclick = () => abrirModalStock(p);
-                tr.querySelector('.btn-hist').onclick = () => abrirHistorialProd(p);
-                tr.querySelector('.btn-var').onclick = () => abrirModalVariantes(p);
-                tr.querySelector('.btn-edit').onclick = () => abrirModalProducto(p);
-                tr.querySelector('.btn-del').onclick = () => eliminarProducto(p.id, p.nombre);
+                tr.querySelector('.btn-hist').onclick  = () => abrirHistorialProd(p.id, p.nombre);
+                tr.querySelector('.btn-var').onclick   = () => abrirModalVariantes(p);
+                tr.querySelector('.btn-edit').onclick  = () => abrirModalProducto(p);
+                tr.querySelector('.btn-del').onclick   = () => eliminarProducto(p.id, p.nombre);
                 tabla.appendChild(tr);
             });
-            // Resetear buscador y actualizar contador
-            var inp = document.getElementById('buscar-prod-local');
-            if (inp) { inp.value = ''; }
+
+            // NO resetear buscador — aplicar filtro que ya esté
+            filtrarProdLocal();
             var cont = document.getElementById('contador-prod-local');
             if (cont) cont.textContent = lista.length + ' productos';
         }
