@@ -126,6 +126,17 @@
             <div class="bg-black rounded-xl p-4 mb-4 text-center">
                 <p class="text-gray-500 text-xs font-bold uppercase mb-1">Total a cobrar</p>
                 <p id="cobro-total" class="text-neon font-bold text-4xl">$ 0</p>
+                <!-- Descuento efectivo -->
+                <div id="cobro-descuento-efectivo" class="hidden mt-2 bg-green-900/20 border border-green-800 rounded-lg p-3">
+                    <div class="flex justify-between text-xs mb-1">
+                        <span class="text-gray-400">Precio original</span>
+                        <span id="cobro-desc-original" class="text-gray-400 line-through"></span>
+                    </div>
+                    <div class="flex justify-between text-sm font-bold">
+                        <span class="text-green-400">🏷️ Descuento efectivo</span>
+                        <span id="cobro-desc-ahorro" class="text-green-400"></span>
+                    </div>
+                </div>
             </div>
             <label class="block text-xs text-gray-500 font-bold mb-2">Método de pago</label>
             <div class="grid grid-cols-2 gap-2 mb-3">
@@ -552,6 +563,7 @@
             var datos = localesCache.find(function(l){ return l.id === parseInt(id); }) || {};
             localActual = { id: parseInt(id), nombre: sel.options[sel.selectedIndex].textContent, direccion: datos.direccion || '' };
             await verificarCaja();
+            await cargarConfigLocal(); // cargar descuento efectivo
         }
 
         function abrirNovedad() {
@@ -839,6 +851,23 @@
             btn.classList.add('border-neon'); btn.classList.remove('border-gray-700');
             document.getElementById('efectivo-extra').classList.toggle('hidden', metodo !== 'Efectivo');
             document.getElementById('btn-confirmar-venta').disabled = false;
+
+            // Aplicar descuento por efectivo
+            var base = carrito.reduce(function(a,i){ return a + i.precio*i.cantidad; }, 0);
+            var descDiv = document.getElementById('cobro-descuento-efectivo');
+            if (metodo === 'Efectivo' && descuentoEfectivoPct > 0) {
+                var descMonto = Math.round(base * descuentoEfectivoPct / 100 * 100) / 100;
+                var totalFinal = base - descMonto;
+                document.getElementById('cobro-total').textContent = '$ ' + totalFinal.toLocaleString('es-AR');
+                if (descDiv) {
+                    descDiv.classList.remove('hidden');
+                    document.getElementById('cobro-desc-original').textContent = '$ ' + base.toLocaleString('es-AR');
+                    document.getElementById('cobro-desc-ahorro').textContent = '- $ ' + descMonto.toLocaleString('es-AR') + ' (' + descuentoEfectivoPct + '%)';
+                }
+            } else {
+                document.getElementById('cobro-total').textContent = '$ ' + base.toLocaleString('es-AR');
+                if (descDiv) descDiv.classList.add('hidden');
+            }
         }
 
         function togglePagoDividido() {
@@ -898,8 +927,16 @@
         }
 
         var procesandoVenta = false;
+        var descuentoEfectivoPct = 0; // % de descuento por efectivo (cargado del servidor)
+
+        async function cargarConfigLocal() {
+            if (!localActual) return;
+            try {
+                var res = await fetch(API_URL + '/locales/' + localActual.id + '/config').then(r => r.json());
+                descuentoEfectivoPct = parseFloat(res.descuento_efectivo_pct) || 0;
+            } catch(e) { descuentoEfectivoPct = 0; }
+        }
         async function confirmarVenta() {
-            // Barrera inmediata: si ya hay una venta procesándose, ignorar el segundo toque
             if (procesandoVenta) return;
             var pagos = null;
             var metodoPrincipal = metodoSel;
@@ -916,18 +953,38 @@
             procesandoVenta = true;
             var btn = document.getElementById('btn-confirmar-venta');
             btn.disabled = true; btn.textContent = 'Procesando...';
-            var total = totalCarrito();
+
+            // Calcular total con descuento efectivo si aplica
+            var totalBase = totalCarrito();
+            var descuentoMonto = 0;
+            if (!modoDividido && metodoSel === 'Efectivo' && descuentoEfectivoPct > 0) {
+                descuentoMonto = Math.round(totalBase * descuentoEfectivoPct / 100 * 100) / 100;
+            }
+            var total = Math.round((totalBase - descuentoMonto) * 100) / 100;
+
             var detalle = carrito.map(function(i){ return { nombre_producto: i.nombre, cantidad: i.cantidad, precio_unitario: i.precio, id_producto: i.id, unidades_stock: i.cantidad * (i.factor || 1) }; });
             try {
                 var res = await fetch(API_URL + '/pos/ventas', {
                     method:'POST', headers:{'Content-Type':'application/json'},
-                    body: JSON.stringify({ id_caja: cajaActual.id, id_local: localActual.id, metodo_pago: metodoPrincipal, total: total, detalle: detalle, pagos: pagos, id_empleado: (posUsuario ? posUsuario.id_empleado : null), nombre_cajero: (posUsuario ? (posUsuario.nombre + ' ' + posUsuario.apellido) : null), ref_unica: refVentaActual })
+                    body: JSON.stringify({
+                        id_caja: cajaActual.id,
+                        id_local: localActual.id,
+                        metodo_pago: metodoPrincipal,
+                        total: total,
+                        descuento_efectivo_pct: descuentoEfectivoPct > 0 && metodoSel === 'Efectivo' ? descuentoEfectivoPct : 0,
+                        descuento_efectivo_monto: descuentoMonto,
+                        detalle: detalle,
+                        pagos: pagos,
+                        id_empleado: (posUsuario ? posUsuario.id_empleado : null),
+                        nombre_cajero: (posUsuario ? (posUsuario.nombre + ' ' + posUsuario.apellido) : null),
+                        ref_unica: refVentaActual
+                    })
                 });
                 if (res.ok) {
                     var r = await res.json();
                     ventaParaFacturar = { id_venta: r.id_venta, total: total, metodo: metodoPrincipal, detalle: detalle };
                     carrito = [];
-                    refVentaActual = null;   // listo para la próxima venta (nueva llave)
+                    refVentaActual = null;
                     procesandoVenta = false;
                     renderCarrito();
                     cerrarModales();
