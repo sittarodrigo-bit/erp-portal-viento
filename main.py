@@ -6682,7 +6682,7 @@ def locales_mas_vendidos(id_local: int, desde: Optional[str] = None, hasta: Opti
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
         q = """
-            SELECT d.nombre_producto, d.id_producto, SUM(d.cantidad) AS unidades, SUM(d.cantidad*d.precio_unitario) AS total
+            SELECT d.nombre_producto, SUM(d.cantidad) AS unidades, SUM(d.cantidad*d.precio_unitario) AS total
             FROM pos_detalle_ventas d JOIN pos_ventas v ON d.id_venta=v.id
             WHERE v.id_local=%s
         """
@@ -6690,15 +6690,15 @@ def locales_mas_vendidos(id_local: int, desde: Optional[str] = None, hasta: Opti
         if desde: q += " AND v.fecha::date >= %s"; params.append(desde)
         if hasta: q += " AND v.fecha::date <= %s"; params.append(hasta)
         col_orden = "total" if (orden == "total" or orden == "plata") else "unidades"
-        q += f" GROUP BY d.nombre_producto, d.id_producto ORDER BY {col_orden} DESC LIMIT 50"
+        q += f" GROUP BY d.nombre_producto ORDER BY {col_orden} DESC LIMIT 50"
         cur.execute(q, tuple(params))
         return fetchall_dict(cur)
     finally:
         liberar_conexion(conn)
 
-@app.get("/api/locales/{id_local}/historial_producto/{id_producto}")
-def locales_historial_producto(id_local: int, id_producto: int, desde: Optional[str] = None, hasta: Optional[str] = None):
-    """Historial de ventas de un producto específico en un local."""
+@app.get("/api/locales/{id_local}/historial_producto/{nombre_producto:path}")
+def locales_historial_producto(id_local: int, nombre_producto: str, desde: Optional[str] = None, hasta: Optional[str] = None):
+    """Historial de ventas de un producto específico en un local (busca por nombre)."""
     conn = obtener_conexion()
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
@@ -6707,9 +6707,9 @@ def locales_historial_producto(id_local: int, id_producto: int, desde: Optional[
                    v.metodo_pago, d.nombre_producto
             FROM pos_detalle_ventas d
             JOIN pos_ventas v ON d.id_venta = v.id
-            WHERE v.id_local = %s AND d.id_producto = %s
+            WHERE v.id_local = %s AND LOWER(d.nombre_producto) = LOWER(%s)
         """
-        params = [id_local, id_producto]
+        params = [id_local, nombre_producto]
         if desde: q += " AND v.fecha::date >= %s"; params.append(desde)
         if hasta: q += " AND v.fecha::date <= %s"; params.append(hasta)
         q += " ORDER BY v.fecha DESC LIMIT 500"
