@@ -905,7 +905,7 @@
         }
 
         async function abrirHistorialProd(idProd, nombre) {
-            if (!localActual || !idProd) return;
+            if (!localActual || !nombre) return;
             const panel = document.getElementById('panel-historial-prod');
             document.getElementById('hist-prod-titulo').textContent = '📋 ' + nombre;
             document.getElementById('hist-prod-sub').textContent = 'Ventas en ' + (localActual.nombre||'este local');
@@ -917,7 +917,7 @@
             const desde = (document.getElementById('rv-desde')||{}).value || '';
             const hasta  = (document.getElementById('rv-hasta')||{}).value  || '';
             try {
-                let url = `${API_URL}/locales/${localActual.id}/historial_producto/${idProd}`;
+                let url = `${API_URL}/locales/${localActual.id}/historial_producto/${encodeURIComponent(nombre)}`;
                 const p = new URLSearchParams();
                 if (desde) p.append('desde', desde);
                 if (hasta)  p.append('hasta', hasta);
@@ -960,7 +960,7 @@
                     tbody.appendChild(tr);
                 });
             } catch(e) {
-                document.getElementById('hist-prod-kpis').innerHTML = '<p class="text-red-400 text-xs col-span-3">Error al cargar. Verificá que el endpoint exista.</p>';
+                document.getElementById('hist-prod-kpis').innerHTML = '<p class="text-red-400 text-xs col-span-3">Error al cargar historial.</p>';
             }
         }
 
