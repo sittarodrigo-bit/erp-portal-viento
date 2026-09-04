@@ -6704,7 +6704,7 @@ def local_config_get(id_local: int):
         cur = conn.cursor(cursor_factory=RealDictCursor)
         # Intentar obtener de tabla config; si no existe la columna, devolver defaults
         try:
-            cur.execute("SELECT descuento_efectivo_pct FROM locales WHERE id=%s", (id_local,))
+            cur.execute("SELECT descuento_efectivo_pct FROM pos_locales WHERE id=%s", (id_local,))
             row = cur.fetchone()
             return { "descuento_efectivo_pct": float(row['descuento_efectivo_pct']) if row and row['descuento_efectivo_pct'] else 0 }
         except Exception:
@@ -6722,12 +6722,12 @@ def local_config_set(id_local: int, data: dict = Body(...)):
         pct = float(data.get('descuento_efectivo_pct') or 0)
         pct = max(0, min(50, pct))  # clamp 0-50
         try:
-            cur.execute("UPDATE locales SET descuento_efectivo_pct=%s WHERE id=%s", (pct, id_local))
+            cur.execute("UPDATE pos_locales SET descuento_efectivo_pct=%s WHERE id=%s", (pct, id_local))
         except Exception:
             conn.rollback()
             # Si no tiene la columna, agregarla y reintentar
-            cur.execute("ALTER TABLE locales ADD COLUMN IF NOT EXISTS descuento_efectivo_pct NUMERIC(5,2) DEFAULT 0")
-            cur.execute("UPDATE locales SET descuento_efectivo_pct=%s WHERE id=%s", (pct, id_local))
+            cur.execute("ALTER TABLE pos_locales ADD COLUMN IF NOT EXISTS descuento_efectivo_pct NUMERIC(5,2) DEFAULT 0")
+            cur.execute("UPDATE pos_locales SET descuento_efectivo_pct=%s WHERE id=%s", (pct, id_local))
         conn.commit()
         return {"status": "ok", "descuento_efectivo_pct": pct}
     except Exception as e:
