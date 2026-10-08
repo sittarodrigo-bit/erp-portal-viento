@@ -5,6 +5,7 @@
 <script src="/static/auth.js"></script>
 
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Distribuidores | Portal del Viento</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -15,12 +16,51 @@
         .modal-oculto { display: none; }
         .modal-visible { display: flex; }
         .tab-activa { border-bottom: 2px solid #e4fc74; color: white; }
+
+        /* Sidebar overlay para móvil */
+        #sidebar-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.7);
+            z-index: 40;
+        }
+        #sidebar-overlay.activo { display: block; }
+
+        /* Sidebar */
+        #sidebar {
+            position: fixed;
+            top: 0; left: 0; bottom: 0;
+            width: 256px;
+            background: #000;
+            border-right: 1px solid #1f2937;
+            display: flex;
+            flex-direction: column;
+            z-index: 50;
+            transform: translateX(-100%);
+            transition: transform 0.25s ease;
+        }
+        #sidebar.abierto { transform: translateX(0); }
+
+        @media (min-width: 1024px) {
+            #sidebar {
+                position: relative;
+                transform: none !important;
+                flex-shrink: 0;
+            }
+            #sidebar-overlay { display: none !important; }
+            #btn-menu-hamburguesa { display: none !important; }
+        }
     </style>
 </head>
-<body class="bg-gray-950 text-gray-200 font-sans h-screen flex">
+<body class="bg-gray-950 text-gray-200 font-sans min-h-screen flex">
 
-    <aside class="w-64 bg-black border-r border-gray-800 flex flex-col shrink-0">
-        <div class="p-6 border-b border-gray-800 text-center">
+    <!-- Overlay para cerrar sidebar en móvil -->
+    <div id="sidebar-overlay" onclick="cerrarSidebar()"></div>
+
+    <!-- Sidebar -->
+    <aside id="sidebar">
+        <div class="p-5 border-b border-gray-800 text-center">
             <h1 class="text-neon font-bold text-lg tracking-widest uppercase leading-tight">Portal del Viento</h1>
             <p class="text-white text-xs mt-1 font-bold italic">ALFAJORES</p>
         </div>
@@ -41,46 +81,63 @@
         <div id="usuario-info" class="p-4 border-t border-gray-800 text-xs text-gray-500 text-center"></div>
     </aside>
 
-    <main class="flex-1 flex flex-col overflow-hidden">
-        <header class="bg-gray-900 border-b border-gray-800 py-4 px-8 flex justify-between items-center shrink-0">
-            <h2 class="text-xl font-bold text-white">Gestión de Distribuidores</h2>
-            <div class="flex gap-2">
-                <button onclick="sincronizarPagosMP(true)" id="btn-sync-mp" class="border border-[#009ee3] text-[#009ee3] hover:bg-[#009ee3] hover:text-white font-bold py-2 px-4 rounded-lg text-sm transition">🔄 Sincronizar pagos MP</button>
-                <button onclick="document.getElementById('input-importar').click()" class="border border-gray-600 text-gray-300 hover:text-white font-bold py-2 px-4 rounded-lg text-sm transition">📥 Importar</button>
-                <button onclick="exportarClientes()" class="border border-gray-600 text-gray-300 hover:text-white font-bold py-2 px-4 rounded-lg text-sm transition">📤 Exportar</button>
-                <button onclick="abrirModalNuevo()" class="bg-neon hover:bg-yellow-300 text-black font-bold py-2 px-6 rounded-lg transition">+ Nuevo Distribuidor</button>
+    <!-- Contenido principal -->
+    <main class="flex-1 flex flex-col overflow-hidden min-w-0">
+
+        <!-- Header principal -->
+        <header class="bg-gray-900 border-b border-gray-800 py-3 px-4 lg:px-8 flex justify-between items-center shrink-0 gap-2">
+            <div class="flex items-center gap-3">
+                <!-- Botón hamburguesa (solo móvil/tablet) -->
+                <button id="btn-menu-hamburguesa" onclick="abrirSidebar()" class="lg:hidden text-gray-400 hover:text-white p-2 rounded-lg border border-gray-700 text-xl leading-none">☰</button>
+                <h2 class="text-base lg:text-xl font-bold text-white">Gestión de Distribuidores</h2>
+            </div>
+            <div class="flex gap-1 lg:gap-2 flex-wrap justify-end">
+                <button onclick="sincronizarPagosMP(true)" id="btn-sync-mp" class="border border-[#009ee3] text-[#009ee3] hover:bg-[#009ee3] hover:text-white font-bold py-2 px-2 lg:px-4 rounded-lg text-xs lg:text-sm transition whitespace-nowrap">🔄 <span class="hidden sm:inline">Sync </span>MP</button>
+                <button onclick="document.getElementById('input-importar').click()" class="border border-gray-600 text-gray-300 hover:text-white font-bold py-2 px-2 lg:px-4 rounded-lg text-xs lg:text-sm transition">📥</button>
+                <button onclick="exportarClientes()" class="border border-gray-600 text-gray-300 hover:text-white font-bold py-2 px-2 lg:px-4 rounded-lg text-xs lg:text-sm transition">📤</button>
+                <button onclick="abrirModalNuevo()" class="bg-neon hover:bg-yellow-300 text-black font-bold py-2 px-3 lg:px-6 rounded-lg transition text-xs lg:text-sm whitespace-nowrap">+ Nuevo</button>
                 <input type="file" id="input-importar" accept=".xlsx,.xls,.csv" style="display:none" onchange="importarClientes(event)">
             </div>
         </header>
 
-        <div class="bg-gray-900 border-b border-gray-800 px-8 flex gap-6 shrink-0">
-            <button onclick="cambiarTab('lista')"    id="tab-lista" class="py-3 text-sm font-bold tab-activa">🚚 Nómina</button>
-            <button onclick="cambiarTab('historial')" id="tab-hist"  class="py-3 text-sm font-bold text-gray-400 hover:text-white">📋 Historial de Pedidos</button>
-            <button onclick="cambiarTab('cuenta')"    id="tab-cuenta" class="py-3 text-sm font-bold text-gray-400 hover:text-white">💰 Estado de Cuenta</button>
+        <!-- Tabs -->
+        <div class="bg-gray-900 border-b border-gray-800 px-4 lg:px-8 flex gap-4 lg:gap-6 shrink-0 overflow-x-auto">
+            <button onclick="cambiarTab('lista')"    id="tab-lista" class="py-3 text-xs lg:text-sm font-bold tab-activa whitespace-nowrap">🚚 Nómina</button>
+            <button onclick="cambiarTab('historial')" id="tab-hist"  class="py-3 text-xs lg:text-sm font-bold text-gray-400 hover:text-white whitespace-nowrap">📋 Pedidos</button>
+            <button onclick="cambiarTab('cuenta')"    id="tab-cuenta" class="py-3 text-xs lg:text-sm font-bold text-gray-400 hover:text-white whitespace-nowrap">💰 Cuenta</button>
         </div>
 
-        <div id="panel-lista" class="flex-1 overflow-y-auto p-8">
+        <!-- Panel: Nómina -->
+        <div id="panel-lista" class="flex-1 overflow-y-auto p-4 lg:p-8">
             <!-- KPIs -->
-            <div class="grid grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
-                <div class="bg-black border border-gray-800 rounded-xl p-4 flex justify-between items-center">
-                    <div><p class="text-gray-500 text-xs uppercase font-bold">Distribuidores activos</p>
-                    <p id="kpi-activos" class="text-2xl font-bold text-white mt-1">—</p></div>
-                    <div class="text-2xl text-green-400 bg-green-900/20 rounded-full p-3">👥</div>
+            <div class="grid grid-cols-2 xl:grid-cols-4 gap-3 lg:gap-4 mb-6">
+                <div class="bg-black border border-gray-800 rounded-xl p-3 lg:p-4 flex justify-between items-center">
+                    <div>
+                        <p class="text-gray-500 text-xs uppercase font-bold">Activos</p>
+                        <p id="kpi-activos" class="text-xl lg:text-2xl font-bold text-white mt-1">—</p>
+                    </div>
+                    <div class="text-xl lg:text-2xl text-green-400 bg-green-900/20 rounded-full p-2 lg:p-3">👥</div>
                 </div>
-                <div class="bg-black border border-gray-800 rounded-xl p-4 flex justify-between items-center">
-                    <div><p class="text-gray-500 text-xs uppercase font-bold">Nuevos este mes</p>
-                    <p id="kpi-nuevos" class="text-2xl font-bold text-blue-400 mt-1">—</p></div>
-                    <div class="text-2xl text-blue-400 bg-blue-900/20 rounded-full p-3">➕</div>
+                <div class="bg-black border border-gray-800 rounded-xl p-3 lg:p-4 flex justify-between items-center">
+                    <div>
+                        <p class="text-gray-500 text-xs uppercase font-bold">Nuevos mes</p>
+                        <p id="kpi-nuevos" class="text-xl lg:text-2xl font-bold text-blue-400 mt-1">—</p>
+                    </div>
+                    <div class="text-xl lg:text-2xl text-blue-400 bg-blue-900/20 rounded-full p-2 lg:p-3">➕</div>
                 </div>
-                <div class="bg-black border border-gray-800 rounded-xl p-4 flex justify-between items-center">
-                    <div><p class="text-gray-500 text-xs uppercase font-bold">Crédito en calle</p>
-                    <p id="kpi-credito" class="text-2xl font-bold text-yellow-400 mt-1">—</p></div>
-                    <div class="text-2xl text-yellow-400 bg-yellow-900/20 rounded-full p-3">💰</div>
+                <div class="bg-black border border-gray-800 rounded-xl p-3 lg:p-4 flex justify-between items-center">
+                    <div>
+                        <p class="text-gray-500 text-xs uppercase font-bold">Crédito calle</p>
+                        <p id="kpi-credito" class="text-xl lg:text-2xl font-bold text-yellow-400 mt-1">—</p>
+                    </div>
+                    <div class="text-xl lg:text-2xl text-yellow-400 bg-yellow-900/20 rounded-full p-2 lg:p-3">💰</div>
                 </div>
-                <div class="bg-black border border-gray-800 rounded-xl p-4 flex justify-between items-center">
-                    <div><p class="text-gray-500 text-xs uppercase font-bold">Seguimientos pendientes</p>
-                    <p id="kpi-seguimientos" class="text-2xl font-bold text-orange-400 mt-1">—</p></div>
-                    <div class="text-2xl text-orange-400 bg-orange-900/20 rounded-full p-3">🔔</div>
+                <div class="bg-black border border-gray-800 rounded-xl p-3 lg:p-4 flex justify-between items-center">
+                    <div>
+                        <p class="text-gray-500 text-xs uppercase font-bold">Seguimientos</p>
+                        <p id="kpi-seguimientos" class="text-xl lg:text-2xl font-bold text-orange-400 mt-1">—</p>
+                    </div>
+                    <div class="text-xl lg:text-2xl text-orange-400 bg-orange-900/20 rounded-full p-2 lg:p-3">🔔</div>
                 </div>
             </div>
 
@@ -88,9 +145,9 @@
             <div id="seguimiento-entregas" class="hidden mb-5"></div>
 
             <!-- Filtros -->
-            <div class="bg-black border border-gray-800 rounded-xl p-4 flex flex-wrap gap-3 items-center mb-4">
+            <div class="bg-black border border-gray-800 rounded-xl p-3 lg:p-4 flex flex-wrap gap-2 lg:gap-3 items-center mb-4">
                 <input type="text" id="buscar-cliente" placeholder="🔍 Buscar por nombre, CUIT, localidad..."
-                       class="flex-1 min-w-[250px] bg-gray-950 border border-gray-700 text-white rounded-lg p-2.5 text-sm outline-none"
+                       class="flex-1 min-w-[180px] bg-gray-950 border border-gray-700 text-white rounded-lg p-2.5 text-sm outline-none"
                        oninput="filtrarClientes()">
                 <select id="filtro-localidad" onchange="filtrarClientes()" class="bg-gray-950 border border-gray-700 text-white rounded-lg p-2.5 text-sm">
                     <option value="">Todas las localidades</option>
@@ -106,7 +163,9 @@
                 </select>
                 <span id="contador-clientes" class="text-gray-500 text-xs whitespace-nowrap"></span>
             </div>
-            <div class="bg-black rounded-xl border border-gray-800 overflow-x-auto">
+
+            <!-- Tabla desktop -->
+            <div class="hidden lg:block bg-black rounded-xl border border-gray-800 overflow-x-auto">
                 <table class="w-full text-left min-w-[900px]">
                     <thead class="bg-gray-950 text-xs text-gray-400 uppercase border-b border-gray-800">
                         <tr>
@@ -125,11 +184,15 @@
                     </tbody>
                 </table>
             </div>
+
+            <!-- Cards móvil/tablet -->
+            <div id="cards-distribuidores" class="lg:hidden space-y-3"></div>
         </div>
 
-        <div id="panel-historial" class="hidden flex-1 overflow-y-auto p-8">
-            <div class="flex gap-4 mb-3">
-                <select id="hist-distribuidor" class="bg-gray-900 border border-gray-700 text-white rounded p-2 text-sm flex-1">
+        <!-- Panel: Historial de Pedidos -->
+        <div id="panel-historial" class="hidden flex-1 overflow-y-auto p-4 lg:p-8">
+            <div class="flex flex-wrap gap-2 lg:gap-4 mb-3">
+                <select id="hist-distribuidor" class="bg-gray-900 border border-gray-700 text-white rounded p-2 text-sm flex-1 min-w-[180px]">
                     <option value="">Todos los distribuidores</option>
                 </select>
                 <select id="hist-estado" class="bg-gray-900 border border-gray-700 text-white rounded p-2 text-sm">
@@ -147,7 +210,9 @@
                        oninput="filtrarPedidos()">
                 <span id="contador-pedidos" class="text-gray-500 text-xs whitespace-nowrap"></span>
             </div>
-            <div class="bg-black rounded-xl border border-gray-800 overflow-hidden">
+
+            <!-- Tabla pedidos desktop -->
+            <div class="hidden lg:block bg-black rounded-xl border border-gray-800 overflow-hidden">
                 <table class="w-full text-left">
                     <thead class="bg-gray-950 text-xs text-gray-400 uppercase">
                         <tr>
@@ -164,11 +229,15 @@
                     </tbody>
                 </table>
             </div>
+
+            <!-- Cards pedidos móvil -->
+            <div id="cards-historial" class="lg:hidden space-y-3"></div>
         </div>
 
-        <div id="panel-cuenta" class="hidden flex-1 overflow-y-auto p-8">
-            <div class="flex gap-4 mb-6 items-end">
-                <div class="flex-1">
+        <!-- Panel: Estado de Cuenta -->
+        <div id="panel-cuenta" class="hidden flex-1 overflow-y-auto p-4 lg:p-8">
+            <div class="flex flex-wrap gap-2 lg:gap-4 mb-6 items-end">
+                <div class="flex-1 min-w-[200px]">
                     <label class="block text-xs text-gray-500 font-bold mb-1">Distribuidor</label>
                     <select id="cuenta-distribuidor" onchange="cargarEstadoCuenta()"
                         class="w-full bg-gray-900 border border-gray-700 text-white rounded p-2 text-sm">
@@ -181,22 +250,23 @@
             </div>
 
             <div id="cuenta-contenido" class="hidden">
-                <div class="grid grid-cols-3 gap-4 mb-6">
-                    <div class="bg-black border border-gray-800 rounded-xl p-5 text-center">
+                <div class="grid grid-cols-3 gap-3 lg:gap-4 mb-6">
+                    <div class="bg-black border border-gray-800 rounded-xl p-3 lg:p-5 text-center">
                         <p class="text-xs text-gray-500 font-bold uppercase mb-2">Total Pedidos</p>
-                        <p id="cuenta-total-ped" class="text-2xl font-bold text-white">$ 0</p>
+                        <p id="cuenta-total-ped" class="text-lg lg:text-2xl font-bold text-white">$ 0</p>
                     </div>
-                    <div class="bg-black border border-green-900/30 rounded-xl p-5 text-center">
+                    <div class="bg-black border border-green-900/30 rounded-xl p-3 lg:p-5 text-center">
                         <p class="text-xs text-gray-500 font-bold uppercase mb-2">Total Pagado</p>
-                        <p id="cuenta-total-cob" class="text-2xl font-bold text-green-400">$ 0</p>
+                        <p id="cuenta-total-cob" class="text-lg lg:text-2xl font-bold text-green-400">$ 0</p>
                     </div>
-                    <div class="bg-black border border-red-900/50 rounded-xl p-5 text-center shadow-lg">
+                    <div class="bg-black border border-red-900/50 rounded-xl p-3 lg:p-5 text-center shadow-lg">
                         <p class="text-xs text-gray-500 font-bold uppercase mb-2">Saldo Pendiente</p>
-                        <p id="cuenta-saldo" class="text-2xl font-bold text-red-400">$ 0</p>
+                        <p id="cuenta-saldo" class="text-lg lg:text-2xl font-bold text-red-400">$ 0</p>
                     </div>
                 </div>
 
-                <div class="bg-black rounded-xl border border-gray-800 overflow-hidden">
+                <!-- Tabla movimientos desktop -->
+                <div class="hidden lg:block bg-black rounded-xl border border-gray-800 overflow-hidden">
                     <div class="px-5 py-3 bg-gray-900 border-b border-gray-800">
                         <h3 class="font-bold text-white">Movimientos</h3>
                     </div>
@@ -214,11 +284,14 @@
                         </tbody>
                     </table>
                 </div>
+
+                <!-- Cards movimientos móvil -->
+                <div id="cards-movimientos" class="lg:hidden space-y-2"></div>
             </div>
 
             <div id="cuenta-vacia">
-                <div class="flex items-center justify-between mb-4">
-                    <h3 class="text-white font-bold text-lg">📊 Deudores <span class="text-gray-500 text-sm font-normal">(ordenados de mayor a menor deuda)</span></h3>
+                <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
+                    <h3 class="text-white font-bold text-lg">📊 Deudores <span class="text-gray-500 text-sm font-normal">(mayor a menor deuda)</span></h3>
                     <span id="deudores-total" class="text-red-400 font-bold text-sm"></span>
                 </div>
                 <input type="text" id="buscar-deudor" placeholder="🔍 Buscar deudor por nombre..."
@@ -232,14 +305,16 @@
 
     </main>
 
-    <div id="modal-descuentos" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
-        <div class="bg-gray-900 border border-purple-700 rounded-xl p-6 w-[460px] shadow-2xl max-h-[85vh] overflow-y-auto">
+    <!-- ===== MODALES ===== -->
+
+    <div id="modal-descuentos" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50 p-4">
+        <div class="bg-gray-900 border border-purple-700 rounded-xl p-5 w-full max-w-md shadow-2xl max-h-[90vh] overflow-y-auto">
             <div class="flex justify-between items-center mb-2">
                 <h3 class="text-lg font-bold text-white border-l-4 border-purple-500 pl-2">% Descuentos por Categoría</h3>
                 <button onclick="cerrarModales()" class="text-gray-500 hover:text-white text-2xl leading-none">×</button>
             </div>
             <p id="desc-dist-nombre" class="text-purple-400 text-sm font-bold mb-1"></p>
-            <p class="text-gray-500 text-xs mb-5">Estos descuentos se aplican solos sobre el precio mayorista cuando armás un pedido para este cliente. Dejá en 0 las categorías sin descuento.</p>
+            <p class="text-gray-500 text-xs mb-5">Estos descuentos se aplican sobre el precio mayorista cuando armás un pedido para este cliente. Dejá en 0 las categorías sin descuento.</p>
             <input type="hidden" id="desc-id">
             <div id="desc-lista" class="space-y-2 mb-5"></div>
             <div class="flex justify-end gap-3">
@@ -249,8 +324,8 @@
         </div>
     </div>
 
-    <div id="modal-acceso" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
-        <div class="bg-gray-900 border border-blue-700 rounded-xl p-6 w-[440px] shadow-2xl">
+    <div id="modal-acceso" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50 p-4">
+        <div class="bg-gray-900 border border-blue-700 rounded-xl p-5 w-full max-w-md shadow-2xl">
             <div class="flex justify-between items-center mb-2">
                 <h3 class="text-lg font-bold text-white border-l-4 border-blue-500 pl-2">🔑 Acceso al Portal Mayorista</h3>
                 <button onclick="cerrarModales()" class="text-gray-500 hover:text-white text-2xl leading-none">×</button>
@@ -281,14 +356,14 @@
         </div>
     </div>
 
-    <div id="modal-saldo" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
-        <div class="bg-gray-900 border border-orange-700 rounded-xl p-6 w-[420px] shadow-2xl">
+    <div id="modal-saldo" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50 p-4">
+        <div class="bg-gray-900 border border-orange-700 rounded-xl p-5 w-full max-w-md shadow-2xl">
             <div class="flex justify-between items-center mb-2">
                 <h3 class="text-lg font-bold text-white border-l-4 border-orange-500 pl-2">Cargar Saldo Inicial</h3>
                 <button onclick="cerrarModales()" class="text-gray-500 hover:text-white text-2xl leading-none">×</button>
             </div>
             <p id="saldo-dist-nombre" class="text-orange-400 text-sm font-bold mb-2"></p>
-            <p class="text-gray-500 text-xs mb-5">Para deudas que arrastra del sistema anterior o cargos manuales que no están en el catálogo (fletes, ajustes, etc.). Se carga como un movimiento "Despachado" que suma al saldo. Después se descuenta cuando registres sus pagos.</p>
+            <p class="text-gray-500 text-xs mb-5">Para deudas que arrastra del sistema anterior o cargos manuales. Se carga como un movimiento "Despachado" que suma al saldo.</p>
             <div class="mb-4">
                 <label class="block text-xs text-orange-400 font-bold mb-1">Monto que debe ($)</label>
                 <input type="number" id="saldo-monto" step="0.01" class="w-full bg-black border-2 border-orange-700 text-white rounded p-3 font-bold text-2xl text-center outline-none focus:border-orange-500">
@@ -299,7 +374,7 @@
             </div>
             <div class="mb-5">
                 <label class="block text-xs text-orange-400 font-bold mb-1">Observaciones / Concepto (opcional)</label>
-                <input type="text" id="saldo-nota" placeholder="Ej: Saldo planilla vieja, Flete San Rafael, Ajuste..." class="w-full bg-black border border-gray-700 text-white rounded p-2 text-sm">
+                <input type="text" id="saldo-nota" placeholder="Ej: Saldo planilla vieja, Flete San Rafael..." class="w-full bg-black border border-gray-700 text-white rounded p-2 text-sm">
             </div>
             <div class="flex justify-end gap-3">
                 <button onclick="cerrarModales()" class="px-4 py-2 text-gray-400 hover:text-white font-bold">Cancelar</button>
@@ -308,8 +383,8 @@
         </div>
     </div>
 
-    <div id="modal-cobro" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
-        <div class="bg-gray-900 border border-gray-700 rounded-xl p-6 w-[420px] shadow-2xl">
+    <div id="modal-cobro" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50 p-4">
+        <div class="bg-gray-900 border border-gray-700 rounded-xl p-5 w-full max-w-md shadow-2xl">
             <div class="flex justify-between items-center mb-2">
                 <h3 class="text-lg font-bold text-white border-l-4 border-green-500 pl-2">Registrar Pago</h3>
                 <button onclick="cerrarModales()" class="text-gray-500 hover:text-white text-2xl leading-none">×</button>
@@ -345,14 +420,14 @@
         </div>
     </div>
 
-    <div id="modal-nuevo" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
-        <div class="bg-gray-900 border border-gray-700 rounded-xl p-6 w-[560px] shadow-2xl max-h-[90vh] overflow-y-auto">
+    <div id="modal-nuevo" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50 p-4">
+        <div class="bg-gray-900 border border-gray-700 rounded-xl p-5 w-full max-w-xl shadow-2xl max-h-[90vh] overflow-y-auto">
             <div class="flex justify-between items-center mb-4">
                 <h3 class="text-lg font-bold text-white border-l-4 border-neon pl-2">Alta de Distribuidor</h3>
                 <button onclick="cerrarModales()" class="text-gray-500 hover:text-white text-2xl">×</button>
             </div>
-            <div class="grid grid-cols-2 gap-3 mb-3">
-                <div class="col-span-2">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+                <div class="col-span-1 sm:col-span-2">
                     <label class="block text-xs text-gray-500 font-bold mb-1">Nombre / Razón Social</label>
                     <input type="text" id="nd-nombre" placeholder="Ej: Juan Pérez o Distribuidora SA" class="w-full bg-black border border-gray-700 text-white rounded p-2">
                 </div>
@@ -376,7 +451,7 @@
                     <label class="block text-xs text-gray-500 font-bold mb-1">Email</label>
                     <input type="email" id="nd-email" placeholder="correo@ejemplo.com" class="w-full bg-black border border-gray-700 text-white rounded p-2">
                 </div>
-                <div class="col-span-2">
+                <div class="col-span-1 sm:col-span-2">
                     <label class="block text-xs text-gray-500 font-bold mb-1">Dirección (calle y altura)</label>
                     <input type="text" id="nd-dir" placeholder="Ej: Av. San Martín 1234" class="w-full bg-black border border-gray-700 text-white rounded p-2">
                 </div>
@@ -406,16 +481,16 @@
         </div>
     </div>
 
-    <div id="modal-editar" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
-        <div class="bg-gray-900 border border-gray-700 rounded-xl p-6 w-[560px] shadow-2xl max-h-[90vh] overflow-y-auto">
+    <div id="modal-editar" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50 p-4">
+        <div class="bg-gray-900 border border-gray-700 rounded-xl p-5 w-full max-w-xl shadow-2xl max-h-[90vh] overflow-y-auto">
             <div class="flex justify-between items-center mb-1">
                 <h3 class="text-lg font-bold text-white border-l-4 border-neon pl-2">Editar Distribuidor</h3>
                 <button onclick="cerrarModales()" class="text-gray-500 hover:text-white text-2xl">×</button>
             </div>
             <p id="editar-titulo" class="text-neon text-sm font-bold mb-4"></p>
             <input type="hidden" id="editar-id">
-            <div class="grid grid-cols-2 gap-3 mb-3">
-                <div class="col-span-2">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+                <div class="col-span-1 sm:col-span-2">
                     <label class="block text-xs text-gray-500 font-bold mb-1">Nombre / Razón Social</label>
                     <input type="text" id="ed-nombre" class="w-full bg-black border border-gray-700 text-white rounded p-2">
                 </div>
@@ -439,7 +514,7 @@
                     <label class="block text-xs text-gray-500 font-bold mb-1">Email</label>
                     <input type="email" id="ed-email" class="w-full bg-black border border-gray-700 text-white rounded p-2">
                 </div>
-                <div class="col-span-2">
+                <div class="col-span-1 sm:col-span-2">
                     <label class="block text-xs text-gray-500 font-bold mb-1">Dirección</label>
                     <input type="text" id="ed-dir" class="w-full bg-black border border-gray-700 text-white rounded p-2">
                 </div>
@@ -469,25 +544,27 @@
         </div>
     </div>
 
-    <div id="modal-detalle" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
-        <div class="bg-gray-900 border border-gray-700 rounded-xl p-6 w-[520px] shadow-2xl max-h-[80vh] overflow-y-auto">
+    <div id="modal-detalle" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50 p-4">
+        <div class="bg-gray-900 border border-gray-700 rounded-xl p-5 w-full max-w-lg shadow-2xl max-h-[85vh] overflow-y-auto">
             <div class="flex justify-between items-center mb-4">
                 <h3 id="detalle-titulo" class="text-lg font-bold text-white"></h3>
                 <button onclick="cerrarModales()" class="text-gray-500 hover:text-white text-2xl">×</button>
             </div>
             <p id="detalle-dist"  class="text-neon text-sm font-bold mb-1"></p>
             <p id="detalle-fecha" class="text-gray-500 text-xs mb-4"></p>
-            <table class="w-full text-sm mb-4">
-                <thead class="text-xs text-gray-400 uppercase border-b border-gray-700">
-                    <tr>
-                        <th class="py-2 text-left">Producto</th>
-                        <th class="py-2 text-center">Cant.</th>
-                        <th class="py-2 text-right">Precio</th>
-                        <th class="py-2 text-right">Subtotal</th>
-                    </tr>
-                </thead>
-                <tbody id="tabla-detalle-pedido" class="divide-y divide-gray-800"></tbody>
-            </table>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm mb-4 min-w-[320px]">
+                    <thead class="text-xs text-gray-400 uppercase border-b border-gray-700">
+                        <tr>
+                            <th class="py-2 text-left">Producto</th>
+                            <th class="py-2 text-center">Cant.</th>
+                            <th class="py-2 text-right">Precio</th>
+                            <th class="py-2 text-right">Subtotal</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tabla-detalle-pedido" class="divide-y divide-gray-800"></tbody>
+                </table>
+            </div>
             <div class="border-t border-gray-700 pt-3 flex justify-between items-center">
                 <span class="font-bold text-gray-400">TOTAL</span>
                 <span id="detalle-total" class="font-bold text-neon text-xl"></span>
@@ -495,8 +572,8 @@
         </div>
     </div>
 
-    <div id="modal-eliminar" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
-        <div class="bg-gray-900 border border-red-700 rounded-xl p-6 w-96 shadow-2xl text-center">
+    <div id="modal-eliminar" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50 p-4">
+        <div class="bg-gray-900 border border-red-700 rounded-xl p-6 w-full max-w-sm shadow-2xl text-center">
             <p class="text-4xl mb-3">🗑️</p>
             <h3 class="text-lg font-bold text-white mb-1">¿Eliminar distribuidor?</h3>
             <p id="eliminar-nombre" class="text-gray-400 text-sm mb-6"></p>
@@ -512,6 +589,16 @@
         var API_URL = window.location.origin + "/api";
         if(window.location.hostname === '127.0.0.1' && window.location.port !== '8000') {
             API_URL = "http://127.0.0.1:8000/api";
+        }
+
+        // ── SIDEBAR MÓVIL ──────────────────────────────────────────────────
+        function abrirSidebar() {
+            document.getElementById('sidebar').classList.add('abierto');
+            document.getElementById('sidebar-overlay').classList.add('activo');
+        }
+        function cerrarSidebar() {
+            document.getElementById('sidebar').classList.remove('abierto');
+            document.getElementById('sidebar-overlay').classList.remove('activo');
         }
 
         async function verificarCuitAfip(prefix) {
@@ -536,7 +623,6 @@
                                   (data.condicion_iva || '') + ' · Estado: ' + (data.estado_clave || '—');
                 info.className = 'text-xs mt-1 ' + (data.estado_clave === 'ACTIVO' ? 'text-green-400' : 'text-yellow-400');
 
-                // Autocompletar razón social si el campo de nombre está vacío
                 var campoNombre = document.getElementById(prefix + '-nombre');
                 if (campoNombre && !campoNombre.value.trim() && data.razon_social) {
                     campoNombre.value = data.razon_social;
@@ -557,9 +643,9 @@
             document.getElementById('panel-lista').classList.toggle('hidden', tab !== 'lista');
             document.getElementById('panel-historial').classList.toggle('hidden', tab !== 'historial');
             document.getElementById('panel-cuenta').classList.toggle('hidden', tab !== 'cuenta');
-            document.getElementById('tab-lista').className   = tab === 'lista'    ? 'py-3 text-sm font-bold tab-activa' : 'py-3 text-sm font-bold text-gray-400 hover:text-white';
-            document.getElementById('tab-hist').className    = tab === 'historial' ? 'py-3 text-sm font-bold tab-activa' : 'py-3 text-sm font-bold text-gray-400 hover:text-white';
-            document.getElementById('tab-cuenta').className  = tab === 'cuenta'    ? 'py-3 text-sm font-bold tab-activa' : 'py-3 text-sm font-bold text-gray-400 hover:text-white';
+            document.getElementById('tab-lista').className   = tab === 'lista'    ? 'py-3 text-xs lg:text-sm font-bold tab-activa whitespace-nowrap' : 'py-3 text-xs lg:text-sm font-bold text-gray-400 hover:text-white whitespace-nowrap';
+            document.getElementById('tab-hist').className    = tab === 'historial' ? 'py-3 text-xs lg:text-sm font-bold tab-activa whitespace-nowrap' : 'py-3 text-xs lg:text-sm font-bold text-gray-400 hover:text-white whitespace-nowrap';
+            document.getElementById('tab-cuenta').className  = tab === 'cuenta'    ? 'py-3 text-xs lg:text-sm font-bold tab-activa whitespace-nowrap' : 'py-3 text-xs lg:text-sm font-bold text-gray-400 hover:text-white whitespace-nowrap';
             if (tab === 'historial') cargarHistorialPedidos();
             if (tab === 'cuenta')    poblarSelectCuenta();
         }
@@ -595,7 +681,6 @@
             var lista = await res.json();
             _todosDistribuidores = lista;
 
-            // Ordenamiento
             var orden = document.getElementById('orden-clientes') ? document.getElementById('orden-clientes').value : 'recientes';
             if (orden === 'recientes') {
                 lista.sort(function(a,b){ return new Date(b.fecha_registro||0) - new Date(a.fecha_registro||0); });
@@ -603,42 +688,48 @@
                 lista.sort(function(a,b){ return (a.razon_social||'').localeCompare(b.razon_social||''); });
             }
 
-            // Poblar selector del historial
             var sel = document.getElementById('hist-distribuidor');
             sel.innerHTML = '<option value="">Todos los distribuidores</option>';
             lista.forEach(function(d) { sel.innerHTML += '<option value="' + d.id + '">' + d.razon_social + '</option>'; });
 
-            // Poblar filtro de localidades (únicas)
             var locs = [...new Set(lista.map(d=>d.localidad).filter(Boolean))].sort();
             var selLoc = document.getElementById('filtro-localidad');
             var locActual = selLoc.value;
             selLoc.innerHTML = '<option value="">Todas las localidades</option>' + locs.map(l=>'<option value="'+l+'">'+l+'</option>').join('');
             selLoc.value = locActual;
 
+            // Tabla desktop
             var tabla = document.getElementById('tabla-distribuidores');
             tabla.innerHTML = '';
-            if (!lista.length) { tabla.innerHTML = '<tr><td colspan="8" class="p-4 text-center text-gray-500">Sin distribuidores.</td></tr>'; return; }
+            // Cards móvil
+            var cards = document.getElementById('cards-distribuidores');
+            cards.innerHTML = '';
+
+            if (!lista.length) {
+                tabla.innerHTML = '<tr><td colspan="8" class="p-4 text-center text-gray-500">Sin distribuidores.</td></tr>';
+                cards.innerHTML = '<p class="text-center text-gray-500 py-8">Sin distribuidores.</p>';
+                return;
+            }
 
             lista.forEach(function(d) {
-                var tr = document.createElement('tr');
-                tr.className = 'fila-cliente hover:bg-gray-900 transition border-b border-gray-800';
                 var locProv = [d.localidad, d.provincia].filter(Boolean).join(', ') || '—';
                 var buscable = [d.razon_social, d.cuit, d.dni, d.telefono, d.email, d.localidad, d.provincia].filter(Boolean).join(' ').toLowerCase();
+                var nombre = d.razon_social || 'Cliente';
+                var loc = d.localidad || '';
+                var msgBienvenida = '¡Hola ' + nombre + '! Te damos la bienvenida a Portal del Viento. Gracias por sumarte como distribuidor. 🌬️';
+                var msgIncentivo = '¡Hola ' + nombre + '! ¿Cómo va todo? Tenemos novedades y promociones especiales para vos este mes. ¿Querés que te pasemos la lista? 🍫';
+                var msgPostEntrega = '¡Hola ' + nombre + '! Vimos que tu último pedido ya fue entregado. ¿Llegó todo en orden en ' + loc + '?';
+                var msgPago = '¡Hola ' + nombre + '! Te recordamos que tenés un saldo pendiente. ¡Gracias!';
+                var badgeNuevo = esNuevo(d.fecha_registro) ? ' <span class="text-[10px] bg-blue-500/20 text-blue-300 font-bold px-2 py-0.5 rounded">NUEVO</span>' : '';
+                var fechaReg = d.fecha_registro ? new Date(d.fecha_registro).toLocaleDateString('es-AR', {day:'2-digit', month:'2-digit', year:'numeric'}) : '—';
+                var btnAprobar = d.aprobado ? '' : '<button class="text-xs bg-blue-700 hover:bg-blue-600 text-white font-bold px-3 py-1 rounded transition btn-aprobar">Aprobar</button>';
+
+                // ── FILA TABLA (desktop) ──
+                var tr = document.createElement('tr');
+                tr.className = 'fila-cliente hover:bg-gray-900 transition border-b border-gray-800';
                 tr.setAttribute('data-buscar', buscable);
                 tr.setAttribute('data-localidad', d.localidad || '');
                 tr.setAttribute('data-estado', d.aprobado ? 'aprobado' : 'pendiente');
-                var btnAprobar = d.aprobado ? '' : '<button class="text-xs bg-blue-700 hover:bg-blue-600 text-white font-bold px-3 py-1 rounded transition btn-aprobar">Aprobar</button>';
-                var badgeNuevo = esNuevo(d.fecha_registro) ? ' <span class="text-[10px] bg-blue-500/20 text-blue-300 font-bold px-2 py-0.5 rounded">NUEVO</span>' : '';
-                var fechaReg = d.fecha_registro ? new Date(d.fecha_registro).toLocaleDateString('es-AR', {day:'2-digit', month:'2-digit', year:'numeric'}) : '—';
-
-                // Mensajes de WhatsApp pre-armados
-                var nombre = d.razon_social || 'Cliente';
-                var loc = d.localidad || '';
-                var msgBienvenida = '¡Hola ' + nombre + '! Te damos la bienvenida a Portal del Viento. Gracias por sumarte como distribuidor. Cualquier consulta estamos a tu disposición. 🌬️';
-                var msgIncentivo = '¡Hola ' + nombre + '! ¿Cómo va todo? Tenemos novedades y promociones especiales para vos este mes. ¿Querés que te pasemos la lista actualizada? 🍫';
-                var msgPostEntrega = '¡Hola ' + nombre + '! Vimos que tu último pedido ya fue entregado. ¿Llegó todo en orden? Queremos asegurarnos de que la mercadería haya llegado en perfectas condiciones a ' + loc + '.';
-                var msgPago = '¡Hola ' + nombre + '! Te recordamos que tenés un saldo pendiente con nosotros. Cualquier consulta sobre tu cuenta, no dudes en escribirnos. ¡Gracias!';
-
                 tr.innerHTML =
                     '<td class="p-4">' +
                         '<p class="font-bold text-white">' + nombre + badgeNuevo + '</p>' +
@@ -652,16 +743,16 @@
                     '<td class="p-4">' + (d.aprobado ? '<span class="text-xs text-green-400 font-bold">✓ Aprobado</span>' : '<span class="text-xs text-yellow-400 font-bold">⏳ Pendiente</span>') +
                         (d.tiene_clave ? '<br><span class="text-xs text-blue-400">🔑 Con acceso</span>' : '<br><span class="text-xs text-gray-600">Sin acceso</span>') + '</td>' +
                     '<td class="p-4 text-right">' +
-                        '<div class="flex justify-end gap-1 items-center">' +
+                        '<div class="flex justify-end gap-1 items-center flex-wrap">' +
                             '<button class="text-xs border border-gray-700 bg-gray-800 hover:border-gray-500 px-3 py-1 rounded text-gray-400 hover:text-white transition btn-editar">Editar</button>' +
                             (d.telefono ?
                             '<div class="relative wa-drop">' +
-                                '<button class="text-xs border border-green-800 bg-green-900/30 hover:bg-green-700 px-3 py-1 rounded text-green-300 hover:text-white transition btn-wa">💬 WhatsApp ▾</button>' +
+                                '<button class="text-xs border border-green-800 bg-green-900/30 hover:bg-green-700 px-3 py-1 rounded text-green-300 hover:text-white transition btn-wa">💬 ▾</button>' +
                                 '<div class="wa-menu hidden absolute right-0 top-full mt-1 bg-gray-900 border border-gray-700 rounded-lg shadow-xl z-20 min-w-[210px] text-left">' +
-                                    '<a href="' + linkWhatsApp(d.telefono, msgBienvenida) + '" target="_blank" class="block px-3 py-2 text-xs text-gray-200 hover:bg-gray-800 hover:text-green-300">🤝 Mensaje de bienvenida</a>' +
-                                    '<a href="' + linkWhatsApp(d.telefono, msgIncentivo) + '" target="_blank" class="block px-3 py-2 text-xs text-gray-200 hover:bg-gray-800 hover:text-green-300">🚀 Incentivo de compra</a>' +
-                                    '<a href="' + linkWhatsApp(d.telefono, msgPostEntrega) + '" target="_blank" class="block px-3 py-2 text-xs text-gray-200 hover:bg-gray-800 hover:text-green-300">📦 Control post-entrega</a>' +
-                                    '<a href="' + linkWhatsApp(d.telefono, msgPago) + '" target="_blank" class="block px-3 py-2 text-xs text-gray-200 hover:bg-gray-800 hover:text-green-300">💰 Recordatorio de pago</a>' +
+                                    '<a href="' + linkWhatsApp(d.telefono, msgBienvenida) + '" target="_blank" class="block px-3 py-2 text-xs text-gray-200 hover:bg-gray-800 hover:text-green-300">🤝 Bienvenida</a>' +
+                                    '<a href="' + linkWhatsApp(d.telefono, msgIncentivo) + '" target="_blank" class="block px-3 py-2 text-xs text-gray-200 hover:bg-gray-800 hover:text-green-300">🚀 Incentivo</a>' +
+                                    '<a href="' + linkWhatsApp(d.telefono, msgPostEntrega) + '" target="_blank" class="block px-3 py-2 text-xs text-gray-200 hover:bg-gray-800 hover:text-green-300">📦 Post-entrega</a>' +
+                                    '<a href="' + linkWhatsApp(d.telefono, msgPago) + '" target="_blank" class="block px-3 py-2 text-xs text-gray-200 hover:bg-gray-800 hover:text-green-300">💰 Recordar pago</a>' +
                                 '</div>' +
                             '</div>' : '') +
                             '<button class="text-xs border border-blue-800 bg-blue-900/30 hover:bg-blue-800 px-3 py-1 rounded text-blue-300 hover:text-white transition btn-acceso">🔑</button>' +
@@ -671,6 +762,8 @@
                             '<button class="text-xs bg-red-900/50 hover:bg-red-700 text-red-400 hover:text-white px-2 py-1 rounded transition btn-eliminar">✕</button>' +
                         '</div>' +
                     '</td>';
+
+                // Eventos tabla
                 tr.querySelector('.btn-editar').onclick = function() { abrirModalEditar(d); };
                 tr.querySelector('.btn-acceso').onclick = function() { abrirModalAcceso(d); };
                 tr.querySelector('.btn-descuentos').onclick = function() { abrirModalDescuentos(d); };
@@ -678,7 +771,6 @@
                 var btnApr = tr.querySelector('.btn-aprobar');
                 if (btnApr) btnApr.onclick = function() { aprobarDistribuidor(d.id, d.razon_social); };
                 tr.querySelector('.btn-eliminar').onclick = function() { abrirModalEliminar(d.id, d.razon_social); };
-                // Toggle del menú WhatsApp
                 var btnWa = tr.querySelector('.btn-wa');
                 if (btnWa) btnWa.onclick = function(e) {
                     e.stopPropagation();
@@ -687,13 +779,47 @@
                     menu.classList.toggle('hidden');
                 };
                 tabla.appendChild(tr);
+
+                // ── CARD MÓVIL ──
+                var card = document.createElement('div');
+                card.className = 'fila-cliente bg-black border border-gray-800 rounded-xl p-4';
+                card.setAttribute('data-buscar', buscable);
+                card.setAttribute('data-localidad', d.localidad || '');
+                card.setAttribute('data-estado', d.aprobado ? 'aprobado' : 'pendiente');
+                card.innerHTML =
+                    '<div class="flex justify-between items-start mb-3">' +
+                        '<div class="flex-1 min-w-0 mr-2">' +
+                            '<p class="font-bold text-white truncate">' + nombre + badgeNuevo + '</p>' +
+                            '<p class="text-gray-500 text-xs">' + locProv + '</p>' +
+                            (d.telefono ? '<p class="text-gray-400 text-xs mt-0.5">📞 ' + d.telefono + '</p>' : '') +
+                        '</div>' +
+                        '<div class="text-right shrink-0">' +
+                            '<p class="text-neon font-bold text-sm">$ ' + parseFloat(d.limite_credito || 0).toLocaleString('es-AR') + '</p>' +
+                            (d.aprobado ? '<p class="text-xs text-green-400">✓ Aprobado</p>' : '<p class="text-xs text-yellow-400">⏳ Pendiente</p>') +
+                        '</div>' +
+                    '</div>' +
+                    '<div class="flex gap-2 flex-wrap">' +
+                        '<button class="flex-1 text-xs border border-gray-700 bg-gray-800 px-3 py-2 rounded text-gray-300 btn-editar-card">✏️ Editar</button>' +
+                        '<button class="flex-1 text-xs bg-neon text-black font-bold px-3 py-2 rounded btn-pedidos-card">📋 Pedidos</button>' +
+                        (d.telefono ? '<a href="' + linkWhatsApp(d.telefono, msgBienvenida) + '" target="_blank" class="text-xs border border-green-800 bg-green-900/30 px-3 py-2 rounded text-green-300">💬</a>' : '') +
+                        '<button class="text-xs border border-blue-800 bg-blue-900/30 px-3 py-2 rounded text-blue-300 btn-acceso-card">🔑</button>' +
+                        '<button class="text-xs border border-purple-800 bg-purple-900/30 px-3 py-2 rounded text-purple-300 btn-desc-card">%</button>' +
+                        '<button class="text-xs bg-red-900/50 text-red-400 px-3 py-2 rounded btn-elim-card">✕</button>' +
+                    '</div>';
+
+                card.querySelector('.btn-editar-card').onclick = function() { abrirModalEditar(d); };
+                card.querySelector('.btn-pedidos-card').onclick = function() { verPedidosDistribuidor(d.id, d.razon_social); };
+                card.querySelector('.btn-acceso-card').onclick = function() { abrirModalAcceso(d); };
+                card.querySelector('.btn-desc-card').onclick = function() { abrirModalDescuentos(d); };
+                card.querySelector('.btn-elim-card').onclick = function() { abrirModalEliminar(d.id, d.razon_social); };
+                cards.appendChild(card);
             });
+
             var cont = document.getElementById('contador-clientes');
             if (cont) cont.textContent = lista.length + ' clientes';
             filtrarClientes();
         }
 
-        // Cerrar menús de WhatsApp al hacer click afuera
         document.addEventListener('click', function(){ document.querySelectorAll('.wa-menu').forEach(function(m){ m.classList.add('hidden'); }); });
 
         function filtrarClientes() {
@@ -702,7 +828,8 @@
             var q = input.value.toLowerCase().trim();
             var fLoc = document.getElementById('filtro-localidad') ? document.getElementById('filtro-localidad').value : '';
             var fEst = document.getElementById('filtro-estado') ? document.getElementById('filtro-estado').value : '';
-            var filas = document.querySelectorAll('#tabla-distribuidores > .fila-cliente');
+            // Tabla (desktop) + Cards (móvil) comparten la misma clase
+            var filas = document.querySelectorAll('.fila-cliente');
             var visibles = 0;
             filas.forEach(function(f) {
                 var txt = f.getAttribute('data-buscar') || '';
@@ -713,8 +840,11 @@
                 f.style.display = match ? '' : 'none';
                 if (match) visibles++;
             });
+            // visibles es el doble (tabla + cards), dividir por 2
+            var total = filas.length / 2;
+            var vis = visibles / 2;
             var cont = document.getElementById('contador-clientes');
-            if (cont) cont.textContent = (q||fLoc||fEst) ? (visibles + ' de ' + filas.length + ' clientes') : (filas.length + ' clientes');
+            if (cont) cont.textContent = (q||fLoc||fEst) ? (vis + ' de ' + total + ' clientes') : (total + ' clientes');
         }
 
         async function cargarHistorialPedidos() {
@@ -726,16 +856,27 @@
             if (dist)   params.push('id_distribuidor=' + dist);
             if (params.length) url += '?' + params.join('&');
             var lista = await fetch(url).then(function(r) { return r.json(); });
+
             var tabla = document.getElementById('tabla-historial');
+            var cardsH = document.getElementById('cards-historial');
             tabla.innerHTML = '';
-            if (!lista.length) { tabla.innerHTML = '<tr><td colspan="6" class="p-4 text-center text-gray-500">Sin pedidos.</td></tr>'; document.getElementById('contador-pedidos').textContent = ''; return; }
+            cardsH.innerHTML = '';
+
+            if (!lista.length) {
+                tabla.innerHTML = '<tr><td colspan="6" class="p-4 text-center text-gray-500">Sin pedidos.</td></tr>';
+                cardsH.innerHTML = '<p class="text-center text-gray-500 py-8">Sin pedidos.</p>';
+                document.getElementById('contador-pedidos').textContent = '';
+                return;
+            }
             lista.forEach(function(p) {
                 var dt    = new Date(p.fecha).toLocaleString('es-AR', {dateStyle:'short', timeStyle:'short'});
                 var color = estadoColores[p.estado] || 'bg-gray-800 text-gray-400';
+                var buscable = ('#' + String(p.id).padStart(4,'0') + ' ' + String(p.id) + ' ' + (p.distribuidor||'') + ' ' + (p.estado||'')).toLowerCase().replace(/"/g,'');
+
+                // Fila tabla
                 var tr = document.createElement('tr');
                 tr.className = 'fila-pedido hover:bg-gray-900 transition';
-                var buscable = ('#' + String(p.id).padStart(4,'0') + ' ' + String(p.id) + ' ' + (p.distribuidor||'') + ' ' + (p.estado||'')).toLowerCase();
-                tr.setAttribute('data-buscar', buscable.replace(/"/g,''));
+                tr.setAttribute('data-buscar', buscable);
                 tr.innerHTML =
                     '<td class="p-4 font-bold text-neon">#' + String(p.id).padStart(4,'0') + '</td>' +
                     '<td class="p-4 font-bold text-white">' + p.distribuidor + '</td>' +
@@ -745,6 +886,26 @@
                     '<td class="p-4 text-right"><button class="text-xs border border-gray-700 px-3 py-1 rounded hover:border-gray-500 text-gray-400 hover:text-white">Ver detalle</button></td>';
                 tr.querySelector('button').onclick = function() { verDetallePedido(p.id, p.distribuidor, p.total, p.fecha); };
                 tabla.appendChild(tr);
+
+                // Card móvil
+                var card = document.createElement('div');
+                card.className = 'fila-pedido bg-black border border-gray-800 rounded-xl p-3';
+                card.setAttribute('data-buscar', buscable);
+                card.innerHTML =
+                    '<div class="flex justify-between items-start mb-2">' +
+                        '<div>' +
+                            '<p class="font-bold text-neon">#' + String(p.id).padStart(4,'0') + '</p>' +
+                            '<p class="text-white text-sm font-bold">' + p.distribuidor + '</p>' +
+                            '<p class="text-gray-500 text-xs">' + dt + '</p>' +
+                        '</div>' +
+                        '<div class="text-right">' +
+                            '<p class="text-neon font-bold">$ ' + parseFloat(p.total || 0).toLocaleString('es-AR') + '</p>' +
+                            '<span class="text-xs px-2 py-1 rounded font-bold ' + color + '">' + p.estado + '</span>' +
+                        '</div>' +
+                    '</div>' +
+                    '<button class="w-full text-xs border border-gray-700 px-3 py-2 rounded text-gray-400 hover:text-white btn-det">Ver detalle</button>';
+                card.querySelector('.btn-det').onclick = function() { verDetallePedido(p.id, p.distribuidor, p.total, p.fecha); };
+                cardsH.appendChild(card);
             });
             filtrarPedidos();
         }
@@ -753,7 +914,7 @@
             var input = document.getElementById('buscar-pedido');
             if (!input) return;
             var q = input.value.toLowerCase().trim();
-            var filas = document.querySelectorAll('#tabla-historial > .fila-pedido');
+            var filas = document.querySelectorAll('.fila-pedido');
             var visibles = 0;
             filas.forEach(function(f) {
                 var txt = f.getAttribute('data-buscar') || '';
@@ -761,8 +922,10 @@
                 f.style.display = match ? '' : 'none';
                 if (match) visibles++;
             });
+            var total = filas.length / 2;
+            var vis = visibles / 2;
             var cont = document.getElementById('contador-pedidos');
-            if (cont) cont.textContent = q ? (visibles + ' de ' + filas.length + ' pedidos') : (filas.length + ' pedidos');
+            if (cont) cont.textContent = q ? (vis + ' de ' + total + ' pedidos') : (total + ' pedidos');
         }
 
         function verPedidosDistribuidor(id, nombre) {
@@ -889,7 +1052,7 @@
 
         async function sincronizarPagosMP(manual) {
             var btn = document.getElementById('btn-sync-mp');
-            if (manual && btn) { btn.disabled = true; var t = btn.textContent; btn.textContent = '⏳ Sincronizando...'; }
+            if (manual && btn) { btn.disabled = true; var t = btn.textContent; btn.textContent = '⏳...'; }
             try {
                 var res = await fetch(API_URL + '/mp/sincronizar_todos', { method:'POST' });
                 var data = await res.json();
@@ -902,36 +1065,34 @@
             } catch(e) {
                 if (manual) alert('No se pudo sincronizar: ' + (e && e.message ? e.message : e));
             } finally {
-                if (manual && btn) { btn.disabled = false; btn.textContent = '🔄 Sincronizar pagos MP'; }
+                if (manual && btn) { btn.disabled = false; btn.textContent = '🔄 Sync MP'; }
             }
         }
 
         window.onload = function() {
             cargarDistribuidores();
             cargarSeguimientoEntregas();
-            // Verificación automática de pagos MP en segundo plano al abrir el panel
             sincronizarPagosMP(false);
         };
 
         // ── SEGUIMIENTO POST-ENTREGA ──────────────────────────────────────
         async function cargarSeguimientoEntregas() {
             try {
-                var r = await fetch(`${API_URL}/distribuidores/seguimiento_entregas`).then(x=>x.json());
+                var r = await fetch(API_URL + '/distribuidores/seguimiento_entregas').then(x=>x.json());
                 var cont = document.getElementById('seguimiento-entregas');
                 if (!r || !r.cantidad) { cont.classList.add('hidden'); return; }
                 cont.classList.remove('hidden');
                 var items = r.pedidos.map(function(p){
                     var dias = p.dias_desde_entrega;
                     var textoTiempo = dias === 1 ? 'hace 1 día' : 'hace ' + dias + ' días';
-                    // Armar el link de WhatsApp
                     var tel = (p.telefono||'').replace(/\D/g,'');
                     if (tel && !tel.startsWith('54')) tel = '54' + tel;
                     var nombre = p.razon_social || 'Cliente';
                     var localidad = p.localidad || 'destino';
-                    var msg = '¡Hola ' + nombre + '! Vimos que tu último pedido ya fue entregado. ¿Llegó todo en orden? Queremos asegurarnos de que la mercadería haya llegado en perfectas condiciones a ' + localidad + '.';
+                    var msg = '¡Hola ' + nombre + '! Vimos que tu último pedido ya fue entregado. ¿Llegó todo en orden en ' + localidad + '?';
                     var waLink = 'https://wa.me/' + tel + '?text=' + encodeURIComponent(msg);
                     var btnWa = tel
-                        ? '<a href="' + waLink + '" target="_blank" class="bg-green-700 hover:bg-green-600 text-white text-xs font-bold px-3 py-1.5 rounded whitespace-nowrap">💬 Seguimiento WhatsApp</a>'
+                        ? '<a href="' + waLink + '" target="_blank" class="bg-green-700 hover:bg-green-600 text-white text-xs font-bold px-3 py-1.5 rounded whitespace-nowrap">💬 WhatsApp</a>'
                         : '<span class="text-gray-600 text-xs">Sin teléfono</span>';
                     return '<div class="bg-black border border-blue-900/50 rounded-lg p-3 flex flex-wrap items-center justify-between gap-2 mb-2">' +
                         '<div class="flex-1 min-w-0">' +
@@ -948,17 +1109,17 @@
                     '<div class="flex items-center justify-between mb-3">' +
                         '<p class="text-blue-300 font-bold">📦 Seguimiento de entregas (' + r.cantidad + ')</p>' +
                     '</div>' +
-                    '<p class="text-gray-400 text-xs mb-3">Pedidos entregados que conviene seguir con el cliente para confirmar que llegó todo bien.</p>' +
+                    '<p class="text-gray-400 text-xs mb-3">Pedidos entregados para hacer seguimiento con el cliente.</p>' +
                     items + '</div>';
             } catch(e) {}
         }
 
         async function marcarSeguimientoHecho(idPedido) {
-            await fetch(`${API_URL}/distribuidores/seguimiento/${idPedido}/hecho`, {method:'PUT'});
+            await fetch(API_URL + '/distribuidores/seguimiento/' + idPedido + '/hecho', {method:'PUT'});
             cargarSeguimientoEntregas();
         }
 
-        // ── IMPORTAR / EXPORTAR CLIENTES ──────────────────────────────────
+        // ── IMPORTAR / EXPORTAR ──────────────────────────────────────────
         async function exportarClientes() {
             var lista = await fetch(API_URL + '/distribuidores_lista').then(function(r){ return r.json(); });
             if (!lista.length) { alert('No hay clientes para exportar.'); return; }
@@ -1014,7 +1175,7 @@
                         };
                     }).filter(function(c){ return c.razon_social; });
 
-                    if (!clientes.length) { alert('No se encontraron clientes válidos. Revisá que los títulos de las columnas coincidan con la plantilla.'); return; }
+                    if (!clientes.length) { alert('No se encontraron clientes válidos.'); return; }
                     if (!confirm('Se van a importar ' + clientes.length + ' clientes. ¿Continuar?')) { event.target.value=''; return; }
 
                     var res = await fetch(API_URL + '/distribuidores/importar', {
@@ -1023,9 +1184,7 @@
                     });
                     var r = await res.json();
                     if (res.ok) {
-                        var msg = '✅ Importación lista.\n\nNuevos cargados: ' + r.insertados + '\nSalteados (ya existían o sin nombre): ' + r.salteados;
-                        if (r.errores && r.errores.length) msg += '\nCon error: ' + r.errores.length;
-                        alert(msg);
+                        alert('✅ Importación lista.\n\nNuevos: ' + r.insertados + '\nSalteados: ' + r.salteados);
                         cargarDistribuidores();
                     } else {
                         alert('❌ Error: ' + (r.detail || 'no se pudo importar'));
@@ -1039,7 +1198,7 @@
             reader.readAsArrayBuffer(file);
         }
 
-        // ── ESTADO DE CUENTA Y PAGOS ──────────────────────────────────────
+        // ── ESTADO DE CUENTA ──────────────────────────────────────────────
         function poblarSelectCuenta() {
             var sel = document.getElementById('cuenta-distribuidor');
             fetch(API_URL + '/distribuidores_lista').then(function(r) { return r.json(); }).then(function(lista) {
@@ -1056,13 +1215,12 @@
             if (!cont) return;
             cont.innerHTML = '<p class="text-gray-500 text-sm text-center py-8">Cargando deudores...</p>';
             var lista = await fetch(API_URL + '/distribuidores/cuenta_corriente').then(function(r){ return r.json(); }).catch(function(){ return []; });
-            // Solo los que deben (saldo > 0), ya vienen ordenados de mayor a menor
             var deudores = lista.filter(function(d){ return parseFloat(d.saldo || 0) > 0.5; });
             var totalDeuda = deudores.reduce(function(a,d){ return a + parseFloat(d.saldo || 0); }, 0);
             document.getElementById('deudores-total').textContent = deudores.length ? ('Total a cobrar: $ ' + totalDeuda.toLocaleString('es-AR')) : '';
             cont.innerHTML = '';
             if (!deudores.length) {
-                cont.innerHTML = '<div class="text-center text-gray-500 py-12"><p class="text-4xl mb-3">✅</p><p>No hay clientes con deuda. ¡Todo al día!</p><p class="text-xs text-gray-600 mt-3">Seleccioná un distribuidor arriba para ver su estado de cuenta igual.</p></div>';
+                cont.innerHTML = '<div class="text-center text-gray-500 py-12"><p class="text-4xl mb-3">✅</p><p>No hay clientes con deuda. ¡Todo al día!</p></div>';
                 return;
             }
             var maxDeuda = parseFloat(deudores[0].saldo || 0) || 1;
@@ -1079,7 +1237,7 @@
                         '<div class="flex items-center gap-2">' +
                             '<span class="text-gray-600 text-xs font-bold w-5">' + (idx+1) + '</span>' +
                             '<span class="font-bold text-white text-sm">' + d.razon_social + '</span>' +
-                            (excede ? '<span class="text-xs bg-red-900/50 text-red-400 px-2 py-0.5 rounded font-bold">⚠ Excede crédito</span>' : '') +
+                            (excede ? '<span class="text-xs bg-red-900/50 text-red-400 px-2 py-0.5 rounded font-bold">⚠ Excede</span>' : '') +
                         '</div>' +
                         '<span class="text-red-400 font-bold">$ ' + saldo.toLocaleString('es-AR') + '</span>' +
                     '</div>' +
@@ -1147,7 +1305,10 @@
             movimientos.sort(function(a, b) { return new Date(b.fecha) - new Date(a.fecha); });
 
             var tbody = document.getElementById('tabla-movimientos');
+            var cardsM = document.getElementById('cards-movimientos');
             tbody.innerHTML = '';
+            cardsM.innerHTML = '';
+
             var ordenAsc = [...movimientos].reverse();
             var saldos = [];
             var s = 0;
@@ -1156,30 +1317,45 @@
                 else s -= m.monto;
                 saldos.unshift(s);
             });
+
+            if (!movimientos.length) {
+                tbody.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-gray-500">Sin movimientos.</td></tr>';
+                cardsM.innerHTML = '<p class="text-center text-gray-500 py-4">Sin movimientos.</p>';
+                return;
+            }
+
             movimientos.forEach(function(m, idx) {
                 var fecha = new Date(m.fecha).toLocaleDateString('es-AR', {day:'2-digit', month:'2-digit', year:'numeric'});
                 var esPedido = m.tipo === 'pedido';
+
+                // Fila tabla
                 var tr = document.createElement('tr');
                 tr.className = 'hover:bg-gray-900';
                 tr.innerHTML =
                     '<td class="p-4 text-gray-400 text-xs">' + fecha + '</td>' +
-                    '<td class="p-4">' +
-                        '<span class="text-xs font-bold px-2 py-1 rounded ' + (esPedido ? 'bg-blue-900/30 text-blue-400' : 'bg-green-900/30 text-green-400') + '">' +
-                            (esPedido ? '📦 Pedido' : '💰 Pago') +
-                        '</span>' +
-                    '</td>' +
+                    '<td class="p-4"><span class="text-xs font-bold px-2 py-1 rounded ' + (esPedido ? 'bg-blue-900/30 text-blue-400' : 'bg-green-900/30 text-green-400') + '">' + (esPedido ? '📦 Pedido' : '💰 Pago') + '</span></td>' +
                     '<td class="p-4 text-gray-300 text-sm">' + m.detalle + '</td>' +
-                    '<td class="p-4 text-right font-bold ' + (esPedido ? 'text-white' : 'text-green-400') + '">' +
-                        (esPedido ? '' : '− ') + '$ ' + m.monto.toLocaleString('es-AR') +
-                    '</td>' +
-                    '<td class="p-4 text-right font-bold ' + (saldos[idx] > 0 ? 'text-red-400' : 'text-gray-400') + '">' +
-                        '$ ' + Math.abs(saldos[idx]).toLocaleString('es-AR') +
-                    '</td>';
+                    '<td class="p-4 text-right font-bold ' + (esPedido ? 'text-white' : 'text-green-400') + '">' + (esPedido ? '' : '− ') + '$ ' + m.monto.toLocaleString('es-AR') + '</td>' +
+                    '<td class="p-4 text-right font-bold ' + (saldos[idx] > 0 ? 'text-red-400' : 'text-gray-400') + '">$ ' + Math.abs(saldos[idx]).toLocaleString('es-AR') + '</td>';
                 tbody.appendChild(tr);
+
+                // Card móvil
+                var card = document.createElement('div');
+                card.className = 'bg-black border border-gray-800 rounded-lg p-3 flex justify-between items-center';
+                card.innerHTML =
+                    '<div class="flex-1 min-w-0 mr-3">' +
+                        '<div class="flex items-center gap-2 mb-1">' +
+                            '<span class="text-xs font-bold px-2 py-0.5 rounded ' + (esPedido ? 'bg-blue-900/30 text-blue-400' : 'bg-green-900/30 text-green-400') + '">' + (esPedido ? '📦' : '💰') + '</span>' +
+                            '<span class="text-gray-400 text-xs">' + fecha + '</span>' +
+                        '</div>' +
+                        '<p class="text-gray-300 text-xs truncate">' + m.detalle + '</p>' +
+                    '</div>' +
+                    '<div class="text-right shrink-0">' +
+                        '<p class="font-bold text-sm ' + (esPedido ? 'text-white' : 'text-green-400') + '">' + (esPedido ? '' : '−') + '$ ' + m.monto.toLocaleString('es-AR') + '</p>' +
+                        '<p class="text-xs ' + (saldos[idx] > 0 ? 'text-red-400' : 'text-gray-500') + '">Saldo: $ ' + Math.abs(saldos[idx]).toLocaleString('es-AR') + '</p>' +
+                    '</div>';
+                cardsM.appendChild(card);
             });
-            if (!movimientos.length) {
-                tbody.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-gray-500">Sin movimientos.</td></tr>';
-            }
         }
 
         function abrirModalCobro() {
@@ -1277,7 +1453,7 @@
                     body: JSON.stringify({ username: username, password: password, aprobar: true })
                 });
                 if (res.ok) {
-                    alert('✅ Acceso guardado. El cliente ya puede entrar al portal con:\n\nUsuario: ' + username + '\nContraseña: ' + password);
+                    alert('✅ Acceso guardado.\n\nUsuario: ' + username + '\nContraseña: ' + password);
                     cerrarModales();
                     cargarDistribuidores();
                 } else {
@@ -1298,11 +1474,10 @@
             if (!username || !password) { alert('Completá usuario y contraseña primero.'); return; }
             var url = window.location.origin + '/b2b';
             var msg = '🔑 *Portal del Viento — Acceso Mayorista*\n\n' +
-                      'Hola ' + accesoDistActual.razon_social + ', ya podés ingresar a nuestro portal para hacer pedidos:\n\n' +
+                      'Hola ' + accesoDistActual.razon_social + ', ya podés ingresar a nuestro portal:\n\n' +
                       '🌐 ' + url + '\n' +
                       '👤 Usuario: ' + username + '\n' +
-                      '🔒 Contraseña: ' + password + '\n\n' +
-                      '¡Gracias!';
+                      '🔒 Contraseña: ' + password + '\n\n¡Gracias!';
             var tel = accesoDistActual.telefono ? accesoDistActual.telefono.replace(/\D/g,'') : '';
             window.open(tel ? 'https://wa.me/54' + tel + '?text=' + encodeURIComponent(msg) : 'https://wa.me/?text=' + encodeURIComponent(msg), '_blank');
         }
