@@ -505,31 +505,44 @@ def pos_sesion_latido(id_usuario: int, token: str = ""):
 
 # Cerrar la sesión (al salir del POS)
 @app.post("/api/pos/sesion/cerrar")
-def pos_sesion_cerrar(id_usuario: int):
+def pos_sesion_cerrar(id_usuario: int, request: Request):
     conn = obtener_conexion()
+    ip_cliente = request.headers.get("x-forwarded-for", request.client.host if request.client else "?")
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
+        ses = None
+        # 1) Leer y borrar la sesión única (si la tabla/fila existe)
         try:
-            # Obtener datos antes de borrar para el log
-            cur.execute("""SELECT s.username, s.dispositivo, e.id AS id_empleado,
-                                  e.nombre || ' ' || e.apellido AS nombre_empleado
-                           FROM pos_sesiones s
-                           LEFT JOIN usuarios u ON u.id = s.id_usuario
-                           LEFT JOIN empleados e ON e.id = u.id_empleado
-                           WHERE s.id_usuario=%s""", (id_usuario,))
+            cur.execute("SELECT username, dispositivo FROM pos_sesiones WHERE id_usuario=%s", (id_usuario,))
             ses = cur.fetchone()
-            cur2 = conn.cursor()
-            cur2.execute("DELETE FROM pos_sesiones WHERE id_usuario=%s", (id_usuario,))
-            if ses:
-                cur2.execute("""
-                    INSERT INTO pos_login_log
-                        (id_usuario, id_empleado, username, nombre_empleado, dispositivo, ip, resultado, detalle)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                """, (id_usuario, ses['id_empleado'], ses['username'], ses['nombre_empleado'],
-                      ses['dispositivo'], None, 'logout', 'Cierre de sesión'))
+            cur.execute("DELETE FROM pos_sesiones WHERE id_usuario=%s", (id_usuario,))
             conn.commit()
-        except Exception:
+        except Exception as e:
             conn.rollback()
+            print("pos_sesion_cerrar: error en pos_sesiones:", e)
+
+        # 2) Registrar SIEMPRE la salida en el historial
+        try:
+            cur.execute("""SELECT u.username, e.id AS id_empleado,
+                                  COALESCE(e.nombre,'') || ' ' || COALESCE(e.apellido,'') AS nombre_empleado
+                           FROM usuarios u
+                           LEFT JOIN empleados e ON e.id = u.id_empleado
+                           WHERE u.id = %s""", (id_usuario,))
+            u = cur.fetchone() or {}
+            cur.execute("""
+                INSERT INTO pos_login_log
+                    (id_usuario, id_empleado, username, nombre_empleado, dispositivo, ip, resultado, detalle)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            """, (id_usuario, u.get('id_empleado'),
+                  (ses or {}).get('username') or u.get('username'),
+                  (u.get('nombre_empleado') or '').strip() or None,
+                  (ses or {}).get('dispositivo') or 'POS',
+                  ip_cliente, 'logout', 'Cierre de sesión'))
+            conn.commit()
+        except Exception as e:
+            conn.rollback()
+            print("pos_sesion_cerrar: error al registrar logout:", e)
+
         return {"status": "ok"}
     finally:
         liberar_conexion(conn)
