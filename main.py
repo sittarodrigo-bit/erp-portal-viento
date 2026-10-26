@@ -412,8 +412,9 @@ class LoginPosData(BaseModel):
     dispositivo: Optional[str] = None
 
 @app.post("/api/pos/login")
-def pos_login(data: LoginPosData):
+def pos_login(data: LoginPosData, request: Request):
     conn = obtener_conexion()
+    ip_cliente = request.headers.get("x-forwarded-for", request.client.host if request.client else "?")
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
         cur.execute("""
@@ -423,11 +424,34 @@ def pos_login(data: LoginPosData):
             WHERE u.username = %s
         """, (data.username,))
         usuario = cur.fetchone()
+
+        def _log(resultado, detalle=None, id_usu=None, id_emp=None, nombre_emp=None):
+            try:
+                cur2 = conn.cursor()
+                cur2.execute("""
+                    INSERT INTO pos_login_log
+                        (id_usuario, id_empleado, username, nombre_empleado, dispositivo, ip, resultado, detalle)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                """, (id_usu, id_emp, data.username,
+                      nombre_emp,
+                      data.dispositivo or 'POS',
+                      ip_cliente, resultado, detalle))
+                conn.commit()
+            except Exception:
+                conn.rollback()
+
         if not usuario or not usuario['activo']:
+            _log('error_pass', 'Usuario no encontrado o inactivo')
             raise HTTPException(status_code=401, detail="Usuario o contraseña incorrectos")
+
+        nombre_completo = (usuario['nombre'] or '') + ' ' + (usuario['apellido'] or '')
+
         if not bcrypt.checkpw(data.password.encode(), usuario['password_hash'].encode()):
+            _log('error_pass', 'Contraseña incorrecta', usuario['id_usuario'], usuario['id_empleado'], nombre_completo)
             raise HTTPException(status_code=401, detail="Usuario o contraseña incorrectos")
+
         if not usuario['acceso_pos']:
+            _log('sin_acceso', 'No tiene permiso acceso_pos', usuario['id_usuario'], usuario['id_empleado'], nombre_completo)
             raise HTTPException(status_code=403, detail="Este usuario no tiene acceso al POS")
 
         # ── Control de sesión única ──
@@ -435,16 +459,14 @@ def pos_login(data: LoginPosData):
         token = _uuid.uuid4().hex
         id_usuario = usuario['id_usuario']
         try:
-            # ¿Hay una sesión activa todavía viva? (señal en los últimos 3 minutos)
             cur.execute("""SELECT username, dispositivo, ultima_senal,
                                   EXTRACT(EPOCH FROM (NOW() - ultima_senal)) AS seg
                            FROM pos_sesiones WHERE id_usuario=%s""", (id_usuario,))
             ses = cur.fetchone()
             if ses and ses['seg'] is not None and ses['seg'] < 180:
-                # Sesión viva en otro lado → bloquear
                 disp = ses['dispositivo'] or 'otro dispositivo'
+                _log('sesion_activa', 'Sesión viva en: ' + disp, id_usuario, usuario['id_empleado'], nombre_completo)
                 raise HTTPException(status_code=409, detail="Este usuario ya tiene una sesión activa en " + disp + ". Cerrá sesión ahí antes de entrar acá.")
-            # Crear/actualizar la sesión
             cur.execute("""
                 INSERT INTO pos_sesiones (id_usuario, username, token, dispositivo, inicio, ultima_senal)
                 VALUES (%s,%s,%s,%s,NOW(),NOW())
@@ -455,9 +477,10 @@ def pos_login(data: LoginPosData):
         except HTTPException:
             raise
         except Exception:
-            # Si la tabla no existe (no corrieron el SQL), no bloqueamos: login normal
             conn.rollback()
             token = ""
+
+        _log('ok', None, id_usuario, usuario['id_empleado'], nombre_completo)
 
         return {"status": "ok", "id_empleado": usuario['id_empleado'], "id_usuario": id_usuario,
                 "nombre": usuario['nombre'], "apellido": usuario['apellido'], "rol": usuario['rol'],
@@ -492,6 +515,34 @@ def pos_sesion_cerrar(id_usuario: int):
         except Exception:
             conn.rollback()
         return {"status": "ok"}
+    finally:
+        liberar_conexion(conn)
+
+@app.get("/api/pos/login-log")
+def get_login_log(limit: int = 200, id_empleado: Optional[int] = None, resultado: Optional[str] = None):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        filtros = []
+        params = []
+        if id_empleado:
+            filtros.append("id_empleado = %s")
+            params.append(id_empleado)
+        if resultado:
+            filtros.append("resultado = %s")
+            params.append(resultado)
+        where = ("WHERE " + " AND ".join(filtros)) if filtros else ""
+        params.append(min(limit, 500))
+        cur.execute(f"""
+            SELECT id, id_usuario, id_empleado, username, nombre_empleado,
+                   dispositivo, ip, resultado, detalle,
+                   fecha AT TIME ZONE 'America/Argentina/Buenos_Aires' AS fecha_local
+            FROM pos_login_log
+            {where}
+            ORDER BY fecha DESC
+            LIMIT %s
+        """, params)
+        return cur.fetchall()
     finally:
         liberar_conexion(conn)
 
