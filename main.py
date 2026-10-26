@@ -11188,6 +11188,106 @@ def route_reparto():
 def route_reparto_admin():
     return serve_html("reparto_admin.html")
 
+@app.get("/pos/login-log", response_class=HTMLResponse)
+def page_login_log():
+    html = """<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Historial Logueos POS</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+:root{--bg:#0a0a0a;--surface:#111111;--border:#1f2937;--border2:#374151;--fg:#f0f0f0;--muted:#6b7280;--sub:#9ca3af;--neon:#e4fc74;--ok:#34d399;--warn:#fbbf24;--danger:#f87171;--info:#60a5fa;color-scheme:dark}
+@media(prefers-color-scheme:light){:root:not([data-theme="dark"]){--bg:#f3f4f6;--surface:#fff;--border:#e5e7eb;--border2:#d1d5db;--fg:#111827;--muted:#9ca3af;--sub:#6b7280;color-scheme:light}}
+:root[data-theme="light"]{--bg:#f3f4f6;--surface:#fff;--border:#e5e7eb;--border2:#d1d5db;--fg:#111827;--muted:#9ca3af;--sub:#6b7280;color-scheme:light}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--fg);font-family:'Inter',system-ui,sans-serif;font-size:14px;min-height:100%;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:30;background:var(--bg)}
+header{position:sticky;top:env(safe-area-inset-top,0px);background:var(--bg);border-bottom:1px solid var(--border);padding:14px 0;display:flex;align-items:center;gap:12px;z-index:20}
+header h1{font-size:15px;font-weight:700;letter-spacing:.02em}
+header h1 span{color:var(--neon)}
+.pill-total{margin-left:auto;background:var(--surface);border:1px solid var(--border2);border-radius:20px;padding:3px 10px;font-size:12px;font-variant-numeric:tabular-nums;color:var(--sub)}
+.filters{display:flex;flex-wrap:wrap;gap:8px;padding:12px 0;border-bottom:1px solid var(--border)}
+.filters select,.filters input[type=text]{background:var(--surface);border:1px solid var(--border2);color:var(--fg);border-radius:8px;padding:7px 10px;font-size:13px;font-family:inherit;outline:none;min-width:0}
+.filters select:focus,.filters input:focus{border-color:var(--neon)}
+.btn-refresh{background:var(--neon);color:#000;border:none;border-radius:8px;padding:7px 14px;font-weight:700;font-size:13px;cursor:pointer;white-space:nowrap}
+.btn-refresh:hover{opacity:.85}
+.stats{display:flex;gap:8px;flex-wrap:wrap;padding:12px 0}
+.stat-chip{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:8px 14px;display:flex;align-items:center;gap:8px}
+.stat-chip .dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.stat-chip .num{font-weight:700;font-variant-numeric:tabular-nums;font-size:15px}
+.stat-chip .lbl{color:var(--sub);font-size:11px}
+.table-wrap{overflow-x:auto;border-radius:12px;border:1px solid var(--border);margin-top:12px}
+table{width:100%;border-collapse:collapse;min-width:640px;font-variant-numeric:tabular-nums}
+thead th{background:var(--surface);color:var(--muted);font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;padding:10px 14px;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap}
+tbody tr{border-bottom:1px solid var(--border);transition:background .12s}
+tbody tr:last-child{border-bottom:none}
+tbody tr:hover{background:var(--surface)}
+td{padding:10px 14px;vertical-align:middle;color:var(--fg)}
+td.mono{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--sub)}
+.badge{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:600;white-space:nowrap}
+.badge-ok{background:rgba(52,211,153,.15);color:var(--ok);border:1px solid rgba(52,211,153,.3)}
+.badge-error_pass{background:rgba(248,113,113,.15);color:var(--danger);border:1px solid rgba(248,113,113,.3)}
+.badge-sin_acceso{background:rgba(251,191,36,.15);color:var(--warn);border:1px solid rgba(251,191,36,.3)}
+.badge-sesion_activa{background:rgba(96,165,250,.15);color:var(--info);border:1px solid rgba(96,165,250,.3)}
+.cards{display:none;margin-top:12px}
+@media(max-width:640px){.table-wrap{display:none}.cards{display:flex;flex-direction:column;gap:8px}}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px 14px}
+.card-top{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:8px}
+.card-nombre{font-weight:600;font-size:14px}
+.card-user{color:var(--sub);font-size:12px;margin-top:2px}
+.card-meta{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.card-meta-item{font-size:11px;color:var(--sub);background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:2px 7px}
+.empty{padding:48px 0;text-align:center;color:var(--muted);font-size:13px}
+.empty .icon{font-size:32px;margin-bottom:8px}
+</style>
+</head>
+<body>
+<header>
+  <div><h1>&#x1F510; Logueos <span>POS</span></h1></div>
+  <span class="pill-total" id="pill-total">&#8212;</span>
+</header>
+<div class="filters">
+  <select id="fil-empleado"><option value="">Todos los cajeros</option></select>
+  <select id="fil-resultado">
+    <option value="">Todos los resultados</option>
+    <option value="ok">&#x2705; Ok</option>
+    <option value="error_pass">&#x274C; Contrase&ntilde;a incorrecta</option>
+    <option value="sin_acceso">&#x26A0;&#xFE0F; Sin acceso POS</option>
+    <option value="sesion_activa">&#x1F512; Sesi&oacute;n activa</option>
+  </select>
+  <input type="text" id="fil-buscar" placeholder="Buscar usuario / dispositivo&hellip;" style="flex:1;min-width:140px">
+  <button class="btn-refresh" onclick="cargar()">&#x1F504; Actualizar</button>
+</div>
+<div class="stats" id="stats-row"></div>
+<div class="table-wrap" id="table-wrap">
+  <table>
+    <thead><tr><th>Cajero</th><th>Usuario</th><th>Resultado</th><th>Dispositivo</th><th>IP</th><th>Fecha y hora</th></tr></thead>
+    <tbody id="tbody"></tbody>
+  </table>
+</div>
+<div class="cards" id="cards-wrap"></div>
+<script>
+const API=window.location.origin+'/api';
+let todos=[];
+const BADGE={ok:['badge-ok','&#x2705; Ingreso ok'],error_pass:['badge-error_pass','&#x274C; Pass incorrecta'],sin_acceso:['badge-sin_acceso','&#x26A0;&#xFE0F; Sin acceso POS'],sesion_activa:['badge-sesion_activa','&#x1F512; Sesi\\u00f3n activa']};
+function badgeHtml(r){const[cls,txt]=BADGE[r]||['badge-ok',r];return`<span class="badge ${cls}">${txt}</span>`}
+function fmt(iso){if(!iso)return'\\u2014';const d=new Date(iso);return d.toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric'})+' '+d.toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'})}
+function dispIco(d){if(!d)return'';const dl=d.toLowerCase();if(dl.includes('celular')||dl.includes('tablet')||dl.includes('mobile'))return'&#x1F4F1; ';return'&#x1F5A5;&#xFE0F; '}
+async function cargar(){try{const res=await fetch(API+'/pos/login-log?limit=500');todos=await res.json();renderStats();renderFiltrado();poblarSelectCajeros()}catch(e){document.getElementById('tbody').innerHTML='<tr><td colspan="6" class="empty">Error al cargar</td></tr>'}}
+function poblarSelectCajeros(){const sel=document.getElementById('fil-empleado');const actual=sel.value;const vistos=new Set();const opts=[['','Todos los cajeros']];todos.forEach(r=>{const k=r.id_empleado+'|'+(r.nombre_empleado||r.username);if(!vistos.has(k)){vistos.add(k);opts.push([r.id_empleado||'',r.nombre_empleado||r.username])}});sel.innerHTML=opts.map(([v,t])=>`<option value="${v}" ${v==actual?'selected':''}>${t}</option>`).join('')}
+function filtrados(){const emp=document.getElementById('fil-empleado').value;const res=document.getElementById('fil-resultado').value;const q=document.getElementById('fil-buscar').value.toLowerCase().trim();return todos.filter(r=>{if(emp&&String(r.id_empleado)!==String(emp))return false;if(res&&r.resultado!==res)return false;if(q&&!((r.username||'').toLowerCase().includes(q)||(r.nombre_empleado||'').toLowerCase().includes(q)||(r.dispositivo||'').toLowerCase().includes(q)||(r.ip||'').toLowerCase().includes(q)))return false;return true})}
+function renderStats(){const counts={ok:0,error_pass:0,sin_acceso:0,sesion_activa:0};todos.forEach(r=>{if(counts[r.resultado]!==undefined)counts[r.resultado]++});const chips=[{r:'ok',dot:'#34d399',lbl:'Ingresos ok'},{r:'error_pass',dot:'#f87171',lbl:'Pass incorrecta'},{r:'sin_acceso',dot:'#fbbf24',lbl:'Sin acceso'},{r:'sesion_activa',dot:'#60a5fa',lbl:'Sesi\\u00f3n activa'}];document.getElementById('stats-row').innerHTML=chips.map(c=>`<div class="stat-chip"><span class="dot" style="background:${c.dot}"></span><span class="num">${counts[c.r]}</span><span class="lbl">${c.lbl}</span></div>`).join('')}
+function renderFiltrado(){const data=filtrados();document.getElementById('pill-total').textContent=data.length+' registro'+(data.length===1?'':'s');const tbody=document.getElementById('tbody');if(!data.length){tbody.innerHTML='<tr><td colspan="6"><div class="empty"><div class="icon">&#x1F50D;</div>Sin resultados</div></td></tr>';document.getElementById('cards-wrap').innerHTML='<div class="empty"><div class="icon">&#x1F50D;</div>Sin resultados</div>';return}tbody.innerHTML=data.map(r=>`<tr><td><strong>${r.nombre_empleado||'\\u2014'}</strong></td><td class="mono">${r.username}</td><td>${badgeHtml(r.resultado)}</td><td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.dispositivo||''}">${dispIco(r.dispositivo)}${r.dispositivo||'\\u2014'}</td><td class="mono">${r.ip||'\\u2014'}</td><td class="mono" style="white-space:nowrap">${fmt(r.fecha_local||r.fecha)}</td></tr>`).join('');document.getElementById('cards-wrap').innerHTML=data.map(r=>`<div class="card"><div class="card-top"><div><div class="card-nombre">${r.nombre_empleado||r.username}</div><div class="card-user">${r.username}</div></div>${badgeHtml(r.resultado)}</div><div class="card-meta"><span class="card-meta-item">${dispIco(r.dispositivo)}${r.dispositivo||'Sin info'}</span><span class="card-meta-item">&#x1F310; ${r.ip||'\\u2014'}</span><span class="card-meta-item">&#x1F550; ${fmt(r.fecha_local||r.fecha)}</span></div></div>`).join('')}
+['fil-empleado','fil-resultado'].forEach(id=>document.getElementById(id).addEventListener('change',renderFiltrado));
+document.getElementById('fil-buscar').addEventListener('input',renderFiltrado);
+cargar();
+</script>
+</body>
+</html>"""
+    return HTMLResponse(content=html)
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
