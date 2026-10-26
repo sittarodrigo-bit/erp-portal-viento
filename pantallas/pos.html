@@ -516,7 +516,7 @@
             // El fichaje de horario se hace por el RELOJ de fichaje, no por el POS.
             // Liberar la sesión única en el servidor
             if (posUsuario && posUsuario.id_usuario) {
-                try { await fetch(API_URL + '/pos/sesion/cerrar?id_usuario=' + posUsuario.id_usuario, { method:'POST' }); } catch(e) {}
+                try { await fetch(API_URL + '/api/pos/sesion/cerrar?id_usuario=' + posUsuario.id_usuario, { method:'POST' }); } catch(e) {}
             }
             sessionStorage.removeItem('pos_usuario');
             window.location.href = '/pos-login';
