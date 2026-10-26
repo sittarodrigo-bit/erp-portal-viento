@@ -508,9 +508,25 @@ def pos_sesion_latido(id_usuario: int, token: str = ""):
 def pos_sesion_cerrar(id_usuario: int):
     conn = obtener_conexion()
     try:
-        cur = conn.cursor()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
         try:
-            cur.execute("DELETE FROM pos_sesiones WHERE id_usuario=%s", (id_usuario,))
+            # Obtener datos antes de borrar para el log
+            cur.execute("""SELECT s.username, s.dispositivo, e.id AS id_empleado,
+                                  e.nombre || ' ' || e.apellido AS nombre_empleado
+                           FROM pos_sesiones s
+                           LEFT JOIN usuarios u ON u.id = s.id_usuario
+                           LEFT JOIN empleados e ON e.id = u.id_empleado
+                           WHERE s.id_usuario=%s""", (id_usuario,))
+            ses = cur.fetchone()
+            cur2 = conn.cursor()
+            cur2.execute("DELETE FROM pos_sesiones WHERE id_usuario=%s", (id_usuario,))
+            if ses:
+                cur2.execute("""
+                    INSERT INTO pos_login_log
+                        (id_usuario, id_empleado, username, nombre_empleado, dispositivo, ip, resultado, detalle)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                """, (id_usuario, ses['id_empleado'], ses['username'], ses['nombre_empleado'],
+                      ses['dispositivo'], None, 'logout', 'Cierre de sesión'))
             conn.commit()
         except Exception:
             conn.rollback()
@@ -11231,6 +11247,7 @@ td.mono{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--sub)}
 .badge-error_pass{background:rgba(248,113,113,.15);color:var(--danger);border:1px solid rgba(248,113,113,.3)}
 .badge-sin_acceso{background:rgba(251,191,36,.15);color:var(--warn);border:1px solid rgba(251,191,36,.3)}
 .badge-sesion_activa{background:rgba(96,165,250,.15);color:var(--info);border:1px solid rgba(96,165,250,.3)}
+.badge-logout{background:rgba(156,163,175,.12);color:#9ca3af;border:1px solid rgba(156,163,175,.25)}
 .cards{display:none;margin-top:12px}
 @media(max-width:640px){.table-wrap{display:none}.cards{display:flex;flex-direction:column;gap:8px}}
 .card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px 14px}
@@ -11256,6 +11273,7 @@ td.mono{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--sub)}
     <option value="error_pass">&#x274C; Contrase&ntilde;a incorrecta</option>
     <option value="sin_acceso">&#x26A0;&#xFE0F; Sin acceso POS</option>
     <option value="sesion_activa">&#x1F512; Sesi&oacute;n activa</option>
+    <option value="logout">&#x1F6AA; Salida</option>
   </select>
   <input type="text" id="fil-buscar" placeholder="Buscar usuario / dispositivo&hellip;" style="flex:1;min-width:140px">
   <button class="btn-refresh" onclick="cargar()">&#x1F504; Actualizar</button>
@@ -11271,14 +11289,14 @@ td.mono{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--sub)}
 <script>
 const API=window.location.origin+'/api';
 let todos=[];
-const BADGE={ok:['badge-ok','&#x2705; Ingreso ok'],error_pass:['badge-error_pass','&#x274C; Pass incorrecta'],sin_acceso:['badge-sin_acceso','&#x26A0;&#xFE0F; Sin acceso POS'],sesion_activa:['badge-sesion_activa','&#x1F512; Sesi\\u00f3n activa']};
+const BADGE={ok:['badge-ok','&#x2705; Ingreso ok'],error_pass:['badge-error_pass','&#x274C; Pass incorrecta'],sin_acceso:['badge-sin_acceso','&#x26A0;&#xFE0F; Sin acceso POS'],sesion_activa:['badge-sesion_activa','&#x1F512; Sesi\\u00f3n activa'],logout:['badge-logout','&#x1F6AA; Salida']};
 function badgeHtml(r){const[cls,txt]=BADGE[r]||['badge-ok',r];return`<span class="badge ${cls}">${txt}</span>`}
 function fmt(iso){if(!iso)return'\\u2014';const d=new Date(iso);return d.toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric'})+' '+d.toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'})}
 function dispIco(d){if(!d)return'';const dl=d.toLowerCase();if(dl.includes('celular')||dl.includes('tablet')||dl.includes('mobile'))return'&#x1F4F1; ';return'&#x1F5A5;&#xFE0F; '}
 async function cargar(){try{const res=await fetch(API+'/pos/login-log?limit=500');todos=await res.json();renderStats();renderFiltrado();poblarSelectCajeros()}catch(e){document.getElementById('tbody').innerHTML='<tr><td colspan="6" class="empty">Error al cargar</td></tr>'}}
 function poblarSelectCajeros(){const sel=document.getElementById('fil-empleado');const actual=sel.value;const vistos=new Set();const opts=[['','Todos los cajeros']];todos.forEach(r=>{const k=r.id_empleado+'|'+(r.nombre_empleado||r.username);if(!vistos.has(k)){vistos.add(k);opts.push([r.id_empleado||'',r.nombre_empleado||r.username])}});sel.innerHTML=opts.map(([v,t])=>`<option value="${v}" ${v==actual?'selected':''}>${t}</option>`).join('')}
 function filtrados(){const emp=document.getElementById('fil-empleado').value;const res=document.getElementById('fil-resultado').value;const q=document.getElementById('fil-buscar').value.toLowerCase().trim();return todos.filter(r=>{if(emp&&String(r.id_empleado)!==String(emp))return false;if(res&&r.resultado!==res)return false;if(q&&!((r.username||'').toLowerCase().includes(q)||(r.nombre_empleado||'').toLowerCase().includes(q)||(r.dispositivo||'').toLowerCase().includes(q)||(r.ip||'').toLowerCase().includes(q)))return false;return true})}
-function renderStats(){const counts={ok:0,error_pass:0,sin_acceso:0,sesion_activa:0};todos.forEach(r=>{if(counts[r.resultado]!==undefined)counts[r.resultado]++});const chips=[{r:'ok',dot:'#34d399',lbl:'Ingresos ok'},{r:'error_pass',dot:'#f87171',lbl:'Pass incorrecta'},{r:'sin_acceso',dot:'#fbbf24',lbl:'Sin acceso'},{r:'sesion_activa',dot:'#60a5fa',lbl:'Sesi\\u00f3n activa'}];document.getElementById('stats-row').innerHTML=chips.map(c=>`<div class="stat-chip"><span class="dot" style="background:${c.dot}"></span><span class="num">${counts[c.r]}</span><span class="lbl">${c.lbl}</span></div>`).join('')}
+function renderStats(){const counts={ok:0,logout:0,error_pass:0,sin_acceso:0,sesion_activa:0};todos.forEach(r=>{if(counts[r.resultado]!==undefined)counts[r.resultado]++});const chips=[{r:'ok',dot:'#34d399',lbl:'Ingresos ok'},{r:'logout',dot:'#9ca3af',lbl:'Salidas'},{r:'error_pass',dot:'#f87171',lbl:'Pass incorrecta'},{r:'sin_acceso',dot:'#fbbf24',lbl:'Sin acceso'},{r:'sesion_activa',dot:'#60a5fa',lbl:'Sesi\\u00f3n activa'}];document.getElementById('stats-row').innerHTML=chips.map(c=>`<div class="stat-chip"><span class="dot" style="background:${c.dot}"></span><span class="num">${counts[c.r]}</span><span class="lbl">${c.lbl}</span></div>`).join('')}
 function renderFiltrado(){const data=filtrados();document.getElementById('pill-total').textContent=data.length+' registro'+(data.length===1?'':'s');const tbody=document.getElementById('tbody');if(!data.length){tbody.innerHTML='<tr><td colspan="6"><div class="empty"><div class="icon">&#x1F50D;</div>Sin resultados</div></td></tr>';document.getElementById('cards-wrap').innerHTML='<div class="empty"><div class="icon">&#x1F50D;</div>Sin resultados</div>';return}tbody.innerHTML=data.map(r=>`<tr><td><strong>${r.nombre_empleado||'\\u2014'}</strong></td><td class="mono">${r.username}</td><td>${badgeHtml(r.resultado)}</td><td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.dispositivo||''}">${dispIco(r.dispositivo)}${r.dispositivo||'\\u2014'}</td><td class="mono">${r.ip||'\\u2014'}</td><td class="mono" style="white-space:nowrap">${fmt(r.fecha_local||r.fecha)}</td></tr>`).join('');document.getElementById('cards-wrap').innerHTML=data.map(r=>`<div class="card"><div class="card-top"><div><div class="card-nombre">${r.nombre_empleado||r.username}</div><div class="card-user">${r.username}</div></div>${badgeHtml(r.resultado)}</div><div class="card-meta"><span class="card-meta-item">${dispIco(r.dispositivo)}${r.dispositivo||'Sin info'}</span><span class="card-meta-item">&#x1F310; ${r.ip||'\\u2014'}</span><span class="card-meta-item">&#x1F550; ${fmt(r.fecha_local||r.fecha)}</span></div></div>`).join('')}
 ['fil-empleado','fil-resultado'].forEach(id=>document.getElementById(id).addEventListener('change',renderFiltrado));
 document.getElementById('fil-buscar').addEventListener('input',renderFiltrado);
