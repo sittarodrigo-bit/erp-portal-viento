@@ -744,15 +744,15 @@
                 abrirSelectorVariante(p);
                 return;
             }
-            agregarItem(p.id, p.nombre, parseFloat(p.precio)||0, 1);
+            agregarItem(p.id, p.nombre, parseFloat(p.precio)||0, 1, null, p.es_combo, p.componentes);
         }
 
         // clave única por producto+variante para no mezclar líneas
-        function agregarItem(idProd, nombre, precio, factor, variante) {
+        function agregarItem(idProd, nombre, precio, factor, variante, esCombo, componentes) {
             var clave = idProd + '|' + (variante || '');
             var ex = carrito.find(function(i){ return i.clave === clave; });
             if (ex) ex.cantidad++;
-            else carrito.push({ clave: clave, id: idProd, nombre: nombre + (variante ? ' (' + variante + ')' : ''), precio: precio, cantidad: 1, factor: factor || 1 });
+            else carrito.push({ clave: clave, id: idProd, nombre: nombre + (variante ? ' (' + variante + ')' : ''), precio: precio, cantidad: 1, factor: factor || 1, es_combo: esCombo || false, componentes: componentes || null });
             renderCarrito();
         }
 
@@ -962,7 +962,21 @@
             }
             var total = Math.round((totalBase - descuentoMonto) * 100) / 100;
 
-            var detalle = carrito.map(function(i){ return { nombre_producto: i.nombre, cantidad: i.cantidad, precio_unitario: i.precio, id_producto: i.id, unidades_stock: i.cantidad * (i.factor || 1) }; });
+            // Expandir combos: el combo aparece en el ticket sin descontar stock;
+            // cada componente genera una línea con id_producto real para el descuento
+            var detalle = [];
+            carrito.forEach(function(i) {
+                if (i.es_combo && Array.isArray(i.componentes) && i.componentes.length) {
+                    // Línea del combo → aparece en ticket con su precio, sin tocar stock
+                    detalle.push({ nombre_producto: i.nombre, cantidad: i.cantidad, precio_unitario: i.precio, id_producto: null, unidades_stock: 0 });
+                    // Línea por cada componente → descuenta stock del producto real
+                    i.componentes.forEach(function(c) {
+                        detalle.push({ nombre_producto: c.nombre + ' (combo)', cantidad: c.cantidad * i.cantidad, precio_unitario: 0, id_producto: c.id_producto, unidades_stock: c.cantidad * i.cantidad });
+                    });
+                } else {
+                    detalle.push({ nombre_producto: i.nombre, cantidad: i.cantidad, precio_unitario: i.precio, id_producto: i.id, unidades_stock: i.cantidad * (i.factor || 1) });
+                }
+            });
             try {
                 var res = await fetch(API_URL + '/pos/ventas', {
                     method:'POST', headers:{'Content-Type':'application/json'},
