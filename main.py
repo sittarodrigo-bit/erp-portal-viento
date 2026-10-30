@@ -505,44 +505,31 @@ def pos_sesion_latido(id_usuario: int, token: str = ""):
 
 # Cerrar la sesión (al salir del POS)
 @app.post("/api/pos/sesion/cerrar")
-def pos_sesion_cerrar(id_usuario: int, request: Request):
+def pos_sesion_cerrar(id_usuario: int):
     conn = obtener_conexion()
-    ip_cliente = request.headers.get("x-forwarded-for", request.client.host if request.client else "?")
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
-        ses = None
-        # 1) Leer y borrar la sesión única (si la tabla/fila existe)
         try:
-            cur.execute("SELECT username, dispositivo FROM pos_sesiones WHERE id_usuario=%s", (id_usuario,))
-            ses = cur.fetchone()
-            cur.execute("DELETE FROM pos_sesiones WHERE id_usuario=%s", (id_usuario,))
-            conn.commit()
-        except Exception as e:
-            conn.rollback()
-            print("pos_sesion_cerrar: error en pos_sesiones:", e)
-
-        # 2) Registrar SIEMPRE la salida en el historial
-        try:
-            cur.execute("""SELECT u.username, e.id AS id_empleado,
-                                  COALESCE(e.nombre,'') || ' ' || COALESCE(e.apellido,'') AS nombre_empleado
-                           FROM usuarios u
+            # Obtener datos antes de borrar para el log
+            cur.execute("""SELECT s.username, s.dispositivo, e.id AS id_empleado,
+                                  e.nombre || ' ' || e.apellido AS nombre_empleado
+                           FROM pos_sesiones s
+                           LEFT JOIN usuarios u ON u.id = s.id_usuario
                            LEFT JOIN empleados e ON e.id = u.id_empleado
-                           WHERE u.id = %s""", (id_usuario,))
-            u = cur.fetchone() or {}
-            cur.execute("""
-                INSERT INTO pos_login_log
-                    (id_usuario, id_empleado, username, nombre_empleado, dispositivo, ip, resultado, detalle)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-            """, (id_usuario, u.get('id_empleado'),
-                  (ses or {}).get('username') or u.get('username'),
-                  (u.get('nombre_empleado') or '').strip() or None,
-                  (ses or {}).get('dispositivo') or 'POS',
-                  ip_cliente, 'logout', 'Cierre de sesión'))
+                           WHERE s.id_usuario=%s""", (id_usuario,))
+            ses = cur.fetchone()
+            cur2 = conn.cursor()
+            cur2.execute("DELETE FROM pos_sesiones WHERE id_usuario=%s", (id_usuario,))
+            if ses:
+                cur2.execute("""
+                    INSERT INTO pos_login_log
+                        (id_usuario, id_empleado, username, nombre_empleado, dispositivo, ip, resultado, detalle)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                """, (id_usuario, ses['id_empleado'], ses['username'], ses['nombre_empleado'],
+                      ses['dispositivo'], None, 'logout', 'Cierre de sesión'))
             conn.commit()
-        except Exception as e:
+        except Exception:
             conn.rollback()
-            print("pos_sesion_cerrar: error al registrar logout:", e)
-
         return {"status": "ok"}
     finally:
         liberar_conexion(conn)
@@ -567,6 +554,33 @@ def get_login_log(limit: int = 200, id_empleado: Optional[int] = None, resultado
                    dispositivo, ip, resultado, detalle,
                    fecha AT TIME ZONE 'America/Argentina/Buenos_Aires' AS fecha_local
             FROM pos_login_log
+            {where}
+            ORDER BY fecha DESC
+            LIMIT %s
+        """, params)
+        return cur.fetchall()
+    finally:
+        liberar_conexion(conn)
+
+@app.get("/api/distribuidores/login-log")
+def get_dist_login_log(limit: int = 200, id_distribuidor: Optional[int] = None, resultado: Optional[str] = None):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        filtros = []
+        params = []
+        if id_distribuidor:
+            filtros.append("id_distribuidor = %s")
+            params.append(id_distribuidor)
+        if resultado:
+            filtros.append("resultado = %s")
+            params.append(resultado)
+        where = ("WHERE " + " AND ".join(filtros)) if filtros else ""
+        params.append(min(limit, 500))
+        cur.execute(f"""
+            SELECT id, id_distribuidor, username, nombre, ip, resultado, detalle,
+                   fecha AT TIME ZONE 'America/Argentina/Buenos_Aires' AS fecha_local
+            FROM dist_login_log
             {where}
             ORDER BY fecha DESC
             LIMIT %s
@@ -1714,8 +1728,9 @@ def registro_distribuidor(data: RegistroDist):
         liberar_conexion(conn)
 
 @app.post("/api/distribuidores/login")
-def login_distribuidor(data: LoginData):
+def login_distribuidor(data: LoginData, request: Request):
     conn = obtener_conexion()
+    ip_cliente = request.headers.get("x-forwarded-for", request.client.host if request.client else "?")
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
         cur.execute("""
@@ -1723,10 +1738,25 @@ def login_distribuidor(data: LoginData):
             FROM distribuidores WHERE username = %s
         """, (data.username,))
         user = cur.fetchone()
+
+        def _log(resultado, detalle=None, id_dist=None, nombre=None):
+            try:
+                cur2 = conn.cursor()
+                cur2.execute("""
+                    INSERT INTO dist_login_log (id_distribuidor, username, nombre, ip, resultado, detalle)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                """, (id_dist, data.username, nombre, ip_cliente, resultado, detalle))
+                conn.commit()
+            except Exception:
+                conn.rollback()
+
         if not user or not user['activo']:
+            _log('error_pass', 'Usuario no encontrado o inactivo')
             raise HTTPException(status_code=401, detail="Usuario o contraseña incorrectos")
         if not user.get('password_hash') or not bcrypt.checkpw(data.password.encode(), user['password_hash'].encode()):
+            _log('error_pass', 'Contraseña incorrecta', user['id'], user['razon_social'])
             raise HTTPException(status_code=401, detail="Usuario o contraseña incorrectos")
+        _log('ok', None, user['id'], user['razon_social'])
         user = dict(user)
         del user['password_hash']
         return user
@@ -5203,7 +5233,9 @@ def pos_listar_productos(id_local: int):
             cur.execute("""SELECT p.id, p.nombre, p.precio, p.categoria,
                                   COALESCE(p.stock,0) AS stock, COALESCE(p.stock_alerta,0) AS stock_alerta,
                                   p.id_producto_fabrica, p.unidades_por_caja_local,
-                                  pf.nombre AS nombre_producto_fabrica
+                                  pf.nombre AS nombre_producto_fabrica,
+                                  COALESCE(p.es_combo, false) AS es_combo,
+                                  p.componentes
                            FROM pos_productos p
                            LEFT JOIN productos pf ON p.id_producto_fabrica = pf.id
                            WHERE p.id_local=%s AND COALESCE(p.activo,true)=true
