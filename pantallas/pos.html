@@ -744,15 +744,15 @@
                 abrirSelectorVariante(p);
                 return;
             }
-            agregarItem(p.id, p.nombre, parseFloat(p.precio)||0, 1, null, p.es_combo, p.componentes);
+            agregarItem(p.id, p.nombre, parseFloat(p.precio)||0, 1, null, p.es_combo, p.componentes, p.descuento_efectivo);
         }
 
         // clave única por producto+variante para no mezclar líneas
-        function agregarItem(idProd, nombre, precio, factor, variante, esCombo, componentes) {
+        function agregarItem(idProd, nombre, precio, factor, variante, esCombo, componentes, descuentoEfectivo) {
             var clave = idProd + '|' + (variante || '');
             var ex = carrito.find(function(i){ return i.clave === clave; });
             if (ex) ex.cantidad++;
-            else carrito.push({ clave: clave, id: idProd, nombre: nombre + (variante ? ' (' + variante + ')' : ''), precio: precio, cantidad: 1, factor: factor || 1, es_combo: esCombo || false, componentes: componentes || null });
+            else carrito.push({ clave: clave, id: idProd, nombre: nombre + (variante ? ' (' + variante + ')' : ''), precio: precio, cantidad: 1, factor: factor || 1, es_combo: esCombo || false, componentes: componentes || null, descuento_efectivo: descuentoEfectivo || false });
             renderCarrito();
         }
 
@@ -958,7 +958,11 @@
             var totalBase = totalCarrito();
             var descuentoMonto = 0;
             if (!modoDividido && metodoSel === 'Efectivo' && descuentoEfectivoPct > 0) {
-                descuentoMonto = Math.round(totalBase * descuentoEfectivoPct / 100 * 100) / 100;
+                // Descuento solo sobre productos que tienen descuento_efectivo = true
+                var baseConDescuento = carrito.reduce(function(s, i) {
+                    return s + (i.descuento_efectivo ? i.precio * i.cantidad : 0);
+                }, 0);
+                descuentoMonto = Math.round(baseConDescuento * descuentoEfectivoPct / 100 * 100) / 100;
             }
             var total = Math.round((totalBase - descuentoMonto) * 100) / 100;
 
