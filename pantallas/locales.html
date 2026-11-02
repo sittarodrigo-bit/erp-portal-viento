@@ -258,7 +258,7 @@
                     <div class="bg-black rounded-xl border border-gray-800 overflow-hidden">
                         <table class="w-full text-left">
                             <thead class="bg-gray-950 text-xs text-gray-400 uppercase">
-                                <tr><th class="p-4">Producto</th><th class="p-4">Categoría</th><th class="p-4 text-right">Precio</th><th class="p-4 text-right">Stock</th><th class="p-4 text-right">Vendido este mes</th><th class="p-4 text-right">Acciones</th></tr>
+                                <tr><th class="p-4 text-gray-600">ID</th><th class="p-4">Producto</th><th class="p-4">Categoría</th><th class="p-4 text-right">Precio</th><th class="p-4 text-right">Stock</th><th class="p-4 text-right">Vendido este mes</th><th class="p-4 text-right">Acciones</th></tr>
                             </thead>
                             <tbody id="tabla-productos" class="divide-y divide-gray-800 text-sm"></tbody>
                         </table>
@@ -1270,7 +1270,7 @@
             vendidos.forEach(v => { mapVendidos[(v.nombre_producto||'').toLowerCase()] = v.unidades; });
 
             tabla.innerHTML = '';
-            if (!lista.length) { tabla.innerHTML = '<tr><td colspan="6" class="p-4 text-center text-gray-500">Sin productos en este local.</td></tr>'; return; }
+            if (!lista.length) { tabla.innerHTML = '<tr><td colspan="7" class="p-4 text-center text-gray-500">Sin productos en este local.</td></tr>'; return; }
             lista.forEach(p => {
                 const stock = parseFloat(p.stock)||0;
                 const alerta = parseFloat(p.stock_alerta)||0;
@@ -1280,6 +1280,7 @@
                 tr.className = 'hover:bg-gray-900 transition fila-prod-local';
                 tr.setAttribute('data-buscar', ((p.nombre||'') + ' ' + (p.sku||'') + ' ' + (p.categoria||'')).toLowerCase());
                 tr.innerHTML = `
+                    <td class="p-4 text-gray-600 text-xs font-mono">${p.id}</td>
                     <td class="p-4 font-bold text-white">${p.nombre}</td>
                     <td class="p-4 text-gray-400 text-xs">${p.categoria||'—'}</td>
                     <td class="p-4 text-right text-neon font-bold">${fmt(p.precio)}</td>
