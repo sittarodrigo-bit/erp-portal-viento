@@ -52,6 +52,7 @@
             <button onclick="cambiarTab('fichajes')" id="tab-fichajes" class="py-3 text-sm font-bold text-gray-400 hover:text-white transition">🕐 Fichajes Diarios</button>
             <button onclick="cambiarTab('horas')" id="tab-horas" class="py-3 text-sm font-bold text-gray-400 hover:text-white transition">⏳ Horas Trabajadas</button>
             <button onclick="cambiarTab('anticipos')" id="tab-anticipos" class="py-3 text-sm font-bold text-gray-400 hover:text-white transition">💸 Anticipos</button>
+            <button onclick="cambiarTab('fichajes'); setTimeout(verificarReparto,100)" id="tab-fichajes2" class="hidden"></button>
         </div>
 
         <div id="panel-empleados" class="flex-1 overflow-y-auto p-8">
@@ -76,6 +77,31 @@
         </div>
 
         <div id="panel-fichajes" class="hidden flex-1 overflow-y-auto p-8">
+
+            <!-- LOGÍSTICA EN CURSO -->
+            <div id="bloque-logistica" class="hidden mb-6 bg-green-950 border border-green-700 rounded-xl p-4">
+                <div class="flex items-center justify-between mb-3">
+                    <div class="flex items-center gap-3">
+                        <span class="w-3 h-3 bg-green-400 rounded-full animate-pulse inline-block"></span>
+                        <span class="text-green-400 font-bold text-sm uppercase tracking-widest">Logística en curso</span>
+                    </div>
+                    <div id="logistica-info" class="text-green-300 text-sm font-bold"></div>
+                </div>
+                <div class="w-full h-52 rounded-lg bg-gray-900 border border-green-800 overflow-hidden mb-3">
+                    <div id="mapa-placeholder" class="w-full h-full flex items-center justify-center text-gray-600 text-sm">Esperando ubicación GPS...</div>
+                    <iframe id="mapa-iframe" class="hidden w-full h-full border-0" allowfullscreen></iframe>
+                </div>
+                <p id="logistica-coords" class="text-gray-500 text-xs mb-3"></p>
+                <!-- Gastos del turno -->
+                <div id="bloque-gastos-log" class="hidden">
+                    <div class="flex justify-between items-center mb-2">
+                        <p class="text-gray-500 text-xs uppercase font-bold">💸 Gastos del turno</p>
+                        <p id="log-total-gastos" class="text-neon font-black text-sm"></p>
+                    </div>
+                    <div id="log-lista-gastos" class="space-y-1"></div>
+                </div>
+            </div>
+
             <div class="flex gap-4 mb-6">
                 <input type="date" id="filtro-fecha" class="bg-gray-900 border border-gray-700 text-white rounded p-2 text-sm focus:outline-none focus:border-neon">
                 <button onclick="cargarFichajes()" class="bg-neon text-black font-bold px-4 py-2 rounded text-sm hover:bg-yellow-300">Filtrar</button>
@@ -401,7 +427,7 @@
             document.getElementById('tab-horas').className = tab === 'horas' ? 'py-3 text-sm font-bold tab-activa' : 'py-3 text-sm font-bold text-gray-400 hover:text-white';
             document.getElementById('tab-anticipos').className = tab === 'anticipos' ? 'py-3 text-sm font-bold tab-activa' : 'py-3 text-sm font-bold text-gray-400 hover:text-white';
 
-            if (tab === 'fichajes') cargarFichajes();
+            if (tab === 'fichajes') { cargarFichajes(); verificarLogistica(); }
             if (tab === 'horas') cargarHoras();
             if (tab === 'anticipos') cargarAnticipos();
         }
@@ -882,6 +908,55 @@
         window.empresaCache = {};
         async function cargarEmpresaRecibo() {
             try { window.empresaCache = await fetch(`${API_URL}/empresa`).then(r=>r.json()); } catch(e) {}
+        }
+
+        // ── LOGÍSTICA EN TIEMPO REAL ─────────────────────────────
+        let logisticaInterval = null;
+
+        async function verificarLogistica() {
+            try {
+                const data = await fetch(`${API_URL}/logistica/activo`).then(r => r.json());
+                const bloque = document.getElementById('bloque-logistica');
+                if (!data.logistica) {
+                    bloque.classList.add('hidden');
+                    if (logisticaInterval) { clearInterval(logisticaInterval); logisticaInterval = null; }
+                    return;
+                }
+                const r = data.logistica;
+                bloque.classList.remove('hidden');
+
+                const horaStr = new Date(r.inicio).toLocaleTimeString('es-AR', { hour:'2-digit', minute:'2-digit' });
+                document.getElementById('logistica-info').textContent = '🚗 ' + r.repartidor + ' · Salida: ' + horaStr + ' hs';
+
+                if (r.lat && r.lng) {
+                    document.getElementById('mapa-placeholder').classList.add('hidden');
+                    const iframe = document.getElementById('mapa-iframe');
+                    iframe.classList.remove('hidden');
+                    iframe.src = `https://maps.google.com/maps?q=${r.lat},${r.lng}&z=15&output=embed`;
+                    const ua = r.ultima_actualizacion ? new Date(r.ultima_actualizacion) : null;
+                    document.getElementById('logistica-coords').textContent =
+                        'GPS: ' + r.lat.toFixed(5) + ', ' + r.lng.toFixed(5) +
+                        (ua ? ' · Actualizado: ' + ua.toLocaleTimeString('es-AR') : '');
+                }
+
+                // Gastos
+                const gastos = Array.isArray(r.gastos) ? r.gastos : [];
+                if (gastos.length) {
+                    document.getElementById('bloque-gastos-log').classList.remove('hidden');
+                    const total = gastos.reduce((s, g) => s + parseFloat(g.monto||0), 0);
+                    document.getElementById('log-total-gastos').textContent = '$ ' + total.toLocaleString('es-AR');
+                    document.getElementById('log-lista-gastos').innerHTML = gastos.map(g =>
+                        `<div class="flex justify-between items-center bg-black/40 rounded px-3 py-1.5 text-sm">
+                            <span class="text-gray-300">${g.descripcion}</span>
+                            <span class="text-red-400 font-bold">-$ ${parseFloat(g.monto).toLocaleString('es-AR')}</span>
+                        </div>`
+                    ).join('');
+                }
+
+                if (!logisticaInterval) {
+                    logisticaInterval = setInterval(verificarLogistica, 20000);
+                }
+            } catch(e) {}
         }
 
         window.onload = function(){ cargarEmpleados(); cargarEmpresaRecibo(); };
