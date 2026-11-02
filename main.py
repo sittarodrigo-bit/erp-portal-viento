@@ -5076,6 +5076,7 @@ class PosProducto(BaseModel):
     categoria: Optional[str] = None
     stock: float = 0.0
     stock_alerta: float = 0.0
+    descuento_efectivo: bool = False
 
 class PosAbrirCaja(BaseModel):
     id_local: int
@@ -5235,7 +5236,8 @@ def pos_listar_productos(id_local: int):
                                   p.id_producto_fabrica, p.unidades_por_caja_local,
                                   pf.nombre AS nombre_producto_fabrica,
                                   COALESCE(p.es_combo, false) AS es_combo,
-                                  p.componentes
+                                  p.componentes,
+                                  COALESCE(p.descuento_efectivo, false) AS descuento_efectivo
                            FROM pos_productos p
                            LEFT JOIN productos pf ON p.id_producto_fabrica = pf.id
                            WHERE p.id_local=%s AND COALESCE(p.activo,true)=true
@@ -5275,8 +5277,8 @@ def pos_crear_producto(p: PosProducto):
     conn = obtener_conexion()
     try:
         cur = conn.cursor()
-        cur.execute("INSERT INTO pos_productos (id_local, nombre, precio, categoria, stock, stock_alerta) VALUES (%s,%s,%s,%s,%s,%s) RETURNING id",
-                    (p.id_local, p.nombre, p.precio, p.categoria, p.stock, p.stock_alerta))
+        cur.execute("INSERT INTO pos_productos (id_local, nombre, precio, categoria, stock, stock_alerta, descuento_efectivo) VALUES (%s,%s,%s,%s,%s,%s,%s) RETURNING id",
+                    (p.id_local, p.nombre, p.precio, p.categoria, p.stock, p.stock_alerta, p.descuento_efectivo))
         pid = cur.fetchone()[0]
         conn.commit()
         return {"id": pid}
@@ -5312,8 +5314,8 @@ def pos_actualizar_producto(id: int, p: PosProducto):
     conn = obtener_conexion()
     try:
         cur = conn.cursor()
-        cur.execute("UPDATE pos_productos SET nombre=%s, precio=%s, categoria=%s, stock=%s, stock_alerta=%s WHERE id=%s",
-                    (p.nombre, p.precio, p.categoria, p.stock, p.stock_alerta, id))
+        cur.execute("UPDATE pos_productos SET nombre=%s, precio=%s, categoria=%s, stock=%s, stock_alerta=%s, descuento_efectivo=%s WHERE id=%s",
+                    (p.nombre, p.precio, p.categoria, p.stock, p.stock_alerta, p.descuento_efectivo, id))
         conn.commit()
         return {"status": "ok"}
     except Exception as e:
