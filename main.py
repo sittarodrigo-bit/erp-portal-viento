@@ -5077,6 +5077,8 @@ class PosProducto(BaseModel):
     stock: float = 0.0
     stock_alerta: float = 0.0
     descuento_efectivo: bool = False
+    es_combo: bool = False
+    componentes: Optional[list] = None
 
 class PosAbrirCaja(BaseModel):
     id_local: int
