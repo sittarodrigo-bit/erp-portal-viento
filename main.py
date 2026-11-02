@@ -5279,8 +5279,10 @@ def pos_crear_producto(p: PosProducto):
     conn = obtener_conexion()
     try:
         cur = conn.cursor()
-        cur.execute("INSERT INTO pos_productos (id_local, nombre, precio, categoria, stock, stock_alerta, descuento_efectivo) VALUES (%s,%s,%s,%s,%s,%s,%s) RETURNING id",
-                    (p.id_local, p.nombre, p.precio, p.categoria, p.stock, p.stock_alerta, p.descuento_efectivo))
+        import json as _json
+        componentes_json = _json.dumps(p.componentes) if p.componentes else None
+        cur.execute("INSERT INTO pos_productos (id_local, nombre, precio, categoria, stock, stock_alerta, descuento_efectivo, es_combo, componentes) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id",
+                    (p.id_local, p.nombre, p.precio, p.categoria, p.stock, p.stock_alerta, p.descuento_efectivo, p.es_combo, componentes_json))
         pid = cur.fetchone()[0]
         conn.commit()
         return {"id": pid}
@@ -5316,8 +5318,10 @@ def pos_actualizar_producto(id: int, p: PosProducto):
     conn = obtener_conexion()
     try:
         cur = conn.cursor()
-        cur.execute("UPDATE pos_productos SET nombre=%s, precio=%s, categoria=%s, stock=%s, stock_alerta=%s, descuento_efectivo=%s WHERE id=%s",
-                    (p.nombre, p.precio, p.categoria, p.stock, p.stock_alerta, p.descuento_efectivo, id))
+        import json as _json
+        componentes_json = _json.dumps(p.componentes) if p.componentes else None
+        cur.execute("UPDATE pos_productos SET nombre=%s, precio=%s, categoria=%s, stock=%s, stock_alerta=%s, descuento_efectivo=%s, es_combo=%s, componentes=%s WHERE id=%s",
+                    (p.nombre, p.precio, p.categoria, p.stock, p.stock_alerta, p.descuento_efectivo, p.es_combo, componentes_json, id))
         conn.commit()
         return {"status": "ok"}
     except Exception as e:
@@ -11354,6 +11358,125 @@ cargar();
 </body>
 </html>"""
     return HTMLResponse(content=html)
+
+# ─────────────── LOGÍSTICA / TRACKING GPS ───────────────
+
+class LogisticaIniciar(BaseModel):
+    repartidor: str
+
+class LogisticaUbicacion(BaseModel):
+    lat: float
+    lng: float
+
+class LogisticaGasto(BaseModel):
+    descripcion: str
+    monto: float
+    foto_url: Optional[str] = None
+
+@app.post("/api/logistica/iniciar")
+def logistica_iniciar(data: LogisticaIniciar):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        cur.execute("UPDATE pos_logistica SET fin=NOW() WHERE repartidor=%s AND fin IS NULL", (data.repartidor,))
+        cur.execute("INSERT INTO pos_logistica (repartidor) VALUES (%s) RETURNING id", (data.repartidor,))
+        rid = cur.fetchone()[0]
+        conn.commit()
+        return {"id": rid}
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
+@app.post("/api/logistica/{id}/ubicacion")
+def logistica_ubicacion(id: int, data: LogisticaUbicacion):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        cur.execute("""UPDATE pos_logistica SET lat=%s, lng=%s, ultima_actualizacion=NOW()
+                       WHERE id=%s AND fin IS NULL""", (data.lat, data.lng, id))
+        conn.commit()
+        return {"status": "ok"}
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
+@app.post("/api/logistica/{id}/finalizar")
+def logistica_finalizar(id: int):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        cur.execute("UPDATE pos_logistica SET fin=NOW() WHERE id=%s AND fin IS NULL", (id,))
+        conn.commit()
+        return {"status": "ok"}
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
+@app.get("/api/logistica/activo")
+def logistica_activo():
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("""SELECT l.id, l.repartidor, l.inicio, l.fin, l.lat, l.lng, l.ultima_actualizacion,
+                       COALESCE(json_agg(g ORDER BY g.creado_en) FILTER (WHERE g.id IS NOT NULL), '[]') AS gastos
+                       FROM pos_logistica l
+                       LEFT JOIN pos_gastos_logistica g ON g.id_logistica = l.id
+                       WHERE l.fin IS NULL
+                       GROUP BY l.id ORDER BY l.inicio DESC LIMIT 1""")
+        row = cur.fetchone()
+        return {"logistica": dict(row) if row else None}
+    finally:
+        liberar_conexion(conn)
+
+@app.post("/api/logistica/{id}/gasto")
+def logistica_gasto(id: int, data: LogisticaGasto):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        cur.execute("""INSERT INTO pos_gastos_logistica (id_logistica, descripcion, monto, foto_url)
+                       VALUES (%s,%s,%s,%s) RETURNING id""",
+                    (id, data.descripcion, data.monto, data.foto_url))
+        gid = cur.fetchone()[0]
+        conn.commit()
+        return {"id": gid}
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
+@app.get("/api/logistica/historial")
+def logistica_historial(fecha_desde: Optional[str] = None, fecha_hasta: Optional[str] = None):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        where = "WHERE 1=1"
+        params = []
+        if fecha_desde:
+            where += " AND l.inicio::date >= %s"; params.append(fecha_desde)
+        if fecha_hasta:
+            where += " AND l.inicio::date <= %s"; params.append(fecha_hasta)
+        cur.execute(f"""SELECT l.id, l.repartidor, l.inicio, l.fin,
+                       COALESCE(SUM(g.monto),0) AS total_gastos,
+                       COALESCE(json_agg(g ORDER BY g.creado_en) FILTER (WHERE g.id IS NOT NULL), '[]') AS gastos
+                       FROM pos_logistica l
+                       LEFT JOIN pos_gastos_logistica g ON g.id_logistica = l.id
+                       {where}
+                       GROUP BY l.id ORDER BY l.inicio DESC LIMIT 50""", params)
+        rows = cur.fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        liberar_conexion(conn)
+
+@app.get("/pantallas/logistica")
+def pantalla_logistica():
+    return serve_html("logistica.html")
 
 if __name__ == "__main__":
     import uvicorn
