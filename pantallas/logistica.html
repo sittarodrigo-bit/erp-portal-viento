@@ -18,6 +18,11 @@
   .btn-rojo  { background:#ef4444; color:#fff; }
   .btn-neon  { background:#e4fc74; color:#000; }
   .btn-gris  { background:#1f2937; color:#9ca3af; border:1px solid #374151; }
+  /* Teclado PIN */
+  .pin-dot { width:14px; height:14px; border-radius:50%; background:#333; transition:background .15s; }
+  .pin-dot.lleno { background:#e4fc74; }
+  .tecla { background:#1a1a1a; border:1px solid #2a2a2a; border-radius:1rem; font-size:1.5rem; font-weight:700; padding:1.1rem; cursor:pointer; transition:background .1s,transform .1s; user-select:none; }
+  .tecla:active { background:#2a2a2a; transform:scale(.93); }
 </style>
 </head>
 <body class="min-h-screen p-5 pb-10">
@@ -28,11 +33,34 @@
     <h1 class="text-2xl font-black text-white">Logística</h1>
   </div>
 
-  <!-- ── PANEL INICIO ── -->
+  <!-- ── PANEL LOGIN PIN ── -->
   <div id="panel-inicio">
-    <p class="text-gray-500 text-sm text-center mb-5">Ingresá tu nombre para comenzar el turno.</p>
-    <input id="inp-nombre" type="text" placeholder="Tu nombre" autocomplete="off" class="mb-4">
-    <button class="btn btn-verde" onclick="iniciar()">🚗 Iniciar logística</button>
+    <p class="text-gray-500 text-sm text-center mb-6">Ingresá tu PIN de 4 dígitos para iniciar el turno.</p>
+
+    <!-- Indicador PIN -->
+    <div class="flex justify-center gap-4 mb-6">
+      <div class="pin-dot" id="d0"></div>
+      <div class="pin-dot" id="d1"></div>
+      <div class="pin-dot" id="d2"></div>
+      <div class="pin-dot" id="d3"></div>
+    </div>
+
+    <!-- Teclado numérico -->
+    <div class="grid grid-cols-3 gap-3 mb-4">
+      <button class="tecla" onclick="teclaPin('1')">1</button>
+      <button class="tecla" onclick="teclaPin('2')">2</button>
+      <button class="tecla" onclick="teclaPin('3')">3</button>
+      <button class="tecla" onclick="teclaPin('4')">4</button>
+      <button class="tecla" onclick="teclaPin('5')">5</button>
+      <button class="tecla" onclick="teclaPin('6')">6</button>
+      <button class="tecla" onclick="teclaPin('7')">7</button>
+      <button class="tecla" onclick="teclaPin('8')">8</button>
+      <button class="tecla" onclick="teclaPin('9')">9</button>
+      <button class="tecla text-gray-500" onclick="borrarPin()">⌫</button>
+      <button class="tecla" onclick="teclaPin('0')">0</button>
+      <button class="tecla bg-green-900 text-green-400 border-green-800" onclick="confirmarPin()">✓</button>
+    </div>
+
     <div id="err-inicio" class="text-red-400 text-sm text-center mt-3 hidden"></div>
   </div>
 
@@ -42,10 +70,14 @@
     <!-- Estado -->
     <div class="bg-green-950 border border-green-800 rounded-2xl p-4 mb-4 flex items-center gap-3">
       <span class="w-3 h-3 bg-green-400 rounded-full pulse flex-shrink-0"></span>
-      <div>
+      <div class="flex-1">
         <p class="text-green-400 font-black text-sm uppercase tracking-widest">En logística</p>
         <p id="txt-nombre" class="text-white font-bold text-lg leading-tight"></p>
         <p id="txt-inicio" class="text-gray-500 text-xs"></p>
+      </div>
+      <div class="text-right">
+        <p class="text-gray-600 text-xs uppercase font-bold mb-0.5">Tiempo</p>
+        <p id="txt-timer" class="neon font-black text-lg tabular-nums">00:00:00</p>
       </div>
     </div>
 
@@ -92,53 +124,85 @@
 const API = window.location.origin + '/api';
 let sesionId = null;
 let intervalGPS = null;
+let intervalTimer = null;
+let inicioTS = null;
 let gastos = [];
+let pinActual = '';
 
-function fmtHora(iso) {
-  if (!iso) return '';
-  return new Date(iso).toLocaleTimeString('es-AR', { hour:'2-digit', minute:'2-digit' });
+// ── TECLADO PIN ──
+function teclaPin(d) {
+  if (pinActual.length >= 4) return;
+  pinActual += d;
+  actualizarDots();
+  if (pinActual.length === 4) setTimeout(confirmarPin, 200);
 }
-function fmtMonto(n) {
-  return '$ ' + parseFloat(n).toLocaleString('es-AR', { minimumFractionDigits:0 });
+function borrarPin() {
+  pinActual = pinActual.slice(0, -1);
+  actualizarDots();
 }
-function mostrarError(id, msg) {
-  const el = document.getElementById(id);
-  el.textContent = msg;
-  el.classList.remove('hidden');
-  setTimeout(() => el.classList.add('hidden'), 4000);
+function actualizarDots() {
+  for (let i = 0; i < 4; i++) {
+    document.getElementById('d' + i).classList.toggle('lleno', i < pinActual.length);
+  }
 }
 
-// ── INICIAR ──
-async function iniciar() {
-  const nombre = document.getElementById('inp-nombre').value.trim();
-  if (!nombre) { mostrarError('err-inicio', 'Ingresá tu nombre.'); return; }
+async function confirmarPin() {
+  if (pinActual.length !== 4) return;
+  const pin = pinActual;
+  pinActual = '';
+  actualizarDots();
   try {
     const res = await fetch(API + '/logistica/iniciar', {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ repartidor: nombre })
-    }).then(r => r.json());
-    sesionId = res.id;
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pin })
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      mostrarError('err-inicio', data.detail || 'PIN incorrecto o sin permiso.');
+      return;
+    }
+    sesionId = data.id;
+    const ahora = new Date().toISOString();
     localStorage.setItem('logisticaId', sesionId);
-    localStorage.setItem('logisticaNombre', nombre);
-    localStorage.setItem('logisticaInicio', new Date().toISOString());
+    localStorage.setItem('logisticaNombre', data.nombre);
+    localStorage.setItem('logisticaInicio', ahora);
     gastos = [];
-    activarPanel(nombre, new Date().toISOString());
+    activarPanel(data.nombre, ahora);
     arrancarGPS();
-  } catch(e) { mostrarError('err-inicio', 'No se pudo conectar.'); }
+    arrancarTimer(ahora);
+  } catch(e) {
+    mostrarError('err-inicio', 'No se pudo conectar.');
+  }
+}
+
+// ── TIMER ──
+function arrancarTimer(isoInicio) {
+  inicioTS = new Date(isoInicio).getTime();
+  actualizarTimer();
+  if (intervalTimer) clearInterval(intervalTimer);
+  intervalTimer = setInterval(actualizarTimer, 1000);
+}
+function actualizarTimer() {
+  const diff = Math.floor((Date.now() - inicioTS) / 1000);
+  const h = Math.floor(diff / 3600);
+  const m = Math.floor((diff % 3600) / 60);
+  const s = diff % 60;
+  const pad = n => String(n).padStart(2, '0');
+  document.getElementById('txt-timer').textContent = pad(h) + ':' + pad(m) + ':' + pad(s);
 }
 
 // ── FINALIZAR ──
 async function finalizar() {
   if (!confirm('¿Finalizar el turno de logística?')) return;
-  try { await fetch(API + '/logistica/' + sesionId + '/finalizar', { method:'POST' }); } catch(e) {}
+  try { await fetch(API + '/logistica/' + sesionId + '/finalizar', { method: 'POST' }); } catch(e) {}
   detenerGPS();
-  sesionId = null;
+  if (intervalTimer) { clearInterval(intervalTimer); intervalTimer = null; }
+  sesionId = null; inicioTS = null;
   localStorage.removeItem('logisticaId');
   localStorage.removeItem('logisticaNombre');
   localStorage.removeItem('logisticaInicio');
   document.getElementById('panel-activo').classList.add('hidden');
   document.getElementById('panel-inicio').classList.remove('hidden');
-  document.getElementById('inp-nombre').value = '';
 }
 
 // ── GPS ──
@@ -158,13 +222,13 @@ function enviarGPS() {
     document.getElementById('txt-gps-hora').textContent = 'Actualizado: ' + new Date().toLocaleTimeString('es-AR');
     try {
       await fetch(API + '/logistica/' + sesionId + '/ubicacion', {
-        method:'POST', headers:{'Content-Type':'application/json'},
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ lat, lng })
       });
     } catch(e) {}
   }, () => {
     document.getElementById('txt-gps').textContent = 'No se pudo obtener GPS';
-  }, { enableHighAccuracy:true, timeout:10000 });
+  }, { enableHighAccuracy: true, timeout: 10000 });
 }
 
 // ── GASTOS ──
@@ -190,7 +254,6 @@ async function registrarGasto() {
   let foto_url = null;
   const fotoFile = document.getElementById('gasto-foto').files[0];
   if (fotoFile) {
-    // Subir foto como base64 en el campo foto_url (simplificado)
     foto_url = await new Promise(resolve => {
       const r = new FileReader();
       r.onload = e => resolve(e.target.result);
@@ -200,12 +263,11 @@ async function registrarGasto() {
 
   try {
     await fetch(API + '/logistica/' + sesionId + '/gasto', {
-      method:'POST', headers:{'Content-Type':'application/json'},
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ descripcion: desc, monto, foto_url })
     });
     gastos.push({ descripcion: desc, monto, foto_url });
     renderGastos();
-    // Limpiar
     document.getElementById('gasto-desc').value = '';
     document.getElementById('gasto-monto').value = '';
     document.getElementById('gasto-foto').value = '';
@@ -222,25 +284,32 @@ function renderGastos() {
     return;
   }
   let total = 0;
-  lista.innerHTML = gastos.map((g, i) => {
+  lista.innerHTML = gastos.map(g => {
     total += g.monto;
     return `<div class="bg-gray-900 border border-gray-800 rounded-lg px-3 py-2 flex justify-between items-center">
       <div>
         <p class="text-white text-sm font-bold">${g.descripcion}</p>
         ${g.foto_url ? '<p class="text-gray-600 text-xs">📷 Con foto</p>' : ''}
       </div>
-      <p class="text-red-400 font-black">${fmtMonto(g.monto)}</p>
+      <p class="text-red-400 font-black">$ ${parseFloat(g.monto).toLocaleString('es-AR')}</p>
     </div>`;
   }).join('');
-  document.getElementById('txt-total').textContent = fmtMonto(total);
+  document.getElementById('txt-total').textContent = '$ ' + total.toLocaleString('es-AR');
 }
 
 function activarPanel(nombre, inicio) {
   document.getElementById('panel-inicio').classList.add('hidden');
   document.getElementById('panel-activo').classList.remove('hidden');
   document.getElementById('txt-nombre').textContent = nombre;
-  document.getElementById('txt-inicio').textContent = 'Inicio: ' + fmtHora(inicio);
+  document.getElementById('txt-inicio').textContent = 'Inicio: ' + new Date(inicio).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
   renderGastos();
+}
+
+function mostrarError(id, msg) {
+  const el = document.getElementById(id);
+  el.textContent = msg;
+  el.classList.remove('hidden');
+  setTimeout(() => el.classList.add('hidden'), 4000);
 }
 
 // Restaurar sesión si quedó activa
@@ -252,6 +321,7 @@ function activarPanel(nombre, inicio) {
     sesionId = parseInt(id);
     activarPanel(nombre, inicio);
     arrancarGPS();
+    arrancarTimer(inicio);
   }
 })();
 </script>
