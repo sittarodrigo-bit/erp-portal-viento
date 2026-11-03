@@ -11,18 +11,19 @@
   .pulse { animation:pulse 2s infinite; }
   @keyframes pulse { 0%,100%{opacity:1}50%{opacity:.3} }
   input,textarea,select { background:#111; border:1px solid #333; color:#fff; border-radius:0.75rem; padding:0.75rem 1rem; width:100%; font-size:1rem; }
-  input:focus,textarea:focus { outline:none; border-color:#e4fc74; }
+  input:focus,textarea:focus,select:focus { outline:none; border-color:#e4fc74; }
   .btn { display:block; width:100%; padding:1.2rem; border-radius:1rem; font-size:1.1rem; font-weight:800; text-align:center; border:none; cursor:pointer; transition:opacity .15s,transform .1s; }
   .btn:active { transform:scale(.97); opacity:.85; }
-  .btn-verde { background:#22c55e; color:#000; }
   .btn-rojo  { background:#ef4444; color:#fff; }
   .btn-neon  { background:#e4fc74; color:#000; }
-  .btn-gris  { background:#1f2937; color:#9ca3af; border:1px solid #374151; }
   /* Teclado PIN */
   .pin-dot { width:14px; height:14px; border-radius:50%; background:#333; transition:background .15s; }
   .pin-dot.lleno { background:#e4fc74; }
   .tecla { background:#1a1a1a; border:1px solid #2a2a2a; border-radius:1rem; font-size:1.5rem; font-weight:700; padding:1.1rem; cursor:pointer; transition:background .1s,transform .1s; user-select:none; }
   .tecla:active { background:#2a2a2a; transform:scale(.93); }
+  /* Campo KM — solo visible para combustible */
+  #row-km { display:none; }
+  #row-km.visible { display:block; }
 </style>
 </head>
 <body class="min-h-screen p-5 pb-10">
@@ -68,10 +69,10 @@
   <div id="panel-activo" class="hidden">
 
     <!-- Estado -->
-    <div class="bg-green-950 border border-green-800 rounded-2xl p-4 mb-4 flex items-center gap-3">
+    <div class="bg-green-950 border border-green-800 rounded-2xl p-4 mb-5 flex items-center gap-3">
       <span class="w-3 h-3 bg-green-400 rounded-full pulse flex-shrink-0"></span>
       <div class="flex-1">
-        <p class="text-green-400 font-black text-sm uppercase tracking-widest">En logística</p>
+        <p class="text-green-400 font-black text-xs uppercase tracking-widest">En logística</p>
         <p id="txt-nombre" class="text-white font-bold text-lg leading-tight"></p>
         <p id="txt-inicio" class="text-gray-500 text-xs"></p>
       </div>
@@ -81,31 +82,46 @@
       </div>
     </div>
 
-    <!-- GPS -->
-    <div class="bg-gray-900 border border-gray-800 rounded-xl p-3 mb-4">
-      <p class="text-gray-600 text-xs uppercase font-bold mb-1">📍 GPS</p>
-      <p id="txt-gps" class="text-white text-sm">Obteniendo ubicación...</p>
-      <p id="txt-gps-hora" class="text-gray-600 text-xs mt-0.5"></p>
-    </div>
-
-    <!-- Gastos registrados -->
-    <div class="mb-4">
+    <!-- Gastos del turno -->
+    <div class="mb-5">
       <div class="flex items-center justify-between mb-2">
         <p class="text-gray-500 text-xs uppercase font-bold">💸 Gastos del turno</p>
-        <p id="txt-total" class="neon font-black text-sm">$ 0</p>
+        <p id="txt-total" class="text-green-400 font-black text-sm">$ 0 a rendir</p>
       </div>
       <div id="lista-gastos" class="space-y-2"></div>
     </div>
 
     <!-- Formulario nuevo gasto -->
-    <div class="bg-gray-900 border border-gray-800 rounded-xl p-4 mb-4">
+    <div class="bg-gray-900 border border-gray-800 rounded-xl p-4 mb-5">
       <p class="text-gray-400 text-sm font-bold mb-3">+ Registrar gasto</p>
-      <input id="gasto-desc" type="text" placeholder="Descripción (ej: Nafta, Peaje)" class="mb-3">
+
+      <!-- Tipo de gasto -->
+      <div class="mb-3">
+        <select id="gasto-tipo" onchange="onTipoGasto()">
+          <option value="">Tipo de gasto…</option>
+          <option value="Combustible">⛽ Combustible</option>
+          <option value="Peaje">🛣️ Peaje</option>
+          <option value="Estacionamiento">🅿️ Estacionamiento</option>
+          <option value="Nafta">🔧 Nafta / aceite</option>
+          <option value="Comida">🍔 Comida</option>
+          <option value="Otro">📋 Otro</option>
+        </select>
+      </div>
+
+      <!-- Descripción libre (se rellena automáticamente pero editable) -->
+      <input id="gasto-desc" type="text" placeholder="Descripción" class="mb-3">
+
+      <!-- KM del vehículo — solo para Combustible -->
+      <div id="row-km" class="mb-3">
+        <label class="text-gray-500 text-xs uppercase font-bold block mb-1">📏 KM del vehículo</label>
+        <input id="gasto-km" type="number" placeholder="Ej: 45320" min="0" step="1">
+      </div>
+
       <input id="gasto-monto" type="number" placeholder="Monto $" min="1" step="1" class="mb-3">
 
-      <!-- Foto del ticket -->
+      <!-- Foto del comprobante -->
       <label class="flex items-center gap-2 text-gray-400 text-sm mb-3 cursor-pointer">
-        <span class="bg-gray-800 border border-gray-700 px-3 py-2 rounded-lg text-xs font-bold hover:border-gray-500">📷 Foto del ticket</span>
+        <span class="bg-gray-800 border border-gray-700 px-3 py-2 rounded-lg text-xs font-bold">📷 Foto del comprobante</span>
         <span id="txt-foto" class="text-gray-600 text-xs">Sin foto</span>
         <input type="file" id="gasto-foto" accept="image/*" capture="environment" class="hidden" onchange="previewFoto()">
       </label>
@@ -116,7 +132,7 @@
     </div>
 
     <!-- Finalizar -->
-    <button class="btn btn-rojo" onclick="finalizar()">🏁 Finalizar logística</button>
+    <button class="btn btn-rojo" onclick="finalizar()">🏁 Finalizar turno</button>
   </div>
 </div>
 
@@ -175,6 +191,21 @@ async function confirmarPin() {
   }
 }
 
+// ── TIPO GASTO ──
+function onTipoGasto() {
+  const tipo = document.getElementById('gasto-tipo').value;
+  document.getElementById('gasto-desc').value = tipo;
+  const rowKm = document.getElementById('row-km');
+  if (tipo === 'Combustible') {
+    rowKm.classList.add('visible');
+    document.getElementById('gasto-km').setAttribute('required', 'required');
+  } else {
+    rowKm.classList.remove('visible');
+    document.getElementById('gasto-km').removeAttribute('required');
+    document.getElementById('gasto-km').value = '';
+  }
+}
+
 // ── TIMER ──
 function arrancarTimer(isoInicio) {
   inicioTS = new Date(isoInicio).getTime();
@@ -205,7 +236,7 @@ async function finalizar() {
   document.getElementById('panel-inicio').classList.remove('hidden');
 }
 
-// ── GPS ──
+// ── GPS (silencioso — solo envía datos al servidor, no muestra mapa) ──
 function arrancarGPS() {
   if (!navigator.geolocation) return;
   enviarGPS();
@@ -218,17 +249,13 @@ function enviarGPS() {
   if (!sesionId) return;
   navigator.geolocation.getCurrentPosition(async pos => {
     const { latitude: lat, longitude: lng } = pos.coords;
-    document.getElementById('txt-gps').textContent = lat.toFixed(5) + ', ' + lng.toFixed(5);
-    document.getElementById('txt-gps-hora').textContent = 'Actualizado: ' + new Date().toLocaleTimeString('es-AR');
     try {
       await fetch(API + '/logistica/' + sesionId + '/ubicacion', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ lat, lng })
       });
     } catch(e) {}
-  }, () => {
-    document.getElementById('txt-gps').textContent = 'No se pudo obtener GPS';
-  }, { enableHighAccuracy: true, timeout: 10000 });
+  }, () => {}, { enableHighAccuracy: true, timeout: 10000 });
 }
 
 // ── GASTOS ──
@@ -246,10 +273,14 @@ function previewFoto() {
 }
 
 async function registrarGasto() {
-  const desc = document.getElementById('gasto-desc').value.trim();
+  const tipo  = document.getElementById('gasto-tipo').value;
+  const desc  = document.getElementById('gasto-desc').value.trim();
   const monto = parseFloat(document.getElementById('gasto-monto').value);
-  if (!desc) { mostrarError('err-gasto', 'Ingresá una descripción.'); return; }
+  const km    = document.getElementById('gasto-km').value;
+
+  if (!desc) { mostrarError('err-gasto', 'Elegí un tipo de gasto.'); return; }
   if (!monto || monto <= 0) { mostrarError('err-gasto', 'Ingresá un monto válido.'); return; }
+  if (tipo === 'Combustible' && !km) { mostrarError('err-gasto', 'Ingresá los KM del vehículo.'); return; }
 
   let foto_url = null;
   const fotoFile = document.getElementById('gasto-foto').files[0];
@@ -261,18 +292,26 @@ async function registrarGasto() {
     });
   }
 
+  const payload = { descripcion: desc, monto, foto_url };
+  if (km) payload.km_vehiculo = parseInt(km);
+
   try {
     await fetch(API + '/logistica/' + sesionId + '/gasto', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ descripcion: desc, monto, foto_url })
+      body: JSON.stringify(payload)
     });
-    gastos.push({ descripcion: desc, monto, foto_url });
+    gastos.push({ descripcion: desc, monto, foto_url, km_vehiculo: km || null });
     renderGastos();
+    // Limpiar formulario
+    document.getElementById('gasto-tipo').value = '';
     document.getElementById('gasto-desc').value = '';
+    document.getElementById('gasto-km').value = '';
     document.getElementById('gasto-monto').value = '';
     document.getElementById('gasto-foto').value = '';
     document.getElementById('txt-foto').textContent = 'Sin foto';
     document.getElementById('preview-foto').classList.add('hidden');
+    document.getElementById('row-km').classList.remove('visible');
+    document.getElementById('err-gasto').classList.add('hidden');
   } catch(e) { mostrarError('err-gasto', 'No se pudo guardar.'); }
 }
 
@@ -280,21 +319,23 @@ function renderGastos() {
   const lista = document.getElementById('lista-gastos');
   if (!gastos.length) {
     lista.innerHTML = '<p class="text-gray-700 text-xs text-center py-2">Sin gastos registrados.</p>';
-    document.getElementById('txt-total').textContent = '$ 0';
+    document.getElementById('txt-total').textContent = '$ 0 a rendir';
     return;
   }
   let total = 0;
   lista.innerHTML = gastos.map(g => {
     total += g.monto;
+    const kmBadge = g.km_vehiculo ? `<span class="text-blue-400 text-xs ml-1">📏 ${parseInt(g.km_vehiculo).toLocaleString('es-AR')} km</span>` : '';
+    const fotoBadge = g.foto_url ? '<span class="text-gray-500 text-xs ml-1">📷</span>' : '';
     return `<div class="bg-gray-900 border border-gray-800 rounded-lg px-3 py-2 flex justify-between items-center">
       <div>
-        <p class="text-white text-sm font-bold">${g.descripcion}</p>
-        ${g.foto_url ? '<p class="text-gray-600 text-xs">📷 Con foto</p>' : ''}
+        <p class="text-white text-sm font-bold">${g.descripcion}${fotoBadge}</p>
+        ${kmBadge ? `<p class="mt-0.5">${kmBadge}</p>` : ''}
       </div>
-      <p class="text-red-400 font-black">$ ${parseFloat(g.monto).toLocaleString('es-AR')}</p>
+      <p class="text-green-400 font-black text-sm whitespace-nowrap ml-2">+ $ ${parseFloat(g.monto).toLocaleString('es-AR')}</p>
     </div>`;
   }).join('');
-  document.getElementById('txt-total').textContent = '$ ' + total.toLocaleString('es-AR');
+  document.getElementById('txt-total').textContent = '$ ' + total.toLocaleString('es-AR') + ' a rendir';
 }
 
 function activarPanel(nombre, inicio) {
