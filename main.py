@@ -11362,7 +11362,7 @@ cargar();
 # ─────────────── LOGÍSTICA / TRACKING GPS ───────────────
 
 class LogisticaIniciar(BaseModel):
-    repartidor: str
+    pin: str  # PIN de 4 dígitos del empleado
 
 class LogisticaUbicacion(BaseModel):
     lat: float
@@ -11377,12 +11377,29 @@ class LogisticaGasto(BaseModel):
 def logistica_iniciar(data: LogisticaIniciar):
     conn = obtener_conexion()
     try:
-        cur = conn.cursor()
-        cur.execute("UPDATE pos_logistica SET fin=NOW() WHERE repartidor=%s AND fin IS NULL", (data.repartidor,))
-        cur.execute("INSERT INTO pos_logistica (repartidor) VALUES (%s) RETURNING id", (data.repartidor,))
-        rid = cur.fetchone()[0]
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        # Verificar PIN y obtener empleado con rol logistica o repartidor
+        cur.execute("""SELECT id, nombre, apellido, rol FROM empleados
+                       WHERE pin_fichaje=%s AND COALESCE(activo,true)=true
+                       AND rol IN ('logistica','repartidor')""", (data.pin,))
+        emp = cur.fetchone()
+        if not emp:
+            raise HTTPException(status_code=403, detail="PIN incorrecto o sin permiso de logística.")
+        id_emp = emp['id']
+        nombre_completo = emp['nombre'] + ' ' + emp['apellido']
+        # Cerrar sesión logística previa abierta del mismo empleado
+        cur2 = conn.cursor()
+        cur2.execute("UPDATE pos_logistica SET fin=NOW() WHERE id_empleado=%s AND fin IS NULL", (id_emp,))
+        cur2.execute("""INSERT INTO pos_logistica (id_empleado, repartidor) VALUES (%s,%s) RETURNING id""",
+                     (id_emp, nombre_completo))
+        rid = cur2.fetchone()[0]
+        # Registrar fichaje de entrada
+        cur2.execute("""INSERT INTO registros_horarios (id_empleado, tipo, observacion)
+                        VALUES (%s,'entrada','Inicio logística')""", (id_emp,))
         conn.commit()
-        return {"id": rid}
+        return {"id": rid, "nombre": nombre_completo, "id_empleado": id_emp}
+    except HTTPException:
+        raise
     except Exception as e:
         conn.rollback()
         raise HTTPException(status_code=500, detail=str(e))
@@ -11409,7 +11426,13 @@ def logistica_finalizar(id: int):
     conn = obtener_conexion()
     try:
         cur = conn.cursor()
+        # Obtener id_empleado de la sesión para registrar fichaje de salida
+        cur.execute("SELECT id_empleado FROM pos_logistica WHERE id=%s AND fin IS NULL", (id,))
+        row = cur.fetchone()
         cur.execute("UPDATE pos_logistica SET fin=NOW() WHERE id=%s AND fin IS NULL", (id,))
+        if row and row[0]:
+            cur.execute("""INSERT INTO registros_horarios (id_empleado, tipo, observacion)
+                           VALUES (%s,'salida','Fin logística')""", (row[0],))
         conn.commit()
         return {"status": "ok"}
     except Exception as e:
@@ -11423,7 +11446,7 @@ def logistica_activo():
     conn = obtener_conexion()
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
-        cur.execute("""SELECT l.id, l.repartidor, l.inicio, l.fin, l.lat, l.lng, l.ultima_actualizacion,
+        cur.execute("""SELECT l.id, l.id_empleado, l.repartidor, l.inicio, l.fin, l.lat, l.lng, l.ultima_actualizacion,
                        COALESCE(json_agg(g ORDER BY g.creado_en) FILTER (WHERE g.id IS NOT NULL), '[]') AS gastos
                        FROM pos_logistica l
                        LEFT JOIN pos_gastos_logistica g ON g.id_logistica = l.id
