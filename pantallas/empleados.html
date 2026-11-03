@@ -85,7 +85,10 @@
                         <span class="w-3 h-3 bg-green-400 rounded-full animate-pulse inline-block"></span>
                         <span class="text-green-400 font-bold text-sm uppercase tracking-widest">Logística en curso</span>
                     </div>
-                    <div id="logistica-info" class="text-green-300 text-sm font-bold"></div>
+                    <div class="flex items-center gap-4">
+                        <span id="log-horas-transcurridas" class="text-neon font-black text-sm tabular-nums"></span>
+                        <div id="logistica-info" class="text-green-300 text-sm font-bold"></div>
+                    </div>
                 </div>
                 <div class="w-full h-52 rounded-lg bg-gray-900 border border-green-800 overflow-hidden mb-3">
                     <div id="mapa-placeholder" class="w-full h-full flex items-center justify-center text-gray-600 text-sm">Esperando ubicación GPS...</div>
@@ -221,6 +224,7 @@
                     <select id="emp-rol" class="w-full bg-black border border-gray-700 text-white rounded p-2">
                         <option value="vendedor">Vendedor</option>
                         <option value="repartidor">🚚 Repartidor</option>
+                        <option value="logistica">🗺️ Logística</option>
                         <option value="produccion">Producción</option>
                         <option value="deposito">Depósito</option>
                         <option value="admin">Admin</option>
@@ -284,6 +288,7 @@
                     <select id="edit-emp-rol" class="w-full bg-black border border-neon text-white rounded p-2">
                         <option value="admin">👑 Admin</option>
                         <option value="repartidor">🚚 Repartidor</option>
+                        <option value="logistica">🗺️ Logística</option>
                         <option value="produccion">🏭 Producción</option>
                         <option value="deposito">📦 Depósito</option>
                         <option value="vendedor">💼 Vendedor</option>
@@ -437,7 +442,7 @@
             empleados = await res.json();
             const tabla = document.getElementById('tabla-empleados');
             tabla.innerHTML = '';
-            const roles = { admin: '🔑 Admin', repartidor: '🚚 Repartidor', vendedor: '🏪 Vendedor', produccion: '🏭 Producción', deposito: '📦 Depósito', administrativo: '📋 Administrativo' };
+            const roles = { admin: '🔑 Admin', repartidor: '🚚 Repartidor', logistica: '🗺️ Logística', vendedor: '🏪 Vendedor', produccion: '🏭 Producción', deposito: '📦 Depósito', administrativo: '📋 Administrativo' };
             
             let opcionesSelect = '<option value="">Seleccione un empleado...</option>';
 
@@ -912,6 +917,18 @@
 
         // ── LOGÍSTICA EN TIEMPO REAL ─────────────────────────────
         let logisticaInterval = null;
+        let horasInterval = null;
+        let logisticaInicioTS = null;
+
+        function actualizarHorasTranscurridas() {
+            if (!logisticaInicioTS) return;
+            const diff = Math.floor((Date.now() - logisticaInicioTS) / 1000);
+            const h = Math.floor(diff / 3600);
+            const m = Math.floor((diff % 3600) / 60);
+            const s = diff % 60;
+            const pad = n => String(n).padStart(2,'0');
+            document.getElementById('log-horas-transcurridas').textContent = pad(h) + ':' + pad(m) + ':' + pad(s);
+        }
 
         async function verificarLogistica() {
             try {
@@ -920,6 +937,8 @@
                 if (!data.logistica) {
                     bloque.classList.add('hidden');
                     if (logisticaInterval) { clearInterval(logisticaInterval); logisticaInterval = null; }
+                    if (horasInterval) { clearInterval(horasInterval); horasInterval = null; }
+                    logisticaInicioTS = null;
                     return;
                 }
                 const r = data.logistica;
@@ -927,6 +946,14 @@
 
                 const horaStr = new Date(r.inicio).toLocaleTimeString('es-AR', { hour:'2-digit', minute:'2-digit' });
                 document.getElementById('logistica-info').textContent = '🚗 ' + r.repartidor + ' · Salida: ' + horaStr + ' hs';
+
+                // Contador horas transcurridas
+                if (!logisticaInicioTS) {
+                    logisticaInicioTS = new Date(r.inicio).getTime();
+                    actualizarHorasTranscurridas();
+                    if (horasInterval) clearInterval(horasInterval);
+                    horasInterval = setInterval(actualizarHorasTranscurridas, 1000);
+                }
 
                 if (r.lat && r.lng) {
                     document.getElementById('mapa-placeholder').classList.add('hidden');
@@ -951,6 +978,8 @@
                             <span class="text-red-400 font-bold">-$ ${parseFloat(g.monto).toLocaleString('es-AR')}</span>
                         </div>`
                     ).join('');
+                } else {
+                    document.getElementById('bloque-gastos-log').classList.add('hidden');
                 }
 
                 if (!logisticaInterval) {
