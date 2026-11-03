@@ -856,8 +856,8 @@
             var base = carrito.reduce(function(a,i){ return a + i.precio*i.cantidad; }, 0);
             var descDiv = document.getElementById('cobro-descuento-efectivo');
             if (metodo === 'Efectivo' && descuentoEfectivoPct > 0) {
-                // Solo productos con descuento_efectivo = true
-                var baseElegible = carrito.reduce(function(s,i){ return s + (i.descuento_efectivo ? i.precio*i.cantidad : 0); }, 0);
+                // Todos aplican descuento EXCEPTO los marcados con descuento_efectivo = true (excluidos)
+                var baseElegible = carrito.reduce(function(s,i){ return s + (!i.descuento_efectivo ? i.precio*i.cantidad : 0); }, 0);
                 var descMonto = Math.round(baseElegible * descuentoEfectivoPct / 100 * 100) / 100;
                 var totalFinal = base - descMonto;
                 document.getElementById('cobro-total').textContent = '$ ' + totalFinal.toLocaleString('es-AR');
@@ -932,7 +932,7 @@
             var base = totalCarrito();
             var totalConDesc = base;
             if (metodoSel === 'Efectivo' && descuentoEfectivoPct > 0) {
-                var baseElegible = carrito.reduce(function(s,i){ return s + (i.descuento_efectivo ? i.precio*i.cantidad : 0); }, 0);
+                var baseElegible = carrito.reduce(function(s,i){ return s + (!i.descuento_efectivo ? i.precio*i.cantidad : 0); }, 0);
                 var descMonto = Math.round(baseElegible * descuentoEfectivoPct / 100 * 100) / 100;
                 totalConDesc = base - descMonto;
             }
@@ -972,9 +972,9 @@
             var totalBase = totalCarrito();
             var descuentoMonto = 0;
             if (!modoDividido && metodoSel === 'Efectivo' && descuentoEfectivoPct > 0) {
-                // Descuento solo sobre productos que tienen descuento_efectivo = true
+                // Todos aplican descuento EXCEPTO los marcados con descuento_efectivo = true (excluidos)
                 var baseConDescuento = carrito.reduce(function(s, i) {
-                    return s + (i.descuento_efectivo ? i.precio * i.cantidad : 0);
+                    return s + (!i.descuento_efectivo ? i.precio * i.cantidad : 0);
                 }, 0);
                 descuentoMonto = Math.round(baseConDescuento * descuentoEfectivoPct / 100 * 100) / 100;
             }
