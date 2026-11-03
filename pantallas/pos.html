@@ -512,15 +512,26 @@
         }
         if (posUsuario) { latidoSesion(); setInterval(latidoSesion, 60000); }
 
+        var _sesionCerrada = false;
         async function cerrarSesionPos() {
             // El fichaje de horario se hace por el RELOJ de fichaje, no por el POS.
-            // Liberar la sesión única en el servidor
-            if (posUsuario && posUsuario.id_usuario) {
+            // Liberar la sesión única en el servidor y registrar logout en el log
+            if (!_sesionCerrada && posUsuario && posUsuario.id_usuario) {
+                _sesionCerrada = true;
                 try { await fetch(API_URL + '/pos/sesion/cerrar?id_usuario=' + posUsuario.id_usuario, { method:'POST' }); } catch(e) {}
             }
             sessionStorage.removeItem('pos_usuario');
             window.location.href = '/pos-login';
         }
+
+        // Registrar logout también cuando el cajero cierra la pestaña/navegador sin clickar "Salir"
+        window.addEventListener('beforeunload', function() {
+            if (!_sesionCerrada && posUsuario && posUsuario.id_usuario) {
+                _sesionCerrada = true;
+                // sendBeacon funciona aunque la página esté cerrándose
+                navigator.sendBeacon(API_URL + '/pos/sesion/cerrar?id_usuario=' + posUsuario.id_usuario);
+            }
+        });
 
         var localActual = null;       // {id, nombre}
         var cajaActual = null;        // {id, ...}
