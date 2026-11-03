@@ -856,13 +856,19 @@
             var base = carrito.reduce(function(a,i){ return a + i.precio*i.cantidad; }, 0);
             var descDiv = document.getElementById('cobro-descuento-efectivo');
             if (metodo === 'Efectivo' && descuentoEfectivoPct > 0) {
-                var descMonto = Math.round(base * descuentoEfectivoPct / 100 * 100) / 100;
+                // Solo productos con descuento_efectivo = true
+                var baseElegible = carrito.reduce(function(s,i){ return s + (i.descuento_efectivo ? i.precio*i.cantidad : 0); }, 0);
+                var descMonto = Math.round(baseElegible * descuentoEfectivoPct / 100 * 100) / 100;
                 var totalFinal = base - descMonto;
                 document.getElementById('cobro-total').textContent = '$ ' + totalFinal.toLocaleString('es-AR');
                 if (descDiv) {
-                    descDiv.classList.remove('hidden');
-                    document.getElementById('cobro-desc-original').textContent = '$ ' + base.toLocaleString('es-AR');
-                    document.getElementById('cobro-desc-ahorro').textContent = '- $ ' + descMonto.toLocaleString('es-AR') + ' (' + descuentoEfectivoPct + '%)';
+                    if (descMonto > 0) {
+                        descDiv.classList.remove('hidden');
+                        document.getElementById('cobro-desc-original').textContent = '$ ' + base.toLocaleString('es-AR');
+                        document.getElementById('cobro-desc-ahorro').textContent = '- $ ' + descMonto.toLocaleString('es-AR') + ' (' + descuentoEfectivoPct + '%)';
+                    } else {
+                        descDiv.classList.add('hidden');
+                    }
                 }
             } else {
                 document.getElementById('cobro-total').textContent = '$ ' + base.toLocaleString('es-AR');
@@ -922,7 +928,15 @@
 
         function calcularVuelto() {
             var pagaCon = parseFloat(document.getElementById('cobro-paga-con').value) || 0;
-            var vuelto = pagaCon - totalCarrito();
+            // Usar el total con descuento efectivo si corresponde
+            var base = totalCarrito();
+            var totalConDesc = base;
+            if (metodoSel === 'Efectivo' && descuentoEfectivoPct > 0) {
+                var baseElegible = carrito.reduce(function(s,i){ return s + (i.descuento_efectivo ? i.precio*i.cantidad : 0); }, 0);
+                var descMonto = Math.round(baseElegible * descuentoEfectivoPct / 100 * 100) / 100;
+                totalConDesc = base - descMonto;
+            }
+            var vuelto = pagaCon - totalConDesc;
             document.getElementById('cobro-vuelto').textContent = '$ ' + (vuelto > 0 ? vuelto.toLocaleString('es-AR') : '0');
         }
 
@@ -1000,7 +1014,7 @@
                 });
                 if (res.ok) {
                     var r = await res.json();
-                    ventaParaFacturar = { id_venta: r.id_venta, total: total, metodo: metodoPrincipal, detalle: detalle };
+                    ventaParaFacturar = { id_venta: r.id_venta, total: total, metodo: metodoPrincipal, detalle: detalle, descuento: descuentoMonto };
                     carrito = [];
                     refVentaActual = null;
                     procesandoVenta = false;
@@ -1028,10 +1042,11 @@
         }
 
         // ── TICKET 80mm ──
-        function construirDocTicket(idVenta, total, metodo, detalle) {
+        function construirDocTicket(idVenta, total, metodo, detalle, descuento) {
             var jsPDF = window.jspdf.jsPDF;
             // ancho 80mm, alto dinámico
-            var alto = 60 + detalle.length * 6 + 40;
+            var descMonto = parseFloat(descuento) || 0;
+            var alto = 60 + detalle.length * 6 + (descMonto > 0 ? 12 : 0) + 40;
             var doc = new jsPDF({ unit:'mm', format:[80, alto] });
             var y = 8;
             doc.setFont('helvetica','bold'); doc.setFontSize(12);
@@ -1059,6 +1074,13 @@
                 doc.text('$' + sub.toLocaleString('es-AR'), 76, y, {align:'right'}); y += 5;
             });
             doc.line(4, y, 76, y); y += 5;
+            if (descMonto > 0) {
+                doc.setFont('helvetica','normal'); doc.setFontSize(8);
+                var subtotal = total + descMonto;
+                doc.text('Subtotal', 4, y); doc.text('$ ' + subtotal.toLocaleString('es-AR'), 76, y, {align:'right'}); y += 4.5;
+                doc.setFont('helvetica','italic');
+                doc.text('Dto. efectivo (' + descuentoEfectivoPct + '%)', 4, y); doc.text('- $ ' + descMonto.toLocaleString('es-AR'), 76, y, {align:'right'}); y += 4.5;
+            }
             doc.setFont('helvetica','bold'); doc.setFontSize(11);
             doc.text('TOTAL', 4, y); doc.text('$ ' + total.toLocaleString('es-AR'), 76, y, {align:'right'}); y += 6;
             doc.setFontSize(8); doc.setFont('helvetica','normal');
@@ -1068,8 +1090,8 @@
             return doc;
         }
 
-        function imprimirTicket(idVenta, total, metodo, detalle) {
-            var doc = construirDocTicket(idVenta, total, metodo, detalle);
+        function imprimirTicket(idVenta, total, metodo, detalle, descuento) {
+            var doc = construirDocTicket(idVenta, total, metodo, detalle, descuento);
             var url = URL.createObjectURL(doc.output('blob'));
             var w = window.open(url);
             if (w) { w.onload = function(){ try { w.print(); } catch(e){} }; }
@@ -1497,7 +1519,7 @@
 
         function imprimirTicketInterno() {
             if (ventaParaFacturar) {
-                imprimirTicket(ventaParaFacturar.id_venta, ventaParaFacturar.total, ventaParaFacturar.metodo, ventaParaFacturar.detalle);
+                imprimirTicket(ventaParaFacturar.id_venta, ventaParaFacturar.total, ventaParaFacturar.metodo, ventaParaFacturar.detalle, ventaParaFacturar.descuento);
             }
         }
 
@@ -1507,14 +1529,16 @@
             var lineas = (v.detalle || []).map(function(it){
                 return it.cantidad + 'x ' + it.nombre_producto + ' - $' + (it.cantidad*it.precio_unitario).toLocaleString('es-AR');
             }).join('\n');
+            var descMsg = (v.descuento && v.descuento > 0) ? 'Dto. efectivo: -$' + parseFloat(v.descuento).toLocaleString('es-AR') + '\n' : '';
             var msg = (empresa.nombre || 'Portal del Viento') + '\n' +
                 'Ticket #' + String(v.id_venta).padStart(5,'0') + '\n' +
                 (lineas ? lineas + '\n' : '') +
+                descMsg +
                 'Total: $' + parseFloat(v.total).toLocaleString('es-AR') + '\n' +
                 'Pago: ' + (v.metodo || '') + '\n' +
                 '¡Gracias por su compra!';
             var tel = normalizarTelArg(document.getElementById('ticket-tel-cliente').value);
-            var doc = construirDocTicket(v.id_venta, v.total, v.metodo, v.detalle || []);
+            var doc = construirDocTicket(v.id_venta, v.total, v.metodo, v.detalle || [], v.descuento);
             var blob = doc ? doc.output('blob') : null;
             await compartirPdfWhatsapp(blob, 'ticket_' + String(v.id_venta).padStart(5,'0') + '.pdf', msg, tel);
         }
