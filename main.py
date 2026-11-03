@@ -11372,6 +11372,7 @@ class LogisticaGasto(BaseModel):
     descripcion: str
     monto: float
     foto_url: Optional[str] = None
+    km_vehiculo: Optional[int] = None
 
 @app.post("/api/logistica/iniciar")
 def logistica_iniciar(data: LogisticaIniciar):
@@ -11462,9 +11463,9 @@ def logistica_gasto(id: int, data: LogisticaGasto):
     conn = obtener_conexion()
     try:
         cur = conn.cursor()
-        cur.execute("""INSERT INTO pos_gastos_logistica (id_logistica, descripcion, monto, foto_url)
-                       VALUES (%s,%s,%s,%s) RETURNING id""",
-                    (id, data.descripcion, data.monto, data.foto_url))
+        cur.execute("""INSERT INTO pos_gastos_logistica (id_logistica, descripcion, monto, foto_url, km_vehiculo)
+                       VALUES (%s,%s,%s,%s,%s) RETURNING id""",
+                    (id, data.descripcion, data.monto, data.foto_url, data.km_vehiculo))
         gid = cur.fetchone()[0]
         conn.commit()
         return {"id": gid}
