@@ -11394,7 +11394,14 @@ def logistica_iniciar(data: LogisticaIniciar):
         cur2.execute("""INSERT INTO pos_logistica (id_empleado, repartidor) VALUES (%s,%s) RETURNING id""",
                      (id_emp, nombre_completo))
         rid = cur2.fetchone()[0]
-        # Registrar fichaje de entrada
+        # Registrar fichaje de entrada (siempre, sin bloqueo de duplicados)
+        # Si el último registro ya era entrada, primero cerramos con una salida automática
+        cur2.execute("""SELECT tipo FROM registros_horarios
+                        WHERE id_empleado=%s ORDER BY fecha_hora DESC LIMIT 1""", (id_emp,))
+        ult = cur2.fetchone()
+        if ult and (ult[0] or '').strip().lower() == 'entrada':
+            cur2.execute("""INSERT INTO registros_horarios (id_empleado, tipo, observacion)
+                            VALUES (%s,'salida','Salida automática - nuevo turno logística')""", (id_emp,))
         cur2.execute("""INSERT INTO registros_horarios (id_empleado, tipo, observacion)
                         VALUES (%s,'entrada','Inicio logística')""", (id_emp,))
         conn.commit()
@@ -11432,8 +11439,14 @@ def logistica_finalizar(id: int):
         row = cur.fetchone()
         cur.execute("UPDATE pos_logistica SET fin=NOW() WHERE id=%s AND fin IS NULL", (id,))
         if row and row[0]:
-            cur.execute("""INSERT INTO registros_horarios (id_empleado, tipo, observacion)
-                           VALUES (%s,'salida','Fin logística')""", (row[0],))
+            id_emp = row[0]
+            # Solo registrar salida si el último fichaje fue una entrada
+            cur.execute("""SELECT tipo FROM registros_horarios
+                           WHERE id_empleado=%s ORDER BY fecha_hora DESC LIMIT 1""", (id_emp,))
+            ult = cur.fetchone()
+            if not ult or (ult[0] or '').strip().lower() == 'entrada':
+                cur.execute("""INSERT INTO registros_horarios (id_empleado, tipo, observacion)
+                               VALUES (%s,'salida','Fin logística')""", (id_emp,))
         conn.commit()
         return {"status": "ok"}
     except Exception as e:
