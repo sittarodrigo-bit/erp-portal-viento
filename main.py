@@ -225,6 +225,10 @@ class DetallePedido(BaseModel):
 class PedidoB2B(BaseModel):
     id_distribuidor: int
     total: float
+    detalle: List[...]          # ← dejá esta línea como la tenés
+    observaciones: Optional[str] = None   # ← AGREGAR
+    id_distribuidor: int
+    total: float
     detalle: List[DetallePedido]
 
 class ItemReceta(BaseModel):
