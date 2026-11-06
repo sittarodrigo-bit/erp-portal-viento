@@ -68,6 +68,15 @@
   <!-- ── PANEL ACTIVO ── -->
   <div id="panel-activo" class="hidden">
 
+    <!-- Estado GPS -->
+    <div id="gps-box" class="bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 mb-3 flex items-center gap-3">
+      <span id="gps-dot" class="w-2.5 h-2.5 rounded-full bg-gray-500 flex-shrink-0"></span>
+      <div class="flex-1">
+        <p id="gps-txt" class="text-gray-300 text-sm font-bold">📍 Activando GPS…</p>
+        <p class="text-gray-600 text-xs">Dejá esta pantalla abierta mientras dure el turno.</p>
+      </div>
+    </div>
+
     <!-- Estado -->
     <div class="bg-green-950 border border-green-800 rounded-2xl p-4 mb-5 flex items-center gap-3">
       <span class="w-3 h-3 bg-green-400 rounded-full pulse flex-shrink-0"></span>
@@ -236,28 +245,139 @@ async function finalizar() {
   document.getElementById('panel-inicio').classList.remove('hidden');
 }
 
-// ── GPS (silencioso — solo envía datos al servidor, no muestra mapa) ──
-var _ultimoEnvioGPS = 0;
+// ── GPS ──
+// watchPosition sigue la posición en vivo; se envía al servidor como máximo
+// cada GPS_MIN_SEG, o antes si se movió más de GPS_MIN_METROS.
+// Además hay un envío forzado cada GPS_FORZADO_SEG por si el GPS no reporta cambios.
+// Wake Lock mantiene la pantalla encendida para que el navegador no corte el GPS.
+const GPS_MIN_SEG = 30;
+const GPS_MIN_METROS = 50;
+const GPS_FORZADO_SEG = 60;
+let watchId = null;
+let wakeLock = null;
+let ultimaPos = null;          // {lat, lng, ts}
+let ultimoEnvio = null;        // {lat, lng, ts}
+let gpsError = null;
+let intervalEstadoGPS = null;
+
 function arrancarGPS() {
-  if (!navigator.geolocation) return;
-  enviarGPS();
-  intervalGPS = setInterval(enviarGPS, 20 * 60 * 1000); // cada 20 minutos
+  if (!navigator.geolocation) { setGpsEstado('error', '⚠️ Este celular no tiene GPS disponible'); return; }
+  detenerGPS();
+  watchId = navigator.geolocation.watchPosition(onPosicion, onErrorGPS,
+    { enableHighAccuracy: true, timeout: 20000, maximumAge: 10000 });
+  intervalGPS = setInterval(() => enviarGPS(true), GPS_FORZADO_SEG * 1000);
+  intervalEstadoGPS = setInterval(pintarEstadoGPS, 5000);
+  pedirWakeLock();
+  enviarGPS(true);
 }
+
 function detenerGPS() {
+  if (watchId !== null) { navigator.geolocation.clearWatch(watchId); watchId = null; }
   if (intervalGPS) { clearInterval(intervalGPS); intervalGPS = null; }
+  if (intervalEstadoGPS) { clearInterval(intervalEstadoGPS); intervalEstadoGPS = null; }
+  soltarWakeLock();
 }
-function enviarGPS() {
-  if (!sesionId) return;
-  navigator.geolocation.getCurrentPosition(async pos => {
-    const { latitude: lat, longitude: lng } = pos.coords;
-    try {
-      await fetch(API + '/logistica/' + sesionId + '/ubicacion', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ lat, lng })
-      });
-    } catch(e) {}
-  }, () => {}, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
+
+function onPosicion(pos) {
+  gpsError = null;
+  ultimaPos = { lat: pos.coords.latitude, lng: pos.coords.longitude, ts: Date.now() };
+  const ahora = Date.now();
+  if (!ultimoEnvio) { mandarAlServidor(); return; }
+  const seg = (ahora - ultimoEnvio.ts) / 1000;
+  const metros = distanciaMetros(ultimoEnvio, ultimaPos);
+  if (seg >= GPS_MIN_SEG || metros >= GPS_MIN_METROS) mandarAlServidor();
 }
+
+function onErrorGPS(err) {
+  if (err.code === 1) gpsError = '⚠️ Permiso de ubicación denegado. Activalo en el navegador.';
+  else if (err.code === 2) gpsError = '⚠️ No se encuentra señal GPS.';
+  else gpsError = null; // timeout: se reintenta solo
+  pintarEstadoGPS();
+}
+
+// Envío forzado: pide una lectura nueva y la manda sí o sí
+function enviarGPS(forzar) {
+  if (!sesionId || !navigator.geolocation) return;
+  navigator.geolocation.getCurrentPosition(pos => {
+    gpsError = null;
+    ultimaPos = { lat: pos.coords.latitude, lng: pos.coords.longitude, ts: Date.now() };
+    mandarAlServidor();
+  }, err => {
+    onErrorGPS(err);
+    // si no hay lectura nueva pero tenemos una reciente, mandamos esa
+    if (forzar && ultimaPos && Date.now() - ultimaPos.ts < 5 * 60 * 1000) mandarAlServidor();
+  }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 15000 });
+}
+
+async function mandarAlServidor() {
+  if (!sesionId || !ultimaPos) return;
+  const p = { ...ultimaPos };
+  try {
+    const res = await fetch(API + '/logistica/' + sesionId + '/ubicacion', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ lat: p.lat, lng: p.lng }),
+      keepalive: true
+    });
+    if (res.ok) ultimoEnvio = { lat: p.lat, lng: p.lng, ts: Date.now() };
+  } catch(e) {}
+  pintarEstadoGPS();
+}
+
+function distanciaMetros(a, b) {
+  const R = 6371000, rad = x => x * Math.PI / 180;
+  const dLat = rad(b.lat - a.lat), dLng = rad(b.lng - a.lng);
+  const h = Math.sin(dLat/2)**2 + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLng/2)**2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+
+function setGpsEstado(nivel, texto) {
+  const dot = document.getElementById('gps-dot');
+  const txt = document.getElementById('gps-txt');
+  const box = document.getElementById('gps-box');
+  const colores = {
+    ok:    ['bg-green-400', 'text-green-400', 'border-green-900'],
+    warn:  ['bg-yellow-400', 'text-yellow-400', 'border-yellow-900'],
+    error: ['bg-red-500', 'text-red-400', 'border-red-900'],
+  }[nivel] || ['bg-gray-500', 'text-gray-300', 'border-gray-800'];
+  dot.className = 'w-2.5 h-2.5 rounded-full flex-shrink-0 ' + colores[0] + (nivel === 'ok' ? ' pulse' : '');
+  txt.className = 'text-sm font-bold ' + colores[1];
+  box.className = 'bg-gray-900 border rounded-xl px-4 py-3 mb-3 flex items-center gap-3 ' + colores[2];
+  txt.textContent = texto;
+}
+
+function pintarEstadoGPS() {
+  if (!document.getElementById('gps-dot')) return;
+  if (gpsError) { setGpsEstado('error', gpsError); return; }
+  if (!ultimoEnvio) { setGpsEstado('', '📍 Buscando ubicación…'); return; }
+  const seg = Math.floor((Date.now() - ultimoEnvio.ts) / 1000);
+  const hace = seg < 60 ? 'hace ' + seg + ' s' : 'hace ' + Math.floor(seg / 60) + ' min';
+  if (seg <= 3 * 60) setGpsEstado('ok', '📍 Ubicación enviada ' + hace);
+  else setGpsEstado('warn', '⚠️ Sin enviar ubicación ' + hace);
+}
+
+// ── Mantener pantalla encendida ──
+async function pedirWakeLock() {
+  try {
+    if ('wakeLock' in navigator && !wakeLock && document.visibilityState === 'visible') {
+      wakeLock = await navigator.wakeLock.request('screen');
+      wakeLock.addEventListener('release', () => { wakeLock = null; });
+    }
+  } catch(e) { wakeLock = null; }
+}
+function soltarWakeLock() {
+  try { if (wakeLock) wakeLock.release(); } catch(e) {}
+  wakeLock = null;
+}
+
+// Al volver a la pantalla: reactivar wake lock y mandar ubicación al instante
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && sesionId) {
+    pedirWakeLock();
+    if (watchId === null) arrancarGPS(); else enviarGPS(true);
+  }
+});
+window.addEventListener('focus', () => { if (sesionId) enviarGPS(true); });
+window.addEventListener('online', () => { if (sesionId) enviarGPS(true); });
 
 // ── GASTOS ──
 function previewFoto() {
