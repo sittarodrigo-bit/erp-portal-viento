@@ -959,7 +959,9 @@
                     document.getElementById('mapa-placeholder').classList.add('hidden');
                     const iframe = document.getElementById('mapa-iframe');
                     iframe.classList.remove('hidden');
-                    iframe.src = `https://maps.google.com/maps?q=${r.lat},${r.lng}&z=15&output=embed`;
+                    // Forzar recarga del mapa cuando cambian las coordenadas
+                    const nuevaSrc = `https://www.openstreetmap.org/export/embed.html?bbox=${r.lng-0.005},${r.lat-0.005},${r.lng+0.005},${r.lat+0.005}&layer=mapnik&marker=${r.lat},${r.lng}&t=${r.ultima_actualizacion||Date.now()}`;
+                    if (iframe.src !== nuevaSrc) iframe.src = nuevaSrc;
                     const ua = r.ultima_actualizacion ? new Date(r.ultima_actualizacion) : null;
                     document.getElementById('logistica-coords').textContent =
                         'GPS: ' + r.lat.toFixed(5) + ', ' + r.lng.toFixed(5) +
