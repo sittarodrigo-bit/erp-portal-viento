@@ -237,10 +237,11 @@ async function finalizar() {
 }
 
 // ── GPS (silencioso — solo envía datos al servidor, no muestra mapa) ──
+var _ultimoEnvioGPS = 0;
 function arrancarGPS() {
   if (!navigator.geolocation) return;
   enviarGPS();
-  intervalGPS = setInterval(enviarGPS, 15000);
+  intervalGPS = setInterval(enviarGPS, 20 * 60 * 1000); // cada 20 minutos
 }
 function detenerGPS() {
   if (intervalGPS) { clearInterval(intervalGPS); intervalGPS = null; }
@@ -255,7 +256,7 @@ function enviarGPS() {
         body: JSON.stringify({ lat, lng })
       });
     } catch(e) {}
-  }, () => {}, { enableHighAccuracy: true, timeout: 10000 });
+  }, () => {}, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
 }
 
 // ── GASTOS ──
