@@ -505,12 +505,14 @@ def pos_sesion_latido(id_usuario: int, token: str = ""):
 
 # Cerrar la sesión (al salir del POS)
 @app.post("/api/pos/sesion/cerrar")
-def pos_sesion_cerrar(id_usuario: int):
+def pos_sesion_cerrar(id_usuario: int, username: Optional[str] = None,
+                      nombre_empleado: Optional[str] = None, id_empleado: Optional[int] = None,
+                      dispositivo: Optional[str] = None):
     conn = obtener_conexion()
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
         try:
-            # Obtener datos antes de borrar para el log
+            # Obtener datos de la sesión activa (puede no existir si ya expiró)
             cur.execute("""SELECT s.username, s.dispositivo, e.id AS id_empleado,
                                   e.nombre || ' ' || e.apellido AS nombre_empleado
                            FROM pos_sesiones s
@@ -520,6 +522,23 @@ def pos_sesion_cerrar(id_usuario: int):
             ses = cur.fetchone()
             cur2 = conn.cursor()
             cur2.execute("DELETE FROM pos_sesiones WHERE id_usuario=%s", (id_usuario,))
+
+            # Si la sesión ya expiró, usar los datos que manda el frontend como fallback
+            if not ses and (username or id_empleado):
+                # Buscar id_empleado desde el usuario si no lo tenemos
+                emp_id = id_empleado
+                emp_nombre = nombre_empleado
+                if not emp_id:
+                    cur2.execute("""SELECT e.id, e.nombre || ' ' || e.apellido AS nombre
+                                    FROM usuarios u LEFT JOIN empleados e ON e.id = u.id_empleado
+                                    WHERE u.id=%s""", (id_usuario,))
+                    emp_row = cur2.fetchone()
+                    if emp_row:
+                        emp_id = emp_row[0]
+                        emp_nombre = emp_row[1]
+                ses = {'id_empleado': emp_id, 'username': username,
+                       'nombre_empleado': emp_nombre, 'dispositivo': dispositivo}
+
             if ses:
                 cur2.execute("""
                     INSERT INTO pos_login_log
@@ -8634,92 +8653,29 @@ def ia_estado():
     try:
         import ia_service
         return {"configurado": ia_service.esta_configurado()}
-    except Exception:
+    except Exception as e:
+        print(f"[ia] error import: {e}")
         return {"configurado": False}
 
 @app.post("/api/ia/preguntar")
 def ia_preguntar(data: dict = Body(...)):
-    """Responde una pregunta del admin sobre los datos del negocio.
-    Arma un resumen (ventas, stock, deudas, ingresos) y lo manda a la IA."""
+    """Responde preguntas del admin consultando TODA la base de datos (solo lectura)."""
     pregunta = (data.get("pregunta") or "").strip()
     if not pregunta:
         raise HTTPException(status_code=400, detail="Escribí una pregunta")
     try:
         import ia_service
-    except Exception:
+    except Exception as e:
+        print(f"[ia] error import: {e}")
         raise HTTPException(status_code=500, detail="No se pudo cargar el asistente")
     if not ia_service.esta_configurado():
         raise HTTPException(status_code=400, detail="El asistente no está configurado. Falta cargar la API key de Anthropic en Railway (variable ANTHROPIC_API_KEY).")
 
-    resumen = {}
-    conn = obtener_conexion()
-    try:
-        cur = conn.cursor(cursor_factory=RealDictCursor)
-        # --- Ventas POS últimos 30 días ---
-        try:
-            cur.execute("""SELECT COALESCE(SUM(total),0) AS total, COUNT(*) AS cant
-                           FROM pos_ventas WHERE fecha >= NOW() - INTERVAL '30 days'""")
-            r = cur.fetchone()
-            resumen["ventas_pos_ultimos_30_dias"] = {"total": float(r["total"] or 0), "cantidad_ventas": r["cant"]}
-        except Exception:
-            conn.rollback()
-        # --- Ventas POS hoy ---
-        try:
-            cur.execute("SELECT COALESCE(SUM(total),0) AS total, COUNT(*) AS cant FROM pos_ventas WHERE DATE(fecha)=CURRENT_DATE")
-            r = cur.fetchone()
-            resumen["ventas_pos_hoy"] = {"total": float(r["total"] or 0), "cantidad_ventas": r["cant"]}
-        except Exception:
-            conn.rollback()
-        # --- Stock bajo ---
-        try:
-            cur.execute("""SELECT nombre, stock_actual, stock_alerta FROM productos
-                           WHERE COALESCE(activo,true)=true AND COALESCE(stock_actual,0) <= COALESCE(stock_alerta,0)
-                           ORDER BY stock_actual ASC LIMIT 20""")
-            resumen["productos_con_stock_bajo"] = [
-                {"producto": x["nombre"], "stock": float(x["stock_actual"] or 0), "alerta": float(x["stock_alerta"] or 0)}
-                for x in fetchall_dict(cur)
-            ]
-        except Exception:
-            conn.rollback()
-        # --- Ingresos de distribuidores últimos 30 días ---
-        try:
-            cur.execute("""SELECT COALESCE(SUM(monto),0) AS total, COUNT(*) AS cant
-                           FROM cobros_distribuidores WHERE fecha >= NOW() - INTERVAL '30 days'""")
-            r = cur.fetchone()
-            resumen["ingresos_distribuidores_ultimos_30_dias"] = {"total": float(r["total"] or 0), "cantidad_cobros": r["cant"]}
-        except Exception:
-            conn.rollback()
-        # --- Deudas de distribuidores (pedidos despachados - cobros) ---
-        try:
-            cur.execute("""
-                SELECT d.razon_social AS distribuidor,
-                    COALESCE((SELECT SUM(p.total + COALESCE(p.iva_aplicado,0)) FROM pedidos_b2b p WHERE p.id_distribuidor=d.id AND p.estado IN ('Despachado','Despachado parcial')),0) AS pedidos,
-                    COALESCE((SELECT SUM(c.monto) FROM cobros_distribuidores c WHERE c.id_distribuidor=d.id),0) AS cobrado
-                FROM distribuidores d WHERE COALESCE(d.activo,true)=true
-            """)
-            deudas = []
-            for x in fetchall_dict(cur):
-                saldo = float(x["pedidos"] or 0) - float(x["cobrado"] or 0)
-                if saldo > 0:
-                    deudas.append({"distribuidor": x["distribuidor"], "debe": round(saldo, 2)})
-            deudas.sort(key=lambda z: z["debe"], reverse=True)
-            resumen["distribuidores_que_deben"] = deudas[:20]
-            resumen["total_a_cobrar_distribuidores"] = round(sum(d["debe"] for d in deudas), 2)
-        except Exception:
-            conn.rollback()
-        # --- Pedidos pendientes ---
-        try:
-            cur.execute("SELECT COUNT(*) AS c FROM pedidos_b2b WHERE estado IN ('Pendiente','En preparación')")
-            resumen["pedidos_b2b_pendientes"] = cur.fetchone()["c"]
-        except Exception:
-            conn.rollback()
-    finally:
-        liberar_conexion(conn)
-
-    res = ia_service.preguntar(pregunta, resumen)
+    historial = data.get("historial") if isinstance(data.get("historial"), list) else None
+    res = ia_service.preguntar(pregunta, obtener_conexion, liberar_conexion, historial)
     if not res.get("ok"):
         raise HTTPException(status_code=502, detail=res.get("error", "Error del asistente"))
-    return {"respuesta": res["respuesta"]}
+    return {"respuesta": res["respuesta"], "consultas": res.get("consultas", 0)}
 
 @app.get("/api/deudas_distribuidores")
 def deudas_distribuidores():
