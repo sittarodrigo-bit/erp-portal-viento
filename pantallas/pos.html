@@ -178,8 +178,11 @@
                     <div class="flex gap-2">
                         <span class="flex items-center bg-black border border-gray-700 rounded-lg px-2 text-gray-400 text-sm">+54</span>
                         <input type="tel" id="cliente-wsp" placeholder="WhatsApp (sin 0 ni 15)" autocomplete="off"
-                            oninput="recalcularTotalEfectivo(); calcularVuelto();"
+                            oninput="recalcularTotalEfectivo(); calcularVuelto(); validarWspRepetido();"
                             class="flex-1 bg-black border border-gray-700 text-white rounded-lg p-2 text-sm placeholder-gray-600">
+                    </div>
+                    <div id="wsp-repetido-aviso" class="hidden mt-1 bg-red-900/30 border border-red-700 rounded-lg px-3 py-2 text-xs text-red-400 font-bold">
+                        ⚠️ Este número ya recibió el descuento en este local. No aplica descuento.
                     </div>
                 </div>
                 <div class="flex gap-2 mt-1">
@@ -887,6 +890,8 @@
             var pc = document.getElementById('panel-cliente-efectivo'); if (pc) pc.classList.add('hidden');
             var cn = document.getElementById('cliente-nombre'); if (cn) cn.value = '';
             var cw = document.getElementById('cliente-wsp'); if (cw) cw.value = '';
+            wspRepetido = false;
+            var aviso = document.getElementById('wsp-repetido-aviso'); if (aviso) aviso.classList.add('hidden');
             document.getElementById('modal-cobro').classList.replace('modal-oculto','modal-visible');
         }
 
@@ -921,8 +926,8 @@
             if (metodoSel !== 'Efectivo' || descuentoEfectivoPct <= 0) return;
             var base = carrito.reduce(function(a,i){ return a + i.precio*i.cantidad; }, 0);
             var wsp = document.getElementById('cliente-wsp') ? (document.getElementById('cliente-wsp').value||'').replace(/\D/g,'').trim() : '';
-            // Si registro obligatorio, solo aplica si hay WhatsApp; si no hay registro activo, siempre aplica
-            var aplicar = !registroClienteActivo || wsp.length >= 8;
+            // Si registro obligatorio, solo aplica si hay WhatsApp válido y no es repetido
+            var aplicar = !registroClienteActivo || (wsp.length >= 8 && !wspRepetido);
             var descDiv = document.getElementById('cobro-descuento-efectivo');
             if (aplicar) {
                 var baseElegible = carrito.reduce(function(s,i){ return s + (!i.descuento_efectivo ? i.precio*i.cantidad : 0); }, 0);
@@ -997,7 +1002,7 @@
             var totalConDesc = base;
             if (metodoSel === 'Efectivo' && descuentoEfectivoPct > 0) {
                 var wsp = document.getElementById('cliente-wsp') ? (document.getElementById('cliente-wsp').value||'').replace(/\D/g,'').trim() : '';
-                var aplicar = !registroClienteActivo || wsp.length >= 8;
+                var aplicar = !registroClienteActivo || (wsp.length >= 8 && !wspRepetido);
                 if (aplicar) {
                     var baseElegible = carrito.reduce(function(s,i){ return s + (!i.descuento_efectivo ? i.precio*i.cantidad : 0); }, 0);
                     var descMonto = Math.round(baseElegible * descuentoEfectivoPct / 100 * 100) / 100;
@@ -1057,19 +1062,39 @@
                 url = 'https://wa.me/?text=' + encodeURIComponent(texto);
             }
             window.open(url, '_blank');
-            // Continuar con la venta
-            var pc = document.getElementById('panel-cliente-efectivo'); if (pc) pc.classList.add('hidden');
-            confirmarVenta();
+        }
+
+        var wspRepetido = false;
+        var wspCheckTimer = null;
+        function validarWspRepetido() {
+            var aviso = document.getElementById('wsp-repetido-aviso');
+            var wsp = (document.getElementById('cliente-wsp').value||'').replace(/\D/g,'').trim();
+            if (wsp.length < 8 || !localActual) {
+                wspRepetido = false;
+                if (aviso) aviso.classList.add('hidden');
+                return;
+            }
+            clearTimeout(wspCheckTimer);
+            wspCheckTimer = setTimeout(async function() {
+                try {
+                    var res = await fetch(API_URL + '/pos/clientes_descuento/check?telefono=' + encodeURIComponent(wsp) + '&id_local=' + localActual.id).then(r => r.json());
+                    wspRepetido = !!res.existe;
+                    if (aviso) aviso.classList.toggle('hidden', !wspRepetido);
+                    recalcularTotalEfectivo();
+                    calcularVuelto();
+                } catch(e) { wspRepetido = false; }
+            }, 500);
         }
 
         function continuarSinDescuento() {
-            // Limpiar WhatsApp y nombre → precio normal, luego confirmar
+            // Limpiar WhatsApp y nombre → recalcula al precio normal
             var cw = document.getElementById('cliente-wsp'); if (cw) cw.value = '';
             var cn = document.getElementById('cliente-nombre'); if (cn) cn.value = '';
+            wspRepetido = false;
+            var aviso = document.getElementById('wsp-repetido-aviso'); if (aviso) aviso.classList.add('hidden');
             var pc = document.getElementById('panel-cliente-efectivo'); if (pc) pc.classList.add('hidden');
             recalcularTotalEfectivo();
             calcularVuelto();
-            confirmarVenta();
         }
 
         async function cargarConfigLocal() {
@@ -1103,7 +1128,7 @@
             var descuentoMonto = 0;
             if (!modoDividido && metodoSel === 'Efectivo' && descuentoEfectivoPct > 0) {
                 var wspCliente = document.getElementById('cliente-wsp') ? (document.getElementById('cliente-wsp').value||'').replace(/\D/g,'').trim() : '';
-                var aplicarDesc = !registroClienteActivo || wspCliente.length >= 8;
+                var aplicarDesc = !registroClienteActivo || (wspCliente.length >= 8 && !wspRepetido);
                 if (aplicarDesc) {
                     var baseConDescuento = carrito.reduce(function(s, i) {
                         return s + (!i.descuento_efectivo ? i.precio * i.cantidad : 0);
