@@ -225,10 +225,6 @@ class DetallePedido(BaseModel):
 class PedidoB2B(BaseModel):
     id_distribuidor: int
     total: float
-    detalle: List[...]          # ← dejá esta línea como la tenés
-    observaciones: Optional[str] = None   # ← AGREGAR
-    id_distribuidor: int
-    total: float
     detalle: List[DetallePedido]
 
 class ItemReceta(BaseModel):
@@ -5136,6 +5132,8 @@ class PosVenta(BaseModel):
     nombre_cajero: Optional[str] = None
     pagos: Optional[List[PosPago]] = None
     ref_unica: Optional[str] = None   # llave única generada por el POS para evitar duplicados
+    nombre_cliente: Optional[str] = None   # nombre del cliente (registro para descuento efectivo)
+    telefono_cliente: Optional[str] = None  # WhatsApp del cliente
 
 # ---- LOCALES ----
 @app.get("/api/pos/analisis_horarios")
@@ -5686,11 +5684,60 @@ def pos_registrar_venta(venta: PosVenta):
                 cur.execute("UPDATE pos_productos SET stock = COALESCE(stock,0) - %s WHERE id=%s", (baja, it.id_producto))
                 registrar_movimiento_stock(cur, it.id_producto, -baja, 'salida', 'venta',
                                            motivo='Venta', id_local=venta.id_local)
+        # Guardar datos del cliente si se registró (para descuento efectivo)
+        if venta.nombre_cliente:
+            try:
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS pos_clientes_descuento (
+                        id SERIAL PRIMARY KEY,
+                        nombre TEXT NOT NULL,
+                        telefono TEXT,
+                        id_local INTEGER,
+                        id_venta INTEGER,
+                        id_empleado INTEGER,
+                        nombre_cajero TEXT,
+                        fecha TIMESTAMPTZ DEFAULT NOW()
+                    )
+                """)
+                cur.execute("""
+                    INSERT INTO pos_clientes_descuento (nombre, telefono, id_local, id_venta, id_empleado, nombre_cajero)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                """, (venta.nombre_cliente, venta.telefono_cliente, venta.id_local, vid,
+                      venta.id_empleado, venta.nombre_cajero))
+            except Exception:
+                conn.rollback()
+                cur.execute("SELECT 1")
         conn.commit()
         return {"id_venta": vid}
     except Exception as e:
         conn.rollback()
         raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
+@app.get("/api/pos/clientes_descuento")
+def pos_clientes_descuento_lista(id_local: Optional[int] = None, dias: int = 30):
+    """Lista de clientes registrados para descuento en efectivo."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            filtro = " AND id_local=%s" if id_local else ""
+            params = [dias]
+            if id_local: params.append(id_local)
+            cur.execute(f"""
+                SELECT c.id, c.nombre, c.telefono, c.id_local, c.id_venta,
+                       c.nombre_cajero, c.fecha::text AS fecha,
+                       COALESCE(pl.nombre, '') AS nombre_local
+                FROM pos_clientes_descuento c
+                LEFT JOIN pos_locales pl ON pl.id = c.id_local
+                WHERE c.fecha >= NOW() - (%s || ' days')::interval {filtro}
+                ORDER BY c.fecha DESC
+            """, tuple(params))
+            return fetchall_dict(cur)
+        except Exception:
+            conn.rollback()
+            return []
     finally:
         liberar_conexion(conn)
 
@@ -6841,18 +6888,30 @@ def locales_mas_vendidos(id_local: int, desde: Optional[str] = None, hasta: Opti
 
 @app.get("/api/locales/{id_local}/config")
 def local_config_get(id_local: int):
-    """Obtener configuración de un local (descuento por efectivo, etc)."""
+    """Obtener configuración de un local (descuento por efectivo, registro cliente, etc)."""
     conn = obtener_conexion()
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
-        # Intentar obtener de tabla config; si no existe la columna, devolver defaults
         try:
-            cur.execute("SELECT descuento_efectivo_pct FROM pos_locales WHERE id=%s", (id_local,))
+            cur.execute("SELECT descuento_efectivo_pct, registro_cliente_activo FROM pos_locales WHERE id=%s", (id_local,))
             row = cur.fetchone()
-            return { "descuento_efectivo_pct": float(row['descuento_efectivo_pct']) if row and row['descuento_efectivo_pct'] else 0 }
+            return {
+                "descuento_efectivo_pct": float(row['descuento_efectivo_pct']) if row and row['descuento_efectivo_pct'] else 0,
+                "registro_cliente_activo": bool(row['registro_cliente_activo']) if row else False
+            }
         except Exception:
             conn.rollback()
-            return { "descuento_efectivo_pct": 0 }
+            # Puede faltar la columna registro_cliente_activo — intentar solo descuento
+            try:
+                cur.execute("SELECT descuento_efectivo_pct FROM pos_locales WHERE id=%s", (id_local,))
+                row = cur.fetchone()
+                return {
+                    "descuento_efectivo_pct": float(row['descuento_efectivo_pct']) if row and row['descuento_efectivo_pct'] else 0,
+                    "registro_cliente_activo": False
+                }
+            except Exception:
+                conn.rollback()
+                return { "descuento_efectivo_pct": 0, "registro_cliente_activo": False }
     finally:
         liberar_conexion(conn)
 
@@ -6862,17 +6921,32 @@ def local_config_set(id_local: int, data: dict = Body(...)):
     conn = obtener_conexion()
     try:
         cur = conn.cursor()
-        pct = float(data.get('descuento_efectivo_pct') or 0)
-        pct = max(0, min(50, pct))  # clamp 0-50
+        updates = []
+        params = []
+        # descuento_efectivo_pct (opcional en el payload)
+        if 'descuento_efectivo_pct' in data:
+            pct = float(data.get('descuento_efectivo_pct') or 0)
+            pct = max(0, min(50, pct))
+            updates.append("descuento_efectivo_pct=%s")
+            params.append(pct)
+        # registro_cliente_activo (opcional en el payload)
+        if 'registro_cliente_activo' in data:
+            rca = bool(data.get('registro_cliente_activo'))
+            updates.append("registro_cliente_activo=%s")
+            params.append(rca)
+        if not updates:
+            return {"status": "ok"}
+        params.append(id_local)
         try:
-            cur.execute("UPDATE pos_locales SET descuento_efectivo_pct=%s WHERE id=%s", (pct, id_local))
+            cur.execute(f"UPDATE pos_locales SET {', '.join(updates)} WHERE id=%s", tuple(params))
         except Exception:
             conn.rollback()
-            # Si no tiene la columna, agregarla y reintentar
+            # Agregar columnas faltantes y reintentar
             cur.execute("ALTER TABLE pos_locales ADD COLUMN IF NOT EXISTS descuento_efectivo_pct NUMERIC(5,2) DEFAULT 0")
-            cur.execute("UPDATE pos_locales SET descuento_efectivo_pct=%s WHERE id=%s", (pct, id_local))
+            cur.execute("ALTER TABLE pos_locales ADD COLUMN IF NOT EXISTS registro_cliente_activo BOOLEAN DEFAULT false")
+            cur.execute(f"UPDATE pos_locales SET {', '.join(updates)} WHERE id=%s", tuple(params))
         conn.commit()
-        return {"status": "ok", "descuento_efectivo_pct": pct}
+        return {"status": "ok"}
     except Exception as e:
         conn.rollback()
         raise HTTPException(status_code=500, detail=str(e))
@@ -9515,6 +9589,10 @@ def route_productos_locales():
 @app.get("/locales")
 def route_locales():
     return serve_html("locales.html")
+
+@app.get("/clientes-pos")
+def route_clientes_pos():
+    return serve_html("clientes-pos.html")
 
 @app.get("/analisis-horarios")
 def route_analisis_horarios():
