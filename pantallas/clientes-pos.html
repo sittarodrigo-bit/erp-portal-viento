@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<script>window.PANEL_ACTUAL = "clientes-pos";</script>
+<script src="/static/auth.js"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Clientes POS | Portal del Viento</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .text-neon { color: #e4fc74; }
+        .bg-neon { background-color: #e4fc74; }
+        .border-neon { border-color: #e4fc74; }
+        .tab-activa { border-bottom: 2px solid #e4fc74; color: white; }
+    </style>
+</head>
+<body class="bg-gray-950 text-gray-200 font-sans h-screen flex">
+    <div id="menu-backdrop" onclick="cerrarMenu()" class="hidden fixed inset-0 bg-black/60 z-30 md:hidden"></div>
+
+    <!-- SIDEBAR -->
+    <aside id="sidebar" class="w-64 bg-black border-r border-gray-800 flex flex-col shrink-0 fixed md:static inset-y-0 left-0 z-40 -translate-x-full md:translate-x-0 transition-transform duration-200">
+        <div class="p-6 border-b border-gray-800 text-center">
+            <h1 class="text-neon font-bold text-lg tracking-widest uppercase">Portal del Viento</h1>
+            <p class="text-white text-xs mt-1 font-bold italic">ALFAJORES</p>
+        </div>
+        <nav class="flex-1 p-4 space-y-1 text-sm overflow-y-auto">
+            <a href="/admin" class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">📊 Tablero</a>
+
+            <p class="text-gray-600 text-xs font-bold uppercase px-4 pt-4 pb-1 tracking-widest">Ventas & Distribución</p>
+            <a href="/historial-b2b"         class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">📋 Pedidos B2B</a>
+            <a href="/locales"               class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">🏬 Locales</a>
+            <a href="/analisis-horarios"     class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">🕐 Análisis de horarios</a>
+            <a href="/distribuidores"        class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">🚚 Distribuidores</a>
+            <a href="/prospectos"            class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">🎯 Prospectos</a>
+            <a href="/ingresos-distribuidores" class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">💵 Ingresos distribuidores</a>
+            <a href="/deudas-distribuidores" class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">📕 Deudas distribuidores</a>
+
+            <p class="text-gray-600 text-xs font-bold uppercase px-4 pt-4 pb-1 tracking-widest">Fábrica</p>
+            <a href="/catalogo"              class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">📦 Catálogo / Stock</a>
+            <a href="/produccion"            class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">🏭 Producción</a>
+            <a href="/insumos"               class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">🧪 Insumos</a>
+            <a href="/proveedores"           class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">🏪 Proveedores</a>
+
+            <p class="text-gray-600 text-xs font-bold uppercase px-4 pt-4 pb-1 tracking-widest">RRHH</p>
+            <a href="/empleados"             class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">👥 Empleados</a>
+            <a href="/liquidacion"           class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">💵 Liquidación de sueldos</a>
+
+            <p class="text-gray-600 text-xs font-bold uppercase px-4 pt-4 pb-1 tracking-widest">Reportes & Costos</p>
+            <a href="/reportes"              class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">📈 Reportes</a>
+            <a href="/ganancia-local"        class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">📈 Ganancia del local</a>
+            <a href="/costos-productos"      class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">🏷️ Costos y precios</a>
+            <a href="/gastos"               class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">💸 Gastos</a>
+
+            <p class="text-gray-600 text-xs font-bold uppercase px-4 pt-4 pb-1 tracking-widest">Sistema</p>
+            <a href="/clientes-pos"          class="block bg-gray-900 text-white py-2 px-4 rounded-lg border-l-4 border-neon font-medium">📲 Registros de clientes</a>
+            <a href="/configuracion"         class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">⚙️ Configuración</a>
+        </nav>
+        <div id="usuario-info" class="p-4 border-t border-gray-800 text-xs text-gray-500 text-center"></div>
+    </aside>
+
+    <main class="flex-1 flex flex-col overflow-hidden">
+        <header class="bg-gray-900 border-b border-gray-800 py-4 px-4 md:px-8 flex justify-between items-center shrink-0 gap-3">
+            <div class="flex items-center gap-3 min-w-0">
+                <button onclick="abrirMenu()" class="md:hidden text-gray-300 text-2xl shrink-0">☰</button>
+                <h2 class="text-lg md:text-xl font-bold text-white truncate">📲 Registros de clientes</h2>
+            </div>
+            <button onclick="exportarCSV()" class="bg-neon text-black font-bold px-4 py-2 rounded-lg text-sm hover:bg-yellow-300 shrink-0">⬇ Exportar CSV</button>
+        </header>
+
+        <div class="flex-1 overflow-y-auto p-4 md:p-8">
+
+            <!-- FILTROS -->
+            <div class="flex flex-wrap gap-3 mb-6">
+                <select id="filtro-local" onchange="cargarRegistros()"
+                    class="bg-black border border-gray-700 text-white rounded-lg px-3 py-2 text-sm">
+                    <option value="">Todos los locales</option>
+                </select>
+                <select id="filtro-dias" onchange="cargarRegistros()"
+                    class="bg-black border border-gray-700 text-white rounded-lg px-3 py-2 text-sm">
+                    <option value="7">Últimos 7 días</option>
+                    <option value="30" selected>Últimos 30 días</option>
+                    <option value="60">Últimos 60 días</option>
+                    <option value="90">Últimos 90 días</option>
+                    <option value="365">Último año</option>
+                </select>
+                <input type="text" id="filtro-buscar" oninput="filtrarTabla()" placeholder="Buscar nombre o teléfono..."
+                    class="bg-black border border-gray-700 text-white rounded-lg px-3 py-2 text-sm w-56 placeholder-gray-600">
+            </div>
+
+            <!-- STATS -->
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6" id="stats-row">
+                <div class="bg-black border border-gray-800 rounded-xl p-4 text-center">
+                    <p class="text-gray-500 text-xs mb-1">Total registros</p>
+                    <p id="stat-total" class="text-neon font-bold text-2xl">—</p>
+                </div>
+                <div class="bg-black border border-gray-800 rounded-xl p-4 text-center">
+                    <p class="text-gray-500 text-xs mb-1">Con WhatsApp</p>
+                    <p id="stat-wsp" class="text-green-400 font-bold text-2xl">—</p>
+                </div>
+                <div class="bg-black border border-gray-800 rounded-xl p-4 text-center">
+                    <p class="text-gray-500 text-xs mb-1">Clientes únicos</p>
+                    <p id="stat-unicos" class="text-blue-400 font-bold text-2xl">—</p>
+                </div>
+                <div class="bg-black border border-gray-800 rounded-xl p-4 text-center">
+                    <p class="text-gray-500 text-xs mb-1">Hoy</p>
+                    <p id="stat-hoy" class="text-white font-bold text-2xl">—</p>
+                </div>
+            </div>
+
+            <!-- TABLA -->
+            <div class="bg-black border border-gray-800 rounded-xl overflow-hidden">
+                <div id="tabla-container">
+                    <p class="text-gray-500 text-center py-12">Cargando...</p>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <script>
+        const API_URL = window.location.origin + "/api";
+        var todosLosRegistros = [];
+
+        function abrirMenu() {
+            document.getElementById('sidebar').classList.remove('-translate-x-full');
+            document.getElementById('menu-backdrop').classList.remove('hidden');
+        }
+        function cerrarMenu() {
+            document.getElementById('sidebar').classList.add('-translate-x-full');
+            document.getElementById('menu-backdrop').classList.add('hidden');
+        }
+
+        async function cargarLocales() {
+            try {
+                var data = await fetch(API_URL + '/pos/locales').then(r => r.json());
+                var sel = document.getElementById('filtro-local');
+                (data || []).forEach(function(l) {
+                    var opt = document.createElement('option');
+                    opt.value = l.id;
+                    opt.textContent = l.nombre;
+                    sel.appendChild(opt);
+                });
+            } catch(e) {}
+        }
+
+        async function cargarRegistros() {
+            var idLocal = document.getElementById('filtro-local').value;
+            var dias = document.getElementById('filtro-dias').value || 30;
+            var url = API_URL + '/pos/clientes_descuento?dias=' + dias;
+            if (idLocal) url += '&id_local=' + idLocal;
+            document.getElementById('tabla-container').innerHTML = '<p class="text-gray-500 text-center py-12">Cargando...</p>';
+            try {
+                var data = await fetch(url).then(r => r.json());
+                todosLosRegistros = data || [];
+                actualizarStats(todosLosRegistros);
+                filtrarTabla();
+            } catch(e) {
+                document.getElementById('tabla-container').innerHTML = '<p class="text-red-400 text-center py-12">Error al cargar.</p>';
+            }
+        }
+
+        function actualizarStats(rows) {
+            document.getElementById('stat-total').textContent = rows.length;
+            document.getElementById('stat-wsp').textContent = rows.filter(function(r){ return r.telefono; }).length;
+            var unicos = new Set(rows.map(function(r){ return (r.nombre||'').toLowerCase().trim(); })).size;
+            document.getElementById('stat-unicos').textContent = unicos;
+            var hoy = new Date().toISOString().slice(0,10);
+            var cnt = rows.filter(function(r){ return (r.fecha||'').slice(0,10) === hoy; }).length;
+            document.getElementById('stat-hoy').textContent = cnt;
+        }
+
+        function filtrarTabla() {
+            var buscar = (document.getElementById('filtro-buscar').value || '').toLowerCase().trim();
+            var rows = buscar
+                ? todosLosRegistros.filter(function(r){
+                    return (r.nombre||'').toLowerCase().includes(buscar) ||
+                           (r.telefono||'').includes(buscar);
+                  })
+                : todosLosRegistros;
+            renderTabla(rows);
+        }
+
+        function renderTabla(rows) {
+            if (!rows.length) {
+                document.getElementById('tabla-container').innerHTML =
+                    '<p class="text-gray-500 text-center py-12">Sin registros para el filtro seleccionado.</p>';
+                return;
+            }
+
+            // Agrupar por local
+            var porLocal = {};
+            rows.forEach(function(r) {
+                var key = r.nombre_local || ('Local #' + r.id_local);
+                if (!porLocal[key]) porLocal[key] = [];
+                porLocal[key].push(r);
+            });
+
+            var html = '';
+            Object.keys(porLocal).forEach(function(local) {
+                var lista = porLocal[local];
+                html += '<div class="border-b border-gray-800 last:border-b-0">';
+                html += '<div class="flex items-center justify-between px-5 py-3 bg-gray-900">';
+                html += '<span class="text-neon font-bold text-sm">🏬 ' + local + '</span>';
+                html += '<span class="text-gray-500 text-xs">' + lista.length + ' registro' + (lista.length !== 1 ? 's' : '') + '</span>';
+                html += '</div>';
+                html += '<table class="w-full text-sm">';
+                html += '<thead><tr class="text-gray-500 text-xs border-b border-gray-800">';
+                html += '<th class="text-left px-5 py-2 font-semibold">Nombre</th>';
+                html += '<th class="text-left px-4 py-2 font-semibold">WhatsApp</th>';
+                html += '<th class="text-left px-4 py-2 font-semibold hidden md:table-cell">Cajero</th>';
+                html += '<th class="text-left px-4 py-2 font-semibold hidden md:table-cell">Fecha</th>';
+                html += '<th class="text-left px-4 py-2 font-semibold hidden lg:table-cell">Venta #</th>';
+                html += '</tr></thead><tbody>';
+
+                lista.forEach(function(r) {
+                    var fecha = r.fecha ? r.fecha.replace('T',' ').substring(0,16) : '—';
+                    var wsp = r.telefono || '';
+                    var wspLink = wsp
+                        ? '<a href="https://wa.me/549' + wsp.replace(/^0+/,'') + '" target="_blank" class="text-green-400 hover:text-green-300 font-mono">' + formatWsp(wsp) + '</a>'
+                        : '<span class="text-gray-600">—</span>';
+                    html += '<tr class="border-b border-gray-900 hover:bg-gray-900/50">';
+                    html += '<td class="px-5 py-3 text-white font-medium">' + (r.nombre || '—') + '</td>';
+                    html += '<td class="px-4 py-3">' + wspLink + '</td>';
+                    html += '<td class="px-4 py-3 text-gray-400 hidden md:table-cell">' + (r.nombre_cajero || '—') + '</td>';
+                    html += '<td class="px-4 py-3 text-gray-400 hidden md:table-cell text-xs">' + fecha + '</td>';
+                    html += '<td class="px-4 py-3 text-gray-600 hidden lg:table-cell text-xs">' + (r.id_venta || '—') + '</td>';
+                    html += '</tr>';
+                });
+                html += '</tbody></table></div>';
+            });
+
+            document.getElementById('tabla-container').innerHTML = html;
+        }
+
+        function formatWsp(tel) {
+            var t = tel.replace(/\D/g,'');
+            if (t.length === 10) return t.slice(0,2) + ' ' + t.slice(2,6) + '-' + t.slice(6);
+            if (t.length === 11) return t.slice(0,3) + ' ' + t.slice(3,7) + '-' + t.slice(7);
+            return t;
+        }
+
+        function exportarCSV() {
+            if (!todosLosRegistros.length) { alert('No hay datos para exportar.'); return; }
+            var cols = ['nombre','telefono','nombre_local','nombre_cajero','fecha','id_venta'];
+            var headers = ['Nombre','WhatsApp','Local','Cajero','Fecha','Venta #'];
+            var csv = headers.join(',') + '\n';
+            todosLosRegistros.forEach(function(r) {
+                csv += cols.map(function(c){
+                    var v = (r[c] != null ? String(r[c]) : '');
+                    if (c === 'fecha') v = v.replace('T',' ').substring(0,16);
+                    return '"' + v.replace(/"/g,'""') + '"';
+                }).join(',') + '\n';
+            });
+            var blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+            var url = URL.createObjectURL(blob);
+            var a = document.createElement('a');
+            a.href = url; a.download = 'clientes_pos.csv'; a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        // Init
+        cargarLocales();
+        cargarRegistros();
+    </script>
+</body>
+</html>
