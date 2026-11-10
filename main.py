@@ -5715,6 +5715,27 @@ def pos_registrar_venta(venta: PosVenta):
     finally:
         liberar_conexion(conn)
 
+@app.get("/api/pos/clientes_descuento/check")
+def pos_clientes_descuento_check(telefono: str, id_local: int):
+    """Verifica si un teléfono ya tiene descuento registrado en este local."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            cur.execute("""
+                SELECT id FROM pos_clientes_descuento
+                WHERE REGEXP_REPLACE(telefono, '[^0-9]', '', 'g') = REGEXP_REPLACE(%s, '[^0-9]', '', 'g')
+                  AND id_local = %s
+                LIMIT 1
+            """, (telefono, id_local))
+            row = cur.fetchone()
+            return {"existe": row is not None}
+        except Exception:
+            conn.rollback()
+            return {"existe": False}
+    finally:
+        liberar_conexion(conn)
+
 @app.get("/api/pos/clientes_descuento")
 def pos_clientes_descuento_lista(id_local: Optional[int] = None, dias: int = 30):
     """Lista de clientes registrados para descuento en efectivo."""
