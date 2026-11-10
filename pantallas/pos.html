@@ -1057,15 +1057,19 @@
                 url = 'https://wa.me/?text=' + encodeURIComponent(texto);
             }
             window.open(url, '_blank');
+            // Continuar con la venta
+            var pc = document.getElementById('panel-cliente-efectivo'); if (pc) pc.classList.add('hidden');
+            confirmarVenta();
         }
 
         function continuarSinDescuento() {
-            // Limpiar WhatsApp y nombre → recalcula al precio normal
+            // Limpiar WhatsApp y nombre → precio normal, luego confirmar
             var cw = document.getElementById('cliente-wsp'); if (cw) cw.value = '';
             var cn = document.getElementById('cliente-nombre'); if (cn) cn.value = '';
             var pc = document.getElementById('panel-cliente-efectivo'); if (pc) pc.classList.add('hidden');
             recalcularTotalEfectivo();
             calcularVuelto();
+            confirmarVenta();
         }
 
         async function cargarConfigLocal() {
