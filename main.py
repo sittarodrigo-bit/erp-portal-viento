@@ -5134,6 +5134,9 @@ class PosVenta(BaseModel):
     ref_unica: Optional[str] = None   # llave única generada por el POS para evitar duplicados
     nombre_cliente: Optional[str] = None   # nombre del cliente (registro para descuento efectivo)
     telefono_cliente: Optional[str] = None  # WhatsApp del cliente
+    descuento_efectivo_pct: Optional[float] = None
+    descuento_efectivo_monto: Optional[float] = None
+    id_codigo_descuento: Optional[int] = None  # código de descuento single-use
 
 # ---- LOCALES ----
 @app.get("/api/pos/analisis_horarios")
@@ -5707,11 +5710,85 @@ def pos_registrar_venta(venta: PosVenta):
             except Exception:
                 conn.rollback()
                 cur.execute("SELECT 1")
+        # Marcar código de descuento como usado (single-use)
+        if venta.id_codigo_descuento:
+            try:
+                cur.execute("""
+                    UPDATE pos_codigos_descuento
+                    SET usado = TRUE, id_venta_uso = %s, fecha_uso = NOW()
+                    WHERE id = %s AND usado = FALSE
+                """, (vid, venta.id_codigo_descuento))
+            except Exception:
+                conn.rollback()
+                cur.execute("SELECT 1")
         conn.commit()
         return {"id_venta": vid}
     except Exception as e:
         conn.rollback()
         raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
+class PosCodigosRequest(BaseModel):
+    ids_clientes: List[int]
+    descuento_pct: int
+
+@app.post("/api/pos/codigos_descuento/generar")
+def pos_generar_codigos(data: PosCodigosRequest):
+    """Genera códigos de descuento únicos para los clientes seleccionados."""
+    import random, string
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            cur.execute("""CREATE TABLE IF NOT EXISTS pos_codigos_descuento (
+                id SERIAL PRIMARY KEY,
+                codigo TEXT NOT NULL UNIQUE,
+                id_cliente INTEGER,
+                descuento_pct INTEGER NOT NULL,
+                usado BOOLEAN DEFAULT FALSE,
+                id_venta_uso INTEGER,
+                fecha_creacion TIMESTAMPTZ DEFAULT NOW(),
+                fecha_uso TIMESTAMPTZ
+            )""")
+            codigos = []
+            chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+            for id_cliente in data.ids_clientes:
+                # Generar código único
+                for _ in range(10):
+                    codigo = ''.join(random.choices(chars, k=8))
+                    cur.execute("SELECT 1 FROM pos_codigos_descuento WHERE codigo=%s", (codigo,))
+                    if not cur.fetchone():
+                        break
+                cur.execute("""INSERT INTO pos_codigos_descuento (codigo, id_cliente, descuento_pct)
+                    VALUES (%s, %s, %s)""", (codigo, id_cliente, data.descuento_pct))
+                codigos.append({"id_cliente": id_cliente, "codigo": codigo})
+            conn.commit()
+            return {"codigos": codigos}
+        except Exception as e:
+            conn.rollback()
+            raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
+@app.get("/api/pos/codigos_descuento/validar")
+def pos_validar_codigo(codigo: str):
+    """Valida si un código de descuento es válido y devuelve el % de descuento."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            cur.execute("""SELECT id, descuento_pct, usado FROM pos_codigos_descuento
+                WHERE UPPER(codigo) = UPPER(%s)""", (codigo,))
+            row = cur.fetchone()
+            if not row:
+                return {"valido": False, "mensaje": "Código no encontrado"}
+            if row['usado']:
+                return {"valido": False, "mensaje": "El código ya fue utilizado"}
+            return {"valido": True, "id": row['id'], "descuento_pct": row['descuento_pct']}
+        except Exception:
+            conn.rollback()
+            return {"valido": False, "mensaje": "Error al validar"}
     finally:
         liberar_conexion(conn)
 
