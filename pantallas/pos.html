@@ -176,7 +176,20 @@
                     <input type="text" id="cliente-nombre" placeholder="Nombre del cliente" autocomplete="off"
                         class="w-full bg-black border border-gray-700 text-white rounded-lg p-2 text-sm placeholder-gray-600">
                     <div class="flex gap-2">
-                        <span class="flex items-center bg-black border border-gray-700 rounded-lg px-2 text-gray-400 text-sm">+54</span>
+                        <select id="cliente-wsp-prefijo" class="bg-black border border-gray-700 text-gray-300 rounded-lg px-2 py-2 text-sm font-mono" style="max-width:110px">
+                            <option value="54">🇦🇷 +54</option>
+                            <option value="591">🇧🇴 +591</option>
+                            <option value="56">🇨🇱 +56</option>
+                            <option value="57">🇨🇴 +57</option>
+                            <option value="593">🇪🇨 +593</option>
+                            <option value="595">🇵🇾 +595</option>
+                            <option value="51">🇵🇪 +51</option>
+                            <option value="598">🇺🇾 +598</option>
+                            <option value="58">🇻🇪 +58</option>
+                            <option value="55">🇧🇷 +55</option>
+                            <option value="34">🇪🇸 +34</option>
+                            <option value="1">🇺🇸 +1</option>
+                        </select>
                         <input type="tel" id="cliente-wsp" placeholder="WhatsApp (sin 0 ni 15)" autocomplete="off"
                             oninput="recalcularTotalEfectivo(); calcularVuelto(); validarWspRepetido();"
                             class="flex-1 bg-black border border-gray-700 text-white rounded-lg p-2 text-sm placeholder-gray-600">
@@ -1121,10 +1134,11 @@
             var texto = lineas.join('\n');
             var url;
             if (wsp) {
-                // Número argentino: si empieza con 0, quitar el 0; agregar 549
+                var prefijoPais = (document.getElementById('cliente-wsp-prefijo') ? document.getElementById('cliente-wsp-prefijo').value : '54') || '54';
                 var num = wsp.replace(/^0+/, '');
-                if (!num.startsWith('54')) num = '549' + num;
-                url = 'https://wa.me/' + num + '?text=' + encodeURIComponent(texto);
+                // Para Argentina agregar el 9 de celular si no está
+                if (prefijoPais === '54' && !num.startsWith('9')) num = '9' + num;
+                url = 'https://wa.me/' + prefijoPais + num + '?text=' + encodeURIComponent(texto);
             } else {
                 url = 'https://wa.me/?text=' + encodeURIComponent(texto);
             }
@@ -1133,6 +1147,17 @@
 
         var wspRepetido = false;
         var wspCheckTimer = null;
+
+        // Devuelve el número completo con prefijo de país para WSP
+        function obtenerTelCompleto() {
+            var num = (document.getElementById('cliente-wsp') ? document.getElementById('cliente-wsp').value : '').replace(/\D/g,'').trim();
+            if (!num) return '';
+            var prefijo = (document.getElementById('cliente-wsp-prefijo') ? document.getElementById('cliente-wsp-prefijo').value : '54') || '54';
+            // Evitar doble prefijo si el usuario ya lo escribió
+            if (num.startsWith(prefijo)) return num;
+            return prefijo + num;
+        }
+
         function validarWspRepetido() {
             var aviso = document.getElementById('wsp-repetido-aviso');
             var wsp = (document.getElementById('cliente-wsp').value||'').replace(/\D/g,'').trim();
@@ -1144,7 +1169,8 @@
             clearTimeout(wspCheckTimer);
             wspCheckTimer = setTimeout(async function() {
                 try {
-                    var res = await fetch(API_URL + '/pos/clientes_descuento/check?telefono=' + encodeURIComponent(wsp) + '&id_local=' + localActual.id).then(r => r.json());
+                    var telCompleto = obtenerTelCompleto();
+                    var res = await fetch(API_URL + '/pos/clientes_descuento/check?telefono=' + encodeURIComponent(telCompleto) + '&id_local=' + localActual.id).then(r => r.json());
                     wspRepetido = !!res.existe;
                     if (aviso) aviso.classList.toggle('hidden', !wspRepetido);
                     recalcularTotalEfectivo();
@@ -1241,7 +1267,7 @@
                         id_empleado: (posUsuario ? posUsuario.id_empleado : null),
                         nombre_cajero: (posUsuario ? (posUsuario.nombre + ' ' + posUsuario.apellido) : null),
                         nombre_cliente: (document.getElementById('cliente-nombre') ? (document.getElementById('cliente-nombre').value||'').trim()||null : null),
-                        telefono_cliente: (document.getElementById('cliente-wsp') ? (document.getElementById('cliente-wsp').value||'').replace(/\D/g,'')||null : null),
+                        telefono_cliente: obtenerTelCompleto() || null,
                         ref_unica: refVentaActual,
                         id_codigo_descuento: codigoDescuentoValido ? codigoDescuentoValido.id : null
                     })
