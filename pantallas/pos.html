@@ -1051,6 +1051,7 @@
             } else {
                 url = 'https://wa.me/?text=' + encodeURIComponent(texto);
             }
+            if (!confirm('¿Enviar ticket a ' + (nombre || 'cliente') + (wsp ? ' (' + wsp + ')' : '') + ' por WhatsApp?')) return;
             window.open(url, '_blank');
         }
 
