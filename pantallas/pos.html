@@ -198,6 +198,19 @@
                 </div>
             </div>
 
+            <!-- CÓDIGO DE DESCUENTO -->
+            <div class="mb-4">
+                <div class="flex items-center gap-2">
+                    <input type="text" id="cod-descuento-input" placeholder="🎟️ Código de descuento (opcional)"
+                        oninput="this.value=this.value.toUpperCase()"
+                        onblur="validarCodigoDescuento()"
+                        autocomplete="off"
+                        class="flex-1 bg-black border border-gray-700 focus:border-purple-500 text-white rounded-lg p-2 text-sm placeholder-gray-600 uppercase tracking-widest font-mono">
+                    <button onclick="validarCodigoDescuento()" class="bg-gray-800 hover:bg-purple-800 border border-gray-700 text-gray-300 hover:text-white px-3 py-2 rounded-lg text-sm font-bold">Aplicar</button>
+                </div>
+                <div id="cod-descuento-estado" class="hidden mt-1 px-3 py-2 rounded-lg text-xs font-bold"></div>
+            </div>
+
             <button onclick="confirmarVenta()" id="btn-confirmar-venta" class="w-full bg-green-600 hover:bg-green-500 text-white font-bold py-4 rounded-xl transition text-lg disabled:opacity-40" disabled>✓ Confirmar e imprimir ticket</button>
         </div>
     </div>
@@ -891,6 +904,9 @@
             var cn = document.getElementById('cliente-nombre'); if (cn) cn.value = '';
             var cw = document.getElementById('cliente-wsp'); if (cw) cw.value = '';
             wspRepetido = false;
+            codigoDescuentoValido = null;
+            var codInput = document.getElementById('cod-descuento-input'); if (codInput) codInput.value = '';
+            var codEstado = document.getElementById('cod-descuento-estado'); if (codEstado) codEstado.classList.add('hidden');
             var aviso = document.getElementById('wsp-repetido-aviso'); if (aviso) aviso.classList.add('hidden');
             document.getElementById('modal-cobro').classList.replace('modal-oculto','modal-visible');
         }
@@ -1016,6 +1032,59 @@
         var procesandoVenta = false;
         var descuentoEfectivoPct = 0; // % de descuento por efectivo (cargado del servidor)
         var registroClienteActivo = false; // si el local tiene activo el flujo de registro de cliente
+        var codigoDescuentoValido = null; // {id, descuento_pct, codigo} si hay código válido aplicado
+
+        async function validarCodigoDescuento() {
+            var input = document.getElementById('cod-descuento-input');
+            var estado = document.getElementById('cod-descuento-estado');
+            var codigo = (input.value || '').trim().toUpperCase();
+            if (!codigo) {
+                codigoDescuentoValido = null;
+                estado.classList.add('hidden');
+                recalcularTotalConCodigo();
+                return;
+            }
+            try {
+                var res = await fetch(API_URL + '/pos/codigos_descuento/validar?codigo=' + encodeURIComponent(codigo)).then(r => r.json());
+                if (res.valido) {
+                    codigoDescuentoValido = { id: res.id, descuento_pct: res.descuento_pct, codigo: codigo };
+                    estado.className = 'mt-1 px-3 py-2 rounded-lg text-xs font-bold bg-purple-900/30 border border-purple-600 text-purple-300';
+                    estado.textContent = '✅ Código válido — ' + res.descuento_pct + '% de descuento aplicado';
+                    estado.classList.remove('hidden');
+                } else {
+                    codigoDescuentoValido = null;
+                    estado.className = 'mt-1 px-3 py-2 rounded-lg text-xs font-bold bg-red-900/30 border border-red-700 text-red-400';
+                    estado.textContent = '❌ ' + (res.mensaje || 'Código inválido');
+                    estado.classList.remove('hidden');
+                }
+            } catch(e) {
+                codigoDescuentoValido = null;
+            }
+            recalcularTotalConCodigo();
+        }
+
+        function recalcularTotalConCodigo() {
+            // Recalcula el total mostrado en el modal considerando el código de descuento
+            var base = totalCarrito();
+            var descDiv = document.getElementById('cobro-descuento-efectivo');
+            var descOriginal = document.getElementById('cobro-desc-original');
+            var descAhorro = document.getElementById('cobro-desc-ahorro');
+
+            if (codigoDescuentoValido) {
+                var descMonto = Math.round(base * codigoDescuentoValido.descuento_pct / 100 * 100) / 100;
+                var totalFinal = base - descMonto;
+                document.getElementById('cobro-total').textContent = '$ ' + totalFinal.toLocaleString('es-AR');
+                if (descDiv) {
+                    descDiv.classList.remove('hidden');
+                    if (descOriginal) descOriginal.textContent = '$ ' + base.toLocaleString('es-AR');
+                    if (descAhorro) descAhorro.textContent = '- $ ' + descMonto.toLocaleString('es-AR') + ' (' + codigoDescuentoValido.descuento_pct + '%)';
+                }
+            } else {
+                // Sin código → recalcular normal (efectivo con WSP o precio base)
+                recalcularTotalEfectivo();
+                calcularVuelto();
+            }
+        }
 
         function enviarTicketWsp() {
             var nombre = (document.getElementById('cliente-nombre').value || '').trim();
@@ -1028,23 +1097,21 @@
             var base = carrito.reduce(function(a,i){ return a + i.precio*i.cantidad; }, 0);
             var baseElegible = carrito.reduce(function(s,i){ return s + (!i.descuento_efectivo ? i.precio*i.cantidad : 0); }, 0);
             var descMonto = descuentoEfectivoPct > 0 ? Math.round(baseElegible * descuentoEfectivoPct / 100 * 100) / 100 : 0;
-            var totalFinal = base - descMonto;
+            var codigoDescMontoPrev = codigoDescuentoValido ? Math.round(base * codigoDescuentoValido.descuento_pct / 100 * 100) / 100 : 0;
+            var totalFinal = base - descMonto - codigoDescMontoPrev;
 
             var lineas = ['🛒 *Tu ticket de compra*'];
             if (local) lineas.push('📍 ' + local);
             if (cajero) lineas.push('👤 Atendido por: ' + cajero);
             lineas.push('');
             carrito.forEach(function(i) {
-                if (!i.es_combo || !i.componentes || !i.componentes.length) {
-                    lineas.push('• ' + i.nombre + ' x' + i.cantidad + ' — $ ' + (i.precio * i.cantidad).toLocaleString('es-AR'));
-                } else {
-                    lineas.push('• ' + i.nombre + ' x' + i.cantidad + ' — $ ' + (i.precio * i.cantidad).toLocaleString('es-AR'));
-                }
+                lineas.push('• ' + i.nombre + ' x' + i.cantidad + ' — $ ' + (i.precio * i.cantidad).toLocaleString('es-AR'));
             });
             lineas.push('');
-            if (descMonto > 0) {
+            if (descMonto > 0 || codigoDescMontoPrev > 0) {
                 lineas.push('💲 Subtotal: $ ' + base.toLocaleString('es-AR'));
-                lineas.push('🏷️ Descuento efectivo (' + descuentoEfectivoPct + '%): - $ ' + descMonto.toLocaleString('es-AR'));
+                if (descMonto > 0) lineas.push('🏷️ Descuento efectivo (' + descuentoEfectivoPct + '%): - $ ' + descMonto.toLocaleString('es-AR'));
+                if (codigoDescMontoPrev > 0) lineas.push('🎟️ Código ' + codigoDescuentoValido.codigo + ' (' + codigoDescuentoValido.descuento_pct + '%): - $ ' + codigoDescMontoPrev.toLocaleString('es-AR'));
             }
             lineas.push('✅ *TOTAL: $ ' + totalFinal.toLocaleString('es-AR') + '*');
             lineas.push('💵 Pago en efectivo');
@@ -1136,6 +1203,12 @@
                     descuentoMonto = Math.round(baseConDescuento * descuentoEfectivoPct / 100 * 100) / 100;
                 }
             }
+            // Aplicar código de descuento (todos los medios de pago, single-use)
+            var codigoDescMonto = 0;
+            if (codigoDescuentoValido) {
+                codigoDescMonto = Math.round(totalBase * codigoDescuentoValido.descuento_pct / 100 * 100) / 100;
+                descuentoMonto += codigoDescMonto;
+            }
             var total = Math.round((totalBase - descuentoMonto) * 100) / 100;
 
             // Expandir combos: el combo aparece en el ticket sin descontar stock;
@@ -1169,12 +1242,14 @@
                         nombre_cajero: (posUsuario ? (posUsuario.nombre + ' ' + posUsuario.apellido) : null),
                         nombre_cliente: (document.getElementById('cliente-nombre') ? (document.getElementById('cliente-nombre').value||'').trim()||null : null),
                         telefono_cliente: (document.getElementById('cliente-wsp') ? (document.getElementById('cliente-wsp').value||'').replace(/\D/g,'')||null : null),
-                        ref_unica: refVentaActual
+                        ref_unica: refVentaActual,
+                        id_codigo_descuento: codigoDescuentoValido ? codigoDescuentoValido.id : null
                     })
                 });
                 if (res.ok) {
                     var r = await res.json();
-                    ventaParaFacturar = { id_venta: r.id_venta, total: total, metodo: metodoPrincipal, detalle: detalle, descuento: descuentoMonto };
+                    ventaParaFacturar = { id_venta: r.id_venta, total: total, metodo: metodoPrincipal, detalle: detalle, descuento: descuentoMonto, codigoCanje: codigoDescuentoValido ? { codigo: codigoDescuentoValido.codigo, pct: codigoDescuentoValido.descuento_pct, monto: codigoDescMonto } : null };
+                    codigoDescuentoValido = null;
                     carrito = [];
                     refVentaActual = null;
                     procesandoVenta = false;
@@ -1202,11 +1277,11 @@
         }
 
         // ── TICKET 80mm ──
-        function construirDocTicket(idVenta, total, metodo, detalle, descuento) {
+        function construirDocTicket(idVenta, total, metodo, detalle, descuento, codigoCanje) {
             var jsPDF = window.jspdf.jsPDF;
             // ancho 80mm, alto dinámico
             var descMonto = parseFloat(descuento) || 0;
-            var alto = 60 + detalle.length * 6 + (descMonto > 0 ? 12 : 0) + 40;
+            var alto = 60 + detalle.length * 6 + (descMonto > 0 ? 12 : 0) + (codigoCanje ? 9 : 0) + 40;
             var doc = new jsPDF({ unit:'mm', format:[80, alto] });
             var y = 8;
             doc.setFont('helvetica','bold'); doc.setFontSize(12);
@@ -1239,7 +1314,14 @@
                 var subtotal = total + descMonto;
                 doc.text('Subtotal', 4, y); doc.text('$ ' + subtotal.toLocaleString('es-AR'), 76, y, {align:'right'}); y += 4.5;
                 doc.setFont('helvetica','italic');
-                doc.text('Dto. efectivo (' + descuentoEfectivoPct + '%)', 4, y); doc.text('- $ ' + descMonto.toLocaleString('es-AR'), 76, y, {align:'right'}); y += 4.5;
+                // Descuento efectivo (solo si no es exclusivamente por código)
+                var descEfectivoMonto = descMonto - (codigoCanje ? (parseFloat(codigoCanje.monto)||0) : 0);
+                if (descEfectivoMonto > 0) {
+                    doc.text('Dto. efectivo (' + descuentoEfectivoPct + '%)', 4, y); doc.text('- $ ' + descEfectivoMonto.toLocaleString('es-AR'), 76, y, {align:'right'}); y += 4.5;
+                }
+                if (codigoCanje) {
+                    doc.text('Cod. ' + codigoCanje.codigo + ' (' + codigoCanje.pct + '%)', 4, y); doc.text('- $ ' + parseFloat(codigoCanje.monto).toLocaleString('es-AR'), 76, y, {align:'right'}); y += 4.5;
+                }
             }
             doc.setFont('helvetica','bold'); doc.setFontSize(11);
             doc.text('TOTAL', 4, y); doc.text('$ ' + total.toLocaleString('es-AR'), 76, y, {align:'right'}); y += 6;
@@ -1250,8 +1332,8 @@
             return doc;
         }
 
-        function imprimirTicket(idVenta, total, metodo, detalle, descuento) {
-            var doc = construirDocTicket(idVenta, total, metodo, detalle, descuento);
+        function imprimirTicket(idVenta, total, metodo, detalle, descuento, codigoCanje) {
+            var doc = construirDocTicket(idVenta, total, metodo, detalle, descuento, codigoCanje);
             var url = URL.createObjectURL(doc.output('blob'));
             var w = window.open(url);
             if (w) { w.onload = function(){ try { w.print(); } catch(e){} }; }
@@ -1679,7 +1761,7 @@
 
         function imprimirTicketInterno() {
             if (ventaParaFacturar) {
-                imprimirTicket(ventaParaFacturar.id_venta, ventaParaFacturar.total, ventaParaFacturar.metodo, ventaParaFacturar.detalle, ventaParaFacturar.descuento);
+                imprimirTicket(ventaParaFacturar.id_venta, ventaParaFacturar.total, ventaParaFacturar.metodo, ventaParaFacturar.detalle, ventaParaFacturar.descuento, ventaParaFacturar.codigoCanje);
             }
         }
 
@@ -1689,16 +1771,19 @@
             var lineas = (v.detalle || []).map(function(it){
                 return it.cantidad + 'x ' + it.nombre_producto + ' - $' + (it.cantidad*it.precio_unitario).toLocaleString('es-AR');
             }).join('\n');
-            var descMsg = (v.descuento && v.descuento > 0) ? 'Dto. efectivo: -$' + parseFloat(v.descuento).toLocaleString('es-AR') + '\n' : '';
+            var descEfectivoMonto = v.descuento - (v.codigoCanje ? (parseFloat(v.codigoCanje.monto)||0) : 0);
+            var descMsg = (descEfectivoMonto > 0) ? 'Dto. efectivo: -$' + descEfectivoMonto.toLocaleString('es-AR') + '\n' : '';
+            var codigoMsg = v.codigoCanje ? ('🎟️ Cod. ' + v.codigoCanje.codigo + ' (' + v.codigoCanje.pct + '%): -$' + parseFloat(v.codigoCanje.monto).toLocaleString('es-AR') + '\n') : '';
             var msg = (empresa.nombre || 'Portal del Viento') + '\n' +
                 'Ticket #' + String(v.id_venta).padStart(5,'0') + '\n' +
                 (lineas ? lineas + '\n' : '') +
                 descMsg +
+                codigoMsg +
                 'Total: $' + parseFloat(v.total).toLocaleString('es-AR') + '\n' +
                 'Pago: ' + (v.metodo || '') + '\n' +
                 '¡Gracias por su compra!';
             var tel = normalizarTelArg(document.getElementById('ticket-tel-cliente').value);
-            var doc = construirDocTicket(v.id_venta, v.total, v.metodo, v.detalle || [], v.descuento);
+            var doc = construirDocTicket(v.id_venta, v.total, v.metodo, v.detalle || [], v.descuento, v.codigoCanje);
             var blob = doc ? doc.output('blob') : null;
             await compartirPdfWhatsapp(blob, 'ticket_' + String(v.id_venta).padStart(5,'0') + '.pdf', msg, tel);
         }
