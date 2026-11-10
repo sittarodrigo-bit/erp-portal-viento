@@ -167,6 +167,29 @@
                 <input type="number" id="cobro-paga-con" oninput="calcularVuelto()" class="w-full bg-black border border-gray-700 text-white rounded-lg p-3 text-lg text-center">
                 <p class="text-right text-sm mt-1">Vuelto: <span id="cobro-vuelto" class="text-neon font-bold">$ 0</span></p>
             </div>
+
+            <!-- REGISTRO CLIENTE EFECTIVO (solo cuando hay descuento activo) -->
+            <div id="panel-cliente-efectivo" class="hidden mb-4 bg-gray-900 border border-green-800 rounded-xl p-4">
+                <p class="text-green-400 font-bold text-sm mb-1">🎁 Descuento por efectivo</p>
+                <p class="text-gray-400 text-xs mb-3">Ingresá el WhatsApp del cliente para activar el descuento. Sin número, el precio es normal.</p>
+                <div class="space-y-2 mb-3">
+                    <input type="text" id="cliente-nombre" placeholder="Nombre del cliente" autocomplete="off"
+                        class="w-full bg-black border border-gray-700 text-white rounded-lg p-2 text-sm placeholder-gray-600">
+                    <div class="flex gap-2">
+                        <span class="flex items-center bg-black border border-gray-700 rounded-lg px-2 text-gray-400 text-sm">+54</span>
+                        <input type="tel" id="cliente-wsp" placeholder="WhatsApp (sin 0 ni 15)" autocomplete="off"
+                            oninput="recalcularTotalEfectivo(); calcularVuelto();"
+                            class="flex-1 bg-black border border-gray-700 text-white rounded-lg p-2 text-sm placeholder-gray-600">
+                    </div>
+                </div>
+                <button onclick="enviarTicketWsp()" id="btn-wsp-ticket"
+                    class="w-full bg-green-700 hover:bg-green-600 text-white font-bold py-2 rounded-lg text-sm transition flex items-center justify-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-4 h-4"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.113.552 4.094 1.512 5.822L.057 23.405a.75.75 0 00.918.919l5.624-1.456A11.941 11.941 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 22c-1.925 0-3.73-.504-5.286-1.383l-.376-.214-3.908 1.013 1.013-3.863-.234-.389A9.955 9.955 0 012 12C2 6.477 6.477 2 12 2s10 4.477 10 10-4.477 10-10 10z"/></svg>
+                    Enviar ticket por WhatsApp
+                </button>
+                <p class="text-gray-600 text-xs text-center mt-2">Sin número, se cobra precio normal.</p>
+            </div>
+
             <button onclick="confirmarVenta()" id="btn-confirmar-venta" class="w-full bg-green-600 hover:bg-green-500 text-white font-bold py-4 rounded-xl transition text-lg disabled:opacity-40" disabled>✓ Confirmar e imprimir ticket</button>
         </div>
     </div>
@@ -513,12 +536,20 @@
         if (posUsuario) { latidoSesion(); setInterval(latidoSesion, 60000); }
 
         var _sesionCerrada = false;
+
+        function _urlCerrarSesion() {
+            if (!posUsuario) return null;
+            var p = new URLSearchParams({ id_usuario: posUsuario.id_usuario });
+            if (posUsuario.username) p.set('username', posUsuario.username);
+            if (posUsuario.nombre && posUsuario.apellido) p.set('nombre_empleado', posUsuario.nombre + ' ' + posUsuario.apellido);
+            if (posUsuario.id_empleado) p.set('id_empleado', posUsuario.id_empleado);
+            return API_URL + '/pos/sesion/cerrar?' + p.toString();
+        }
+
         async function cerrarSesionPos() {
-            // El fichaje de horario se hace por el RELOJ de fichaje, no por el POS.
-            // Liberar la sesión única en el servidor y registrar logout en el log
             if (!_sesionCerrada && posUsuario && posUsuario.id_usuario) {
                 _sesionCerrada = true;
-                try { await fetch(API_URL + '/pos/sesion/cerrar?id_usuario=' + posUsuario.id_usuario, { method:'POST' }); } catch(e) {}
+                try { await fetch(_urlCerrarSesion(), { method:'POST' }); } catch(e) {}
             }
             sessionStorage.removeItem('pos_usuario');
             window.location.href = '/pos-login';
@@ -528,8 +559,8 @@
         window.addEventListener('beforeunload', function() {
             if (!_sesionCerrada && posUsuario && posUsuario.id_usuario) {
                 _sesionCerrada = true;
-                // sendBeacon funciona aunque la página esté cerrándose
-                navigator.sendBeacon(API_URL + '/pos/sesion/cerrar?id_usuario=' + posUsuario.id_usuario);
+                var url = _urlCerrarSesion();
+                if (url) navigator.sendBeacon(url);
             }
         });
 
@@ -848,6 +879,9 @@
             document.getElementById('cobro-vuelto').textContent = '$ 0';
             document.getElementById('btn-confirmar-venta').disabled = true;
             document.querySelectorAll('.metodo-btn').forEach(function(b){ b.classList.remove('border-neon','bg-neon','text-black'); b.classList.add('border-gray-700'); });
+            var pc = document.getElementById('panel-cliente-efectivo'); if (pc) pc.classList.add('hidden');
+            var cn = document.getElementById('cliente-nombre'); if (cn) cn.value = '';
+            var cw = document.getElementById('cliente-wsp'); if (cw) cw.value = '';
             document.getElementById('modal-cobro').classList.replace('modal-oculto','modal-visible');
         }
 
@@ -864,24 +898,39 @@
             document.getElementById('btn-confirmar-venta').disabled = false;
 
             // Aplicar descuento por efectivo
-            var base = carrito.reduce(function(a,i){ return a + i.precio*i.cantidad; }, 0);
-            var descDiv = document.getElementById('cobro-descuento-efectivo');
+            var panelCliente = document.getElementById('panel-cliente-efectivo');
             if (metodo === 'Efectivo' && descuentoEfectivoPct > 0) {
-                // Todos aplican descuento EXCEPTO los marcados con descuento_efectivo = true (excluidos)
+                if (panelCliente) panelCliente.classList.toggle('hidden', !registroClienteActivo);
+                recalcularTotalEfectivo(); // usa nombre para decidir si aplica descuento
+            } else {
+                var base = carrito.reduce(function(a,i){ return a + i.precio*i.cantidad; }, 0);
+                document.getElementById('cobro-total').textContent = '$ ' + base.toLocaleString('es-AR');
+                var descDiv = document.getElementById('cobro-descuento-efectivo');
+                if (descDiv) descDiv.classList.add('hidden');
+                if (panelCliente) panelCliente.classList.add('hidden');
+            }
+        }
+
+        // Recalcula el total mostrado en el modal de cobro según si hay nombre de cliente
+        function recalcularTotalEfectivo() {
+            if (metodoSel !== 'Efectivo' || descuentoEfectivoPct <= 0) return;
+            var base = carrito.reduce(function(a,i){ return a + i.precio*i.cantidad; }, 0);
+            var wsp = document.getElementById('cliente-wsp') ? (document.getElementById('cliente-wsp').value||'').replace(/\D/g,'').trim() : '';
+            // Si registro obligatorio, solo aplica si hay WhatsApp; si no hay registro activo, siempre aplica
+            var aplicar = !registroClienteActivo || wsp.length >= 8;
+            var descDiv = document.getElementById('cobro-descuento-efectivo');
+            if (aplicar) {
                 var baseElegible = carrito.reduce(function(s,i){ return s + (!i.descuento_efectivo ? i.precio*i.cantidad : 0); }, 0);
                 var descMonto = Math.round(baseElegible * descuentoEfectivoPct / 100 * 100) / 100;
                 var totalFinal = base - descMonto;
                 document.getElementById('cobro-total').textContent = '$ ' + totalFinal.toLocaleString('es-AR');
-                if (descDiv) {
-                    if (descMonto > 0) {
-                        descDiv.classList.remove('hidden');
-                        document.getElementById('cobro-desc-original').textContent = '$ ' + base.toLocaleString('es-AR');
-                        document.getElementById('cobro-desc-ahorro').textContent = '- $ ' + descMonto.toLocaleString('es-AR') + ' (' + descuentoEfectivoPct + '%)';
-                    } else {
-                        descDiv.classList.add('hidden');
-                    }
-                }
+                if (descDiv && descMonto > 0) {
+                    descDiv.classList.remove('hidden');
+                    document.getElementById('cobro-desc-original').textContent = '$ ' + base.toLocaleString('es-AR');
+                    document.getElementById('cobro-desc-ahorro').textContent = '- $ ' + descMonto.toLocaleString('es-AR') + ' (' + descuentoEfectivoPct + '%)';
+                } else if (descDiv) { descDiv.classList.add('hidden'); }
             } else {
+                // Sin nombre → precio normal, mostrar aviso
                 document.getElementById('cobro-total').textContent = '$ ' + base.toLocaleString('es-AR');
                 if (descDiv) descDiv.classList.add('hidden');
             }
@@ -939,13 +988,16 @@
 
         function calcularVuelto() {
             var pagaCon = parseFloat(document.getElementById('cobro-paga-con').value) || 0;
-            // Usar el total con descuento efectivo si corresponde
             var base = totalCarrito();
             var totalConDesc = base;
             if (metodoSel === 'Efectivo' && descuentoEfectivoPct > 0) {
-                var baseElegible = carrito.reduce(function(s,i){ return s + (!i.descuento_efectivo ? i.precio*i.cantidad : 0); }, 0);
-                var descMonto = Math.round(baseElegible * descuentoEfectivoPct / 100 * 100) / 100;
-                totalConDesc = base - descMonto;
+                var wsp = document.getElementById('cliente-wsp') ? (document.getElementById('cliente-wsp').value||'').replace(/\D/g,'').trim() : '';
+                var aplicar = !registroClienteActivo || wsp.length >= 8;
+                if (aplicar) {
+                    var baseElegible = carrito.reduce(function(s,i){ return s + (!i.descuento_efectivo ? i.precio*i.cantidad : 0); }, 0);
+                    var descMonto = Math.round(baseElegible * descuentoEfectivoPct / 100 * 100) / 100;
+                    totalConDesc = base - descMonto;
+                }
             }
             var vuelto = pagaCon - totalConDesc;
             document.getElementById('cobro-vuelto').textContent = '$ ' + (vuelto > 0 ? vuelto.toLocaleString('es-AR') : '0');
@@ -953,13 +1005,62 @@
 
         var procesandoVenta = false;
         var descuentoEfectivoPct = 0; // % de descuento por efectivo (cargado del servidor)
+        var registroClienteActivo = false; // si el local tiene activo el flujo de registro de cliente
+
+        function enviarTicketWsp() {
+            var nombre = (document.getElementById('cliente-nombre').value || '').trim();
+            var wsp = (document.getElementById('cliente-wsp').value || '').replace(/\D/g,'').trim();
+            if (!nombre) { document.getElementById('cliente-nombre').focus(); return; }
+
+            // Construir texto del ticket para WhatsApp
+            var cajero = posUsuario ? (posUsuario.nombre + ' ' + posUsuario.apellido) : '';
+            var local = localActual ? localActual.nombre : '';
+            var base = carrito.reduce(function(a,i){ return a + i.precio*i.cantidad; }, 0);
+            var baseElegible = carrito.reduce(function(s,i){ return s + (!i.descuento_efectivo ? i.precio*i.cantidad : 0); }, 0);
+            var descMonto = descuentoEfectivoPct > 0 ? Math.round(baseElegible * descuentoEfectivoPct / 100 * 100) / 100 : 0;
+            var totalFinal = base - descMonto;
+
+            var lineas = ['🛒 *Tu ticket de compra*'];
+            if (local) lineas.push('📍 ' + local);
+            if (cajero) lineas.push('👤 Atendido por: ' + cajero);
+            lineas.push('');
+            carrito.forEach(function(i) {
+                if (!i.es_combo || !i.componentes || !i.componentes.length) {
+                    lineas.push('• ' + i.nombre + ' x' + i.cantidad + ' — $ ' + (i.precio * i.cantidad).toLocaleString('es-AR'));
+                } else {
+                    lineas.push('• ' + i.nombre + ' x' + i.cantidad + ' — $ ' + (i.precio * i.cantidad).toLocaleString('es-AR'));
+                }
+            });
+            lineas.push('');
+            if (descMonto > 0) {
+                lineas.push('💲 Subtotal: $ ' + base.toLocaleString('es-AR'));
+                lineas.push('🏷️ Descuento efectivo (' + descuentoEfectivoPct + '%): - $ ' + descMonto.toLocaleString('es-AR'));
+            }
+            lineas.push('✅ *TOTAL: $ ' + totalFinal.toLocaleString('es-AR') + '*');
+            lineas.push('💵 Pago en efectivo');
+            lineas.push('');
+            lineas.push('Gracias ' + nombre + ' por tu compra 🙌');
+
+            var texto = lineas.join('\n');
+            var url;
+            if (wsp) {
+                // Número argentino: si empieza con 0, quitar el 0; agregar 549
+                var num = wsp.replace(/^0+/, '');
+                if (!num.startsWith('54')) num = '549' + num;
+                url = 'https://wa.me/' + num + '?text=' + encodeURIComponent(texto);
+            } else {
+                url = 'https://wa.me/?text=' + encodeURIComponent(texto);
+            }
+            window.open(url, '_blank');
+        }
 
         async function cargarConfigLocal() {
             if (!localActual) return;
             try {
                 var res = await fetch(API_URL + '/locales/' + localActual.id + '/config').then(r => r.json());
                 descuentoEfectivoPct = parseFloat(res.descuento_efectivo_pct) || 0;
-            } catch(e) { descuentoEfectivoPct = 0; }
+                registroClienteActivo = !!res.registro_cliente_activo;
+            } catch(e) { descuentoEfectivoPct = 0; registroClienteActivo = false; }
         }
         async function confirmarVenta() {
             if (procesandoVenta) return;
@@ -983,11 +1084,14 @@
             var totalBase = totalCarrito();
             var descuentoMonto = 0;
             if (!modoDividido && metodoSel === 'Efectivo' && descuentoEfectivoPct > 0) {
-                // Todos aplican descuento EXCEPTO los marcados con descuento_efectivo = true (excluidos)
-                var baseConDescuento = carrito.reduce(function(s, i) {
-                    return s + (!i.descuento_efectivo ? i.precio * i.cantidad : 0);
-                }, 0);
-                descuentoMonto = Math.round(baseConDescuento * descuentoEfectivoPct / 100 * 100) / 100;
+                var wspCliente = document.getElementById('cliente-wsp') ? (document.getElementById('cliente-wsp').value||'').replace(/\D/g,'').trim() : '';
+                var aplicarDesc = !registroClienteActivo || wspCliente.length >= 8;
+                if (aplicarDesc) {
+                    var baseConDescuento = carrito.reduce(function(s, i) {
+                        return s + (!i.descuento_efectivo ? i.precio * i.cantidad : 0);
+                    }, 0);
+                    descuentoMonto = Math.round(baseConDescuento * descuentoEfectivoPct / 100 * 100) / 100;
+                }
             }
             var total = Math.round((totalBase - descuentoMonto) * 100) / 100;
 
@@ -1020,6 +1124,8 @@
                         pagos: pagos,
                         id_empleado: (posUsuario ? posUsuario.id_empleado : null),
                         nombre_cajero: (posUsuario ? (posUsuario.nombre + ' ' + posUsuario.apellido) : null),
+                        nombre_cliente: (document.getElementById('cliente-nombre') ? (document.getElementById('cliente-nombre').value||'').trim()||null : null),
+                        telefono_cliente: (document.getElementById('cliente-wsp') ? (document.getElementById('cliente-wsp').value||'').replace(/\D/g,'')||null : null),
                         ref_unica: refVentaActual
                     })
                 });
