@@ -176,20 +176,26 @@
                     <input type="text" id="cliente-nombre" placeholder="Nombre del cliente" autocomplete="off"
                         class="w-full bg-black border border-gray-700 text-white rounded-lg p-2 text-sm placeholder-gray-600">
                     <div class="flex gap-2">
-                        <select id="cliente-wsp-prefijo" class="bg-black border border-gray-700 text-gray-300 rounded-lg px-2 py-2 text-sm font-mono" style="max-width:110px">
-                            <option value="54">🇦🇷 +54</option>
-                            <option value="591">🇧🇴 +591</option>
-                            <option value="56">🇨🇱 +56</option>
-                            <option value="57">🇨🇴 +57</option>
-                            <option value="593">🇪🇨 +593</option>
-                            <option value="595">🇵🇾 +595</option>
-                            <option value="51">🇵🇪 +51</option>
-                            <option value="598">🇺🇾 +598</option>
-                            <option value="58">🇻🇪 +58</option>
-                            <option value="55">🇧🇷 +55</option>
-                            <option value="34">🇪🇸 +34</option>
-                            <option value="1">🇺🇸 +1</option>
-                        </select>
+                        <div class="flex flex-col gap-1" style="min-width:90px;max-width:100px">
+                            <select id="cliente-wsp-prefijo" onchange="togglePrefijoCustm(this.value)" class="bg-black border border-gray-700 text-gray-300 rounded-lg px-2 py-2 text-sm font-mono w-full">
+                                <option value="54">🇦🇷 +54</option>
+                                <option value="591">🇧🇴 +591</option>
+                                <option value="56">🇨🇱 +56</option>
+                                <option value="57">🇨🇴 +57</option>
+                                <option value="593">🇪🇨 +593</option>
+                                <option value="595">🇵🇾 +595</option>
+                                <option value="51">🇵🇪 +51</option>
+                                <option value="598">🇺🇾 +598</option>
+                                <option value="58">🇻🇪 +58</option>
+                                <option value="55">🇧🇷 +55</option>
+                                <option value="34">🇪🇸 +34</option>
+                                <option value="1">🇺🇸 +1</option>
+                                <option value="__otro__">✏️ Otro...</option>
+                            </select>
+                            <input type="number" id="cliente-wsp-prefijo-custom" placeholder="Ej: 44" min="1" max="999"
+                                oninput="sincronizarPrefijoCustom()"
+                                class="hidden bg-black border border-purple-700 text-white rounded-lg px-2 py-1 text-sm font-mono w-full" style="appearance:textfield">
+                        </div>
                         <input type="tel" id="cliente-wsp" placeholder="WhatsApp (sin 0 ni 15)" autocomplete="off"
                             oninput="recalcularTotalEfectivo(); calcularVuelto(); validarWspRepetido();"
                             class="flex-1 bg-black border border-gray-700 text-white rounded-lg p-2 text-sm placeholder-gray-600">
@@ -1148,11 +1154,35 @@
         var wspRepetido = false;
         var wspCheckTimer = null;
 
+        function togglePrefijoCustm(val) {
+            var inp = document.getElementById('cliente-wsp-prefijo-custom');
+            if (val === '__otro__') {
+                inp.classList.remove('hidden');
+                inp.focus();
+            } else {
+                inp.classList.add('hidden');
+                inp.value = '';
+            }
+        }
+
+        function sincronizarPrefijoCustom() {
+            // No hace falta nada extra; obtenerTelCompleto() lee el input directo
+        }
+
         // Devuelve el número completo con prefijo de país para WSP
         function obtenerTelCompleto() {
             var num = (document.getElementById('cliente-wsp') ? document.getElementById('cliente-wsp').value : '').replace(/\D/g,'').trim();
             if (!num) return '';
-            var prefijo = (document.getElementById('cliente-wsp-prefijo') ? document.getElementById('cliente-wsp-prefijo').value : '54') || '54';
+            var sel = document.getElementById('cliente-wsp-prefijo');
+            var prefijo;
+            if (sel && sel.value === '__otro__') {
+                // Usar el input manual; si está vacío, sin prefijo
+                var customVal = (document.getElementById('cliente-wsp-prefijo-custom') ? document.getElementById('cliente-wsp-prefijo-custom').value : '').replace(/\D/g,'').trim();
+                prefijo = customVal || '';
+            } else {
+                prefijo = (sel ? sel.value : '54') || '54';
+            }
+            if (!prefijo) return num;
             // Evitar doble prefijo si el usuario ya lo escribió
             if (num.startsWith(prefijo)) return num;
             return prefijo + num;
