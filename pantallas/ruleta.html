@@ -759,12 +759,13 @@
             document.getElementById('res-pct').textContent = pct + '%';
             document.getElementById('res-codigo').textContent = codigo;
 
-            const tel = datosCandidato.telefono;
-            const nombre = datosCandidato.nombre.split(' ')[0];
-            const msg = '🎡 ¡Felicitaciones ' + nombre + '!\n\nGanaste un *' + pct + '% de descuento* en tu próxima compra en Portal del Viento.\n\n🎟️ Tu código: *' + codigo + '*\n\nPresentalo al pagar (un solo uso). ¡Te esperamos!';
-            const numFmt = tel.startsWith('54') ? tel.replace(/^54/, '549') : tel;
+            const nombre = datosCandidato.nombre;
+            const telCliente = datosCandidato.telefono;
+            const msg = '🎡 Nuevo código de ruleta\n\nCliente: *' + nombre + '*\nTeléfono: *' + telCliente + '*\n\n🎟️ Código: *' + codigo + '*\nDescuento: *' + pct + '%*';
+            // Número del negocio (Argentina: 549 + número sin 0 ni 15)
+            const numNegocio = '5492616097667';
             document.getElementById('btn-enviar-wsp').onclick = function() {
-                window.open('https://wa.me/' + numFmt + '?text=' + encodeURIComponent(msg), '_blank');
+                window.open('https://wa.me/' + numNegocio + '?text=' + encodeURIComponent(msg), '_blank');
             };
 
             document.getElementById('panel-ruleta').style.display = 'none';
