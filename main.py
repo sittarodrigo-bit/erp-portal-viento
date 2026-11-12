@@ -5137,6 +5137,8 @@ class PosVenta(BaseModel):
     descuento_efectivo_pct: Optional[float] = None
     descuento_efectivo_monto: Optional[float] = None
     id_codigo_descuento: Optional[int] = None  # código de descuento single-use
+    id_codigo_ruleta: Optional[int] = None     # cupón generado por la ruleta
+    descuento_monto: Optional[float] = None
 
 # ---- LOCALES ----
 @app.get("/api/pos/analisis_horarios")
@@ -5718,6 +5720,17 @@ def pos_registrar_venta(venta: PosVenta):
                     SET usado = TRUE, id_venta_uso = %s, fecha_uso = NOW()
                     WHERE id = %s AND usado = FALSE
                 """, (vid, venta.id_codigo_descuento))
+            except Exception:
+                conn.rollback()
+                cur.execute("SELECT 1")
+        # Marcar cupón de ruleta como usado
+        if venta.id_codigo_ruleta:
+            try:
+                cur.execute("""
+                    UPDATE pos_codigos_descuento
+                    SET usado = TRUE, id_venta_uso = %s, fecha_uso = NOW()
+                    WHERE id = %s AND usado = FALSE
+                """, (vid, venta.id_codigo_ruleta))
             except Exception:
                 conn.rollback()
                 cur.execute("SELECT 1")
@@ -9826,6 +9839,29 @@ def ruleta_borrar_telefono(telefono: str):
         return {"ok": True, "eliminados": eliminados}
     except Exception as e:
         conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        conn.close()
+
+@app.get("/api/pos/cupon/validar")
+def validar_cupon_ruleta(codigo: str):
+    """Valida si un cupón generado por la ruleta es válido y no fue usado."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT id, codigo, descuento_pct, usado
+            FROM pos_codigos_descuento
+            WHERE UPPER(codigo) = UPPER(%s)
+        """, (codigo.strip(),))
+        row = cur.fetchone()
+        if not row:
+            return {"ok": True, "valido": False, "mensaje": "Cupón no encontrado"}
+        id_cod, cod, descuento_pct, usado = row
+        if usado:
+            return {"ok": True, "valido": False, "mensaje": "El cupón ya fue usado"}
+        return {"ok": True, "valido": True, "id_codigo": id_cod, "codigo": cod, "descuento_pct": descuento_pct}
+    except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         conn.close()
