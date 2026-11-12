@@ -9759,6 +9759,42 @@ def route_locales():
 def route_clientes_pos():
     return serve_html("clientes-pos.html")
 
+@app.delete("/api/pos/ruleta/giros")
+def ruleta_borrar_todos():
+    """Borra todos los registros de participantes de la ruleta (blanqueo total)."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM pos_ruleta_giros")
+        eliminados = cur.rowcount
+        conn.commit()
+        return {"ok": True, "eliminados": eliminados}
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        conn.close()
+
+@app.delete("/api/pos/ruleta/giros/telefono/{telefono}")
+def ruleta_borrar_telefono(telefono: str):
+    """Borra el registro de un teléfono específico para que pueda volver a participar."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        tel_norm = ''.join(c for c in telefono if c.isdigit())
+        cur.execute("""DELETE FROM pos_ruleta_giros
+            WHERE REGEXP_REPLACE(telefono, '[^0-9]', '', 'g') = %s""", (tel_norm,))
+        eliminados = cur.rowcount
+        conn.commit()
+        if eliminados == 0:
+            return {"ok": False, "mensaje": "No se encontró ese número en la ruleta."}
+        return {"ok": True, "eliminados": eliminados}
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        conn.close()
+
 @app.get("/ruleta")
 def route_ruleta():
     return serve_html("ruleta.html")
