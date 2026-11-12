@@ -5,7 +5,7 @@
 <script src="/static/auth.js"></script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Clientes POS | Portal del Viento</title>
+    <title>Ruleta — Participantes | Portal del Viento</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         .text-neon { color: #e4fc74; }
@@ -52,7 +52,7 @@
             <a href="/gastos"               class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">💸 Gastos</a>
 
             <p class="text-gray-600 text-xs font-bold uppercase px-4 pt-4 pb-1 tracking-widest">Sistema</p>
-            <a href="/clientes-pos"          class="block bg-gray-900 text-white py-2 px-4 rounded-lg border-l-4 border-neon font-medium">📲 Registros de clientes</a>
+            <a href="/clientes-pos"          class="block bg-gray-900 text-white py-2 px-4 rounded-lg border-l-4 border-neon font-medium">🎡 Ruleta — Participantes</a>
             <a href="/configuracion"         class="block hover:bg-gray-900 text-gray-400 hover:text-white py-2 px-4 rounded-lg transition">⚙️ Configuración</a>
         </nav>
         <div id="usuario-info" class="p-4 border-t border-gray-800 text-xs text-gray-500 text-center"></div>
@@ -62,47 +62,28 @@
         <header class="bg-gray-900 border-b border-gray-800 py-4 px-4 md:px-8 flex justify-between items-center shrink-0 gap-3">
             <div class="flex items-center gap-3 min-w-0">
                 <button onclick="abrirMenu()" class="md:hidden text-gray-300 text-2xl shrink-0">☰</button>
-                <h2 class="text-lg md:text-xl font-bold text-white truncate">📲 Registros de clientes</h2>
+                <h2 class="text-lg md:text-xl font-bold text-white truncate">🎡 Ruleta — Participantes</h2>
             </div>
             <div class="flex gap-2 shrink-0">
-                <button onclick="abrirGeneradorCodigos()" id="btn-generar" class="hidden bg-purple-700 hover:bg-purple-600 text-white font-bold px-4 py-2 rounded-lg text-sm">🎟️ Generar códigos (<span id="cnt-sel">0</span>)</button>
                 <button onclick="exportarCSV()" class="bg-neon text-black font-bold px-4 py-2 rounded-lg text-sm hover:bg-yellow-300">⬇ Exportar CSV</button>
             </div>
         </header>
 
         <div class="flex-1 overflow-y-auto p-4 md:p-8">
 
-            <!-- FILTROS -->
-            <div class="flex flex-wrap gap-3 mb-6">
-                <select id="filtro-local" onchange="cargarRegistros()"
-                    class="bg-black border border-gray-700 text-white rounded-lg px-3 py-2 text-sm">
-                    <option value="">Todos los locales</option>
-                </select>
-                <select id="filtro-dias" onchange="cargarRegistros()"
-                    class="bg-black border border-gray-700 text-white rounded-lg px-3 py-2 text-sm">
-                    <option value="7">Últimos 7 días</option>
-                    <option value="30" selected>Últimos 30 días</option>
-                    <option value="60">Últimos 60 días</option>
-                    <option value="90">Últimos 90 días</option>
-                    <option value="365">Último año</option>
-                </select>
-                <input type="text" id="filtro-buscar" oninput="filtrarTabla()" placeholder="Buscar nombre o teléfono..."
-                    class="bg-black border border-gray-700 text-white rounded-lg px-3 py-2 text-sm w-56 placeholder-gray-600">
-            </div>
-
             <!-- STATS -->
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6" id="stats-row">
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
                 <div class="bg-black border border-gray-800 rounded-xl p-4 text-center">
-                    <p class="text-gray-500 text-xs mb-1">Total registros</p>
+                    <p class="text-gray-500 text-xs mb-1">Total participantes</p>
                     <p id="stat-total" class="text-neon font-bold text-2xl">—</p>
                 </div>
                 <div class="bg-black border border-gray-800 rounded-xl p-4 text-center">
-                    <p class="text-gray-500 text-xs mb-1">Con WhatsApp</p>
-                    <p id="stat-wsp" class="text-green-400 font-bold text-2xl">—</p>
+                    <p class="text-gray-500 text-xs mb-1">Códigos usados</p>
+                    <p id="stat-usados" class="text-green-400 font-bold text-2xl">—</p>
                 </div>
                 <div class="bg-black border border-gray-800 rounded-xl p-4 text-center">
-                    <p class="text-gray-500 text-xs mb-1">Clientes únicos</p>
-                    <p id="stat-unicos" class="text-blue-400 font-bold text-2xl">—</p>
+                    <p class="text-gray-500 text-xs mb-1">Códigos sin usar</p>
+                    <p id="stat-sin-usar" class="text-yellow-400 font-bold text-2xl">—</p>
                 </div>
                 <div class="bg-black border border-gray-800 rounded-xl p-4 text-center">
                     <p class="text-gray-500 text-xs mb-1">Hoy</p>
@@ -114,8 +95,8 @@
             <div class="bg-black border border-gray-800 rounded-xl p-5 mb-6">
                 <div class="flex items-center justify-between mb-4">
                     <div>
-                        <h3 class="text-white font-bold text-sm">🎡 Ruleta — Gestión de participantes</h3>
-                        <p class="text-gray-500 text-xs mt-1">Blanqueá los registros para que puedan volver a girar</p>
+                        <h3 class="text-white font-bold text-sm">🗑️ Blanqueo de participantes</h3>
+                        <p class="text-gray-500 text-xs mt-1">Eliminá registros para que el cliente pueda volver a girar</p>
                     </div>
                 </div>
                 <div class="flex flex-wrap gap-3">
@@ -137,6 +118,12 @@
                 <div id="ruleta-msg" class="hidden mt-3 text-sm rounded-lg px-3 py-2"></div>
             </div>
 
+            <!-- BUSCADOR -->
+            <div class="mb-4">
+                <input type="text" id="filtro-buscar" oninput="filtrarTabla()" placeholder="Buscar por nombre, teléfono o código..."
+                    class="bg-black border border-gray-700 text-white rounded-lg px-3 py-2 text-sm w-full md:w-80 placeholder-gray-600 focus:border-neon outline-none">
+            </div>
+
             <!-- TABLA -->
             <div class="bg-black border border-gray-800 rounded-xl overflow-hidden">
                 <div id="tabla-container">
@@ -147,46 +134,9 @@
         </div>
     </main>
 
-    <!-- MODAL GENERADOR CÓDIGOS -->
-    <div id="modal-codigos" class="hidden fixed inset-0 bg-black/80 items-center justify-center z-50 flex">
-        <div class="bg-gray-900 border border-purple-700 rounded-2xl p-6 w-full max-w-lg mx-4 shadow-2xl max-h-[90vh] overflow-y-auto">
-            <div class="flex justify-between items-center mb-4">
-                <h3 class="text-lg font-bold text-white border-l-4 border-purple-500 pl-2">🎟️ Generar códigos de descuento</h3>
-                <button onclick="cerrarGenerador()" class="text-gray-500 hover:text-white text-2xl leading-none">×</button>
-            </div>
-
-            <div class="bg-black border border-gray-800 rounded-xl p-4 mb-4">
-                <label class="block text-xs text-gray-500 font-bold mb-2">% de descuento para los códigos</label>
-                <div class="flex items-center gap-3">
-                    <input type="number" id="cod-descuento-pct" value="10" min="1" max="100" step="1"
-                        class="w-28 bg-gray-900 border border-purple-600 text-white rounded-lg p-3 font-bold text-xl text-center">
-                    <span class="text-gray-400 text-lg">%</span>
-                    <span class="text-gray-500 text-xs">Cada código habilita este descuento una vez en el POS</span>
-                </div>
-            </div>
-
-            <div class="bg-black border border-gray-800 rounded-xl p-4 mb-4">
-                <p class="text-xs text-gray-500 font-bold mb-2">Clientes seleccionados (<span id="modal-cnt-sel">0</span>)</p>
-                <div id="lista-sel-clientes" class="space-y-1 max-h-48 overflow-y-auto"></div>
-            </div>
-
-            <button onclick="generarCodigos()" id="btn-confirmar-gen" class="w-full bg-purple-700 hover:bg-purple-600 text-white font-bold py-3 rounded-xl text-sm mb-3">✨ Generar códigos</button>
-
-            <!-- Resultado -->
-            <div id="resultado-codigos" class="hidden">
-                <div class="flex justify-between items-center mb-2">
-                    <p class="text-xs text-gray-400 font-bold">Códigos generados — copiá y enviá por WhatsApp</p>
-                    <button onclick="copiarTodosCodigos()" class="text-xs text-neon hover:text-yellow-300 font-bold">📋 Copiar todos</button>
-                </div>
-                <div id="lista-codigos-gen" class="space-y-2"></div>
-            </div>
-        </div>
-    </div>
-
     <script>
         const API_URL = window.location.origin + "/api";
         var todosLosRegistros = [];
-        var seleccionados = new Set(); // Set de ids de clientes seleccionados
 
         function abrirMenu() {
             document.getElementById('sidebar').classList.remove('-translate-x-full');
@@ -197,40 +147,23 @@
             document.getElementById('menu-backdrop').classList.add('hidden');
         }
 
-        async function cargarLocales() {
-            try {
-                var data = await fetch(API_URL + '/pos/locales').then(r => r.json());
-                var sel = document.getElementById('filtro-local');
-                (data || []).forEach(function(l) {
-                    var opt = document.createElement('option');
-                    opt.value = l.id;
-                    opt.textContent = l.nombre;
-                    sel.appendChild(opt);
-                });
-            } catch(e) {}
-        }
-
         async function cargarRegistros() {
-            var idLocal = document.getElementById('filtro-local').value;
-            var dias = document.getElementById('filtro-dias').value || 30;
-            var url = API_URL + '/pos/clientes_descuento?dias=' + dias;
-            if (idLocal) url += '&id_local=' + idLocal;
             document.getElementById('tabla-container').innerHTML = '<p class="text-gray-500 text-center py-12">Cargando...</p>';
             try {
-                var data = await fetch(url).then(r => r.json());
-                todosLosRegistros = data || [];
+                var res = await fetch(API_URL + '/pos/ruleta/giros').then(r => r.json());
+                todosLosRegistros = (res.data || []);
                 actualizarStats(todosLosRegistros);
                 filtrarTabla();
             } catch(e) {
-                document.getElementById('tabla-container').innerHTML = '<p class="text-red-400 text-center py-12">Error al cargar.</p>';
+                document.getElementById('tabla-container').innerHTML = '<p class="text-red-400 text-center py-12">Error al cargar los registros.</p>';
             }
         }
 
         function actualizarStats(rows) {
             document.getElementById('stat-total').textContent = rows.length;
-            document.getElementById('stat-wsp').textContent = rows.filter(function(r){ return r.telefono; }).length;
-            var unicos = new Set(rows.map(function(r){ return (r.nombre||'').toLowerCase().trim(); })).size;
-            document.getElementById('stat-unicos').textContent = unicos;
+            var usados = rows.filter(function(r){ return r.usado; }).length;
+            document.getElementById('stat-usados').textContent = usados;
+            document.getElementById('stat-sin-usar').textContent = rows.length - usados;
             var hoy = new Date().toISOString().slice(0,10);
             var cnt = rows.filter(function(r){ return (r.fecha||'').slice(0,10) === hoy; }).length;
             document.getElementById('stat-hoy').textContent = cnt;
@@ -241,202 +174,62 @@
             var rows = buscar
                 ? todosLosRegistros.filter(function(r){
                     return (r.nombre||'').toLowerCase().includes(buscar) ||
-                           (r.telefono||'').includes(buscar);
+                           (r.telefono||'').includes(buscar) ||
+                           (r.codigo||'').toLowerCase().includes(buscar);
                   })
                 : todosLosRegistros;
             renderTabla(rows);
         }
 
-        function actualizarBotonGenerar() {
-            var cnt = seleccionados.size;
-            var btn = document.getElementById('btn-generar');
-            document.getElementById('cnt-sel').textContent = cnt;
-            btn.classList.toggle('hidden', cnt === 0);
-        }
-
-        function toggleSeleccion(id, checked) {
-            if (checked) seleccionados.add(id);
-            else seleccionados.delete(id);
-            actualizarBotonGenerar();
-        }
-
-        function toggleTodos(checked, ids) {
-            ids.forEach(function(id) {
-                if (checked) seleccionados.add(id);
-                else seleccionados.delete(id);
-            });
-            actualizarBotonGenerar();
-            // actualizar checkboxes individuales
-            ids.forEach(function(id) {
-                var cb = document.getElementById('chk-' + id);
-                if (cb) cb.checked = checked;
-            });
-        }
-
         function renderTabla(rows) {
             if (!rows.length) {
                 document.getElementById('tabla-container').innerHTML =
-                    '<p class="text-gray-500 text-center py-12">Sin registros para el filtro seleccionado.</p>';
+                    '<p class="text-gray-500 text-center py-12">Sin participantes registrados.</p>';
                 return;
             }
 
-            // Agrupar por local
-            var porLocal = {};
+            var html = '<table class="w-full text-sm">';
+            html += '<thead><tr class="text-gray-500 text-xs border-b border-gray-800 bg-gray-900">';
+            html += '<th class="text-left px-4 py-3 font-semibold">Nombre</th>';
+            html += '<th class="text-left px-4 py-3 font-semibold">Teléfono</th>';
+            html += '<th class="text-left px-4 py-3 font-semibold">Código</th>';
+            html += '<th class="text-left px-4 py-3 font-semibold hidden md:table-cell">Descuento</th>';
+            html += '<th class="text-left px-4 py-3 font-semibold hidden md:table-cell">Estado</th>';
+            html += '<th class="text-left px-4 py-3 font-semibold hidden lg:table-cell">Fecha</th>';
+            html += '</tr></thead><tbody>';
+
             rows.forEach(function(r) {
-                var key = r.nombre_local || ('Local #' + r.id_local);
-                if (!porLocal[key]) porLocal[key] = [];
-                porLocal[key].push(r);
+                var fecha = r.fecha ? r.fecha.replace('T',' ').substring(0,16) : '—';
+                var tel = r.telefono || '';
+                var telLink = tel
+                    ? '<a href="https://wa.me/549' + tel.replace(/^0+/,'') + '" target="_blank" class="text-green-400 hover:text-green-300 font-mono">' + formatTel(tel) + '</a>'
+                    : '<span class="text-gray-600">—</span>';
+                var codigoBadge = r.codigo
+                    ? '<span class="font-mono font-bold text-purple-400 tracking-widest">' + r.codigo + '</span>'
+                    : '<span class="text-gray-600">—</span>';
+                var descuento = r.descuento_pct != null
+                    ? '<span class="text-neon font-bold">' + r.descuento_pct + '%</span>'
+                    : '<span class="text-gray-600">—</span>';
+                var estado = r.usado
+                    ? '<span class="bg-green-900 text-green-300 text-xs font-bold px-2 py-0.5 rounded-full">Usado</span>'
+                    : '<span class="bg-yellow-900 text-yellow-300 text-xs font-bold px-2 py-0.5 rounded-full">Sin usar</span>';
+
+                html += '<tr class="border-b border-gray-900 hover:bg-gray-900/50">';
+                html += '<td class="px-4 py-3 text-white font-medium">' + (r.nombre || '—') + '</td>';
+                html += '<td class="px-4 py-3">' + telLink + '</td>';
+                html += '<td class="px-4 py-3">' + codigoBadge + '</td>';
+                html += '<td class="px-4 py-3 hidden md:table-cell">' + descuento + '</td>';
+                html += '<td class="px-4 py-3 hidden md:table-cell">' + estado + '</td>';
+                html += '<td class="px-4 py-3 text-gray-400 hidden lg:table-cell text-xs">' + fecha + '</td>';
+                html += '</tr>';
             });
 
-            var html = '';
-            Object.keys(porLocal).forEach(function(local) {
-                var lista = porLocal[local];
-                var idsLocal = lista.map(function(r){ return r.id; });
-                var idsJson = JSON.stringify(idsLocal).replace(/"/g,'&quot;');
-                html += '<div class="border-b border-gray-800 last:border-b-0">';
-                html += '<div class="flex items-center justify-between px-5 py-3 bg-gray-900">';
-                html += '<div class="flex items-center gap-3">';
-                html += '<input type="checkbox" title="Seleccionar todos de este local" onchange="toggleTodos(this.checked,' + idsJson + ')" class="w-4 h-4 accent-purple-500 cursor-pointer">';
-                html += '<span class="text-neon font-bold text-sm">🏬 ' + local + '</span>';
-                html += '</div>';
-                html += '<span class="text-gray-500 text-xs">' + lista.length + ' registro' + (lista.length !== 1 ? 's' : '') + '</span>';
-                html += '</div>';
-                html += '<table class="w-full text-sm">';
-                html += '<thead><tr class="text-gray-500 text-xs border-b border-gray-800">';
-                html += '<th class="px-4 py-2 w-8"></th>';
-                html += '<th class="text-left px-3 py-2 font-semibold">Nombre</th>';
-                html += '<th class="text-left px-4 py-2 font-semibold">WhatsApp</th>';
-                html += '<th class="text-left px-4 py-2 font-semibold hidden md:table-cell">Cajero</th>';
-                html += '<th class="text-left px-4 py-2 font-semibold hidden md:table-cell">Fecha</th>';
-                html += '<th class="text-left px-4 py-2 font-semibold hidden lg:table-cell">Venta #</th>';
-                html += '</tr></thead><tbody>';
-
-                lista.forEach(function(r) {
-                    var fecha = r.fecha ? r.fecha.replace('T',' ').substring(0,16) : '—';
-                    var wsp = r.telefono || '';
-                    var wspLink = wsp
-                        ? '<a href="https://wa.me/549' + wsp.replace(/^0+/,'') + '" target="_blank" class="text-green-400 hover:text-green-300 font-mono">' + formatWsp(wsp) + '</a>'
-                        : '<span class="text-gray-600">—</span>';
-                    var checked = seleccionados.has(r.id) ? 'checked' : '';
-                    html += '<tr class="border-b border-gray-900 hover:bg-gray-900/50">';
-                    html += '<td class="px-4 py-3 text-center"><input type="checkbox" id="chk-' + r.id + '" ' + checked + ' onchange="toggleSeleccion(' + r.id + ',this.checked)" class="w-4 h-4 accent-purple-500 cursor-pointer"></td>';
-                    html += '<td class="px-3 py-3 text-white font-medium">' + (r.nombre || '—') + '</td>';
-                    html += '<td class="px-4 py-3">' + wspLink + '</td>';
-                    html += '<td class="px-4 py-3 text-gray-400 hidden md:table-cell">' + (r.nombre_cajero || '—') + '</td>';
-                    html += '<td class="px-4 py-3 text-gray-400 hidden md:table-cell text-xs">' + fecha + '</td>';
-                    html += '<td class="px-4 py-3 text-gray-600 hidden lg:table-cell text-xs">' + (r.id_venta || '—') + '</td>';
-                    html += '</tr>';
-                });
-                html += '</tbody></table></div>';
-            });
-
+            html += '</tbody></table>';
+            html += '<div class="px-4 py-3 border-t border-gray-800 text-xs text-gray-600">' + rows.length + ' participante' + (rows.length !== 1 ? 's' : '') + '</div>';
             document.getElementById('tabla-container').innerHTML = html;
         }
 
-        // ── GENERADOR DE CÓDIGOS ─────────────────────────────────
-        function abrirGeneradorCodigos() {
-            if (!seleccionados.size) return;
-            var pct = document.getElementById('descuento-global-pct');
-            // pre-cargar % del primer local si existe
-            document.getElementById('resultado-codigos').classList.add('hidden');
-            document.getElementById('lista-codigos-gen').innerHTML = '';
-            document.getElementById('modal-cnt-sel').textContent = seleccionados.size;
-
-            // Listar clientes seleccionados
-            var html = '';
-            todosLosRegistros.filter(function(r){ return seleccionados.has(r.id); }).forEach(function(r){
-                var wsp = r.telefono ? formatWsp(r.telefono) : 'sin WhatsApp';
-                html += '<div class="flex items-center gap-2 text-sm py-1 border-b border-gray-800">';
-                html += '<span class="text-white font-medium flex-1">' + (r.nombre||'—') + '</span>';
-                html += '<span class="text-green-400 text-xs font-mono">' + wsp + '</span>';
-                html += '</div>';
-            });
-            document.getElementById('lista-sel-clientes').innerHTML = html;
-            document.getElementById('modal-codigos').classList.remove('hidden');
-        }
-
-        function cerrarGenerador() {
-            document.getElementById('modal-codigos').classList.add('hidden');
-        }
-
-        function generarCodigoAleatorio() {
-            var chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-            var code = '';
-            for (var i = 0; i < 8; i++) code += chars[Math.floor(Math.random() * chars.length)];
-            return code;
-        }
-
-        async function generarCodigos() {
-            var pct = parseInt(document.getElementById('cod-descuento-pct').value) || 10;
-            if (pct < 1 || pct > 100) { alert('El descuento debe estar entre 1 y 100%'); return; }
-
-            var clientes = todosLosRegistros.filter(function(r){ return seleccionados.has(r.id); });
-            var btn = document.getElementById('btn-confirmar-gen');
-            btn.disabled = true; btn.textContent = 'Generando...';
-
-            try {
-                var res = await fetch(API_URL + '/pos/codigos_descuento/generar', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({
-                        ids_clientes: clientes.map(function(r){ return r.id; }),
-                        descuento_pct: pct
-                    })
-                }).then(r => r.json());
-
-                var codigos = res.codigos || [];
-                var html = '';
-                codigos.forEach(function(c) {
-                    var cliente = clientes.find(function(r){ return r.id === c.id_cliente; });
-                    var nombre = cliente ? (cliente.nombre || '—') : '—';
-                    var wsp = cliente ? (cliente.telefono || '') : '';
-                    var wspNum = wsp ? '549' + wsp.replace(/^0+/,'') : '';
-                    var msg = encodeURIComponent('🎟️ Hola ' + nombre + '! Acá tenés tu código de descuento: *' + c.codigo + '* — ' + pct + '% off en tu próxima compra en efectivo. ¡Usalo en caja! 🛍️');
-                    var wspLink = wspNum ? 'https://wa.me/' + wspNum + '?text=' + msg : '';
-
-                    html += '<div class="bg-black border border-gray-800 rounded-xl p-3 flex items-center justify-between gap-3">';
-                    html += '<div>';
-                    html += '<p class="text-white text-sm font-bold">' + nombre + '</p>';
-                    html += '<p class="text-purple-400 font-mono font-bold text-lg tracking-widest">' + c.codigo + '</p>';
-                    html += '<p class="text-gray-500 text-xs">' + pct + '% descuento · 1 uso</p>';
-                    html += '</div>';
-                    html += '<div class="flex gap-2">';
-                    if (wspLink) {
-                        html += '<a href="' + wspLink + '" target="_blank" class="bg-green-700 hover:bg-green-600 text-white font-bold px-3 py-2 rounded-lg text-xs">📲 Enviar</a>';
-                    }
-                    html += '<button onclick="copiarCodigo(\'' + c.codigo + '\')" class="border border-gray-700 hover:border-neon text-gray-400 hover:text-neon font-bold px-3 py-2 rounded-lg text-xs">📋</button>';
-                    html += '</div>';
-                    html += '</div>';
-                });
-
-                document.getElementById('lista-codigos-gen').innerHTML = html;
-                document.getElementById('resultado-codigos').classList.remove('hidden');
-            } catch(e) {
-                alert('Error al generar los códigos.');
-            } finally {
-                btn.disabled = false; btn.textContent = '✨ Generar códigos';
-            }
-        }
-
-        function copiarCodigo(codigo) {
-            navigator.clipboard.writeText(codigo).catch(function(){
-                var ta = document.createElement('textarea');
-                ta.value = codigo; document.body.appendChild(ta); ta.select();
-                document.execCommand('copy'); document.body.removeChild(ta);
-            });
-        }
-
-        function copiarTodosCodigos() {
-            var divs = document.querySelectorAll('#lista-codigos-gen .font-mono');
-            var txt = Array.from(divs).map(function(d){ return d.textContent; }).join('\n');
-            navigator.clipboard.writeText(txt).catch(function(){
-                var ta = document.createElement('textarea');
-                ta.value = txt; document.body.appendChild(ta); ta.select();
-                document.execCommand('copy'); document.body.removeChild(ta);
-            });
-        }
-
-        function formatWsp(tel) {
+        function formatTel(tel) {
             var t = tel.replace(/\D/g,'');
             if (t.length === 10) return t.slice(0,2) + ' ' + t.slice(2,6) + '-' + t.slice(6);
             if (t.length === 11) return t.slice(0,3) + ' ' + t.slice(3,7) + '-' + t.slice(7);
@@ -445,20 +238,21 @@
 
         function exportarCSV() {
             if (!todosLosRegistros.length) { alert('No hay datos para exportar.'); return; }
-            var cols = ['nombre','telefono','nombre_local','nombre_cajero','fecha','id_venta'];
-            var headers = ['Nombre','WhatsApp','Local','Cajero','Fecha','Venta #'];
+            var cols = ['nombre','telefono','codigo','descuento_pct','usado','fecha'];
+            var headers = ['Nombre','Teléfono','Código','Descuento %','Usado','Fecha'];
             var csv = headers.join(',') + '\n';
             todosLosRegistros.forEach(function(r) {
                 csv += cols.map(function(c){
                     var v = (r[c] != null ? String(r[c]) : '');
                     if (c === 'fecha') v = v.replace('T',' ').substring(0,16);
+                    if (c === 'usado') v = v === 'true' ? 'Sí' : 'No';
                     return '"' + v.replace(/"/g,'""') + '"';
                 }).join(',') + '\n';
             });
             var blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
             var url = URL.createObjectURL(blob);
             var a = document.createElement('a');
-            a.href = url; a.download = 'clientes_pos.csv'; a.click();
+            a.href = url; a.download = 'ruleta_participantes.csv'; a.click();
             URL.revokeObjectURL(url);
         }
 
@@ -477,8 +271,11 @@
             if (!confirm('¿Borrar el registro de ' + tel + ' en la ruleta?')) return;
             try {
                 var res = await fetch(API_URL + '/pos/ruleta/giros/telefono/' + tel, { method: 'DELETE' }).then(r => r.json());
-                mostrarMsgRuleta(res.ok ? ('✅ ' + (res.eliminados || 1) + ' registro eliminado. Puede volver a girar.') : ('⚠️ ' + res.mensaje), res.ok);
-                if (res.ok) document.getElementById('inp-tel-ruleta').value = '';
+                mostrarMsgRuleta(res.ok ? ('✅ Registro eliminado. Puede volver a girar.') : ('⚠️ ' + res.mensaje), res.ok);
+                if (res.ok) {
+                    document.getElementById('inp-tel-ruleta').value = '';
+                    cargarRegistros();
+                }
             } catch(e) {
                 mostrarMsgRuleta('Error de conexión.', false);
             }
@@ -489,13 +286,13 @@
             try {
                 var res = await fetch(API_URL + '/pos/ruleta/giros', { method: 'DELETE' }).then(r => r.json());
                 mostrarMsgRuleta(res.ok ? ('✅ ' + res.eliminados + ' registros eliminados. Todos pueden volver a girar.') : 'Error al borrar.', res.ok);
+                if (res.ok) cargarRegistros();
             } catch(e) {
                 mostrarMsgRuleta('Error de conexión.', false);
             }
         }
 
         // Init
-        cargarLocales();
         cargarRegistros();
     </script>
 </body>
