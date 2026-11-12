@@ -9758,6 +9758,10 @@ def route_locales():
 def route_clientes_pos():
     return serve_html("clientes-pos.html")
 
+@app.get("/ruleta")
+def route_ruleta():
+    return serve_html("ruleta.html")
+
 @app.get("/analisis-horarios")
 def route_analisis_horarios():
     return serve_html("analisis_horarios.html")
