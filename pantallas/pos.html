@@ -167,6 +167,21 @@
                 <input type="number" id="cobro-paga-con" oninput="calcularVuelto()" class="w-full bg-black border border-gray-700 text-white rounded-lg p-3 text-lg text-center">
                 <p class="text-right text-sm mt-1">Vuelto: <span id="cobro-vuelto" class="text-neon font-bold">$ 0</span></p>
             </div>
+            <!-- CUPÓN RULETA -->
+            <div class="mb-4">
+                <label class="block text-xs text-gray-500 font-bold mb-1">🎡 Cupón de ruleta (opcional)</label>
+                <div class="flex gap-2">
+                    <input type="text" id="cobro-cupon" placeholder="Ej: A742" maxlength="4"
+                           oninput="this.value=this.value.toUpperCase(); limpiarCupon();"
+                           class="flex-1 bg-black border border-gray-700 focus:border-neon text-white rounded-lg p-3 text-sm font-mono tracking-widest uppercase outline-none">
+                    <button onclick="validarCupon()" id="btn-validar-cupon"
+                            class="bg-gray-800 hover:bg-gray-700 border border-gray-600 text-gray-300 hover:text-white font-bold px-4 rounded-lg text-sm">
+                        Validar
+                    </button>
+                </div>
+                <div id="cupon-estado" class="hidden mt-2 rounded-lg p-2 text-sm font-bold text-center"></div>
+            </div>
+
             <button onclick="confirmarVenta()" id="btn-confirmar-venta" class="w-full bg-green-600 hover:bg-green-500 text-white font-bold py-4 rounded-xl transition text-lg disabled:opacity-40" disabled>✓ Confirmar e imprimir ticket</button>
         </div>
     </div>
@@ -841,6 +856,9 @@
             document.getElementById('cobro-vuelto').textContent = '$ 0';
             document.getElementById('btn-confirmar-venta').disabled = true;
             document.querySelectorAll('.metodo-btn').forEach(function(b){ b.classList.remove('border-neon','bg-neon','text-black'); b.classList.add('border-gray-700'); });
+            // Limpiar cupón ruleta
+            document.getElementById('cobro-cupon').value = '';
+            limpiarCupon();
             document.getElementById('modal-cobro').classList.replace('modal-oculto','modal-visible');
         }
 
@@ -947,6 +965,50 @@
         var procesandoVenta = false;
         var descuentoEfectivoPct = 0; // % de descuento por efectivo (cargado del servidor)
 
+        // ── Cupón ruleta ──
+        var cuponValidado = null; // { codigo, id_codigo, descuento_pct } o null
+
+        function limpiarCupon() {
+            cuponValidado = null;
+            var est = document.getElementById('cupon-estado');
+            est.className = 'hidden mt-2 rounded-lg p-2 text-sm font-bold text-center';
+            est.textContent = '';
+        }
+
+        async function validarCupon() {
+            var codigo = (document.getElementById('cobro-cupon').value || '').trim().toUpperCase();
+            var est = document.getElementById('cupon-estado');
+            if (!codigo) { alert('Ingresá un código de cupón.'); return; }
+            est.className = 'mt-2 rounded-lg p-2 text-sm font-bold text-center bg-gray-800 text-gray-400';
+            est.textContent = 'Validando...';
+            try {
+                var r = await fetch(API_URL + '/pos/cupon/validar?codigo=' + encodeURIComponent(codigo)).then(function(x){ return x.json(); });
+                if (r.ok && r.valido) {
+                    cuponValidado = { codigo: r.codigo, id_codigo: r.id_codigo, descuento_pct: r.descuento_pct };
+                    est.className = 'mt-2 rounded-lg p-2 text-sm font-bold text-center bg-green-900/40 border border-green-700 text-green-400';
+                    var descMontoCupon = Math.round(totalCarrito() * r.descuento_pct / 100 * 100) / 100;
+                    est.textContent = '✅ ' + r.descuento_pct + '% de descuento — ahorrás $ ' + descMontoCupon.toLocaleString('es-AR');
+                    actualizarTotalCobro();
+                } else {
+                    cuponValidado = null;
+                    est.className = 'mt-2 rounded-lg p-2 text-sm font-bold text-center bg-red-900/40 border border-red-700 text-red-400';
+                    est.textContent = '❌ ' + (r.mensaje || 'Cupón inválido o ya usado');
+                    actualizarTotalCobro();
+                }
+            } catch(e) {
+                cuponValidado = null;
+                est.className = 'mt-2 rounded-lg p-2 text-sm font-bold text-center bg-red-900/40 border border-red-700 text-red-400';
+                est.textContent = '❌ Error al validar el cupón';
+            }
+        }
+
+        function actualizarTotalCobro() {
+            var base = totalCarrito();
+            var descCupon = cuponValidado ? Math.round(base * cuponValidado.descuento_pct / 100 * 100) / 100 : 0;
+            var totalMostrar = base - descCupon;
+            document.getElementById('cobro-total').textContent = '$ ' + totalMostrar.toLocaleString('es-AR');
+        }
+
         async function cargarConfigLocal() {
             if (!localActual) return;
             try {
@@ -982,7 +1044,12 @@
                 }, 0);
                 descuentoMonto = Math.round(baseConDescuento * descuentoEfectivoPct / 100 * 100) / 100;
             }
-            var total = Math.round((totalBase - descuentoMonto) * 100) / 100;
+            // Aplicar descuento del cupón de ruleta (sobre el total ya descontado por efectivo)
+            var descuentoCuponMonto = 0;
+            if (cuponValidado && cuponValidado.descuento_pct > 0) {
+                descuentoCuponMonto = Math.round(totalBase * cuponValidado.descuento_pct / 100 * 100) / 100;
+            }
+            var total = Math.round((totalBase - descuentoMonto - descuentoCuponMonto) * 100) / 100;
 
             // Expandir combos: el combo aparece en el ticket sin descontar stock;
             // cada componente genera una línea con id_producto real para el descuento
@@ -1009,17 +1076,20 @@
                         total: total,
                         descuento_efectivo_pct: descuentoEfectivoPct > 0 && metodoSel === 'Efectivo' ? descuentoEfectivoPct : 0,
                         descuento_efectivo_monto: descuentoMonto,
-                        descuento_monto: descuentoMonto,
+                        descuento_monto: descuentoMonto + descuentoCuponMonto,
                         detalle: detalle,
                         pagos: pagos,
                         id_empleado: (posUsuario ? posUsuario.id_empleado : null),
                         nombre_cajero: (posUsuario ? (posUsuario.nombre + ' ' + posUsuario.apellido) : null),
-                        ref_unica: refVentaActual
+                        ref_unica: refVentaActual,
+                        id_codigo_ruleta: cuponValidado ? cuponValidado.id_codigo : null,
+                        descuento_cupon_pct: cuponValidado ? cuponValidado.descuento_pct : 0,
+                        descuento_cupon_monto: descuentoCuponMonto
                     })
                 });
                 if (res.ok) {
                     var r = await res.json();
-                    ventaParaFacturar = { id_venta: r.id_venta, total: total, metodo: metodoPrincipal, detalle: detalle, descuento: descuentoMonto };
+                    ventaParaFacturar = { id_venta: r.id_venta, total: total, metodo: metodoPrincipal, detalle: detalle, descuento: descuentoMonto, descuento_cupon_pct: cuponValidado ? cuponValidado.descuento_pct : 0, descuento_cupon_monto: descuentoCuponMonto };
                     carrito = [];
                     refVentaActual = null;
                     procesandoVenta = false;
@@ -1047,11 +1117,13 @@
         }
 
         // ── TICKET 80mm ──
-        function construirDocTicket(idVenta, total, metodo, detalle, descuento) {
+        function construirDocTicket(idVenta, total, metodo, detalle, descuento, descCuponPct, descCuponMonto) {
             var jsPDF = window.jspdf.jsPDF;
             // ancho 80mm, alto dinámico
             var descMonto = parseFloat(descuento) || 0;
-            var alto = 60 + detalle.length * 6 + (descMonto > 0 ? 12 : 0) + 40;
+            var descCupon = parseFloat(descCuponMonto) || 0;
+            var descCuponPctVal = parseFloat(descCuponPct) || 0;
+            var alto = 60 + detalle.length * 6 + (descMonto > 0 ? 12 : 0) + (descCupon > 0 ? 12 : 0) + 40;
             var doc = new jsPDF({ unit:'mm', format:[80, alto] });
             var y = 8;
             doc.setFont('helvetica','bold'); doc.setFontSize(12);
@@ -1079,12 +1151,18 @@
                 doc.text('$' + sub.toLocaleString('es-AR'), 76, y, {align:'right'}); y += 5;
             });
             doc.line(4, y, 76, y); y += 5;
-            if (descMonto > 0) {
+            if (descMonto > 0 || descCupon > 0) {
                 doc.setFont('helvetica','normal'); doc.setFontSize(8);
-                var subtotal = total + descMonto;
+                var subtotal = total + descMonto + descCupon;
                 doc.text('Subtotal', 4, y); doc.text('$ ' + subtotal.toLocaleString('es-AR'), 76, y, {align:'right'}); y += 4.5;
-                doc.setFont('helvetica','italic');
-                doc.text('Dto. efectivo (' + descuentoEfectivoPct + '%)', 4, y); doc.text('- $ ' + descMonto.toLocaleString('es-AR'), 76, y, {align:'right'}); y += 4.5;
+                if (descMonto > 0) {
+                    doc.setFont('helvetica','italic');
+                    doc.text('Dto. efectivo (' + descuentoEfectivoPct + '%)', 4, y); doc.text('- $ ' + descMonto.toLocaleString('es-AR'), 76, y, {align:'right'}); y += 4.5;
+                }
+                if (descCupon > 0) {
+                    doc.setFont('helvetica','italic');
+                    doc.text('Dto. ruleta (' + descCuponPctVal + '%)', 4, y); doc.text('- $ ' + descCupon.toLocaleString('es-AR'), 76, y, {align:'right'}); y += 4.5;
+                }
             }
             doc.setFont('helvetica','bold'); doc.setFontSize(11);
             doc.text('TOTAL', 4, y); doc.text('$ ' + total.toLocaleString('es-AR'), 76, y, {align:'right'}); y += 6;
@@ -1095,8 +1173,8 @@
             return doc;
         }
 
-        function imprimirTicket(idVenta, total, metodo, detalle, descuento) {
-            var doc = construirDocTicket(idVenta, total, metodo, detalle, descuento);
+        function imprimirTicket(idVenta, total, metodo, detalle, descuento, descCuponPct, descCuponMonto) {
+            var doc = construirDocTicket(idVenta, total, metodo, detalle, descuento, descCuponPct, descCuponMonto);
             var url = URL.createObjectURL(doc.output('blob'));
             var w = window.open(url);
             if (w) { w.onload = function(){ try { w.print(); } catch(e){} }; }
@@ -1524,7 +1602,7 @@
 
         function imprimirTicketInterno() {
             if (ventaParaFacturar) {
-                imprimirTicket(ventaParaFacturar.id_venta, ventaParaFacturar.total, ventaParaFacturar.metodo, ventaParaFacturar.detalle, ventaParaFacturar.descuento);
+                imprimirTicket(ventaParaFacturar.id_venta, ventaParaFacturar.total, ventaParaFacturar.metodo, ventaParaFacturar.detalle, ventaParaFacturar.descuento, ventaParaFacturar.descuento_cupon_pct, ventaParaFacturar.descuento_cupon_monto);
             }
         }
 
@@ -1543,7 +1621,7 @@
                 'Pago: ' + (v.metodo || '') + '\n' +
                 '¡Gracias por su compra!';
             var tel = normalizarTelArg(document.getElementById('ticket-tel-cliente').value);
-            var doc = construirDocTicket(v.id_venta, v.total, v.metodo, v.detalle || [], v.descuento);
+            var doc = construirDocTicket(v.id_venta, v.total, v.metodo, v.detalle || [], v.descuento, v.descuento_cupon_pct, v.descuento_cupon_monto);
             var blob = doc ? doc.output('blob') : null;
             await compartirPdfWhatsapp(blob, 'ticket_' + String(v.id_venta).padStart(5,'0') + '.pdf', msg, tel);
         }
