@@ -167,69 +167,6 @@
                 <input type="number" id="cobro-paga-con" oninput="calcularVuelto()" class="w-full bg-black border border-gray-700 text-white rounded-lg p-3 text-lg text-center">
                 <p class="text-right text-sm mt-1">Vuelto: <span id="cobro-vuelto" class="text-neon font-bold">$ 0</span></p>
             </div>
-
-            <!-- REGISTRO CLIENTE EFECTIVO (solo cuando hay descuento activo) -->
-            <div id="panel-cliente-efectivo" class="hidden mb-4 bg-gray-900 border border-green-800 rounded-xl p-4">
-                <p class="text-green-400 font-bold text-sm mb-1">🎁 Descuento por efectivo</p>
-                <p class="text-gray-400 text-xs mb-3">Ingresá el WhatsApp del cliente para activar el descuento. Sin número, el precio es normal.</p>
-                <div class="space-y-2 mb-3">
-                    <input type="text" id="cliente-nombre" placeholder="Nombre del cliente" autocomplete="off"
-                        class="w-full bg-black border border-gray-700 text-white rounded-lg p-2 text-sm placeholder-gray-600">
-                    <div class="flex gap-2">
-                        <div class="flex flex-col gap-1" style="min-width:90px;max-width:100px">
-                            <select id="cliente-wsp-prefijo" onchange="togglePrefijoCustm(this.value)" class="bg-black border border-gray-700 text-gray-300 rounded-lg px-2 py-2 text-sm font-mono w-full">
-                                <option value="54">🇦🇷 +54</option>
-                                <option value="591">🇧🇴 +591</option>
-                                <option value="56">🇨🇱 +56</option>
-                                <option value="57">🇨🇴 +57</option>
-                                <option value="593">🇪🇨 +593</option>
-                                <option value="595">🇵🇾 +595</option>
-                                <option value="51">🇵🇪 +51</option>
-                                <option value="598">🇺🇾 +598</option>
-                                <option value="58">🇻🇪 +58</option>
-                                <option value="55">🇧🇷 +55</option>
-                                <option value="34">🇪🇸 +34</option>
-                                <option value="1">🇺🇸 +1</option>
-                                <option value="__otro__">✏️ Otro...</option>
-                            </select>
-                            <input type="number" id="cliente-wsp-prefijo-custom" placeholder="Ej: 44" min="1" max="999"
-                                oninput="sincronizarPrefijoCustom()"
-                                class="hidden bg-black border border-purple-700 text-white rounded-lg px-2 py-1 text-sm font-mono w-full" style="appearance:textfield">
-                        </div>
-                        <input type="tel" id="cliente-wsp" placeholder="WhatsApp (sin 0 ni 15)" autocomplete="off"
-                            oninput="recalcularTotalEfectivo(); calcularVuelto(); validarWspRepetido();"
-                            class="flex-1 bg-black border border-gray-700 text-white rounded-lg p-2 text-sm placeholder-gray-600">
-                    </div>
-                    <div id="wsp-repetido-aviso" class="hidden mt-1 bg-red-900/30 border border-red-700 rounded-lg px-3 py-2 text-xs text-red-400 font-bold">
-                        ⚠️ Este número ya recibió el descuento en este local. No aplica descuento.
-                    </div>
-                </div>
-                <div class="flex gap-2 mt-1">
-                    <button onclick="enviarTicketWsp()" id="btn-wsp-ticket"
-                        class="flex-1 bg-green-700 hover:bg-green-600 text-white font-bold py-2 rounded-lg text-sm transition flex items-center justify-center gap-2">
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-4 h-4 shrink-0"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.113.552 4.094 1.512 5.822L.057 23.405a.75.75 0 00.918.919l5.624-1.456A11.941 11.941 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 22c-1.925 0-3.73-.504-5.286-1.383l-.376-.214-3.908 1.013 1.013-3.863-.234-.389A9.955 9.955 0 012 12C2 6.477 6.477 2 12 2s10 4.477 10 10-4.477 10-10 10z"/></svg>
-                        Enviar WSP
-                    </button>
-                    <button onclick="continuarSinDescuento()"
-                        class="flex-1 border border-gray-600 hover:border-red-500 text-gray-400 hover:text-red-400 font-bold py-2 rounded-lg text-sm transition">
-                        Sin descuento
-                    </button>
-                </div>
-            </div>
-
-            <!-- CÓDIGO DE DESCUENTO -->
-            <div class="mb-4">
-                <div class="flex items-center gap-2">
-                    <input type="text" id="cod-descuento-input" placeholder="🎟️ Código de descuento (opcional)"
-                        oninput="this.value=this.value.toUpperCase()"
-                        onblur="validarCodigoDescuento()"
-                        autocomplete="off"
-                        class="flex-1 bg-black border border-gray-700 focus:border-purple-500 text-white rounded-lg p-2 text-sm placeholder-gray-600 uppercase tracking-widest font-mono">
-                    <button onclick="validarCodigoDescuento()" class="bg-gray-800 hover:bg-purple-800 border border-gray-700 text-gray-300 hover:text-white px-3 py-2 rounded-lg text-sm font-bold">Aplicar</button>
-                </div>
-                <div id="cod-descuento-estado" class="hidden mt-1 px-3 py-2 rounded-lg text-xs font-bold"></div>
-            </div>
-
             <button onclick="confirmarVenta()" id="btn-confirmar-venta" class="w-full bg-green-600 hover:bg-green-500 text-white font-bold py-4 rounded-xl transition text-lg disabled:opacity-40" disabled>✓ Confirmar e imprimir ticket</button>
         </div>
     </div>
@@ -490,15 +427,8 @@
                     <p class="text-4xl mb-2">🎫</p>
                     <h3 class="text-lg font-bold text-white">Ticket interno</h3>
                 </div>
-                <div class="mb-3">
-                    <label class="block text-xs text-gray-500 font-bold mb-1">📱 WhatsApp del cliente (opcional)</label>
-                    <input type="tel" id="ticket-tel-cliente" inputmode="numeric" placeholder="Ej: 2615123456 (sin 0 ni 15)" class="w-full bg-black border border-gray-700 text-white rounded-lg p-3 text-sm">
-                </div>
-                <div class="grid grid-cols-2 gap-2">
-                    <button onclick="imprimirTicketInterno()" class="bg-gray-800 hover:bg-gray-700 border border-gray-600 text-white font-bold py-3 rounded-xl text-sm">🖨️ Imprimir</button>
-                    <button onclick="enviarTicketWhatsapp()" class="bg-green-700 hover:bg-green-600 text-white font-bold py-3 rounded-xl text-sm">📱 WhatsApp</button>
-                </div>
-                <button onclick="cerrarModales()" class="w-full text-gray-500 hover:text-white text-sm py-3 mt-2">Cerrar</button>
+                <button onclick="imprimirTicketInterno()" class="w-full bg-gray-800 hover:bg-gray-700 border border-gray-600 text-white font-bold py-3 rounded-xl text-sm mb-2">🖨️ Imprimir ticket</button>
+                <button onclick="cerrarModales()" class="w-full text-gray-500 hover:text-white text-sm py-3">Cerrar</button>
             </div>
         </div>
     </div>
@@ -540,16 +470,8 @@
                     <p id="afip-res-cae" class="text-neon font-bold text-xl tracking-wider"></p>
                     <p id="afip-res-vto" class="text-gray-500 text-xs mt-1"></p>
                 </div>
-                <div class="mb-3">
-                    <label class="block text-xs text-gray-500 font-bold mb-1">📱 WhatsApp del cliente (opcional)</label>
-                    <input type="tel" id="afip-tel-cliente" inputmode="numeric" placeholder="Ej: 2615123456 (sin 0 ni 15)" class="w-full bg-black border border-gray-700 text-white rounded-lg p-3 text-sm">
-                    <p class="text-gray-600 text-xs mt-1">Si lo dejás vacío, WhatsApp te deja elegir el contacto.</p>
-                </div>
-                <div class="grid grid-cols-2 gap-2">
-                    <button onclick="imprimirFacturaAfip()" class="bg-gray-800 hover:bg-gray-700 border border-gray-600 text-white font-bold py-3 rounded-xl text-sm">🖨️ Imprimir</button>
-                    <button onclick="enviarFacturaWhatsapp()" class="bg-green-700 hover:bg-green-600 text-white font-bold py-3 rounded-xl text-sm">📱 WhatsApp</button>
-                </div>
-                <button onclick="cerrarModales()" class="w-full text-gray-500 hover:text-white text-sm py-3 mt-2">Cerrar</button>
+                <button onclick="imprimirFacturaAfip()" class="w-full bg-gray-800 hover:bg-gray-700 border border-gray-600 text-white font-bold py-3 rounded-xl text-sm mb-2">🖨️ Imprimir factura</button>
+                <button onclick="cerrarModales()" class="w-full text-gray-500 hover:text-white text-sm py-3">Cerrar</button>
             </div>
         </div>
     </div>
@@ -919,14 +841,6 @@
             document.getElementById('cobro-vuelto').textContent = '$ 0';
             document.getElementById('btn-confirmar-venta').disabled = true;
             document.querySelectorAll('.metodo-btn').forEach(function(b){ b.classList.remove('border-neon','bg-neon','text-black'); b.classList.add('border-gray-700'); });
-            var pc = document.getElementById('panel-cliente-efectivo'); if (pc) pc.classList.add('hidden');
-            var cn = document.getElementById('cliente-nombre'); if (cn) cn.value = '';
-            var cw = document.getElementById('cliente-wsp'); if (cw) cw.value = '';
-            wspRepetido = false;
-            codigoDescuentoValido = null;
-            var codInput = document.getElementById('cod-descuento-input'); if (codInput) codInput.value = '';
-            var codEstado = document.getElementById('cod-descuento-estado'); if (codEstado) codEstado.classList.add('hidden');
-            var aviso = document.getElementById('wsp-repetido-aviso'); if (aviso) aviso.classList.add('hidden');
             document.getElementById('modal-cobro').classList.replace('modal-oculto','modal-visible');
         }
 
@@ -943,39 +857,24 @@
             document.getElementById('btn-confirmar-venta').disabled = false;
 
             // Aplicar descuento por efectivo
-            var panelCliente = document.getElementById('panel-cliente-efectivo');
-            if (metodo === 'Efectivo' && descuentoEfectivoPct > 0) {
-                if (panelCliente) panelCliente.classList.toggle('hidden', !registroClienteActivo);
-                recalcularTotalEfectivo(); // usa nombre para decidir si aplica descuento
-            } else {
-                var base = carrito.reduce(function(a,i){ return a + i.precio*i.cantidad; }, 0);
-                document.getElementById('cobro-total').textContent = '$ ' + base.toLocaleString('es-AR');
-                var descDiv = document.getElementById('cobro-descuento-efectivo');
-                if (descDiv) descDiv.classList.add('hidden');
-                if (panelCliente) panelCliente.classList.add('hidden');
-            }
-        }
-
-        // Recalcula el total mostrado en el modal de cobro según si hay nombre de cliente
-        function recalcularTotalEfectivo() {
-            if (metodoSel !== 'Efectivo' || descuentoEfectivoPct <= 0) return;
             var base = carrito.reduce(function(a,i){ return a + i.precio*i.cantidad; }, 0);
-            var wsp = document.getElementById('cliente-wsp') ? (document.getElementById('cliente-wsp').value||'').replace(/\D/g,'').trim() : '';
-            // Si registro obligatorio, solo aplica si hay WhatsApp válido y no es repetido
-            var aplicar = !registroClienteActivo || (wsp.length >= 8 && !wspRepetido);
             var descDiv = document.getElementById('cobro-descuento-efectivo');
-            if (aplicar) {
+            if (metodo === 'Efectivo' && descuentoEfectivoPct > 0) {
+                // Todos aplican descuento EXCEPTO los marcados con descuento_efectivo = true (excluidos)
                 var baseElegible = carrito.reduce(function(s,i){ return s + (!i.descuento_efectivo ? i.precio*i.cantidad : 0); }, 0);
                 var descMonto = Math.round(baseElegible * descuentoEfectivoPct / 100 * 100) / 100;
                 var totalFinal = base - descMonto;
                 document.getElementById('cobro-total').textContent = '$ ' + totalFinal.toLocaleString('es-AR');
-                if (descDiv && descMonto > 0) {
-                    descDiv.classList.remove('hidden');
-                    document.getElementById('cobro-desc-original').textContent = '$ ' + base.toLocaleString('es-AR');
-                    document.getElementById('cobro-desc-ahorro').textContent = '- $ ' + descMonto.toLocaleString('es-AR') + ' (' + descuentoEfectivoPct + '%)';
-                } else if (descDiv) { descDiv.classList.add('hidden'); }
+                if (descDiv) {
+                    if (descMonto > 0) {
+                        descDiv.classList.remove('hidden');
+                        document.getElementById('cobro-desc-original').textContent = '$ ' + base.toLocaleString('es-AR');
+                        document.getElementById('cobro-desc-ahorro').textContent = '- $ ' + descMonto.toLocaleString('es-AR') + ' (' + descuentoEfectivoPct + '%)';
+                    } else {
+                        descDiv.classList.add('hidden');
+                    }
+                }
             } else {
-                // Sin nombre → precio normal, mostrar aviso
                 document.getElementById('cobro-total').textContent = '$ ' + base.toLocaleString('es-AR');
                 if (descDiv) descDiv.classList.add('hidden');
             }
@@ -1033,16 +932,13 @@
 
         function calcularVuelto() {
             var pagaCon = parseFloat(document.getElementById('cobro-paga-con').value) || 0;
+            // Usar el total con descuento efectivo si corresponde
             var base = totalCarrito();
             var totalConDesc = base;
             if (metodoSel === 'Efectivo' && descuentoEfectivoPct > 0) {
-                var wsp = document.getElementById('cliente-wsp') ? (document.getElementById('cliente-wsp').value||'').replace(/\D/g,'').trim() : '';
-                var aplicar = !registroClienteActivo || (wsp.length >= 8 && !wspRepetido);
-                if (aplicar) {
-                    var baseElegible = carrito.reduce(function(s,i){ return s + (!i.descuento_efectivo ? i.precio*i.cantidad : 0); }, 0);
-                    var descMonto = Math.round(baseElegible * descuentoEfectivoPct / 100 * 100) / 100;
-                    totalConDesc = base - descMonto;
-                }
+                var baseElegible = carrito.reduce(function(s,i){ return s + (!i.descuento_efectivo ? i.precio*i.cantidad : 0); }, 0);
+                var descMonto = Math.round(baseElegible * descuentoEfectivoPct / 100 * 100) / 100;
+                totalConDesc = base - descMonto;
             }
             var vuelto = pagaCon - totalConDesc;
             document.getElementById('cobro-vuelto').textContent = '$ ' + (vuelto > 0 ? vuelto.toLocaleString('es-AR') : '0');
@@ -1050,183 +946,13 @@
 
         var procesandoVenta = false;
         var descuentoEfectivoPct = 0; // % de descuento por efectivo (cargado del servidor)
-        var registroClienteActivo = false; // si el local tiene activo el flujo de registro de cliente
-        var codigoDescuentoValido = null; // {id, descuento_pct, codigo} si hay código válido aplicado
-
-        async function validarCodigoDescuento() {
-            var input = document.getElementById('cod-descuento-input');
-            var estado = document.getElementById('cod-descuento-estado');
-            var codigo = (input.value || '').trim().toUpperCase();
-            if (!codigo) {
-                codigoDescuentoValido = null;
-                estado.classList.add('hidden');
-                recalcularTotalConCodigo();
-                return;
-            }
-            try {
-                var res = await fetch(API_URL + '/pos/codigos_descuento/validar?codigo=' + encodeURIComponent(codigo)).then(r => r.json());
-                if (res.valido) {
-                    codigoDescuentoValido = { id: res.id, descuento_pct: res.descuento_pct, codigo: codigo };
-                    estado.className = 'mt-1 px-3 py-2 rounded-lg text-xs font-bold bg-purple-900/30 border border-purple-600 text-purple-300';
-                    estado.textContent = '✅ Código válido — ' + res.descuento_pct + '% de descuento aplicado';
-                    estado.classList.remove('hidden');
-                } else {
-                    codigoDescuentoValido = null;
-                    estado.className = 'mt-1 px-3 py-2 rounded-lg text-xs font-bold bg-red-900/30 border border-red-700 text-red-400';
-                    estado.textContent = '❌ ' + (res.mensaje || 'Código inválido');
-                    estado.classList.remove('hidden');
-                }
-            } catch(e) {
-                codigoDescuentoValido = null;
-            }
-            recalcularTotalConCodigo();
-        }
-
-        function recalcularTotalConCodigo() {
-            // Recalcula el total mostrado en el modal considerando el código de descuento
-            var base = totalCarrito();
-            var descDiv = document.getElementById('cobro-descuento-efectivo');
-            var descOriginal = document.getElementById('cobro-desc-original');
-            var descAhorro = document.getElementById('cobro-desc-ahorro');
-
-            if (codigoDescuentoValido) {
-                var descMonto = Math.round(base * codigoDescuentoValido.descuento_pct / 100 * 100) / 100;
-                var totalFinal = base - descMonto;
-                document.getElementById('cobro-total').textContent = '$ ' + totalFinal.toLocaleString('es-AR');
-                if (descDiv) {
-                    descDiv.classList.remove('hidden');
-                    if (descOriginal) descOriginal.textContent = '$ ' + base.toLocaleString('es-AR');
-                    if (descAhorro) descAhorro.textContent = '- $ ' + descMonto.toLocaleString('es-AR') + ' (' + codigoDescuentoValido.descuento_pct + '%)';
-                }
-            } else {
-                // Sin código → recalcular normal (efectivo con WSP o precio base)
-                recalcularTotalEfectivo();
-                calcularVuelto();
-            }
-        }
-
-        function enviarTicketWsp() {
-            var nombre = (document.getElementById('cliente-nombre').value || '').trim();
-            var wsp = (document.getElementById('cliente-wsp').value || '').replace(/\D/g,'').trim();
-            if (!nombre) { document.getElementById('cliente-nombre').focus(); return; }
-
-            // Construir texto del ticket para WhatsApp
-            var cajero = posUsuario ? (posUsuario.nombre + ' ' + posUsuario.apellido) : '';
-            var local = localActual ? localActual.nombre : '';
-            var base = carrito.reduce(function(a,i){ return a + i.precio*i.cantidad; }, 0);
-            var baseElegible = carrito.reduce(function(s,i){ return s + (!i.descuento_efectivo ? i.precio*i.cantidad : 0); }, 0);
-            var descMonto = descuentoEfectivoPct > 0 ? Math.round(baseElegible * descuentoEfectivoPct / 100 * 100) / 100 : 0;
-            var codigoDescMontoPrev = codigoDescuentoValido ? Math.round(base * codigoDescuentoValido.descuento_pct / 100 * 100) / 100 : 0;
-            var totalFinal = base - descMonto - codigoDescMontoPrev;
-
-            var lineas = ['🛒 *Tu ticket de compra*'];
-            if (local) lineas.push('📍 ' + local);
-            if (cajero) lineas.push('👤 Atendido por: ' + cajero);
-            lineas.push('');
-            carrito.forEach(function(i) {
-                lineas.push('• ' + i.nombre + ' x' + i.cantidad + ' — $ ' + (i.precio * i.cantidad).toLocaleString('es-AR'));
-            });
-            lineas.push('');
-            if (descMonto > 0 || codigoDescMontoPrev > 0) {
-                lineas.push('💲 Subtotal: $ ' + base.toLocaleString('es-AR'));
-                if (descMonto > 0) lineas.push('🏷️ Descuento efectivo (' + descuentoEfectivoPct + '%): - $ ' + descMonto.toLocaleString('es-AR'));
-                if (codigoDescMontoPrev > 0) lineas.push('🎟️ Código ' + codigoDescuentoValido.codigo + ' (' + codigoDescuentoValido.descuento_pct + '%): - $ ' + codigoDescMontoPrev.toLocaleString('es-AR'));
-            }
-            lineas.push('✅ *TOTAL: $ ' + totalFinal.toLocaleString('es-AR') + '*');
-            lineas.push('💵 Pago en efectivo');
-            lineas.push('');
-            lineas.push('Gracias ' + nombre + ' por tu compra 🙌');
-
-            var texto = lineas.join('\n');
-            var url;
-            if (wsp) {
-                var prefijoPais = (document.getElementById('cliente-wsp-prefijo') ? document.getElementById('cliente-wsp-prefijo').value : '54') || '54';
-                var num = wsp.replace(/^0+/, '');
-                // Para Argentina agregar el 9 de celular si no está
-                if (prefijoPais === '54' && !num.startsWith('9')) num = '9' + num;
-                url = 'https://wa.me/' + prefijoPais + num + '?text=' + encodeURIComponent(texto);
-            } else {
-                url = 'https://wa.me/?text=' + encodeURIComponent(texto);
-            }
-            window.open(url, '_blank');
-        }
-
-        var wspRepetido = false;
-        var wspCheckTimer = null;
-
-        function togglePrefijoCustm(val) {
-            var inp = document.getElementById('cliente-wsp-prefijo-custom');
-            if (val === '__otro__') {
-                inp.classList.remove('hidden');
-                inp.focus();
-            } else {
-                inp.classList.add('hidden');
-                inp.value = '';
-            }
-        }
-
-        function sincronizarPrefijoCustom() {
-            // No hace falta nada extra; obtenerTelCompleto() lee el input directo
-        }
-
-        // Devuelve el número completo con prefijo de país para WSP
-        function obtenerTelCompleto() {
-            var num = (document.getElementById('cliente-wsp') ? document.getElementById('cliente-wsp').value : '').replace(/\D/g,'').trim();
-            if (!num) return '';
-            var sel = document.getElementById('cliente-wsp-prefijo');
-            var prefijo;
-            if (sel && sel.value === '__otro__') {
-                // Usar el input manual; si está vacío, sin prefijo
-                var customVal = (document.getElementById('cliente-wsp-prefijo-custom') ? document.getElementById('cliente-wsp-prefijo-custom').value : '').replace(/\D/g,'').trim();
-                prefijo = customVal || '';
-            } else {
-                prefijo = (sel ? sel.value : '54') || '54';
-            }
-            if (!prefijo) return num;
-            // Evitar doble prefijo si el usuario ya lo escribió
-            if (num.startsWith(prefijo)) return num;
-            return prefijo + num;
-        }
-
-        function validarWspRepetido() {
-            var aviso = document.getElementById('wsp-repetido-aviso');
-            var wsp = (document.getElementById('cliente-wsp').value||'').replace(/\D/g,'').trim();
-            if (wsp.length < 8 || !localActual) {
-                wspRepetido = false;
-                if (aviso) aviso.classList.add('hidden');
-                return;
-            }
-            clearTimeout(wspCheckTimer);
-            wspCheckTimer = setTimeout(async function() {
-                try {
-                    var telCompleto = obtenerTelCompleto();
-                    var res = await fetch(API_URL + '/pos/clientes_descuento/check?telefono=' + encodeURIComponent(telCompleto) + '&id_local=' + localActual.id).then(r => r.json());
-                    wspRepetido = !!res.existe;
-                    if (aviso) aviso.classList.toggle('hidden', !wspRepetido);
-                    recalcularTotalEfectivo();
-                    calcularVuelto();
-                } catch(e) { wspRepetido = false; }
-            }, 500);
-        }
-
-        function continuarSinDescuento() {
-            // Limpiar WhatsApp y nombre → recalcula al precio normal
-            var cw = document.getElementById('cliente-wsp'); if (cw) cw.value = '';
-            var cn = document.getElementById('cliente-nombre'); if (cn) cn.value = '';
-            wspRepetido = false;
-            var aviso = document.getElementById('wsp-repetido-aviso'); if (aviso) aviso.classList.add('hidden');
-            var pc = document.getElementById('panel-cliente-efectivo'); if (pc) pc.classList.add('hidden');
-            recalcularTotalEfectivo();
-            calcularVuelto();
-        }
 
         async function cargarConfigLocal() {
             if (!localActual) return;
             try {
                 var res = await fetch(API_URL + '/locales/' + localActual.id + '/config').then(r => r.json());
                 descuentoEfectivoPct = parseFloat(res.descuento_efectivo_pct) || 0;
-                registroClienteActivo = !!res.registro_cliente_activo;
-            } catch(e) { descuentoEfectivoPct = 0; registroClienteActivo = false; }
+            } catch(e) { descuentoEfectivoPct = 0; }
         }
         async function confirmarVenta() {
             if (procesandoVenta) return;
@@ -1250,20 +976,11 @@
             var totalBase = totalCarrito();
             var descuentoMonto = 0;
             if (!modoDividido && metodoSel === 'Efectivo' && descuentoEfectivoPct > 0) {
-                var wspCliente = document.getElementById('cliente-wsp') ? (document.getElementById('cliente-wsp').value||'').replace(/\D/g,'').trim() : '';
-                var aplicarDesc = !registroClienteActivo || (wspCliente.length >= 8 && !wspRepetido);
-                if (aplicarDesc) {
-                    var baseConDescuento = carrito.reduce(function(s, i) {
-                        return s + (!i.descuento_efectivo ? i.precio * i.cantidad : 0);
-                    }, 0);
-                    descuentoMonto = Math.round(baseConDescuento * descuentoEfectivoPct / 100 * 100) / 100;
-                }
-            }
-            // Aplicar código de descuento (todos los medios de pago, single-use)
-            var codigoDescMonto = 0;
-            if (codigoDescuentoValido) {
-                codigoDescMonto = Math.round(totalBase * codigoDescuentoValido.descuento_pct / 100 * 100) / 100;
-                descuentoMonto += codigoDescMonto;
+                // Todos aplican descuento EXCEPTO los marcados con descuento_efectivo = true (excluidos)
+                var baseConDescuento = carrito.reduce(function(s, i) {
+                    return s + (!i.descuento_efectivo ? i.precio * i.cantidad : 0);
+                }, 0);
+                descuentoMonto = Math.round(baseConDescuento * descuentoEfectivoPct / 100 * 100) / 100;
             }
             var total = Math.round((totalBase - descuentoMonto) * 100) / 100;
 
@@ -1292,20 +1009,17 @@
                         total: total,
                         descuento_efectivo_pct: descuentoEfectivoPct > 0 && metodoSel === 'Efectivo' ? descuentoEfectivoPct : 0,
                         descuento_efectivo_monto: descuentoMonto,
+                        descuento_monto: descuentoMonto,
                         detalle: detalle,
                         pagos: pagos,
                         id_empleado: (posUsuario ? posUsuario.id_empleado : null),
                         nombre_cajero: (posUsuario ? (posUsuario.nombre + ' ' + posUsuario.apellido) : null),
-                        nombre_cliente: (document.getElementById('cliente-nombre') ? (document.getElementById('cliente-nombre').value||'').trim()||null : null),
-                        telefono_cliente: obtenerTelCompleto() || null,
-                        ref_unica: refVentaActual,
-                        id_codigo_descuento: codigoDescuentoValido ? codigoDescuentoValido.id : null
+                        ref_unica: refVentaActual
                     })
                 });
                 if (res.ok) {
                     var r = await res.json();
-                    ventaParaFacturar = { id_venta: r.id_venta, total: total, metodo: metodoPrincipal, detalle: detalle, descuento: descuentoMonto, codigoCanje: codigoDescuentoValido ? { codigo: codigoDescuentoValido.codigo, pct: codigoDescuentoValido.descuento_pct, monto: codigoDescMonto } : null };
-                    codigoDescuentoValido = null;
+                    ventaParaFacturar = { id_venta: r.id_venta, total: total, metodo: metodoPrincipal, detalle: detalle, descuento: descuentoMonto };
                     carrito = [];
                     refVentaActual = null;
                     procesandoVenta = false;
@@ -1333,11 +1047,11 @@
         }
 
         // ── TICKET 80mm ──
-        function construirDocTicket(idVenta, total, metodo, detalle, descuento, codigoCanje) {
+        function construirDocTicket(idVenta, total, metodo, detalle, descuento) {
             var jsPDF = window.jspdf.jsPDF;
             // ancho 80mm, alto dinámico
             var descMonto = parseFloat(descuento) || 0;
-            var alto = 60 + detalle.length * 6 + (descMonto > 0 ? 12 : 0) + (codigoCanje ? 9 : 0) + 40;
+            var alto = 60 + detalle.length * 6 + (descMonto > 0 ? 12 : 0) + 40;
             var doc = new jsPDF({ unit:'mm', format:[80, alto] });
             var y = 8;
             doc.setFont('helvetica','bold'); doc.setFontSize(12);
@@ -1370,14 +1084,7 @@
                 var subtotal = total + descMonto;
                 doc.text('Subtotal', 4, y); doc.text('$ ' + subtotal.toLocaleString('es-AR'), 76, y, {align:'right'}); y += 4.5;
                 doc.setFont('helvetica','italic');
-                // Descuento efectivo (solo si no es exclusivamente por código)
-                var descEfectivoMonto = descMonto - (codigoCanje ? (parseFloat(codigoCanje.monto)||0) : 0);
-                if (descEfectivoMonto > 0) {
-                    doc.text('Dto. efectivo (' + descuentoEfectivoPct + '%)', 4, y); doc.text('- $ ' + descEfectivoMonto.toLocaleString('es-AR'), 76, y, {align:'right'}); y += 4.5;
-                }
-                if (codigoCanje) {
-                    doc.text('Cod. ' + codigoCanje.codigo + ' (' + codigoCanje.pct + '%)', 4, y); doc.text('- $ ' + parseFloat(codigoCanje.monto).toLocaleString('es-AR'), 76, y, {align:'right'}); y += 4.5;
-                }
+                doc.text('Dto. efectivo (' + descuentoEfectivoPct + '%)', 4, y); doc.text('- $ ' + descMonto.toLocaleString('es-AR'), 76, y, {align:'right'}); y += 4.5;
             }
             doc.setFont('helvetica','bold'); doc.setFontSize(11);
             doc.text('TOTAL', 4, y); doc.text('$ ' + total.toLocaleString('es-AR'), 76, y, {align:'right'}); y += 6;
@@ -1388,8 +1095,8 @@
             return doc;
         }
 
-        function imprimirTicket(idVenta, total, metodo, detalle, descuento, codigoCanje) {
-            var doc = construirDocTicket(idVenta, total, metodo, detalle, descuento, codigoCanje);
+        function imprimirTicket(idVenta, total, metodo, detalle, descuento) {
+            var doc = construirDocTicket(idVenta, total, metodo, detalle, descuento);
             var url = URL.createObjectURL(doc.output('blob'));
             var w = window.open(url);
             if (w) { w.onload = function(){ try { w.print(); } catch(e){} }; }
@@ -1817,7 +1524,7 @@
 
         function imprimirTicketInterno() {
             if (ventaParaFacturar) {
-                imprimirTicket(ventaParaFacturar.id_venta, ventaParaFacturar.total, ventaParaFacturar.metodo, ventaParaFacturar.detalle, ventaParaFacturar.descuento, ventaParaFacturar.codigoCanje);
+                imprimirTicket(ventaParaFacturar.id_venta, ventaParaFacturar.total, ventaParaFacturar.metodo, ventaParaFacturar.detalle, ventaParaFacturar.descuento);
             }
         }
 
@@ -1827,19 +1534,16 @@
             var lineas = (v.detalle || []).map(function(it){
                 return it.cantidad + 'x ' + it.nombre_producto + ' - $' + (it.cantidad*it.precio_unitario).toLocaleString('es-AR');
             }).join('\n');
-            var descEfectivoMonto = v.descuento - (v.codigoCanje ? (parseFloat(v.codigoCanje.monto)||0) : 0);
-            var descMsg = (descEfectivoMonto > 0) ? 'Dto. efectivo: -$' + descEfectivoMonto.toLocaleString('es-AR') + '\n' : '';
-            var codigoMsg = v.codigoCanje ? ('🎟️ Cod. ' + v.codigoCanje.codigo + ' (' + v.codigoCanje.pct + '%): -$' + parseFloat(v.codigoCanje.monto).toLocaleString('es-AR') + '\n') : '';
+            var descMsg = (v.descuento && v.descuento > 0) ? 'Dto. efectivo: -$' + parseFloat(v.descuento).toLocaleString('es-AR') + '\n' : '';
             var msg = (empresa.nombre || 'Portal del Viento') + '\n' +
                 'Ticket #' + String(v.id_venta).padStart(5,'0') + '\n' +
                 (lineas ? lineas + '\n' : '') +
                 descMsg +
-                codigoMsg +
                 'Total: $' + parseFloat(v.total).toLocaleString('es-AR') + '\n' +
                 'Pago: ' + (v.metodo || '') + '\n' +
                 '¡Gracias por su compra!';
             var tel = normalizarTelArg(document.getElementById('ticket-tel-cliente').value);
-            var doc = construirDocTicket(v.id_venta, v.total, v.metodo, v.detalle || [], v.descuento, v.codigoCanje);
+            var doc = construirDocTicket(v.id_venta, v.total, v.metodo, v.detalle || [], v.descuento);
             var blob = doc ? doc.output('blob') : null;
             await compartirPdfWhatsapp(blob, 'ticket_' + String(v.id_venta).padStart(5,'0') + '.pdf', msg, tel);
         }
