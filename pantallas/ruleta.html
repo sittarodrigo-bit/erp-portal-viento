@@ -4,122 +4,187 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>¡Girá la ruleta! — Portal del Viento</title>
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,900;1,700&family=Lato:wght@400;700;900&display=swap" rel="stylesheet">
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
 
         :root {
-            --neon: #e4fc74;
-            --bg: #0a0a0a;
-            --card: #111;
-            --border: #222;
+            --rojo:    #c0392b;
+            --rojo2:   #a93226;
+            --oscuro:  #1a1008;
+            --crema:   #f5f0e8;
+            --crema2:  #ede7d9;
+            --dorado:  #b8860b;
+            --texto:   #2c1a0e;
+            --gris:    #7a6a5a;
         }
 
         body {
-            background: var(--bg);
-            color: #fff;
-            font-family: 'Segoe UI', system-ui, sans-serif;
+            background: var(--crema);
+            color: var(--texto);
+            font-family: 'Lato', 'Segoe UI', system-ui, sans-serif;
             min-height: 100dvh;
             display: flex;
             flex-direction: column;
             align-items: center;
-            padding: 24px 16px 40px;
             overflow-x: hidden;
         }
 
-        .logo {
-            font-size: 13px;
-            font-weight: 800;
-            letter-spacing: 0.15em;
-            text-transform: uppercase;
-            color: var(--neon);
-            margin-bottom: 4px;
-        }
-        .subtitulo {
-            font-size: 11px;
-            color: #555;
-            letter-spacing: 0.08em;
-            text-transform: uppercase;
-            margin-bottom: 28px;
+        /* ── HEADER ── */
+        .header {
+            width: 100%;
+            background: var(--oscuro);
+            padding: 18px 24px 14px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-bottom: 32px;
         }
 
-        h1 {
-            font-size: 26px;
+        .header-logo {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .header-logo-icono {
+            width: 70px;
+            height: 70px;
+        }
+
+        .header-logo-icono img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            filter: brightness(0) invert(1);
+        }
+
+        .header-logo-texto {
+            display: none;
+        }
+
+        /* ── CONTENIDO ── */
+        .contenido {
+            width: 100%;
+            max-width: 400px;
+            padding: 0 20px 48px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .titulo-ruleta {
+            font-family: 'Playfair Display', Georgia, serif;
+            font-size: 30px;
             font-weight: 900;
             text-align: center;
-            line-height: 1.2;
-            margin-bottom: 6px;
+            line-height: 1.15;
+            color: var(--oscuro);
+            margin-bottom: 8px;
         }
-        h1 span { color: var(--neon); }
+
+        .titulo-ruleta em {
+            font-style: italic;
+            color: var(--rojo);
+        }
 
         .bajada {
-            font-size: 13px;
-            color: #888;
+            font-size: 14px;
+            color: var(--gris);
             text-align: center;
+            line-height: 1.6;
             margin-bottom: 28px;
+        }
+
+        /* Separador decorativo */
+        .deco-sep {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 28px;
+            width: 100%;
+            justify-content: center;
+        }
+        .deco-sep::before,
+        .deco-sep::after {
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: var(--crema2);
+            max-width: 60px;
+        }
+        .deco-sep span {
+            font-size: 16px;
+            color: var(--dorado);
         }
 
         /* ── FORMULARIO ── */
         #panel-form {
             width: 100%;
-            max-width: 360px;
             display: flex;
             flex-direction: column;
-            gap: 12px;
+            gap: 14px;
         }
 
         .input-label {
             font-size: 11px;
             font-weight: 700;
-            color: #666;
-            letter-spacing: 0.08em;
+            color: var(--gris);
+            letter-spacing: 0.1em;
             text-transform: uppercase;
-            margin-bottom: 4px;
+            margin-bottom: 6px;
         }
 
         .input-group { display: flex; flex-direction: column; }
 
         input[type=text], input[type=tel] {
-            background: #111;
-            border: 1px solid #2a2a2a;
-            color: #fff;
-            border-radius: 12px;
+            background: #fff;
+            border: 1.5px solid #d4c8b4;
+            color: var(--texto);
+            border-radius: 10px;
             padding: 13px 16px;
             font-size: 15px;
+            font-family: 'Lato', sans-serif;
             outline: none;
             transition: border-color 0.2s;
             width: 100%;
         }
-        input:focus { border-color: var(--neon); }
+        input:focus { border-color: var(--rojo); }
+        input::placeholder { color: #b0a090; }
 
         .tel-row { display: flex; gap: 8px; }
         .tel-row select {
-            background: #111;
-            border: 1px solid #2a2a2a;
-            color: #aaa;
-            border-radius: 12px;
+            background: #fff;
+            border: 1.5px solid #d4c8b4;
+            color: var(--texto);
+            border-radius: 10px;
             padding: 13px 10px;
             font-size: 13px;
+            font-family: 'Lato', sans-serif;
             outline: none;
             flex-shrink: 0;
-            width: 110px;
+            width: 115px;
         }
 
         .btn-girar {
-            background: var(--neon);
-            color: #000;
+            background: var(--rojo);
+            color: #fff;
             border: none;
-            border-radius: 14px;
+            border-radius: 10px;
             padding: 16px;
             font-size: 16px;
             font-weight: 900;
-            letter-spacing: 0.04em;
+            font-family: 'Lato', sans-serif;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
             cursor: pointer;
             margin-top: 4px;
-            transition: opacity 0.2s, transform 0.1s;
+            transition: background 0.2s, transform 0.1s;
             width: 100%;
         }
+        .btn-girar:hover { background: var(--rojo2); }
         .btn-girar:active { transform: scale(0.97); }
-        .btn-girar:disabled { opacity: 0.4; cursor: not-allowed; }
+        .btn-girar:disabled { opacity: 0.5; cursor: not-allowed; }
 
         /* ── RULETA ── */
         #panel-ruleta {
@@ -127,14 +192,22 @@
             flex-direction: column;
             align-items: center;
             width: 100%;
-            max-width: 360px;
+        }
+
+        .ruleta-titulo {
+            font-family: 'Playfair Display', Georgia, serif;
+            font-size: 22px;
+            font-style: italic;
+            color: var(--oscuro);
+            margin-bottom: 20px;
+            text-align: center;
         }
 
         .ruleta-wrap {
             position: relative;
             width: 300px;
             height: 300px;
-            margin: 10px auto 0;
+            margin: 0 auto 0;
         }
 
         canvas#ruleta-canvas {
@@ -154,8 +227,8 @@
             height: 0;
             border-left: 14px solid transparent;
             border-right: 14px solid transparent;
-            border-top: 28px solid var(--neon);
-            filter: drop-shadow(0 0 6px var(--neon));
+            border-top: 28px solid var(--rojo);
+            filter: drop-shadow(0 2px 4px rgba(192,57,43,0.5));
             z-index: 10;
         }
 
@@ -165,8 +238,8 @@
             top: 50%; left: 50%;
             transform: translate(-50%, -50%);
             width: 50px; height: 50px;
-            background: #0a0a0a;
-            border: 3px solid var(--neon);
+            background: var(--crema);
+            border: 3px solid var(--oscuro);
             border-radius: 50%;
             display: flex; align-items: center; justify-content: center;
             font-size: 22px;
@@ -174,20 +247,23 @@
         }
 
         .btn-girar-ruleta {
-            margin-top: 24px;
-            background: var(--neon);
-            color: #000;
+            margin-top: 28px;
+            background: var(--rojo);
+            color: #fff;
             border: none;
             border-radius: 50px;
-            padding: 15px 40px;
+            padding: 15px 44px;
             font-size: 17px;
             font-weight: 900;
+            font-family: 'Lato', sans-serif;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
             cursor: pointer;
-            letter-spacing: 0.05em;
-            transition: opacity 0.2s, transform 0.1s;
+            transition: background 0.2s, transform 0.1s;
         }
+        .btn-girar-ruleta:hover { background: var(--rojo2); }
         .btn-girar-ruleta:active { transform: scale(0.96); }
-        .btn-girar-ruleta:disabled { opacity: 0.4; cursor: not-allowed; }
+        .btn-girar-ruleta:disabled { opacity: 0.5; cursor: not-allowed; }
 
         /* ── RESULTADO ── */
         #panel-resultado {
@@ -195,66 +271,67 @@
             flex-direction: column;
             align-items: center;
             width: 100%;
-            max-width: 360px;
             text-align: center;
         }
 
         .confetti-emoji { font-size: 48px; margin-bottom: 10px; }
 
         .resultado-pct {
-            font-size: 72px;
+            font-family: 'Playfair Display', Georgia, serif;
+            font-size: 80px;
             font-weight: 900;
-            color: var(--neon);
+            color: var(--rojo);
             line-height: 1;
             margin-bottom: 4px;
         }
 
         .resultado-label {
-            font-size: 16px;
-            color: #aaa;
+            font-size: 15px;
+            color: var(--gris);
             margin-bottom: 28px;
+            font-style: italic;
         }
 
         .codigo-box {
-            background: #111;
-            border: 2px solid var(--neon);
-            border-radius: 16px;
-            padding: 20px 24px;
+            background: var(--oscuro);
+            border-radius: 14px;
+            padding: 22px 28px;
             width: 100%;
             margin-bottom: 20px;
         }
 
         .codigo-titulo {
-            font-size: 11px;
-            color: #666;
+            font-size: 10px;
+            color: #9a8a6a;
             font-weight: 700;
-            letter-spacing: 0.1em;
+            letter-spacing: 0.15em;
             text-transform: uppercase;
-            margin-bottom: 8px;
+            margin-bottom: 10px;
         }
 
         .codigo-valor {
-            font-size: 32px;
+            font-size: 34px;
             font-weight: 900;
+            font-family: 'Courier New', monospace;
             letter-spacing: 0.18em;
             color: #fff;
-            font-family: 'Courier New', monospace;
         }
 
         .codigo-hint {
-            font-size: 12px;
-            color: #555;
-            margin-top: 8px;
+            font-size: 11px;
+            color: #6a5a4a;
+            margin-top: 10px;
         }
 
         .btn-wsp {
             background: #25D366;
             color: #fff;
             border: none;
-            border-radius: 14px;
+            border-radius: 10px;
             padding: 15px;
             font-size: 15px;
             font-weight: 700;
+            font-family: 'Lato', sans-serif;
             cursor: pointer;
             width: 100%;
             margin-bottom: 10px;
@@ -263,52 +340,42 @@
         .btn-wsp:hover { opacity: 0.9; }
 
         .btn-copiar {
-            background: #1a1a1a;
-            color: #aaa;
-            border: 1px solid #333;
-            border-radius: 14px;
+            background: #fff;
+            color: var(--gris);
+            border: 1.5px solid #d4c8b4;
+            border-radius: 10px;
             padding: 13px;
             font-size: 14px;
-            font-weight: 600;
+            font-weight: 700;
+            font-family: 'Lato', sans-serif;
             cursor: pointer;
             width: 100%;
             transition: color 0.2s, border-color 0.2s;
         }
-        .btn-copiar:hover { color: #fff; border-color: #555; }
+        .btn-copiar:hover { color: var(--texto); border-color: #9a8a6a; }
 
-        /* ── AVISO YA PARTICIPÓ ── */
-        #panel-ya-participo {
-            display: none;
-            flex-direction: column;
+        /* ── SOCIAL ── */
+        .social-sep {
+            display: flex;
             align-items: center;
-            text-align: center;
-            max-width: 320px;
+            gap: 10px;
+            margin: 28px 0 16px;
+            width: 100%;
         }
-        .ya-emoji { font-size: 52px; margin-bottom: 16px; }
-        .ya-titulo { font-size: 22px; font-weight: 800; margin-bottom: 8px; }
-        .ya-desc { font-size: 14px; color: #666; line-height: 1.6; }
-
-        /* ── ERROR ── */
-        .error-msg {
-            background: #1a0808;
-            border: 1px solid #5a1a1a;
-            color: #f88;
-            border-radius: 10px;
-            padding: 10px 14px;
-            font-size: 13px;
-            margin-top: 4px;
-            display: none;
+        .social-sep::before,
+        .social-sep::after {
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: #d4c8b4;
         }
-
-        .social-titulo {
-            font-size: 12px;
-            color: #555;
+        .social-sep span {
+            font-size: 11px;
+            color: var(--gris);
             font-weight: 700;
-            letter-spacing: 0.06em;
+            letter-spacing: 0.08em;
             text-transform: uppercase;
-            margin-top: 28px;
-            margin-bottom: 12px;
-            text-align: center;
+            white-space: nowrap;
         }
 
         .social-grid {
@@ -324,137 +391,183 @@
             align-items: center;
             justify-content: center;
             gap: 6px;
-            padding: 14px 10px;
-            border-radius: 14px;
+            padding: 16px 10px;
+            border-radius: 10px;
             text-decoration: none;
-            border: 1px solid #222;
-            transition: transform 0.15s, border-color 0.15s;
+            background: #fff;
+            border: 1.5px solid #d4c8b4;
+            color: var(--texto);
+            transition: transform 0.15s, border-color 0.15s, background 0.15s;
         }
+        .social-btn:hover { background: var(--crema2); border-color: #9a8a6a; }
         .social-btn:active { transform: scale(0.95); }
 
         .social-ico { font-size: 24px; }
-        .social-label { font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
+        .social-label {
+            font-size: 11px;
+            font-weight: 700;
+            font-family: 'Lato', sans-serif;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            color: var(--gris);
+        }
 
-        .social-btn.tienda  { background: #0d1a0d; border-color: #1a3a1a; color: #6fcf6f; }
-        .social-btn.tienda:hover { border-color: #6fcf6f; }
-        .social-btn.ig      { background: #1a0d1a; border-color: #3a1a3a; color: #e879f9; }
-        .social-btn.ig:hover { border-color: #e879f9; }
-        .social-btn.tt      { background: #0d1a1a; border-color: #0d3030; color: #2dd4bf; }
-        .social-btn.tt:hover { border-color: #2dd4bf; }
-        .social-btn.google  { background: #1a1500; border-color: #3a2f00; color: #fbbf24; }
-        .social-btn.google:hover { border-color: #fbbf24; }
+        /* ── AVISO YA PARTICIPÓ ── */
+        #panel-ya-participo {
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+            width: 100%;
+        }
+        .ya-emoji { font-size: 52px; margin-bottom: 16px; }
+        .ya-titulo {
+            font-family: 'Playfair Display', Georgia, serif;
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--oscuro);
+            margin-bottom: 10px;
+        }
+        .ya-desc {
+            font-size: 14px;
+            color: var(--gris);
+            line-height: 1.7;
+        }
 
-        .spinning { animation: spin-entrada 0.3s ease; }
-        @keyframes spin-entrada { from { opacity: 0; transform: scale(0.9); } to { opacity: 1; transform: scale(1); } }
+        /* ── ERROR ── */
+        .error-msg {
+            background: #fdf0ef;
+            border: 1px solid #e8b4b0;
+            color: var(--rojo);
+            border-radius: 8px;
+            padding: 10px 14px;
+            font-size: 13px;
+            margin-top: 4px;
+            display: none;
+        }
+
+        .spinning { animation: fadeIn 0.4s ease; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
     </style>
 </head>
 <body>
 
-    <div class="logo">Portal del Viento</div>
-    <div class="subtitulo">Alfajores artesanales · Mendoza</div>
-
-    <h1>🎡 Girá y<br><span>ganá tu descuento</span></h1>
-    <p class="bajada">Registrate para girar la ruleta y obtener<br>un código de descuento exclusivo.</p>
-
-    <!-- PASO 1: FORMULARIO -->
-    <div id="panel-form">
-        <div class="input-group">
-            <div class="input-label">Tu nombre</div>
-            <input type="text" id="inp-nombre" placeholder="Nombre y apellido" autocomplete="name" autocorrect="off">
-        </div>
-        <div class="input-group">
-            <div class="input-label">Tu WhatsApp</div>
-            <div class="tel-row">
-                <select id="inp-prefijo" onchange="togglePrefijoOtro(this.value)">
-                    <option value="54">🇦🇷 +54</option>
-                    <option value="591">🇧🇴 +591</option>
-                    <option value="56">🇨🇱 +56</option>
-                    <option value="57">🇨🇴 +57</option>
-                    <option value="593">🇪🇨 +593</option>
-                    <option value="595">🇵🇾 +595</option>
-                    <option value="51">🇵🇪 +51</option>
-                    <option value="598">🇺🇾 +598</option>
-                    <option value="58">🇻🇪 +58</option>
-                    <option value="55">🇧🇷 +55</option>
-                    <option value="34">🇪🇸 +34</option>
-                    <option value="1">🇺🇸 +1</option>
-                    <option value="__otro__">✏️ Otro</option>
-                </select>
-                <input type="tel" id="inp-wsp" placeholder="Número (sin 0 ni 15)" inputmode="numeric">
+    <!-- HEADER -->
+    <div class="header">
+        <div class="header-logo">
+            <div class="header-logo-icono">
+                <img src="data:image/png;base64,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" alt="Portal del Viento">
             </div>
-            <input type="number" id="inp-prefijo-custom" placeholder="Código de país (ej: 44)" min="1" max="999"
-                style="display:none; margin-top:8px; background:#111; border:1px solid #5533aa; color:#fff; border-radius:12px; padding:12px 16px; font-size:14px; outline:none; width:100%">
-        </div>
-        <div id="form-error" class="error-msg"></div>
-        <button class="btn-girar" onclick="irARuleta()">🎡 ¡Quiero girar!</button>
-    </div>
-
-    <!-- PASO 2: RULETA -->
-    <div id="panel-ruleta">
-        <div class="ruleta-wrap">
-            <div class="ruleta-flecha"></div>
-            <canvas id="ruleta-canvas" width="300" height="300"></canvas>
-            <div class="ruleta-centro">🎡</div>
-        </div>
-        <button class="btn-girar-ruleta" id="btn-spin" onclick="girarRuleta()">¡Girar!</button>
-    </div>
-
-    <!-- PASO 3: RESULTADO -->
-    <div id="panel-resultado">
-        <div class="confetti-emoji">🎉</div>
-        <div class="resultado-pct" id="res-pct">15%</div>
-        <div class="resultado-label">de descuento en tu próxima compra</div>
-        <div class="codigo-box">
-            <div class="codigo-titulo">Tu código</div>
-            <div class="codigo-valor" id="res-codigo">XXXXXXXX</div>
-            <div class="codigo-hint">Presentalo al momento de pagar · Un solo uso</div>
-        </div>
-        <button class="btn-wsp" id="btn-enviar-wsp">📲 Guardar en WhatsApp</button>
-        <button class="btn-copiar" onclick="copiarCodigo()">📋 Copiar código</button>
-
-        <div class="social-titulo">¿Te gustó? Seguinos y dejanos tu opinión 🙌</div>
-        <div class="social-grid">
-            <a href="https://portaldelviento.com.ar" target="_blank" class="social-btn tienda">
-                <span class="social-ico">🛍️</span>
-                <span class="social-label">Tienda online</span>
-            </a>
-            <a href="https://instagram.com/portaldelviento" target="_blank" class="social-btn ig">
-                <span class="social-ico">📸</span>
-                <span class="social-label">Instagram</span>
-            </a>
-            <a href="https://tiktok.com/@portal.del.viento" target="_blank" class="social-btn tt">
-                <span class="social-ico">🎵</span>
-                <span class="social-label">TikTok</span>
-            </a>
-            <a href="https://share.google/bRmHUPLCevnVfqUBd" target="_blank" class="social-btn google">
-                <span class="social-ico">⭐</span>
-                <span class="social-label">Dejanos 5 estrellas</span>
-            </a>
+            <div class="header-logo-texto"></div>
         </div>
     </div>
 
-    <!-- YA PARTICIPÓ -->
-    <div id="panel-ya-participo">
-        <div class="ya-emoji">🔒</div>
-        <div class="ya-titulo">Ya participaste</div>
-        <div class="ya-desc">Este número de WhatsApp ya tiene un código de descuento asignado.<br><br>¡Usalo en tu próxima compra en Portal del Viento!</div>
-    </div>
+    <div class="contenido">
+
+        <div class="titulo-ruleta">¡Girá y ganás<br><em>tu descuento!</em></div>
+        <p class="bajada">Registrate para girar la ruleta y obtener<br>un código de descuento exclusivo.</p>
+
+        <div class="deco-sep"><span>✦</span></div>
+
+        <!-- PASO 1: FORMULARIO -->
+        <div id="panel-form">
+            <div class="input-group">
+                <div class="input-label">Tu nombre</div>
+                <input type="text" id="inp-nombre" placeholder="Nombre y apellido" autocomplete="name" autocorrect="off">
+            </div>
+            <div class="input-group">
+                <div class="input-label">Tu WhatsApp</div>
+                <div class="tel-row">
+                    <select id="inp-prefijo" onchange="togglePrefijoOtro(this.value)">
+                        <option value="54">🇦🇷 +54</option>
+                        <option value="591">🇧🇴 +591</option>
+                        <option value="56">🇨🇱 +56</option>
+                        <option value="57">🇨🇴 +57</option>
+                        <option value="593">🇪🇨 +593</option>
+                        <option value="595">🇵🇾 +595</option>
+                        <option value="51">🇵🇪 +51</option>
+                        <option value="598">🇺🇾 +598</option>
+                        <option value="58">🇻🇪 +58</option>
+                        <option value="55">🇧🇷 +55</option>
+                        <option value="34">🇪🇸 +34</option>
+                        <option value="1">🇺🇸 +1</option>
+                        <option value="__otro__">✏️ Otro</option>
+                    </select>
+                    <input type="tel" id="inp-wsp" placeholder="Número (sin 0 ni 15)" inputmode="numeric">
+                </div>
+                <input type="number" id="inp-prefijo-custom" placeholder="Código de país (ej: 44)" min="1" max="999"
+                    style="display:none; margin-top:8px; background:#fff; border:1.5px solid #c0392b; color:var(--texto); border-radius:10px; padding:12px 16px; font-size:14px; outline:none; width:100%">
+            </div>
+            <div id="form-error" class="error-msg"></div>
+            <button class="btn-girar" onclick="irARuleta()">🎡 ¡Quiero girar!</button>
+        </div>
+
+        <!-- PASO 2: RULETA -->
+        <div id="panel-ruleta">
+            <div class="ruleta-titulo">¡Tu suerte está a punto de girar!</div>
+            <div class="ruleta-wrap">
+                <div class="ruleta-flecha"></div>
+                <canvas id="ruleta-canvas" width="300" height="300"></canvas>
+                <div class="ruleta-centro">🎡</div>
+            </div>
+            <button class="btn-girar-ruleta" id="btn-spin" onclick="girarRuleta()">¡Girar!</button>
+        </div>
+
+        <!-- PASO 3: RESULTADO -->
+        <div id="panel-resultado">
+            <div class="confetti-emoji">🎉</div>
+            <div class="resultado-pct" id="res-pct">15%</div>
+            <div class="resultado-label">de descuento en tu próxima compra</div>
+            <div class="codigo-box">
+                <div class="codigo-titulo">Tu código exclusivo</div>
+                <div class="codigo-valor" id="res-codigo">XXXXXXXX</div>
+                <div class="codigo-hint">Presentalo al momento de pagar · Un solo uso</div>
+            </div>
+            <button class="btn-wsp" id="btn-enviar-wsp">📲 Guardar en WhatsApp</button>
+            <button class="btn-copiar" onclick="copiarCodigo()">📋 Copiar código</button>
+
+            <div class="social-sep"><span>¿Te gustó? Seguinos</span></div>
+            <div class="social-grid">
+                <a href="https://portaldelviento.com.ar" target="_blank" class="social-btn">
+                    <span class="social-ico">🛍️</span>
+                    <span class="social-label">Tienda online</span>
+                </a>
+                <a href="https://instagram.com/portaldelviento" target="_blank" class="social-btn">
+                    <span class="social-ico">📸</span>
+                    <span class="social-label">Instagram</span>
+                </a>
+                <a href="https://tiktok.com/@portal.del.viento" target="_blank" class="social-btn">
+                    <span class="social-ico">🎵</span>
+                    <span class="social-label">TikTok</span>
+                </a>
+                <a href="https://share.google/bRmHUPLCevnVfqUBd" target="_blank" class="social-btn">
+                    <span class="social-ico">⭐</span>
+                    <span class="social-label">Dejanos 5 estrellas</span>
+                </a>
+            </div>
+        </div>
+
+        <!-- YA PARTICIPÓ -->
+        <div id="panel-ya-participo">
+            <div class="ya-emoji">🔒</div>
+            <div class="ya-titulo">Ya participaste</div>
+            <div class="ya-desc">Este número de WhatsApp ya tiene un código de descuento asignado.<br><br>¡Usalo en tu próxima compra en Portal del Viento!</div>
+        </div>
+
+    </div><!-- /contenido -->
 
     <script>
         // ── CONFIG ──
-        // Si se sirve desde el propio servidor usa rutas relativas; si se abre como archivo local, va a producción
-        const API_URL = location.protocol.startsWith('http')
-            ? location.origin + '/api'
-            : 'https://erp.portaldelviento.com.ar/api';
+        const API_URL = 'https://web-production-1588b.up.railway.app/api';
 
-        // Sectores de la ruleta: [porcentaje, color, probabilidad proporcional]
+        // Sectores: colores cálidos/artesanales acorde a la marca
         const SECTORES = [
-            { pct: 5,  color: '#1a3a1a', texto: '5%'  },
-            { pct: 10, color: '#1a2a3a', texto: '10%' },
-            { pct: 10, color: '#2a1a3a', texto: '10%' },
-            { pct: 15, color: '#3a2a1a', texto: '15%' },
-            { pct: 15, color: '#1a3a2a', texto: '15%' },
-            { pct: 20, color: '#3a1a2a', texto: '20%' },
+            { pct: 5,  color: '#5c3a1e', texto: '5%'  },
+            { pct: 10, color: '#7a2f2f', texto: '10%' },
+            { pct: 10, color: '#3a4a2a', texto: '10%' },
+            { pct: 15, color: '#2a3a4a', texto: '15%' },
+            { pct: 15, color: '#4a3a1a', texto: '15%' },
+            { pct: 20, color: '#1a1008', texto: '20%' },
         ];
 
         const N = SECTORES.length;
@@ -462,7 +575,7 @@
 
         let anguloActual = 0;
         let girando = false;
-        let datosCandidato = null;  // { nombre, telefono, descuento_pct }
+        let datosCandidato = null;
         let codigoFinal = null;
         let pctFinal = null;
 
@@ -477,14 +590,13 @@
                 const inicio = angulo + i * ARC - Math.PI / 2;
                 const fin = inicio + ARC;
 
-                // Sector
                 ctx.beginPath();
                 ctx.moveTo(cx, cy);
                 ctx.arc(cx, cy, r, inicio, fin);
                 ctx.closePath();
                 ctx.fillStyle = SECTORES[i].color;
                 ctx.fill();
-                ctx.strokeStyle = '#000';
+                ctx.strokeStyle = '#f5f0e8';
                 ctx.lineWidth = 2;
                 ctx.stroke();
 
@@ -493,8 +605,8 @@
                 ctx.translate(cx, cy);
                 ctx.rotate(inicio + ARC / 2);
                 ctx.textAlign = 'right';
-                ctx.fillStyle = '#e4fc74';
-                ctx.font = 'bold 22px Segoe UI, system-ui, sans-serif';
+                ctx.fillStyle = '#f5f0e8';
+                ctx.font = 'bold 22px Lato, Segoe UI, system-ui, sans-serif';
                 ctx.fillText(SECTORES[i].texto, r - 18, 7);
                 ctx.restore();
             }
@@ -502,8 +614,8 @@
             // Borde exterior
             ctx.beginPath();
             ctx.arc(cx, cy, r, 0, 2 * Math.PI);
-            ctx.strokeStyle = '#e4fc74';
-            ctx.lineWidth = 3;
+            ctx.strokeStyle = '#1a1008';
+            ctx.lineWidth = 4;
             ctx.stroke();
         }
 
@@ -551,7 +663,7 @@
             datosCandidato = {
                 nombre: nombre,
                 telefono: obtenerTelCompleto(),
-                descuento_pct: null  // se decide al girar
+                descuento_pct: null
             };
 
             document.getElementById('panel-form').style.display = 'none';
@@ -573,17 +685,11 @@
             const sectorGanador = sectorAlAzar();
             const pct = SECTORES[sectorGanador].pct;
 
-            // Calcular ángulo final: varias vueltas + ángulo del sector ganador
             const vueltasExtra = 5 + Math.floor(Math.random() * 3);
-            // El sector ganador debe quedar bajo la flecha (arriba = -π/2 en el canvas)
-            // La flecha apunta "arriba" = ángulo 0 en nuestra referencia rotada
-            const anguloSector = sectorGanador * ARC + ARC / 2; // centro del sector
-            // Queremos que ese ángulo quede en 0 (arriba), restamos anguloActual actual
+            const anguloSector = sectorGanador * ARC + ARC / 2;
             const anguloObjetivo = vueltasExtra * 2 * Math.PI - anguloSector;
             const anguloInicio = anguloActual;
-            const TAU = 2 * Math.PI;
-            const delta = (((anguloObjetivo - anguloInicio) % TAU) + TAU) % TAU;
-            const anguloTotal = delta + vueltasExtra * TAU;
+            const anguloTotal = anguloObjetivo - anguloInicio + (2 * Math.PI * Math.round((anguloObjetivo - anguloInicio) / (2 * Math.PI)));
             const duracion = 4000;
             const inicio = performance.now();
 
@@ -602,7 +708,6 @@
                     requestAnimationFrame(animar);
                 } else {
                     girando = false;
-                    // Enviar al backend
                     datosCandidato.descuento_pct = pct;
                     enviarAlBackend(pct);
                 }
@@ -626,7 +731,6 @@
                 if (data.ok === true) {
                     mostrarResultado(data.codigo, data.descuento_pct);
                 } else if (data.ok === false && data.mensaje) {
-                    // Solo "ya participó" va a esa pantalla, cualquier otro error muestra alerta
                     if (data.mensaje.toLowerCase().includes('ya participó') || data.mensaje.toLowerCase().includes('ya participo')) {
                         mostrarYaParticipo();
                     } else {
@@ -635,7 +739,6 @@
                         document.getElementById('panel-form').style.display = 'flex';
                     }
                 } else if (data.detail) {
-                    // Error 500 de FastAPI
                     alert('Error del servidor: ' + (typeof data.detail === 'string' ? data.detail : JSON.stringify(data.detail)));
                     document.getElementById('panel-ruleta').style.display = 'none';
                     document.getElementById('panel-form').style.display = 'flex';
@@ -656,7 +759,6 @@
             document.getElementById('res-pct').textContent = pct + '%';
             document.getElementById('res-codigo').textContent = codigo;
 
-            // Botón WhatsApp
             const tel = datosCandidato.telefono;
             const nombre = datosCandidato.nombre.split(' ')[0];
             const msg = '🎡 ¡Felicitaciones ' + nombre + '!\n\nGanaste un *' + pct + '% de descuento* en tu próxima compra en Portal del Viento.\n\n🎟️ Tu código: *' + codigo + '*\n\nPresentalo al pagar (un solo uso). ¡Te esperamos!';
