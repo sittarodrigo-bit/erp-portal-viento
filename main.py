@@ -5813,6 +5813,72 @@ def pos_clientes_descuento_check(telefono: str, id_local: int):
     finally:
         liberar_conexion(conn)
 
+class RuletaGiroRequest(BaseModel):
+    nombre: str
+    telefono: str
+    descuento_pct: int
+    id_local: Optional[int] = None
+
+@app.post("/api/pos/ruleta/girar")
+def pos_ruleta_girar(data: RuletaGiroRequest):
+    """Genera un código de descuento para la ruleta pública. Una vez por número de teléfono."""
+    import random
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        # Crear tabla si no existe
+        cur.execute("""CREATE TABLE IF NOT EXISTS pos_codigos_descuento (
+            id SERIAL PRIMARY KEY,
+            codigo TEXT NOT NULL UNIQUE,
+            id_cliente INTEGER,
+            descuento_pct INTEGER NOT NULL,
+            usado BOOLEAN DEFAULT FALSE,
+            id_venta_uso INTEGER,
+            fecha_creacion TIMESTAMPTZ DEFAULT NOW(),
+            fecha_uso TIMESTAMPTZ
+        )""")
+        # Crear tabla ruleta_giros para control de usos
+        cur.execute("""CREATE TABLE IF NOT EXISTS pos_ruleta_giros (
+            id SERIAL PRIMARY KEY,
+            telefono TEXT NOT NULL,
+            nombre TEXT,
+            id_local INTEGER,
+            id_codigo INTEGER,
+            fecha TIMESTAMPTZ DEFAULT NOW()
+        )""")
+        # Verificar si el teléfono ya giró (nunca, o por local si se especifica)
+        tel_norm = ''.join(c for c in data.telefono if c.isdigit())
+        if data.id_local:
+            cur.execute("""SELECT id FROM pos_ruleta_giros
+                WHERE REGEXP_REPLACE(telefono, '[^0-9]', '', 'g') = %s AND id_local = %s LIMIT 1""",
+                (tel_norm, data.id_local))
+        else:
+            cur.execute("""SELECT id FROM pos_ruleta_giros
+                WHERE REGEXP_REPLACE(telefono, '[^0-9]', '', 'g') = %s LIMIT 1""", (tel_norm,))
+        ya_giro = cur.fetchone()
+        if ya_giro:
+            conn.rollback()
+            return {"ok": False, "mensaje": "Este número ya participó de la ruleta."}
+        # Generar código único
+        chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+        for _ in range(20):
+            codigo = ''.join(random.choices(chars, k=8))
+            cur.execute("SELECT id FROM pos_codigos_descuento WHERE codigo=%s", (codigo,))
+            if not cur.fetchone():
+                break
+        cur.execute("""INSERT INTO pos_codigos_descuento (codigo, id_cliente, descuento_pct)
+            VALUES (%s, NULL, %s) RETURNING id""", (codigo, data.descuento_pct))
+        id_codigo = cur.fetchone()['id']
+        cur.execute("""INSERT INTO pos_ruleta_giros (telefono, nombre, id_local, id_codigo)
+            VALUES (%s, %s, %s, %s)""", (data.telefono, data.nombre, data.id_local, id_codigo))
+        conn.commit()
+        return {"ok": True, "codigo": codigo, "descuento_pct": data.descuento_pct}
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
 @app.get("/api/pos/clientes_descuento")
 def pos_clientes_descuento_lista(id_local: Optional[int] = None, dias: int = 30):
     """Lista de clientes registrados para descuento en efectivo."""
