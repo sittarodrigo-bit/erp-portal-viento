@@ -1,0 +1,684 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>¡Girá la ruleta! — Portal del Viento</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        :root {
+            --neon: #e4fc74;
+            --bg: #0a0a0a;
+            --card: #111;
+            --border: #222;
+        }
+
+        body {
+            background: var(--bg);
+            color: #fff;
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            min-height: 100dvh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 24px 16px 40px;
+            overflow-x: hidden;
+        }
+
+        .logo {
+            font-size: 13px;
+            font-weight: 800;
+            letter-spacing: 0.15em;
+            text-transform: uppercase;
+            color: var(--neon);
+            margin-bottom: 4px;
+        }
+        .subtitulo {
+            font-size: 11px;
+            color: #555;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            margin-bottom: 28px;
+        }
+
+        h1 {
+            font-size: 26px;
+            font-weight: 900;
+            text-align: center;
+            line-height: 1.2;
+            margin-bottom: 6px;
+        }
+        h1 span { color: var(--neon); }
+
+        .bajada {
+            font-size: 13px;
+            color: #888;
+            text-align: center;
+            margin-bottom: 28px;
+        }
+
+        /* ── FORMULARIO ── */
+        #panel-form {
+            width: 100%;
+            max-width: 360px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .input-label {
+            font-size: 11px;
+            font-weight: 700;
+            color: #666;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            margin-bottom: 4px;
+        }
+
+        .input-group { display: flex; flex-direction: column; }
+
+        input[type=text], input[type=tel] {
+            background: #111;
+            border: 1px solid #2a2a2a;
+            color: #fff;
+            border-radius: 12px;
+            padding: 13px 16px;
+            font-size: 15px;
+            outline: none;
+            transition: border-color 0.2s;
+            width: 100%;
+        }
+        input:focus { border-color: var(--neon); }
+
+        .tel-row { display: flex; gap: 8px; }
+        .tel-row select {
+            background: #111;
+            border: 1px solid #2a2a2a;
+            color: #aaa;
+            border-radius: 12px;
+            padding: 13px 10px;
+            font-size: 13px;
+            outline: none;
+            flex-shrink: 0;
+            width: 110px;
+        }
+
+        .btn-girar {
+            background: var(--neon);
+            color: #000;
+            border: none;
+            border-radius: 14px;
+            padding: 16px;
+            font-size: 16px;
+            font-weight: 900;
+            letter-spacing: 0.04em;
+            cursor: pointer;
+            margin-top: 4px;
+            transition: opacity 0.2s, transform 0.1s;
+            width: 100%;
+        }
+        .btn-girar:active { transform: scale(0.97); }
+        .btn-girar:disabled { opacity: 0.4; cursor: not-allowed; }
+
+        /* ── RULETA ── */
+        #panel-ruleta {
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            width: 100%;
+            max-width: 360px;
+        }
+
+        .ruleta-wrap {
+            position: relative;
+            width: 300px;
+            height: 300px;
+            margin: 10px auto 0;
+        }
+
+        canvas#ruleta-canvas {
+            width: 300px;
+            height: 300px;
+            border-radius: 50%;
+            display: block;
+        }
+
+        /* flecha indicadora arriba */
+        .ruleta-flecha {
+            position: absolute;
+            top: -18px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 0;
+            height: 0;
+            border-left: 14px solid transparent;
+            border-right: 14px solid transparent;
+            border-top: 28px solid var(--neon);
+            filter: drop-shadow(0 0 6px var(--neon));
+            z-index: 10;
+        }
+
+        /* centro de la ruleta */
+        .ruleta-centro {
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            width: 50px; height: 50px;
+            background: #0a0a0a;
+            border: 3px solid var(--neon);
+            border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 22px;
+            z-index: 10;
+        }
+
+        .btn-girar-ruleta {
+            margin-top: 24px;
+            background: var(--neon);
+            color: #000;
+            border: none;
+            border-radius: 50px;
+            padding: 15px 40px;
+            font-size: 17px;
+            font-weight: 900;
+            cursor: pointer;
+            letter-spacing: 0.05em;
+            transition: opacity 0.2s, transform 0.1s;
+        }
+        .btn-girar-ruleta:active { transform: scale(0.96); }
+        .btn-girar-ruleta:disabled { opacity: 0.4; cursor: not-allowed; }
+
+        /* ── RESULTADO ── */
+        #panel-resultado {
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            width: 100%;
+            max-width: 360px;
+            text-align: center;
+        }
+
+        .confetti-emoji { font-size: 48px; margin-bottom: 10px; }
+
+        .resultado-pct {
+            font-size: 72px;
+            font-weight: 900;
+            color: var(--neon);
+            line-height: 1;
+            margin-bottom: 4px;
+        }
+
+        .resultado-label {
+            font-size: 16px;
+            color: #aaa;
+            margin-bottom: 28px;
+        }
+
+        .codigo-box {
+            background: #111;
+            border: 2px solid var(--neon);
+            border-radius: 16px;
+            padding: 20px 24px;
+            width: 100%;
+            margin-bottom: 20px;
+        }
+
+        .codigo-titulo {
+            font-size: 11px;
+            color: #666;
+            font-weight: 700;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            margin-bottom: 8px;
+        }
+
+        .codigo-valor {
+            font-size: 32px;
+            font-weight: 900;
+            letter-spacing: 0.18em;
+            color: #fff;
+            font-family: 'Courier New', monospace;
+        }
+
+        .codigo-hint {
+            font-size: 12px;
+            color: #555;
+            margin-top: 8px;
+        }
+
+        .btn-wsp {
+            background: #25D366;
+            color: #fff;
+            border: none;
+            border-radius: 14px;
+            padding: 15px;
+            font-size: 15px;
+            font-weight: 700;
+            cursor: pointer;
+            width: 100%;
+            margin-bottom: 10px;
+            transition: opacity 0.2s;
+        }
+        .btn-wsp:hover { opacity: 0.9; }
+
+        .btn-copiar {
+            background: #1a1a1a;
+            color: #aaa;
+            border: 1px solid #333;
+            border-radius: 14px;
+            padding: 13px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            width: 100%;
+            transition: color 0.2s, border-color 0.2s;
+        }
+        .btn-copiar:hover { color: #fff; border-color: #555; }
+
+        /* ── AVISO YA PARTICIPÓ ── */
+        #panel-ya-participo {
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+            max-width: 320px;
+        }
+        .ya-emoji { font-size: 52px; margin-bottom: 16px; }
+        .ya-titulo { font-size: 22px; font-weight: 800; margin-bottom: 8px; }
+        .ya-desc { font-size: 14px; color: #666; line-height: 1.6; }
+
+        /* ── ERROR ── */
+        .error-msg {
+            background: #1a0808;
+            border: 1px solid #5a1a1a;
+            color: #f88;
+            border-radius: 10px;
+            padding: 10px 14px;
+            font-size: 13px;
+            margin-top: 4px;
+            display: none;
+        }
+
+        .social-titulo {
+            font-size: 12px;
+            color: #555;
+            font-weight: 700;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            margin-top: 28px;
+            margin-bottom: 12px;
+            text-align: center;
+        }
+
+        .social-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            width: 100%;
+        }
+
+        .social-btn {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            padding: 14px 10px;
+            border-radius: 14px;
+            text-decoration: none;
+            border: 1px solid #222;
+            transition: transform 0.15s, border-color 0.15s;
+        }
+        .social-btn:active { transform: scale(0.95); }
+
+        .social-ico { font-size: 24px; }
+        .social-label { font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
+
+        .social-btn.tienda  { background: #0d1a0d; border-color: #1a3a1a; color: #6fcf6f; }
+        .social-btn.tienda:hover { border-color: #6fcf6f; }
+        .social-btn.ig      { background: #1a0d1a; border-color: #3a1a3a; color: #e879f9; }
+        .social-btn.ig:hover { border-color: #e879f9; }
+        .social-btn.tt      { background: #0d1a1a; border-color: #0d3030; color: #2dd4bf; }
+        .social-btn.tt:hover { border-color: #2dd4bf; }
+        .social-btn.google  { background: #1a1500; border-color: #3a2f00; color: #fbbf24; }
+        .social-btn.google:hover { border-color: #fbbf24; }
+
+        .spinning { animation: spin-entrada 0.3s ease; }
+        @keyframes spin-entrada { from { opacity: 0; transform: scale(0.9); } to { opacity: 1; transform: scale(1); } }
+    </style>
+</head>
+<body>
+
+    <div class="logo">Portal del Viento</div>
+    <div class="subtitulo">Alfajores artesanales · Mendoza</div>
+
+    <h1>🎡 Girá y<br><span>ganá tu descuento</span></h1>
+    <p class="bajada">Registrate para girar la ruleta y obtener<br>un código de descuento exclusivo.</p>
+
+    <!-- PASO 1: FORMULARIO -->
+    <div id="panel-form">
+        <div class="input-group">
+            <div class="input-label">Tu nombre</div>
+            <input type="text" id="inp-nombre" placeholder="Nombre y apellido" autocomplete="name" autocorrect="off">
+        </div>
+        <div class="input-group">
+            <div class="input-label">Tu WhatsApp</div>
+            <div class="tel-row">
+                <select id="inp-prefijo" onchange="togglePrefijoOtro(this.value)">
+                    <option value="54">🇦🇷 +54</option>
+                    <option value="591">🇧🇴 +591</option>
+                    <option value="56">🇨🇱 +56</option>
+                    <option value="57">🇨🇴 +57</option>
+                    <option value="593">🇪🇨 +593</option>
+                    <option value="595">🇵🇾 +595</option>
+                    <option value="51">🇵🇪 +51</option>
+                    <option value="598">🇺🇾 +598</option>
+                    <option value="58">🇻🇪 +58</option>
+                    <option value="55">🇧🇷 +55</option>
+                    <option value="34">🇪🇸 +34</option>
+                    <option value="1">🇺🇸 +1</option>
+                    <option value="__otro__">✏️ Otro</option>
+                </select>
+                <input type="tel" id="inp-wsp" placeholder="Número (sin 0 ni 15)" inputmode="numeric">
+            </div>
+            <input type="number" id="inp-prefijo-custom" placeholder="Código de país (ej: 44)" min="1" max="999"
+                style="display:none; margin-top:8px; background:#111; border:1px solid #5533aa; color:#fff; border-radius:12px; padding:12px 16px; font-size:14px; outline:none; width:100%">
+        </div>
+        <div id="form-error" class="error-msg"></div>
+        <button class="btn-girar" onclick="irARuleta()">🎡 ¡Quiero girar!</button>
+    </div>
+
+    <!-- PASO 2: RULETA -->
+    <div id="panel-ruleta">
+        <div class="ruleta-wrap">
+            <div class="ruleta-flecha"></div>
+            <canvas id="ruleta-canvas" width="300" height="300"></canvas>
+            <div class="ruleta-centro">🎡</div>
+        </div>
+        <button class="btn-girar-ruleta" id="btn-spin" onclick="girarRuleta()">¡Girar!</button>
+    </div>
+
+    <!-- PASO 3: RESULTADO -->
+    <div id="panel-resultado">
+        <div class="confetti-emoji">🎉</div>
+        <div class="resultado-pct" id="res-pct">15%</div>
+        <div class="resultado-label">de descuento en tu próxima compra</div>
+        <div class="codigo-box">
+            <div class="codigo-titulo">Tu código</div>
+            <div class="codigo-valor" id="res-codigo">XXXXXXXX</div>
+            <div class="codigo-hint">Presentalo al momento de pagar · Un solo uso</div>
+        </div>
+        <button class="btn-wsp" id="btn-enviar-wsp">📲 Guardar en WhatsApp</button>
+        <button class="btn-copiar" onclick="copiarCodigo()">📋 Copiar código</button>
+
+        <div class="social-titulo">¿Te gustó? Seguinos y dejanos tu opinión 🙌</div>
+        <div class="social-grid">
+            <a href="https://portaldelviento.com.ar" target="_blank" class="social-btn tienda">
+                <span class="social-ico">🛍️</span>
+                <span class="social-label">Tienda online</span>
+            </a>
+            <a href="https://instagram.com/portaldelviento" target="_blank" class="social-btn ig">
+                <span class="social-ico">📸</span>
+                <span class="social-label">Instagram</span>
+            </a>
+            <a href="https://tiktok.com/@portal.del.viento" target="_blank" class="social-btn tt">
+                <span class="social-ico">🎵</span>
+                <span class="social-label">TikTok</span>
+            </a>
+            <a href="https://share.google/bRmHUPLCevnVfqUBd" target="_blank" class="social-btn google">
+                <span class="social-ico">⭐</span>
+                <span class="social-label">Dejanos 5 estrellas</span>
+            </a>
+        </div>
+    </div>
+
+    <!-- YA PARTICIPÓ -->
+    <div id="panel-ya-participo">
+        <div class="ya-emoji">🔒</div>
+        <div class="ya-titulo">Ya participaste</div>
+        <div class="ya-desc">Este número de WhatsApp ya tiene un código de descuento asignado.<br><br>¡Usalo en tu próxima compra en Portal del Viento!</div>
+    </div>
+
+    <script>
+        // ── CONFIG ──
+        const API_URL = 'https://pdv-production.up.railway.app/api';
+
+        // Sectores de la ruleta: [porcentaje, color, probabilidad proporcional]
+        const SECTORES = [
+            { pct: 5,  color: '#1a3a1a', texto: '5%'  },
+            { pct: 10, color: '#1a2a3a', texto: '10%' },
+            { pct: 10, color: '#2a1a3a', texto: '10%' },
+            { pct: 15, color: '#3a2a1a', texto: '15%' },
+            { pct: 15, color: '#1a3a2a', texto: '15%' },
+            { pct: 20, color: '#3a1a2a', texto: '20%' },
+        ];
+
+        const N = SECTORES.length;
+        const ARC = (2 * Math.PI) / N;
+
+        let anguloActual = 0;
+        let girando = false;
+        let datosCandidato = null;  // { nombre, telefono, descuento_pct }
+        let codigoFinal = null;
+        let pctFinal = null;
+
+        // ── RULETA CANVAS ──
+        function dibujarRuleta(angulo) {
+            const canvas = document.getElementById('ruleta-canvas');
+            const ctx = canvas.getContext('2d');
+            const cx = 150, cy = 150, r = 148;
+            ctx.clearRect(0, 0, 300, 300);
+
+            for (let i = 0; i < N; i++) {
+                const inicio = angulo + i * ARC - Math.PI / 2;
+                const fin = inicio + ARC;
+
+                // Sector
+                ctx.beginPath();
+                ctx.moveTo(cx, cy);
+                ctx.arc(cx, cy, r, inicio, fin);
+                ctx.closePath();
+                ctx.fillStyle = SECTORES[i].color;
+                ctx.fill();
+                ctx.strokeStyle = '#000';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                // Texto
+                ctx.save();
+                ctx.translate(cx, cy);
+                ctx.rotate(inicio + ARC / 2);
+                ctx.textAlign = 'right';
+                ctx.fillStyle = '#e4fc74';
+                ctx.font = 'bold 22px Segoe UI, system-ui, sans-serif';
+                ctx.fillText(SECTORES[i].texto, r - 18, 7);
+                ctx.restore();
+            }
+
+            // Borde exterior
+            ctx.beginPath();
+            ctx.arc(cx, cy, r, 0, 2 * Math.PI);
+            ctx.strokeStyle = '#e4fc74';
+            ctx.lineWidth = 3;
+            ctx.stroke();
+        }
+
+        dibujarRuleta(0);
+
+        // ── FORMULARIO ──
+        function togglePrefijoOtro(val) {
+            const inp = document.getElementById('inp-prefijo-custom');
+            inp.style.display = val === '__otro__' ? 'block' : 'none';
+        }
+
+        function obtenerPrefijo() {
+            const sel = document.getElementById('inp-prefijo');
+            if (sel.value === '__otro__') {
+                return document.getElementById('inp-prefijo-custom').value.replace(/\D/g,'') || '';
+            }
+            return sel.value;
+        }
+
+        function obtenerTelCompleto() {
+            const num = document.getElementById('inp-wsp').value.replace(/\D/g,'').trim();
+            if (!num) return '';
+            const prefijo = obtenerPrefijo();
+            if (!prefijo) return num;
+            if (num.startsWith(prefijo)) return num;
+            return prefijo + num;
+        }
+
+        function mostrarError(msg) {
+            const el = document.getElementById('form-error');
+            el.textContent = msg;
+            el.style.display = 'block';
+        }
+        function limpiarError() {
+            document.getElementById('form-error').style.display = 'none';
+        }
+
+        function irARuleta() {
+            limpiarError();
+            const nombre = document.getElementById('inp-nombre').value.trim();
+            const wsp = document.getElementById('inp-wsp').value.replace(/\D/g,'').trim();
+            if (!nombre) { mostrarError('Ingresá tu nombre para continuar.'); return; }
+            if (wsp.length < 7) { mostrarError('Ingresá un número de WhatsApp válido.'); return; }
+
+            datosCandidato = {
+                nombre: nombre,
+                telefono: obtenerTelCompleto(),
+                descuento_pct: null  // se decide al girar
+            };
+
+            document.getElementById('panel-form').style.display = 'none';
+            document.getElementById('panel-ruleta').style.display = 'flex';
+        }
+
+        // ── GIRAR ──
+        function sectorAlAzar() {
+            return Math.floor(Math.random() * N);
+        }
+
+        async function girarRuleta() {
+            if (girando) return;
+            girando = true;
+            const btn = document.getElementById('btn-spin');
+            btn.disabled = true;
+            btn.textContent = 'Girando...';
+
+            const sectorGanador = sectorAlAzar();
+            const pct = SECTORES[sectorGanador].pct;
+
+            // Calcular ángulo final: varias vueltas + ángulo del sector ganador
+            const vueltasExtra = 5 + Math.floor(Math.random() * 3);
+            // El sector ganador debe quedar bajo la flecha (arriba = -π/2 en el canvas)
+            // La flecha apunta "arriba" = ángulo 0 en nuestra referencia rotada
+            const anguloSector = sectorGanador * ARC + ARC / 2; // centro del sector
+            // Queremos que ese ángulo quede en 0 (arriba), restamos anguloActual actual
+            const anguloObjetivo = vueltasExtra * 2 * Math.PI - anguloSector;
+            const anguloInicio = anguloActual;
+            const anguloTotal = anguloObjetivo - anguloInicio + (2 * Math.PI * Math.round((anguloObjetivo - anguloInicio) / (2 * Math.PI)));
+            const duracion = 4000;
+            const inicio = performance.now();
+
+            function easeOut(t) {
+                return 1 - Math.pow(1 - t, 4);
+            }
+
+            function animar(ts) {
+                const elapsed = ts - inicio;
+                const t = Math.min(elapsed / duracion, 1);
+                const ang = anguloInicio + anguloTotal * easeOut(t);
+                anguloActual = ang;
+                dibujarRuleta(ang);
+
+                if (t < 1) {
+                    requestAnimationFrame(animar);
+                } else {
+                    girando = false;
+                    // Enviar al backend
+                    datosCandidato.descuento_pct = pct;
+                    enviarAlBackend(pct);
+                }
+            }
+
+            requestAnimationFrame(animar);
+        }
+
+        async function enviarAlBackend(pct) {
+            try {
+                const res = await fetch(API_URL + '/pos/ruleta/girar', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        nombre: datosCandidato.nombre,
+                        telefono: datosCandidato.telefono,
+                        descuento_pct: pct
+                    })
+                });
+                const data = await res.json();
+                if (data.ok === true) {
+                    mostrarResultado(data.codigo, data.descuento_pct);
+                } else if (data.ok === false && data.mensaje) {
+                    // Solo "ya participó" va a esa pantalla, cualquier otro error muestra alerta
+                    if (data.mensaje.toLowerCase().includes('ya participó') || data.mensaje.toLowerCase().includes('ya participo')) {
+                        mostrarYaParticipo();
+                    } else {
+                        alert('Error: ' + data.mensaje);
+                        document.getElementById('panel-ruleta').style.display = 'none';
+                        document.getElementById('panel-form').style.display = 'flex';
+                    }
+                } else if (data.detail) {
+                    // Error 500 de FastAPI
+                    alert('Error del servidor: ' + (typeof data.detail === 'string' ? data.detail : JSON.stringify(data.detail)));
+                    document.getElementById('panel-ruleta').style.display = 'none';
+                    document.getElementById('panel-form').style.display = 'flex';
+                } else {
+                    mostrarResultado(data.codigo || '—', pct);
+                }
+            } catch(e) {
+                alert('No se pudo conectar con el servidor. Verificá tu conexión e intentá de nuevo.');
+                document.getElementById('panel-ruleta').style.display = 'none';
+                document.getElementById('panel-form').style.display = 'flex';
+            }
+        }
+
+        function mostrarResultado(codigo, pct) {
+            codigoFinal = codigo;
+            pctFinal = pct;
+
+            document.getElementById('res-pct').textContent = pct + '%';
+            document.getElementById('res-codigo').textContent = codigo;
+
+            // Botón WhatsApp
+            const tel = datosCandidato.telefono;
+            const nombre = datosCandidato.nombre.split(' ')[0];
+            const msg = '🎡 ¡Felicitaciones ' + nombre + '!\n\nGanaste un *' + pct + '% de descuento* en tu próxima compra en Portal del Viento.\n\n🎟️ Tu código: *' + codigo + '*\n\nPresentalo al pagar (un solo uso). ¡Te esperamos!';
+            const numFmt = tel.startsWith('54') ? tel.replace(/^54/, '549') : tel;
+            document.getElementById('btn-enviar-wsp').onclick = function() {
+                window.open('https://wa.me/' + numFmt + '?text=' + encodeURIComponent(msg), '_blank');
+            };
+
+            document.getElementById('panel-ruleta').style.display = 'none';
+            const pr = document.getElementById('panel-resultado');
+            pr.style.display = 'flex';
+            pr.classList.add('spinning');
+        }
+
+        function mostrarYaParticipo() {
+            document.getElementById('panel-ruleta').style.display = 'none';
+            document.getElementById('panel-ya-participo').style.display = 'flex';
+        }
+
+        function copiarCodigo() {
+            if (!codigoFinal) return;
+            navigator.clipboard.writeText(codigoFinal).then(function() {
+                const btn = document.querySelector('.btn-copiar');
+                btn.textContent = '✅ ¡Copiado!';
+                setTimeout(function(){ btn.textContent = '📋 Copiar código'; }, 2000);
+            });
+        }
+    </script>
+</body>
+</html>
