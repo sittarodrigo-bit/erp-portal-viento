@@ -5832,6 +5832,34 @@ class RuletaGiroRequest(BaseModel):
     descuento_pct: int
     id_local: Optional[int] = None
 
+@app.get("/api/ruleta/premio")
+def ruleta_obtener_premio():
+    """
+    Decide el premio del próximo giro de ruleta de forma controlada.
+    Cada 20 giros (global) fuerza un 20%. El resto sigue distribución normal.
+    Distribución normal: 10%×4, 5%×2, 15%×1 → no incluye 20% (reservado al múltiplo de 20).
+    """
+    import random
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        # Contar giros totales registrados
+        cur.execute("SELECT COUNT(*) FROM pos_ruleta_giros")
+        total_giros = cur.fetchone()[0]
+        # El PRÓXIMO giro será total_giros + 1
+        proximo = total_giros + 1
+        if proximo % 20 == 0:
+            pct = 20
+        else:
+            # Distribución: 10% x4, 5% x2, 15% x1 (sin 20%)
+            pool = [10, 10, 10, 10, 5, 5, 15]
+            pct = random.choice(pool)
+        return {"ok": True, "descuento_pct": pct}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        conn.close()
+
 @app.post("/api/pos/ruleta/girar")
 def pos_ruleta_girar(data: RuletaGiroRequest):
     """Genera un código de descuento para la ruleta pública. Una vez por número de teléfono."""
