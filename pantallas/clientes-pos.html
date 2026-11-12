@@ -110,6 +110,33 @@
                 </div>
             </div>
 
+            <!-- RULETA: BLANQUEO -->
+            <div class="bg-black border border-gray-800 rounded-xl p-5 mb-6">
+                <div class="flex items-center justify-between mb-4">
+                    <div>
+                        <h3 class="text-white font-bold text-sm">🎡 Ruleta — Gestión de participantes</h3>
+                        <p class="text-gray-500 text-xs mt-1">Blanqueá los registros para que puedan volver a girar</p>
+                    </div>
+                </div>
+                <div class="flex flex-wrap gap-3">
+                    <!-- Blanqueo individual -->
+                    <div class="flex gap-2 flex-1 min-w-56">
+                        <input type="tel" id="inp-tel-ruleta" placeholder="Número de teléfono" inputmode="numeric"
+                            class="flex-1 bg-gray-900 border border-gray-700 text-white rounded-lg px-3 py-2 text-sm placeholder-gray-600 focus:border-purple-500 outline-none">
+                        <button onclick="blanquearTelefono()"
+                            class="bg-purple-700 hover:bg-purple-600 text-white font-bold px-4 py-2 rounded-lg text-sm whitespace-nowrap">
+                            🗑️ Blanquear
+                        </button>
+                    </div>
+                    <!-- Blanqueo total -->
+                    <button onclick="blanquearTodos()"
+                        class="bg-red-900 hover:bg-red-800 border border-red-700 text-red-300 font-bold px-4 py-2 rounded-lg text-sm whitespace-nowrap">
+                        ⚠️ Borrar todos
+                    </button>
+                </div>
+                <div id="ruleta-msg" class="hidden mt-3 text-sm rounded-lg px-3 py-2"></div>
+            </div>
+
             <!-- TABLA -->
             <div class="bg-black border border-gray-800 rounded-xl overflow-hidden">
                 <div id="tabla-container">
@@ -433,6 +460,38 @@
             var a = document.createElement('a');
             a.href = url; a.download = 'clientes_pos.csv'; a.click();
             URL.revokeObjectURL(url);
+        }
+
+        // ── RULETA BLANQUEO ─────────────────────────────────────────
+        function mostrarMsgRuleta(msg, ok) {
+            var el = document.getElementById('ruleta-msg');
+            el.textContent = msg;
+            el.className = 'mt-3 text-sm rounded-lg px-3 py-2 ' + (ok ? 'bg-green-900 text-green-300' : 'bg-red-900 text-red-300');
+            el.classList.remove('hidden');
+            setTimeout(function(){ el.classList.add('hidden'); }, 4000);
+        }
+
+        async function blanquearTelefono() {
+            var tel = document.getElementById('inp-tel-ruleta').value.replace(/\D/g,'').trim();
+            if (!tel) { mostrarMsgRuleta('Ingresá un número de teléfono.', false); return; }
+            if (!confirm('¿Borrar el registro de ' + tel + ' en la ruleta?')) return;
+            try {
+                var res = await fetch(API_URL + '/pos/ruleta/giros/telefono/' + tel, { method: 'DELETE' }).then(r => r.json());
+                mostrarMsgRuleta(res.ok ? ('✅ ' + (res.eliminados || 1) + ' registro eliminado. Puede volver a girar.') : ('⚠️ ' + res.mensaje), res.ok);
+                if (res.ok) document.getElementById('inp-tel-ruleta').value = '';
+            } catch(e) {
+                mostrarMsgRuleta('Error de conexión.', false);
+            }
+        }
+
+        async function blanquearTodos() {
+            if (!confirm('¿Borrar TODOS los participantes de la ruleta? Todos podrán girar de nuevo.')) return;
+            try {
+                var res = await fetch(API_URL + '/pos/ruleta/giros', { method: 'DELETE' }).then(r => r.json());
+                mostrarMsgRuleta(res.ok ? ('✅ ' + res.eliminados + ' registros eliminados. Todos pueden volver a girar.') : 'Error al borrar.', res.ok);
+            } catch(e) {
+                mostrarMsgRuleta('Error de conexión.', false);
+            }
         }
 
         // Init
