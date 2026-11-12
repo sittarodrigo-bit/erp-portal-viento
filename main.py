@@ -5860,9 +5860,10 @@ def pos_ruleta_girar(data: RuletaGiroRequest):
             conn.rollback()
             return {"ok": False, "mensaje": "Este número ya participó de la ruleta."}
         # Generar código único
-        chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+        letras = 'ABCDEFGHJKLMNPQRSTUVWXYZ'
+        numeros = '0123456789'
         for _ in range(20):
-            codigo = ''.join(random.choices(chars, k=8))
+            codigo = random.choice(letras) + ''.join(random.choices(numeros, k=3))
             cur.execute("SELECT id FROM pos_codigos_descuento WHERE codigo=%s", (codigo,))
             if not cur.fetchone():
                 break
