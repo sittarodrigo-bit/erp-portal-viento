@@ -9759,6 +9759,41 @@ def route_locales():
 def route_clientes_pos():
     return serve_html("clientes-pos.html")
 
+@app.get("/api/pos/ruleta/giros")
+def ruleta_listar_giros():
+    """Lista todos los participantes de la ruleta con su código y descuento."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT
+                rg.nombre,
+                rg.telefono,
+                cd.codigo,
+                cd.descuento_pct,
+                rg.fecha,
+                cd.usado
+            FROM pos_ruleta_giros rg
+            LEFT JOIN pos_codigos_descuento cd ON cd.id = rg.id_codigo
+            ORDER BY rg.fecha DESC
+        """)
+        rows = cur.fetchall()
+        resultado = []
+        for r in rows:
+            resultado.append({
+                "nombre": r[0],
+                "telefono": r[1],
+                "codigo": r[2],
+                "descuento_pct": r[3],
+                "fecha": r[4].isoformat() if r[4] else None,
+                "usado": r[5]
+            })
+        return {"ok": True, "data": resultado}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        conn.close()
+
 @app.delete("/api/pos/ruleta/giros")
 def ruleta_borrar_todos():
     """Borra todos los registros de participantes de la ruleta (blanqueo total)."""
