@@ -442,7 +442,10 @@
 
     <script>
         // ── CONFIG ──
-        const API_URL = 'https://web-production-1588b.up.railway.app/api';
+        // Si se sirve desde el propio servidor usa rutas relativas; si se abre como archivo local, va a producción
+        const API_URL = location.protocol.startsWith('http')
+            ? location.origin + '/api'
+            : 'https://erp.portaldelviento.com.ar/api';
 
         // Sectores de la ruleta: [porcentaje, color, probabilidad proporcional]
         const SECTORES = [
@@ -578,7 +581,9 @@
             // Queremos que ese ángulo quede en 0 (arriba), restamos anguloActual actual
             const anguloObjetivo = vueltasExtra * 2 * Math.PI - anguloSector;
             const anguloInicio = anguloActual;
-            const anguloTotal = anguloObjetivo - anguloInicio + (2 * Math.PI * Math.round((anguloObjetivo - anguloInicio) / (2 * Math.PI)));
+            const TAU = 2 * Math.PI;
+            const delta = (((anguloObjetivo - anguloInicio) % TAU) + TAU) % TAU;
+            const anguloTotal = delta + vueltasExtra * TAU;
             const duracion = 4000;
             const inicio = performance.now();
 
