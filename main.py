@@ -128,6 +128,22 @@ def liberar_conexion(conn):
 def fetchall_dict(cursor):
     return [dict(row) for row in cursor.fetchall()]
 
+def _migrar_bd():
+    """Aplica migraciones seguras (ADD COLUMN IF NOT EXISTS) al iniciar."""
+    try:
+        conn = obtener_conexion()
+        cur = conn.cursor()
+        cur.execute("""
+            ALTER TABLE distribuidores
+            ADD COLUMN IF NOT EXISTS envio_gratis_promo BOOLEAN DEFAULT false
+        """)
+        conn.commit()
+        liberar_conexion(conn)
+    except Exception as e:
+        print("Migración BD (no crítica):", e)
+
+_migrar_bd()
+
 def crear_notificacion(tipo, titulo, detalle=None):
     """Crea una notificación. No rompe si la tabla no existe (queda silencioso).
     Usa su propia conexión para no interferir con la transacción en curso."""
@@ -215,6 +231,7 @@ class Distribuidor(BaseModel):
     cp: Optional[str] = None
     limite_credito: float = 0.0
     notas: Optional[str] = None
+    envio_gratis_promo: bool = False
 
 class DetallePedido(BaseModel):
     id_producto: int
@@ -1265,6 +1282,7 @@ def get_distribuidores():
             cur.execute("""
                 SELECT id, razon_social, cuit, limite_credito, direccion, localidad, provincia,
                        cp, telefono, email, dni, aprobado, notas, username,
+                       COALESCE(envio_gratis_promo, false) AS envio_gratis_promo,
                        fecha_registro::text AS fecha_registro,
                        (password_hash IS NOT NULL) AS tiene_clave
                 FROM distribuidores WHERE COALESCE(activo, true) = true ORDER BY razon_social ASC
@@ -1274,6 +1292,7 @@ def get_distribuidores():
             cur.execute("""
                 SELECT id, razon_social, cuit, limite_credito, direccion, localidad, provincia,
                        cp, telefono, email, dni, aprobado, notas, username,
+                       COALESCE(envio_gratis_promo, false) AS envio_gratis_promo,
                        (password_hash IS NOT NULL) AS tiene_clave
                 FROM distribuidores WHERE COALESCE(activo, true) = true ORDER BY razon_social ASC
             """)
@@ -1413,10 +1432,12 @@ def actualizar_distribuidor(id: int, dist: Distribuidor):
         cur.execute("""
             UPDATE distribuidores SET
             razon_social=%s, dni=%s, cuit=%s, telefono=%s, email=%s,
-            direccion=%s, localidad=%s, provincia=%s, cp=%s, limite_credito=%s, notas=%s
+            direccion=%s, localidad=%s, provincia=%s, cp=%s, limite_credito=%s, notas=%s,
+            envio_gratis_promo=%s
             WHERE id=%s
         """, (dist.razon_social, dist.dni, dist.cuit, dist.telefono, dist.email, dist.direccion,
-              dist.localidad, dist.provincia, dist.cp, dist.limite_credito, dist.notas, id))
+              dist.localidad, dist.provincia, dist.cp, dist.limite_credito, dist.notas,
+              dist.envio_gratis_promo, id))
         conn.commit()
         return {"status": "ok"}
     except Exception as e:
@@ -1433,6 +1454,25 @@ def aprobar_distribuidor(id: int):
         cur.execute("UPDATE distribuidores SET aprobado = true WHERE id = %s", (id,))
         conn.commit()
         return {"status": "ok"}
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
+@app.put("/api/distribuidores/{id}/envio_gratis_promo")
+def toggle_envio_gratis(id: int, body: dict = Body(...)):
+    """Activa o desactiva la promo de envío gratis para un distribuidor."""
+    conn = obtener_conexion()
+    try:
+        valor = bool(body.get("envio_gratis_promo", False))
+        cur = conn.cursor()
+        cur.execute("""
+            ALTER TABLE distribuidores ADD COLUMN IF NOT EXISTS envio_gratis_promo BOOLEAN DEFAULT false
+        """)
+        cur.execute("UPDATE distribuidores SET envio_gratis_promo = %s WHERE id = %s", (valor, id))
+        conn.commit()
+        return {"status": "ok", "envio_gratis_promo": valor}
     except Exception as e:
         conn.rollback()
         raise HTTPException(status_code=500, detail=str(e))
@@ -1753,7 +1793,8 @@ def login_distribuidor(data: LoginData, request: Request):
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
         cur.execute("""
-            SELECT id, razon_social, cuit, dni, telefono, email, direccion, localidad, provincia, cp, password_hash, aprobado, activo
+            SELECT id, razon_social, cuit, dni, telefono, email, direccion, localidad, provincia, cp, password_hash, aprobado, activo,
+                   COALESCE(envio_gratis_promo, false) AS envio_gratis_promo
             FROM distribuidores WHERE username = %s
         """, (data.username,))
         user = cur.fetchone()

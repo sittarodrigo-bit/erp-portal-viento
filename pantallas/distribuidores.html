@@ -536,7 +536,40 @@
                 </div>
             </div>
             <label class="block text-xs text-gray-500 font-bold mb-1">Notas internas</label>
-            <textarea id="ed-notas" rows="2" class="w-full bg-black border border-gray-700 text-white rounded p-2 mb-5 text-sm resize-none"></textarea>
+            <textarea id="ed-notas" rows="2" class="w-full bg-black border border-gray-700 text-white rounded p-2 mb-4 text-sm resize-none"></textarea>
+            <!-- Promo envío gratis -->
+            <div class="flex items-center justify-between p-3 rounded-lg mb-5" style="background:rgba(184,134,11,0.07);border:1px solid rgba(184,134,11,0.2)">
+                <div>
+                    <div class="text-xs font-bold" style="color:#f5c842;letter-spacing:1px;text-transform:uppercase">🚚 Promo Envío Gratis</div>
+                    <div class="text-xs mt-0.5" style="color:rgba(255,255,255,0.4)">Muestra la barra de progreso hacia $400.000</div>
+                </div>
+                <label onclick="toggleEnvioGratisUI()" style="cursor:pointer;display:flex;align-items:center;gap:0">
+                    <input type="checkbox" id="ed-envio-gratis" class="hidden">
+                    <div id="ed-toggle-track" style="width:44px;height:24px;border-radius:12px;background:rgba(255,255,255,0.12);position:relative;transition:background .2s">
+                        <div id="ed-toggle-knob" style="position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,0.4);transition:transform .2s"></div>
+                    </div>
+                </label>
+            </div>
+            <script>
+            function toggleEnvioGratisUI() {
+                var chk = document.getElementById('ed-envio-gratis');
+                var track = document.getElementById('ed-toggle-track');
+                var knob = document.getElementById('ed-toggle-knob');
+                chk.checked = !chk.checked;
+                track.style.background = chk.checked ? '#b8860b' : 'rgba(255,255,255,0.12)';
+                knob.style.transform = chk.checked ? 'translateX(20px)' : 'translateX(0)';
+            }
+            // Sincronizar visual al abrir modal
+            function sincEnvioToggle(val) {
+                var chk = document.getElementById('ed-envio-gratis');
+                var track = document.getElementById('ed-toggle-track');
+                var knob = document.getElementById('ed-toggle-knob');
+                if (!chk) return;
+                chk.checked = !!val;
+                track.style.background = val ? '#b8860b' : 'rgba(255,255,255,0.12)';
+                knob.style.transform = val ? 'translateX(20px)' : 'translateX(0)';
+            }
+            </script>
             <div class="flex justify-end gap-3">
                 <button onclick="cerrarModales()" class="px-4 py-2 text-gray-400 hover:text-white font-bold">Cancelar</button>
                 <button onclick="guardarEdicion()" class="bg-neon text-black px-6 py-2 rounded font-bold hover:bg-yellow-300">Actualizar</button>
@@ -1002,6 +1035,7 @@
             document.getElementById('ed-cp').value        = d.cp || '';
             document.getElementById('ed-credito').value   = d.limite_credito || 0;
             document.getElementById('ed-notas').value     = d.notas || '';
+            sincEnvioToggle(!!d.envio_gratis_promo);
             document.getElementById('modal-editar').classList.replace('modal-oculto','modal-visible');
         }
 
@@ -1017,8 +1051,9 @@
                 localidad:      document.getElementById('ed-localidad').value.trim() || null,
                 provincia:      document.getElementById('ed-provincia').value.trim() || null,
                 cp:             document.getElementById('ed-cp').value.trim() || null,
-                limite_credito: parseFloat(document.getElementById('ed-credito').value) || 0,
-                notas:          document.getElementById('ed-notas').value || null
+                limite_credito:    parseFloat(document.getElementById('ed-credito').value) || 0,
+                notas:             document.getElementById('ed-notas').value || null,
+                envio_gratis_promo: document.getElementById('ed-envio-gratis').checked
             };
             await fetch(API_URL + '/distribuidores/' + id, {
                 method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(data)

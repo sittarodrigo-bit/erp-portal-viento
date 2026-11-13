@@ -481,6 +481,17 @@
 
             <!-- Carrito flotante -->
             <div id="carrito-flotante" class="hidden fixed bottom-0 left-0 right-0 bg-black border-t border-gray-800 p-4 z-30 max-h-96 overflow-y-auto">
+                <!-- Barra de envío gratis -->
+                <div id="envio-gratis-bar" class="hidden mb-3">
+                    <div class="flex justify-between items-center mb-1">
+                        <span id="envio-label" class="text-xs font-bold" style="color:rgba(245,240,232,0.55);letter-spacing:1px;text-transform:uppercase"></span>
+                        <span id="envio-badge" class="hidden text-xs font-bold px-2 py-0.5 rounded-full" style="background:rgba(34,197,94,0.15);color:#22c55e;border:1px solid rgba(34,197,94,0.3)">🚚 Envío gratis</span>
+                    </div>
+                    <div class="rounded-full overflow-hidden" style="height:6px;background:rgba(245,240,232,0.08)">
+                        <div id="envio-progress" class="h-full rounded-full transition-all duration-500" style="width:0%;background:linear-gradient(90deg,#b8860b,#f5c842)"></div>
+                    </div>
+                    <div id="envio-falta" class="text-right mt-1 text-xs" style="color:rgba(245,240,232,0.35)"></div>
+                </div>
                 <div class="flex justify-between items-center mb-3">
                     <span class="text-gray-400 font-bold text-sm">TOTAL DEL PEDIDO</span>
                     <span id="dist-total" class="text-neon font-bold text-2xl">$ 0</span>
@@ -740,6 +751,26 @@
             });
             document.getElementById('dist-total').textContent = '$ ' + total.toLocaleString('es-AR');
             document.getElementById('carrito-flotante').classList.toggle('hidden', !hayItems);
+            // Barra de progreso envío gratis
+            var META_ENVIO = 400000;
+            var barWrapper = document.getElementById('envio-gratis-bar');
+            var mostrarBarra = distActual && distActual.envio_gratis_promo;
+            if (barWrapper) {
+                barWrapper.classList.toggle('hidden', !mostrarBarra);
+                if (mostrarBarra) {
+                    var pct = Math.min(100, Math.round(total / META_ENVIO * 100));
+                    var alcanzado = total >= META_ENVIO;
+                    document.getElementById('envio-progress').style.width = pct + '%';
+                    document.getElementById('envio-progress').style.background = alcanzado
+                        ? 'linear-gradient(90deg,#16a34a,#22c55e)'
+                        : 'linear-gradient(90deg,#b8860b,#f5c842)';
+                    document.getElementById('envio-badge').classList.toggle('hidden', !alcanzado);
+                    var labelEl = document.getElementById('envio-label');
+                    labelEl.textContent = alcanzado ? '¡Envío gratis activado!' : 'Progreso hacia envío gratis';
+                    var faltaEl = document.getElementById('envio-falta');
+                    faltaEl.textContent = alcanzado ? '' : 'Faltan $ ' + (META_ENVIO - total).toLocaleString('es-AR');
+                }
+            }
         }
 
         async function enviarPedidoDist() {
