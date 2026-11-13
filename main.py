@@ -1062,13 +1062,14 @@ def get_productos_presentaciones(solo_visibles_mayorista: bool = False):
                 SELECT id, sku, nombre, tipo, stock_actual AS stock, stock_actual,
                        id_categoria, stock_alerta, imagen_url,
                        COALESCE(precio_minorista,0) AS precio_minorista,
-                       COALESCE(precio_mayorista,0) AS precio_mayorista
+                       COALESCE(precio_mayorista,0) AS precio_mayorista,
+                       COALESCE(visible_mayorista, true) AS visible_mayorista,
+                       COALESCE(descuento_mayorista, 0) AS descuento_mayorista
                 FROM productos
                 WHERE COALESCE(activo, true) = true{filtro_vis}
                 ORDER BY nombre ASC
             """)
         except Exception:
-            # Si la columna no existe todavía, traer sin filtro (no rompe)
             conn.rollback()
             cur.execute("""
                 SELECT id, sku, nombre, tipo, stock_actual AS stock, stock_actual,
@@ -1157,6 +1158,22 @@ def actualizar_producto(id: int, prod: Producto):
                   prod.imagen_url, prod.precio_minorista, prod.precio_mayorista, id))
         conn.commit()
         return {"status": "ok"}
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
+@app.patch("/api/productos/{id}/descuento_mayorista")
+def set_descuento_mayorista(id: int, body: dict = Body(...)):
+    conn = obtener_conexion()
+    try:
+        valor = max(0, min(100, float(body.get("descuento", 0))))
+        cur = conn.cursor()
+        cur.execute("ALTER TABLE productos ADD COLUMN IF NOT EXISTS descuento_mayorista NUMERIC(5,2) DEFAULT 0")
+        cur.execute("UPDATE productos SET descuento_mayorista=%s WHERE id=%s", (valor, id))
+        conn.commit()
+        return {"status": "ok", "descuento_mayorista": valor}
     except Exception as e:
         conn.rollback()
         raise HTTPException(status_code=500, detail=str(e))
@@ -6250,7 +6267,8 @@ def precios_para_distribuidor(id_dist: int):
             cur.execute("""
                 SELECT id, sku, nombre, id_categoria, imagen_url,
                        COALESCE(precio_minorista,0) AS precio_minorista,
-                       COALESCE(precio_mayorista,0) AS precio_mayorista
+                       COALESCE(precio_mayorista,0) AS precio_mayorista,
+                       COALESCE(descuento_mayorista, 0) AS descuento_mayorista
                 FROM productos
                 WHERE COALESCE(activo, true) = true AND COALESCE(visible_mayorista, true) = true
                 ORDER BY nombre ASC
@@ -6267,16 +6285,20 @@ def precios_para_distribuidor(id_dist: int):
             """)
         productos = fetchall_dict(cur)
         for p in productos:
-            base = float(p['precio_mayorista'] or 0)
-            pct = desc.get(p['id_categoria'], 0)
-            p['descuento'] = pct
-            p['precio_base'] = base
-            p['precio_final'] = round(base * (1 - pct/100.0), 2)
-            # presentación virtual con el precio ya descontado
+            base     = float(p['precio_mayorista'] or 0)
+            pct_cat  = desc.get(p['id_categoria'], 0)
+            pct_prod = float(p.get('descuento_mayorista') or 0)
+            # Si el producto tiene descuento propio, ese reemplaza al de categoría.
+            # Si no tiene, se aplica el de categoría. Nunca se acumulan.
+            pct_final = pct_prod if pct_prod > 0 else pct_cat
+            precio_final = round(base * (1 - pct_final/100.0), 2)
+            p['descuento']    = pct_prod          # badge solo si tiene desc. por producto
+            p['precio_base']  = base              # precio sin descuento (tachado)
+            p['precio_final'] = precio_final
             p['presentaciones'] = [{
                 'id': p['id'], 'nombre': 'Unidad', 'cantidad_unidades': 1,
                 'precio_minorista': float(p['precio_minorista'] or 0),
-                'precio_mayorista': p['precio_final']
+                'precio_mayorista': precio_final
             }]
         return productos
     finally:

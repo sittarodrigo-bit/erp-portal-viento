@@ -73,12 +73,13 @@
                             <th class="p-4">Stock</th>
                             <th class="p-4">Alerta Stock</th>
                             <th class="p-4">Precio Mayorista</th>
+                            <th class="p-4 text-center">Descuento %</th>
                             <th class="p-4 text-center">Portal Dist.</th>
                             <th class="p-4 text-right">Acciones</th>
                         </tr>
                     </thead>
                     <tbody id="tabla-productos" class="divide-y divide-gray-800 text-sm">
-                        <tr><td colspan="8" class="p-4 text-center text-gray-500">Cargando...</td></tr>
+                        <tr><td colspan="9" class="p-4 text-center text-gray-500">Cargando...</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -236,7 +237,7 @@
             const tabla = document.getElementById('tabla-productos');
             tabla.innerHTML = '';
             if (!productos.length) {
-                tabla.innerHTML = '<tr><td colspan="8" class="p-4 text-center text-gray-500">Sin productos.</td></tr>';
+                tabla.innerHTML = '<tr><td colspan="9" class="p-4 text-center text-gray-500">Sin productos.</td></tr>';
                 document.getElementById('contador-productos').textContent = '';
                 return;
             }
@@ -271,6 +272,18 @@
                         <td class="p-4 ${colorStock}">${p.stock} un.</td>
                         <td class="p-4 text-gray-500 text-xs">${p.stock_alerta || 20} un.</td>
                         <td class="p-4 text-neon font-bold text-lg">$ ${precio.toLocaleString('es-AR')}</td>
+                        <td class="p-4 text-center">
+                            <div style="display:inline-flex;align-items:center;gap:4px">
+                                <input type="number" min="0" max="100" step="1"
+                                    value="${parseFloat(p.descuento_mayorista)||0}"
+                                    data-prod-id="${p.id}"
+                                    style="width:52px;background:#111;border:1px solid #374151;border-radius:6px;color:#f5c842;text-align:center;font-weight:700;font-size:13px;padding:4px 2px;outline:none"
+                                    onfocus="this.style.borderColor='#f5c842'"
+                                    onblur="this.style.borderColor='#374151';guardarDescuentoMayorista(this)"
+                                    onkeydown="if(event.key==='Enter'){this.blur()}">
+                                <span style="color:#9ca3af;font-size:12px">%</span>
+                            </div>
+                        </td>
                         <td class="p-4 text-center">
                             <div data-prod-id="${p.id}" data-on="${visibleMayorista ? '1' : '0'}"
                                  onclick="toggleVisibleMayorista(this)"
@@ -323,6 +336,26 @@
             });
             const cont = document.getElementById('contador-productos');
             if (cont) cont.textContent = `${visibles} de ${filas.length} productos`;
+        }
+
+        async function guardarDescuentoMayorista(inp) {
+            const id    = inp.dataset.prodId;
+            const valor = Math.max(0, Math.min(100, parseFloat(inp.value) || 0));
+            inp.value   = valor;
+            inp.style.borderColor = '#374151';
+            try {
+                const res = await fetch(`${API_URL}/productos/${id}/descuento_mayorista`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ descuento: valor })
+                });
+                if (!res.ok) throw new Error();
+                // feedback visual breve
+                inp.style.borderColor = '#22c55e';
+                setTimeout(() => { inp.style.borderColor = '#374151'; }, 1200);
+            } catch(e) {
+                inp.style.borderColor = '#ef4444';
+            }
         }
 
         async function toggleVisibleMayorista(el) {
