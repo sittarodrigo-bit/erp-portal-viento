@@ -179,6 +179,142 @@
         .bg-neon { background-color: var(--rojo); color: #fff; }
         .border-neon { border-color: var(--dorado); }
         .focus\:border-neon:focus { border-color: var(--dorado) !important; }
+
+        /* ── TIPOGRAFÍA INTERIOR DE LA APP ── */
+
+        /* Header principal */
+        #p-panel .bg-black.border-b p {
+            font-family: 'Playfair Display', serif !important;
+            font-size: 18px !important;
+            font-weight: 700 !important;
+            letter-spacing: 2px !important;
+            color: var(--crema) !important;
+            text-transform: none !important;
+        }
+
+        /* Saludo "Hola, Nombre" */
+        #p-panel .text-lg.font-bold {
+            font-family: 'Lato', sans-serif;
+            font-size: 20px;
+            font-weight: 300;
+            color: rgba(245,240,232,0.7);
+        }
+        #p-panel #panel-nombre {
+            font-family: 'Playfair Display', serif;
+            font-style: italic;
+            font-weight: 700;
+            font-size: 22px;
+            color: var(--crema);
+        }
+
+        /* Stats tiles */
+        #p-panel .text-xs.text-gray-500.uppercase.font-bold {
+            font-family: 'Lato', sans-serif;
+            font-size: 9px;
+            font-weight: 700;
+            letter-spacing: 1.5px;
+            color: rgba(245,240,232,0.35) !important;
+        }
+        #p-panel #stat-pagado, #p-panel #stat-deuda, #p-panel #stat-prep {
+            font-family: 'Lato', sans-serif;
+            font-size: 16px;
+            font-weight: 900;
+            font-variant-numeric: tabular-nums;
+        }
+
+        /* Tabs de navegación */
+        .tab-btn {
+            font-family: 'Lato', sans-serif;
+            font-size: 13px;
+            font-weight: 700;
+            letter-spacing: 0.3px;
+        }
+
+        /* Encabezados de categoría en catálogo */
+        #catalogo-por-cat h3 {
+            font-family: 'Playfair Display', serif;
+            font-size: 16px;
+            font-weight: 700;
+            color: var(--crema);
+        }
+
+        /* Cards de producto */
+        .prod-card .text-white { font-family: 'Lato', sans-serif; }
+        .prod-card .font-bold  { font-weight: 700; }
+        .prod-card .text-xs    { letter-spacing: 0.2px; }
+        .prod-card .text-neon  { font-weight: 900; font-variant-numeric: tabular-nums; }
+
+        /* Total del carrito */
+        #dist-total {
+            font-family: 'Lato', sans-serif;
+            font-size: 28px;
+            font-weight: 900;
+            font-variant-numeric: tabular-nums;
+            color: var(--crema);
+        }
+        #p-panel .text-sm.font-bold.text-gray-400 {
+            font-family: 'Lato', sans-serif;
+            font-size: 10px;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+        }
+
+        /* Encabezados de sección (Mis datos, Últimos pagos) */
+        #p-panel h3.font-bold.text-white {
+            font-family: 'Playfair Display', serif;
+            font-size: 16px;
+            font-weight: 700;
+        }
+
+        /* Labels de sección (Datos personales / empresa) */
+        #p-registro .text-xs.font-bold.uppercase,
+        #p-panel    .text-xs.font-bold.uppercase {
+            font-family: 'Lato', sans-serif;
+            letter-spacing: 1.5px;
+        }
+
+        /* Botón confirmar pedido */
+        #btn-pedido {
+            font-family: 'Lato', sans-serif;
+            font-size: 16px;
+            font-weight: 900;
+            letter-spacing: 0.5px;
+        }
+
+        /* Botón "Crear cuenta" en registro */
+        #btn-reg {
+            font-family: 'Lato', sans-serif;
+            font-weight: 900;
+            letter-spacing: 0.5px;
+        }
+
+        /* Header del registro */
+        .reg-marca {
+            font-size: 20px;
+            letter-spacing: 1px;
+        }
+
+        /* Texto general del panel */
+        #p-panel, #p-registro {
+            font-family: 'Lato', sans-serif;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        /* Alertas y mensajes */
+        #alerta-no-aprobado {
+            font-family: 'Lato', sans-serif;
+            font-size: 13px;
+            line-height: 1.5;
+        }
+
+        /* Historial de pedidos */
+        #lista-pedidos-dist .font-bold { font-family: 'Lato', sans-serif; }
+
+        /* Ranking */
+        #lista-ranking .font-bold { font-family: 'Lato', sans-serif; }
+
+        /* Texto descriptivo */
+        #dp-ranking .text-sm { font-size: 13px; line-height: 1.6; color: rgba(245,240,232,0.45); }
     </style>
 </head>
 <body class="text-gray-200 font-sans min-h-screen">
