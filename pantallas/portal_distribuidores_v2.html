@@ -23,9 +23,111 @@
         .pantalla.activa { display: block !important; }
         .tab-btn { transition: all 0.2s; }
         .tab-btn.activo { background: var(--rojo); color: #fff; font-weight: 700; }
-        .prod-card { transition: transform 0.15s; }
-        .prod-card:hover { transform: translateY(-2px); }
-        .cant-btn { width: 32px; height: 32px; border-radius: 50%; font-size: 18px; font-weight: bold; display: flex; align-items: center; justify-content: center; }
+        /* ── PRODUCT CARDS ── */
+        .prod-card {
+            background: #141414;
+            border: 1px solid rgba(255,255,255,0.07);
+            border-radius: 14px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            transition: border-color .2s, transform .15s, box-shadow .2s;
+            position: relative;
+        }
+        .prod-card:hover { transform: translateY(-2px); border-color: rgba(184,134,11,0.25); }
+        .prod-card.activa {
+            border-color: rgba(245,200,66,0.4);
+            box-shadow: 0 0 0 1px rgba(245,200,66,0.12), 0 4px 20px rgba(245,200,66,0.07);
+        }
+        .prod-card-img {
+            width: 100%; aspect-ratio: 4/3; object-fit: cover; display: block;
+            background: #1a1a1a;
+        }
+        .prod-card-placeholder {
+            width: 100%; aspect-ratio: 4/3;
+            background: #1a1a1a;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 36px;
+        }
+        .prod-badge-desc {
+            position: absolute; top: 8px; right: 8px;
+            background: rgba(220,38,38,0.88);
+            color: #fff; font-size: 10px; font-weight: 900;
+            letter-spacing: 0.5px; padding: 2px 7px; border-radius: 20px;
+        }
+        .prod-badge-cant {
+            position: absolute; top: 8px; left: 8px;
+            background: #f5c842; color: #000;
+            font-size: 11px; font-weight: 900;
+            width: 24px; height: 24px; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            opacity: 0; transform: scale(0.6);
+            transition: opacity .2s, transform .2s;
+        }
+        .prod-card.activa .prod-badge-cant { opacity: 1; transform: scale(1); }
+        .prod-card-body {
+            padding: 10px 10px 11px;
+            display: flex; flex-direction: column; gap: 5px; flex: 1;
+        }
+        .prod-nombre {
+            font-size: 12.5px; font-weight: 700;
+            color: #f5f0e8; line-height: 1.3;
+            display: -webkit-box; -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical; overflow: hidden;
+        }
+        .prod-pres-sel {
+            width: 100%; background: #1a1a1a;
+            border: 1px solid rgba(255,255,255,0.08); border-radius: 7px;
+            color: rgba(245,240,232,0.55); font-size: 11px;
+            font-family: 'Lato', sans-serif; padding: 4px 6px;
+            appearance: none; outline: none; cursor: pointer;
+        }
+        .prod-pres-sel:focus { border-color: rgba(184,134,11,0.4); }
+        .prod-precio-row { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+        .prod-precio {
+            font-size: 15px; font-weight: 900;
+            color: #f5c842; font-variant-numeric: tabular-nums; line-height: 1;
+        }
+        .prod-precio-tachado {
+            font-size: 11px; color: rgba(245,240,232,0.2);
+            text-decoration: line-through; font-variant-numeric: tabular-nums;
+        }
+        /* Stepper */
+        .prod-stepper {
+            display: flex; align-items: center;
+            background: #1a1a1a; border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 10px; overflow: hidden; margin-top: 2px;
+        }
+        .prod-card.activa .prod-stepper { border-color: rgba(245,200,66,0.28); }
+        .step-btn {
+            background: none; border: none; cursor: pointer;
+            color: #f5f0e8; font-size: 20px; font-weight: 300;
+            width: 36px; height: 36px;
+            display: flex; align-items: center; justify-content: center;
+            transition: background .15s; flex-shrink: 0; line-height: 1;
+            user-select: none; -webkit-tap-highlight-color: transparent;
+        }
+        .step-btn:hover { background: rgba(255,255,255,0.05); }
+        .step-btn.step-plus {
+            background: rgba(245,200,66,0.08); color: #f5c842; font-weight: 900;
+        }
+        .prod-card.activa .step-btn.step-plus { background: rgba(245,200,66,0.14); }
+        .step-btn.step-plus:hover { background: rgba(245,200,66,0.22); }
+        .step-num {
+            flex: 1; text-align: center;
+            font-size: 16px; font-weight: 900; color: #f5f0e8;
+            font-variant-numeric: tabular-nums;
+            background: none; border: none; outline: none;
+            width: 0; min-width: 0; padding: 0;
+            font-family: 'Lato', sans-serif;
+        }
+        .step-num:focus { color: #f5c842; }
+        .prod-subtotal {
+            font-size: 11px; color: rgba(245,240,232,0.35);
+            text-align: right; min-height: 15px;
+            font-variant-numeric: tabular-nums; transition: color .2s;
+        }
+        .prod-card.activa .prod-subtotal { color: rgba(245,200,66,0.75); font-weight: 700; }
 
         /* ── LOGIN LAYOUT ── */
         #p-login {
@@ -676,6 +778,31 @@
             } catch(e) {}
         }
 
+        // ── HELPERS DE CARD ──────────────────────────────────────
+        function getPrecioCard(card) {
+            var sel = card.querySelector('select.dist-pres');
+            if (sel) return parseFloat(sel.options[sel.selectedIndex].dataset.precio) || 0;
+            var hid = card.querySelector('input.dist-pres');
+            return parseFloat(hid ? hid.dataset.precioFixed : 0) || 0;
+        }
+
+        function syncCardEstado(card) {
+            var inp   = card.querySelector('.dist-cant');
+            var cant  = parseInt(inp ? inp.value : 0) || 0;
+            var precio= getPrecioCard(card);
+            var badge = card.querySelector('.prod-badge-cant');
+            var sub   = card.querySelector('.prod-subtotal');
+            if (cant > 0) {
+                card.classList.add('activa');
+                if (badge) badge.textContent = cant;
+                if (sub) sub.textContent = 'Subtotal: $ ' + (cant * precio).toLocaleString('es-AR');
+            } else {
+                card.classList.remove('activa');
+                if (sub) sub.textContent = '';
+            }
+            recalcDist();
+        }
+
         // ── CATÁLOGO ─────────────────────────────────────────────
         async function cargarCatalogoDist() {
             // Usar el endpoint que aplica los descuentos por categoría del distribuidor logueado
@@ -690,9 +817,12 @@
                 if (!prods.length) return;
                 var sec = document.createElement('div');
                 sec.className = 'mb-6';
-                sec.innerHTML = '<div class="flex items-center gap-2 mb-3"><div class="w-1 h-5 bg-neon rounded-full"></div><h3 class="font-bold text-white text-base">' + nombre + '</h3></div>';
+                sec.innerHTML = '<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">' +
+                    '<div style="width:3px;height:20px;background:linear-gradient(180deg,#f5c842,#b8860b);border-radius:2px;flex-shrink:0"></div>' +
+                    '<h3 style="font-family:\'Playfair Display\',serif;font-size:17px;font-weight:700;color:#f5f0e8;margin:0">' + nombre + '</h3>' +
+                    '</div>';
                 var grid = document.createElement('div');
-                grid.className = 'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3';
+                grid.style.cssText = 'display:grid;grid-template-columns:repeat(2,1fr);gap:10px';
                 prods.forEach(function(p) {
                     if (!p.presentaciones || !p.presentaciones.length) return;
                     var pres   = p.presentaciones[0];
@@ -700,28 +830,40 @@
                     var pct    = parseFloat(p.descuento) || 0;
                     var base   = parseFloat(p.precio_base) || precio;
                     var card   = document.createElement('div');
-                    card.className = 'prod-card bg-gray-900 border border-gray-800 rounded-xl overflow-hidden';
-                    card.innerHTML =
-                        '<div class="relative">' +
-                            (p.imagen_url
-                                ? '<img src="' + p.imagen_url + '" class="w-full h-36 object-cover" onerror="this.style.display=\'none\'">'
-                                : '<div class="w-full h-36 bg-gray-800 flex items-center justify-center"><span class="text-4xl">🍫</span></div>') +
-                        '</div>' +
-                        '<div class="p-3">' +
-                            '<p class="font-bold text-white text-sm mb-1 leading-tight">' + p.nombre + '</p>' +
-                            (p.presentaciones.length > 1
-                                ? '<select class="dist-pres w-full bg-gray-800 border border-gray-700 text-white rounded p-1 text-xs mb-2" data-prod="' + p.id + '" onchange="recalcDist()">' +
-                                    p.presentaciones.map(function(pr) { return '<option value="' + pr.id + '" data-precio="' + pr.precio_mayorista + '">' + pr.nombre + '</option>'; }).join('') +
-                                  '</select>'
-                                : '<input type="hidden" class="dist-pres" data-prod="' + p.id + '" value="' + pres.id + '" data-precio-fixed="' + precio + '">') +
-                            '<p class="text-neon font-bold text-sm mb-2">$ ' + precio.toLocaleString('es-AR') +
-                                (pct > 0 ? ' <span class="text-gray-500 line-through text-xs">$' + base.toLocaleString('es-AR') + '</span> <span class="text-green-400 text-xs font-bold">-' + pct + '%</span>' : '') +
-                            '</p>' +
-                            '<div class="flex items-center justify-between">' +
-                                '<button type="button" onclick="cambiarCantCard(this,-1)" class="cant-btn bg-gray-700 hover:bg-gray-600 text-white">−</button>' +
-                                '<input type="number" min="0" value="0" class="dist-cant w-10 bg-transparent text-white text-center font-bold text-lg outline-none" oninput="recalcDist()">' +
-                                '<button type="button" onclick="cambiarCantCard(this,1)" class="cant-btn bg-neon text-black hover:bg-yellow-300">+</button>' +
-                            '</div>' +
+                    card.className = 'prod-card';
+
+                    var imgHtml = '<div style="position:relative">' +
+                        (p.imagen_url
+                            ? '<img src="' + p.imagen_url + '" class="prod-card-img" onerror="this.parentElement.innerHTML=\'<div class=prod-card-placeholder>🍫</div>\'">'
+                            : '<div class="prod-card-placeholder">🍫</div>') +
+                        '<div class="prod-badge-cant">0</div>' +
+                        (pct > 0 ? '<div class="prod-badge-desc">−' + pct + '%</div>' : '') +
+                        '</div>';
+
+                    var presHtml = p.presentaciones.length > 1
+                        ? '<select class="dist-pres prod-pres-sel" data-prod="' + p.id + '" onchange="this.closest(\'.prod-card\').querySelector(\'.prod-precio\').textContent=\'$ \'+(parseFloat(this.options[this.selectedIndex].dataset.precio)||0).toLocaleString(\'es-AR\');syncCardEstado(this.closest(\'.prod-card\'))">' +
+                            p.presentaciones.map(function(pr) { return '<option value="' + pr.id + '" data-precio="' + pr.precio_mayorista + '">' + pr.nombre + '</option>'; }).join('') +
+                          '</select>'
+                        : '<input type="hidden" class="dist-pres" data-prod="' + p.id + '" value="' + pres.id + '" data-precio-fixed="' + precio + '">';
+
+                    var precioHtml = '<div class="prod-precio-row">' +
+                        '<span class="prod-precio">$ ' + precio.toLocaleString('es-AR') + '</span>' +
+                        (pct > 0 ? '<span class="prod-precio-tachado">$ ' + base.toLocaleString('es-AR') + '</span>' : '') +
+                        '</div>';
+
+                    var stepperHtml = '<div class="prod-stepper">' +
+                        '<button type="button" class="step-btn" onclick="var i=this.parentElement.querySelector(\'.dist-cant\');i.value=Math.max(0,(parseInt(i.value)||0)-1);syncCardEstado(this.closest(\'.prod-card\'))">−</button>' +
+                        '<input type="number" min="0" value="0" class="dist-cant step-num" oninput="syncCardEstado(this.closest(\'.prod-card\'))">' +
+                        '<button type="button" class="step-btn step-plus" onclick="var i=this.parentElement.querySelector(\'.dist-cant\');i.value=(parseInt(i.value)||0)+1;syncCardEstado(this.closest(\'.prod-card\'))">+</button>' +
+                        '</div>';
+
+                    card.innerHTML = imgHtml +
+                        '<div class="prod-card-body">' +
+                            '<div class="prod-nombre">' + p.nombre + '</div>' +
+                            presHtml +
+                            precioHtml +
+                            stepperHtml +
+                            '<div class="prod-subtotal"></div>' +
                         '</div>';
                     grid.appendChild(card);
                 });
@@ -819,7 +961,15 @@
                     body: JSON.stringify({ id_distribuidor: distActual.id, total: total, detalle: detalle, observaciones: observaciones })
                 });
                 if (res.ok) {
-                    document.querySelectorAll('.dist-cant').forEach(function(i) { i.value = 0; });
+                    document.querySelectorAll('.prod-card').forEach(function(card) {
+                        var inp = card.querySelector('.dist-cant');
+                        if (inp) inp.value = 0;
+                        card.classList.remove('activa');
+                        var badge = card.querySelector('.prod-badge-cant');
+                        if (badge) badge.textContent = '0';
+                        var sub = card.querySelector('.prod-subtotal');
+                        if (sub) sub.textContent = '';
+                    });
                     document.getElementById('carrito-flotante').classList.add('hidden');
                     document.getElementById('dist-total').textContent = '$ 0';
                     document.getElementById('pedido-observaciones').value = '';
