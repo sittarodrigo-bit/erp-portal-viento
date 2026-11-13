@@ -243,6 +243,7 @@ class PedidoB2B(BaseModel):
     id_distribuidor: int
     total: float
     detalle: List[DetallePedido]
+    observaciones: Optional[str] = None
 
 class ItemReceta(BaseModel):
     id_insumo: int
@@ -1831,7 +1832,7 @@ def crear_pedido_b2b(pedido: PedidoB2B):
     conn = obtener_conexion()
     try:
         cur = conn.cursor()
-        observaciones = getattr(pedido, 'observaciones', '') or ''
+        observaciones = pedido.observaciones or ''
         cur.execute("""
             INSERT INTO pedidos_b2b (id_distribuidor, total, estado, observaciones)
             VALUES (%s, %s, 'Pendiente', %s) RETURNING id
