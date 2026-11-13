@@ -482,15 +482,32 @@
             <!-- Carrito flotante -->
             <div id="carrito-flotante" class="hidden fixed bottom-0 left-0 right-0 bg-black border-t border-gray-800 p-4 z-30 max-h-96 overflow-y-auto">
                 <!-- Barra de envío gratis -->
-                <div id="envio-gratis-bar" class="hidden mb-3">
-                    <div class="flex justify-between items-center mb-1">
-                        <span id="envio-label" class="text-xs font-bold" style="color:rgba(245,240,232,0.55);letter-spacing:1px;text-transform:uppercase"></span>
-                        <span id="envio-badge" class="hidden text-xs font-bold px-2 py-0.5 rounded-full" style="background:rgba(34,197,94,0.15);color:#22c55e;border:1px solid rgba(34,197,94,0.3)">🚚 Envío gratis</span>
+                <div id="envio-gratis-bar" class="hidden mb-3" style="border-radius:12px;overflow:hidden">
+                    <!-- Estado: alcanzado -->
+                    <div id="envio-alcanzado" class="hidden" style="background:linear-gradient(135deg,rgba(22,163,74,0.18),rgba(34,197,94,0.1));border:1px solid rgba(34,197,94,0.35);border-radius:12px;padding:10px 14px;display:flex;align-items:center;gap:10px">
+                        <span style="font-size:22px;line-height:1">🚚</span>
+                        <div>
+                            <div style="font-size:13px;font-weight:900;color:#22c55e;letter-spacing:0.3px;line-height:1.1">¡ENVÍO GRATIS!</div>
+                            <div style="font-size:11px;color:rgba(34,197,94,0.7);margin-top:1px">Superaste los $400.000 — el envío no tiene costo</div>
+                        </div>
+                        <span style="margin-left:auto;font-size:18px">✅</span>
                     </div>
-                    <div class="rounded-full overflow-hidden" style="height:6px;background:rgba(245,240,232,0.08)">
-                        <div id="envio-progress" class="h-full rounded-full transition-all duration-500" style="width:0%;background:linear-gradient(90deg,#b8860b,#f5c842)"></div>
+                    <!-- Estado: en progreso -->
+                    <div id="envio-en-progreso" style="background:rgba(184,134,11,0.07);border:1px solid rgba(184,134,11,0.22);border-radius:12px;padding:10px 14px">
+                        <div style="display:flex;align-items:center;gap:8px;margin-bottom:7px">
+                            <span style="font-size:16px;line-height:1">🚚</span>
+                            <span style="font-size:11px;font-weight:800;color:#f5c842;letter-spacing:1.2px;text-transform:uppercase;flex:1">Envío gratis a partir de $400.000</span>
+                            <span id="envio-pct" style="font-size:11px;font-weight:900;color:#f5c842;font-variant-numeric:tabular-nums">0%</span>
+                        </div>
+                        <div style="height:8px;border-radius:4px;background:rgba(245,240,232,0.08);overflow:hidden">
+                            <div id="envio-progress" style="height:100%;border-radius:4px;width:0%;background:linear-gradient(90deg,#b8860b,#f5c842);transition:width 0.5s cubic-bezier(.4,0,.2,1);box-shadow:0 0 8px rgba(245,200,66,0.4)"></div>
+                        </div>
+                        <div style="display:flex;justify-content:space-between;margin-top:5px;font-size:11px">
+                            <span style="color:rgba(245,240,232,0.35)">$ 0</span>
+                            <span id="envio-falta" style="color:rgba(245,200,66,0.75);font-weight:700;font-variant-numeric:tabular-nums"></span>
+                            <span style="color:rgba(245,240,232,0.35)">$ 400.000</span>
+                        </div>
                     </div>
-                    <div id="envio-falta" class="text-right mt-1 text-xs" style="color:rgba(245,240,232,0.35)"></div>
                 </div>
                 <div class="flex justify-between items-center mb-3">
                     <span class="text-gray-400 font-bold text-sm">TOTAL DEL PEDIDO</span>
@@ -760,15 +777,16 @@
                 if (mostrarBarra) {
                     var pct = Math.min(100, Math.round(total / META_ENVIO * 100));
                     var alcanzado = total >= META_ENVIO;
-                    document.getElementById('envio-progress').style.width = pct + '%';
-                    document.getElementById('envio-progress').style.background = alcanzado
-                        ? 'linear-gradient(90deg,#16a34a,#22c55e)'
-                        : 'linear-gradient(90deg,#b8860b,#f5c842)';
-                    document.getElementById('envio-badge').classList.toggle('hidden', !alcanzado);
-                    var labelEl = document.getElementById('envio-label');
-                    labelEl.textContent = alcanzado ? '¡Envío gratis activado!' : 'Progreso hacia envío gratis';
-                    var faltaEl = document.getElementById('envio-falta');
-                    faltaEl.textContent = alcanzado ? '' : 'Faltan $ ' + (META_ENVIO - total).toLocaleString('es-AR');
+                    var elAlcanzado = document.getElementById('envio-alcanzado');
+                    var elProgreso  = document.getElementById('envio-en-progreso');
+                    if (elAlcanzado) elAlcanzado.style.display  = alcanzado ? 'flex' : 'none';
+                    if (elProgreso)  elProgreso.style.display   = alcanzado ? 'none' : 'block';
+                    if (!alcanzado) {
+                        document.getElementById('envio-progress').style.width = pct + '%';
+                        document.getElementById('envio-pct').textContent = pct + '%';
+                        var falta = META_ENVIO - total;
+                        document.getElementById('envio-falta').textContent = 'Faltan $ ' + falta.toLocaleString('es-AR');
+                    }
                 }
             }
         }
