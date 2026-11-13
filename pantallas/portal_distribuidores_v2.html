@@ -5,57 +5,181 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
     <title>Portal Mayorista | Portal del Viento</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,900;1,700&family=Lato:wght@400;700;900&display=swap" rel="stylesheet">
     <style>
-        body { background: #0a0a0a; }
-        .text-neon { color: #e4fc74; }
-        .bg-neon { background-color: #e4fc74; }
-        .border-neon { border-color: #e4fc74; }
+        :root {
+            --oscuro:  #1a1008;
+            --oscuro2: #2c1a0e;
+            --rojo:    #c0392b;
+            --rojo2:   #a93226;
+            --crema:   #f5f0e8;
+            --dorado:  #b8860b;
+            --gris:    rgba(245,240,232,0.45);
+        }
+        * { box-sizing: border-box; }
+        body { background: var(--oscuro); font-family: 'Lato', sans-serif; }
         input, select { font-size: 16px !important; }
         .pantalla { display: none !important; }
         .pantalla.activa { display: block !important; }
         .tab-btn { transition: all 0.2s; }
-        .tab-btn.activo { background: #e4fc74; color: #000; font-weight: 700; }
+        .tab-btn.activo { background: var(--rojo); color: #fff; font-weight: 700; }
         .prod-card { transition: transform 0.15s; }
         .prod-card:hover { transform: translateY(-2px); }
         .cant-btn { width: 32px; height: 32px; border-radius: 50%; font-size: 18px; font-weight: bold; display: flex; align-items: center; justify-content: center; }
+
+        /* ── LOGIN LAYOUT ── */
+        #p-login {
+            min-height: 100dvh;
+            display: grid !important;
+            grid-template-columns: 1fr 1fr;
+        }
+        @media (max-width: 768px) {
+            #p-login { grid-template-columns: 1fr; }
+            .login-left { display: none !important; }
+        }
+        .login-left {
+            background: linear-gradient(160deg, var(--oscuro2), var(--oscuro));
+            border-right: 1px solid rgba(184,134,11,.2);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 60px 48px;
+        }
+        .login-marca {
+            font-family: 'Playfair Display', serif;
+            font-size: 44px;
+            font-weight: 900;
+            color: var(--crema);
+            line-height: 1.1;
+        }
+        .login-marca em { font-style: italic; color: var(--rojo); display: block; }
+        .login-deco { width: 60px; height: 3px; background: linear-gradient(90deg, var(--dorado), var(--rojo)); border-radius: 2px; margin: 24px 0; }
+        .login-tagline { color: var(--gris); font-size: 12px; letter-spacing: 3px; text-transform: uppercase; line-height: 1.9; }
+        .login-feature { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+        .login-feature .dot { width: 6px; height: 6px; background: var(--dorado); border-radius: 50%; flex-shrink: 0; }
+        .login-feature span { color: rgba(245,240,232,.6); font-size: 14px; }
+
+        .login-right {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 48px 40px;
+            background: var(--oscuro);
+        }
+        .login-card { width: 100%; max-width: 380px; }
+        .login-title { font-family: 'Playfair Display', serif; font-size: 26px; color: var(--crema); margin-bottom: 6px; }
+        .login-sub { font-size: 11px; color: rgba(245,240,232,.35); letter-spacing: 2.5px; text-transform: uppercase; margin-bottom: 32px; }
+
+        .login-input {
+            width: 100%;
+            background: rgba(0,0,0,.4);
+            border: 1px solid rgba(245,240,232,.1);
+            border-radius: 10px;
+            padding: 14px 16px;
+            color: var(--crema);
+            margin-bottom: 14px;
+            outline: none;
+            transition: .2s;
+        }
+        .login-input::placeholder { color: rgba(245,240,232,.25); }
+        .login-input:focus { border-color: var(--dorado); background: rgba(0,0,0,.6); }
+
+        .login-btn-primary {
+            width: 100%;
+            background: var(--rojo);
+            color: #fff;
+            font-weight: 700;
+            font-size: 16px;
+            border: none;
+            border-radius: 10px;
+            padding: 15px;
+            cursor: pointer;
+            transition: .2s;
+            letter-spacing: .3px;
+        }
+        .login-btn-primary:hover { background: var(--rojo2); }
+        .login-btn-sec {
+            width: 100%;
+            background: transparent;
+            border: 1px solid rgba(245,240,232,.12);
+            color: rgba(245,240,232,.4);
+            font-size: 14px;
+            border-radius: 10px;
+            padding: 13px;
+            cursor: pointer;
+            margin-top: 10px;
+            transition: .2s;
+        }
+        .login-btn-sec:hover { border-color: var(--dorado); color: var(--dorado); }
+
+        /* ── REGISTRO ── */
+        #p-registro { background: var(--oscuro); }
+        .reg-header {
+            background: linear-gradient(160deg, var(--oscuro2), var(--oscuro));
+            border-bottom: 1px solid rgba(184,134,11,.2);
+            padding: 24px 20px 20px;
+            text-align: center;
+        }
+        .reg-marca { font-family: 'Playfair Display', serif; font-size: 22px; font-weight: 900; color: var(--crema); }
+        .reg-marca em { font-style: italic; color: var(--rojo); }
+        .reg-sub { font-size: 11px; color: var(--gris); letter-spacing: 2px; text-transform: uppercase; margin-top: 4px; }
+
+        /* inputs en pantallas internas */
+        .input-dark {
+            background: rgba(0,0,0,.4) !important;
+            border: 1px solid rgba(245,240,232,.12) !important;
+            border-radius: 10px !important;
+            color: var(--crema) !important;
+        }
+        .input-dark::placeholder { color: rgba(245,240,232,.25) !important; }
+        .input-dark:focus { border-color: var(--dorado) !important; }
+
+        /* text-neon legacy → reemplazar por rojo/dorado */
+        .text-neon { color: var(--dorado); }
+        .bg-neon { background-color: var(--rojo); color: #fff; }
+        .border-neon { border-color: var(--dorado); }
+        .focus\:border-neon:focus { border-color: var(--dorado) !important; }
     </style>
 </head>
 <body class="text-gray-200 font-sans min-h-screen">
 
     <!-- ── LOGIN ──────────────────────────────────────────────── -->
-    <div id="p-login" class="pantalla activa min-h-screen flex flex-col items-center justify-center p-5">
-        <div class="w-full max-w-sm">
-            <div class="text-center mb-8">
-                <p class="text-neon font-bold text-4xl tracking-widest uppercase mb-1">PORTAL DEL VIENTO</p>
-                <div class="h-0.5 w-24 bg-neon mx-auto mb-3"></div>
-                <p class="text-gray-500 text-sm">Portal exclusivo para distribuidores</p>
+    <div id="p-login" class="pantalla activa">
+        <!-- Panel izquierdo — se oculta en mobile -->
+        <div class="login-left">
+            <div class="login-marca">Portal del<em>Viento</em></div>
+            <div class="login-deco"></div>
+            <p class="login-tagline">Portal exclusivo<br>para distribuidores</p>
+            <div style="margin-top:36px">
+                <div class="login-feature"><div class="dot"></div><span>Pedidos en línea</span></div>
+                <div class="login-feature"><div class="dot"></div><span>Historial de compras</span></div>
+                <div class="login-feature"><div class="dot"></div><span>Precios mayoristas</span></div>
+                <div class="login-feature"><div class="dot"></div><span>Seguimiento de entregas</span></div>
             </div>
-            <div class="bg-gray-950 border border-gray-800 rounded-2xl p-6 shadow-2xl">
-                <div id="login-err" class="hidden bg-red-900/30 border border-red-700 text-red-400 text-sm px-4 py-3 rounded-lg mb-4"></div>
-                <input type="text" id="l-user" placeholder="Usuario" autocomplete="username"
-                    class="w-full bg-black border border-gray-700 text-white rounded-xl p-4 mb-3 outline-none focus:border-neon placeholder-gray-600">
+        </div>
+        <!-- Panel derecho — formulario -->
+        <div class="login-right">
+            <div class="login-card">
+                <div class="login-title">Bienvenido</div>
+                <div class="login-sub">Ingresá con tu cuenta</div>
+                <div id="login-err" class="hidden bg-red-900/30 border border-red-800 text-red-400 text-sm px-4 py-3 rounded-lg mb-4"></div>
+                <input type="text" id="l-user" placeholder="Usuario" autocomplete="username" class="login-input">
                 <input type="password" id="l-pass" placeholder="Contraseña" autocomplete="current-password"
-                    class="w-full bg-black border border-gray-700 text-white rounded-xl p-4 mb-5 outline-none focus:border-neon placeholder-gray-600"
-                    onkeydown="if(event.key==='Enter') loginDist()">
-                <button type="button" onclick="loginDist()" id="btn-login"
-                    class="w-full bg-neon text-black font-bold py-4 rounded-xl text-lg hover:bg-yellow-300 transition mb-3">
-                    Ingresar
-                </button>
-                <button type="button" onclick="mostrarPantalla('p-registro')"
-                    class="w-full border border-gray-700 text-gray-400 hover:text-white py-3 rounded-xl text-sm transition">
-                    ¿Sos nuevo? Registrate acá
-                </button>
+                    class="login-input" onkeydown="if(event.key==='Enter') loginDist()">
+                <button type="button" onclick="loginDist()" id="btn-login" class="login-btn-primary">Ingresar</button>
+                <button type="button" onclick="mostrarPantalla('p-registro')" class="login-btn-sec">¿Sos nuevo? Registrate acá</button>
             </div>
         </div>
     </div>
 
     <!-- ── REGISTRO ────────────────────────────────────────────── -->
-    <div id="p-registro" class="pantalla min-h-screen p-5 pt-8">
-        <div class="max-w-md mx-auto">
-            <div class="text-center mb-6">
-                <p class="text-neon font-bold text-2xl tracking-widest uppercase">PORTAL DEL VIENTO</p>
-                <p class="text-gray-500 text-sm mt-1">Registro de nuevo distribuidor</p>
-            </div>
+    <div id="p-registro" class="pantalla min-h-screen">
+        <div class="reg-header">
+            <div class="reg-marca">Portal del <em>Viento</em></div>
+            <div class="reg-sub">Registro de nuevo distribuidor</div>
+        </div>
+        <div class="max-w-md mx-auto p-5 pt-6">
             <div class="bg-gray-950 border border-gray-800 rounded-2xl p-6">
                 <div id="reg-err" class="hidden bg-red-900/30 border border-red-700 text-red-400 text-sm px-4 py-3 rounded-lg mb-4"></div>
                 <p class="text-xs text-gray-500 font-bold uppercase mb-3">Datos personales / empresa</p>
