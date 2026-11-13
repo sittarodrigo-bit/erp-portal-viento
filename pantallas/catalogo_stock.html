@@ -56,6 +56,11 @@
                 <input type="text" id="buscar-producto" placeholder="🔍 Buscar producto por nombre, SKU o categoría..."
                        class="flex-1 bg-black border border-neon text-white rounded-lg p-3 text-sm outline-none"
                        oninput="filtrarProductos()">
+                <select id="filtro-visible" onchange="filtrarProductos()" class="bg-gray-800 border border-gray-700 text-white rounded-lg p-3 text-sm">
+                    <option value="">Todos</option>
+                    <option value="1">✅ Visibles en portal</option>
+                    <option value="0">🚫 Ocultos en portal</option>
+                </select>
                 <span id="contador-productos" class="text-gray-500 text-xs whitespace-nowrap"></span>
             </div>
             <div class="bg-black rounded-xl border border-gray-800 overflow-hidden">
@@ -68,11 +73,12 @@
                             <th class="p-4">Stock</th>
                             <th class="p-4">Alerta Stock</th>
                             <th class="p-4">Precio Mayorista</th>
+                            <th class="p-4 text-center">Portal Dist.</th>
                             <th class="p-4 text-right">Acciones</th>
                         </tr>
                     </thead>
                     <tbody id="tabla-productos" class="divide-y divide-gray-800 text-sm">
-                        <tr><td colspan="7" class="p-4 text-center text-gray-500">Cargando...</td></tr>
+                        <tr><td colspan="8" class="p-4 text-center text-gray-500">Cargando...</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -230,7 +236,7 @@
             const tabla = document.getElementById('tabla-productos');
             tabla.innerHTML = '';
             if (!productos.length) {
-                tabla.innerHTML = '<tr><td colspan="7" class="p-4 text-center text-gray-500">Sin productos.</td></tr>';
+                tabla.innerHTML = '<tr><td colspan="8" class="p-4 text-center text-gray-500">Sin productos.</td></tr>';
                 document.getElementById('contador-productos').textContent = '';
                 return;
             }
@@ -253,21 +259,33 @@
 
                 const buscable = [p.sku, p.nombre, catNombre].filter(Boolean).join(' ').toLowerCase();
 
+                const visibleMayorista = p.visible_mayorista !== false;
                 tabla.innerHTML += `
-                    <tr class="fila-producto hover:bg-gray-900 transition border-b border-gray-800" data-buscar="${buscable.replace(/"/g,'')}">
+                    <tr class="fila-producto hover:bg-gray-900 transition border-b border-gray-800" data-buscar="${buscable.replace(/"/g,'')}" data-visible="${visibleMayorista ? '1' : '0'}">
                         <td class="p-4 text-gray-400 text-xs font-mono">${p.sku}</td>
                         <td class="p-4 font-bold text-white">${nombreHTML}</td>
                         <td class="p-4"><span class="text-xs bg-gray-800 px-2 py-1 rounded text-gray-300">${catNombre}</span></td>
                         <td class="p-4 ${colorStock}">${p.stock} un.</td>
                         <td class="p-4 text-gray-500 text-xs">${p.stock_alerta || 20} un.</td>
                         <td class="p-4 text-neon font-bold text-lg">$ ${precio.toLocaleString('es-AR')}</td>
+                        <td class="p-4 text-center">
+                            <label class="inline-flex items-center cursor-pointer" title="${visibleMayorista ? 'Visible en portal distribuidores' : 'Oculto en portal distribuidores'}">
+                                <input type="checkbox" ${visibleMayorista ? 'checked' : ''}
+                                    class="sr-only peer"
+                                    onchange="toggleVisibleMayorista(${p.id}, this)">
+                                <div class="relative w-10 h-6 rounded-full transition-colors peer-checked:bg-neon bg-gray-700
+                                            after:content-[''] after:absolute after:top-[3px] after:left-[3px]
+                                            after:bg-white after:rounded-full after:h-[18px] after:w-[18px]
+                                            after:transition-all peer-checked:after:translate-x-4"></div>
+                            </label>
+                        </td>
                         <td class="p-4 text-right">
                             <div class="flex justify-end gap-1">
                                 <button onclick="abrirModalStock(${p.id}, '${p.nombre.replace(/'/g,"\\'")}', ${p.stock})"
                                     class="text-xs border border-gray-700 bg-gray-800 hover:border-gray-500 px-2 py-1 rounded text-gray-400 hover:text-white" title="Ajustar Stock Físico">
                                     📦 Stock
                                 </button>
-                                <button onclick="abrirModalPrecio(${idPres}, '${p.nombre.replace(/'/g,"\\'")}', ${precio})" 
+                                <button onclick="abrirModalPrecio(${idPres}, '${p.nombre.replace(/'/g,"\\'")}', ${precio})"
                                     class="text-xs bg-green-900/40 text-green-400 border border-green-800 hover:bg-green-900 px-2 py-1 rounded transition" title="Modificar Precio">
                                     💲 Precio
                                 </button>
@@ -288,18 +306,42 @@
 
         function filtrarProductos() {
             const input = document.getElementById('buscar-producto');
+            const filtroVis = document.getElementById('filtro-visible');
             if (!input) return;
             const q = input.value.toLowerCase().trim();
+            const vis = filtroVis ? filtroVis.value : '';
             const filas = document.querySelectorAll('#tabla-productos > .fila-producto');
             let visibles = 0;
             filas.forEach(f => {
                 const txt = f.getAttribute('data-buscar') || '';
-                const match = !q || txt.indexOf(q) !== -1;
+                const fVis = f.getAttribute('data-visible') || '1';
+                const matchQ = !q || txt.indexOf(q) !== -1;
+                const matchV = !vis || fVis === vis;
+                const match = matchQ && matchV;
                 f.style.display = match ? '' : 'none';
                 if (match) visibles++;
             });
             const cont = document.getElementById('contador-productos');
-            if (cont) cont.textContent = q ? `${visibles} de ${filas.length} productos` : `${filas.length} productos`;
+            if (cont) cont.textContent = `${visibles} de ${filas.length} productos`;
+        }
+
+        async function toggleVisibleMayorista(id, chk) {
+            const fila = chk.closest('tr');
+            const valor = chk.checked;
+            try {
+                const res = await fetch(`${API_URL}/productos/${id}/visible_mayorista`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ visible_mayorista: valor })
+                });
+                if (!res.ok) throw new Error();
+                if (fila) fila.setAttribute('data-visible', valor ? '1' : '0');
+                filtrarProductos();
+            } catch(e) {
+                // revertir si falla
+                chk.checked = !valor;
+                alert('Error al actualizar visibilidad');
+            }
         }
 
         // ── NUEVO / EDITAR PRODUCTO ──────────────────────────────

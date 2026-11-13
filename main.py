@@ -1163,6 +1163,22 @@ def actualizar_producto(id: int, prod: Producto):
     finally:
         liberar_conexion(conn)
 
+@app.patch("/api/productos/{id}/visible_mayorista")
+def toggle_visible_mayorista(id: int, body: dict = Body(...)):
+    conn = obtener_conexion()
+    try:
+        valor = bool(body.get("visible_mayorista", True))
+        cur = conn.cursor()
+        cur.execute("ALTER TABLE productos ADD COLUMN IF NOT EXISTS visible_mayorista BOOLEAN DEFAULT true")
+        cur.execute("UPDATE productos SET visible_mayorista=%s WHERE id=%s", (valor, id))
+        conn.commit()
+        return {"status": "ok", "visible_mayorista": valor}
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
 @app.delete("/api/productos/{id}")
 def eliminar_producto(id: int):
     conn = obtener_conexion()
