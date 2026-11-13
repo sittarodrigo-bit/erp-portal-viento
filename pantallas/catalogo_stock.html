@@ -260,8 +260,11 @@
                 const buscable = [p.sku, p.nombre, catNombre].filter(Boolean).join(' ').toLowerCase();
 
                 const visibleMayorista = p.visible_mayorista !== false;
-                tabla.innerHTML += `
-                    <tr class="fila-producto hover:bg-gray-900 transition border-b border-gray-800" data-buscar="${buscable.replace(/"/g,'')}" data-visible="${visibleMayorista ? '1' : '0'}">
+                const tr = document.createElement('tr');
+                tr.className = 'fila-producto hover:bg-gray-900 transition border-b border-gray-800';
+                tr.setAttribute('data-buscar', buscable.replace(/"/g,''));
+                tr.setAttribute('data-visible', visibleMayorista ? '1' : '0');
+                tr.innerHTML = `
                         <td class="p-4 text-gray-400 text-xs font-mono">${p.sku}</td>
                         <td class="p-4 font-bold text-white">${nombreHTML}</td>
                         <td class="p-4"><span class="text-xs bg-gray-800 px-2 py-1 rounded text-gray-300">${catNombre}</span></td>
@@ -269,15 +272,11 @@
                         <td class="p-4 text-gray-500 text-xs">${p.stock_alerta || 20} un.</td>
                         <td class="p-4 text-neon font-bold text-lg">$ ${precio.toLocaleString('es-AR')}</td>
                         <td class="p-4 text-center">
-                            <label class="inline-flex items-center cursor-pointer" title="${visibleMayorista ? 'Visible en portal distribuidores' : 'Oculto en portal distribuidores'}">
-                                <input type="checkbox" ${visibleMayorista ? 'checked' : ''}
-                                    class="sr-only peer"
-                                    onchange="toggleVisibleMayorista(${p.id}, this)">
-                                <div class="relative w-10 h-6 rounded-full transition-colors peer-checked:bg-neon bg-gray-700
-                                            after:content-[''] after:absolute after:top-[3px] after:left-[3px]
-                                            after:bg-white after:rounded-full after:h-[18px] after:w-[18px]
-                                            after:transition-all peer-checked:after:translate-x-4"></div>
-                            </label>
+                            <div data-prod-id="${p.id}" data-on="${visibleMayorista ? '1' : '0'}"
+                                 onclick="toggleVisibleMayorista(this)"
+                                 style="display:inline-flex;align-items:center;cursor:pointer;width:40px;height:22px;border-radius:11px;padding:2px;transition:background .2s;background:${visibleMayorista ? '#f5c842' : '#374151'}">
+                                <div style="width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,0.4);transition:transform .2s;transform:${visibleMayorista ? 'translateX(18px)' : 'translateX(0)'}"></div>
+                            </div>
                         </td>
                         <td class="p-4 text-right">
                             <div class="flex justify-end gap-1">
@@ -299,7 +298,8 @@
                                 </button>
                             </div>
                         </td>
-                    </tr>`;
+                    `;
+                tabla.appendChild(tr);
             }
             filtrarProductos();
         }
@@ -325,9 +325,16 @@
             if (cont) cont.textContent = `${visibles} de ${filas.length} productos`;
         }
 
-        async function toggleVisibleMayorista(id, chk) {
-            const fila = chk.closest('tr');
-            const valor = chk.checked;
+        async function toggleVisibleMayorista(el) {
+            const id    = el.dataset.prodId;
+            const valor = el.dataset.on !== '1';   // flip
+            const knob  = el.querySelector('div');
+            // actualizar visualmente de inmediato
+            el.style.background    = valor ? '#f5c842' : '#374151';
+            knob.style.transform   = valor ? 'translateX(18px)' : 'translateX(0)';
+            el.dataset.on          = valor ? '1' : '0';
+            const fila = el.closest('tr');
+            if (fila) fila.setAttribute('data-visible', valor ? '1' : '0');
             try {
                 const res = await fetch(`${API_URL}/productos/${id}/visible_mayorista`, {
                     method: 'PATCH',
@@ -335,12 +342,13 @@
                     body: JSON.stringify({ visible_mayorista: valor })
                 });
                 if (!res.ok) throw new Error();
-                if (fila) fila.setAttribute('data-visible', valor ? '1' : '0');
                 filtrarProductos();
             } catch(e) {
                 // revertir si falla
-                chk.checked = !valor;
-                alert('Error al actualizar visibilidad');
+                el.style.background  = !valor ? '#f5c842' : '#374151';
+                knob.style.transform = !valor ? 'translateX(18px)' : 'translateX(0)';
+                el.dataset.on        = !valor ? '1' : '0';
+                if (fila) fila.setAttribute('data-visible', !valor ? '1' : '0');
             }
         }
 
