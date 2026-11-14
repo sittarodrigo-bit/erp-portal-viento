@@ -25,7 +25,8 @@
         <button onclick="cambiarTabLiq('liquidacion')" id="tab-liq" class="py-2 px-3 text-sm font-bold border-b-2 border-neon text-white whitespace-nowrap">💵 Liquidación</button>
         <button onclick="cambiarTabLiq('fichajes')"    id="tab-fich" class="py-2 px-3 text-sm font-bold text-gray-400 hover:text-white border-b-2 border-transparent whitespace-nowrap">🕐 Fichajes</button>
         <button onclick="cambiarTabLiq('anticipos')"   id="tab-ant" class="py-2 px-3 text-sm font-bold text-gray-400 hover:text-white border-b-2 border-transparent whitespace-nowrap">💸 Anticipos</button>
-        <button onclick="cambiarTabLiq('historial')"   id="tab-hist" class="py-2 px-3 text-sm font-bold text-gray-400 hover:text-white border-b-2 border-transparent whitespace-nowrap">📋 Historial pagos</button>
+        <button onclick="cambiarTabLiq('planilla')"    id="tab-plan" class="py-2 px-3 text-sm font-bold text-gray-400 hover:text-white border-b-2 border-transparent whitespace-nowrap">📋 Planilla horaria</button>
+        <button onclick="cambiarTabLiq('historial')"   id="tab-hist" class="py-2 px-3 text-sm font-bold text-gray-400 hover:text-white border-b-2 border-transparent whitespace-nowrap">🗂 Historial pagos</button>
         <button onclick="cambiarTabLiq('anual')"       id="tab-anual" class="py-2 px-3 text-sm font-bold text-gray-400 hover:text-white border-b-2 border-transparent whitespace-nowrap">📅 Historial anual</button>
     </div>
 
@@ -56,6 +57,26 @@
     </div>
     </div><!-- fin panel-liquidacion -->
 
+    <!-- PANEL PLANILLA HORARIA -->
+    <div id="panel-planilla" class="hidden">
+      <div class="bg-black border border-gray-800 rounded-2xl p-4 mb-5">
+        <div class="flex flex-wrap gap-3 items-center">
+          <select id="plan-empleado" onchange="cargarPlanilla()" class="bg-gray-900 border border-gray-700 text-white rounded-lg p-2.5 min-w-[200px]">
+            <option value="">— Elegir empleado —</option>
+          </select>
+          <div class="flex items-center gap-2 ml-auto">
+            <button onclick="planSemanaAnterior()" class="border border-gray-700 text-gray-300 hover:text-white px-3 py-2 rounded-lg text-sm font-bold">‹ Anterior</button>
+            <span id="label-semana-plan" class="text-white font-bold text-sm min-w-[200px] text-center"></span>
+            <button onclick="planSemanaSiguiente()" class="border border-gray-700 text-gray-300 hover:text-white px-3 py-2 rounded-lg text-sm font-bold">Siguiente ›</button>
+          </div>
+          <button onclick="copiarSemanaAnterior()" class="border border-gray-700 text-gray-400 hover:text-white px-4 py-2 rounded-lg text-sm">↩ Copiar semana ant.</button>
+        </div>
+      </div>
+      <div id="tabla-planilla">
+        <p class="text-gray-500 text-center py-10">Elegí un empleado para cargar su planilla.</p>
+      </div>
+    </div>
+
     <!-- PANEL HISTORIAL -->
     <div id="panel-historial" class="hidden">
         <div class="flex justify-between items-center mb-4">
@@ -74,24 +95,24 @@
 
     <!-- PANEL FICHAJES -->
     <div id="panel-fichajes" class="hidden">
-      <div class="bg-black border border-gray-800 rounded-2xl p-5 mb-5">
-        <div class="flex flex-wrap gap-3 items-end">
-          <div>
-            <label class="block text-xs text-gray-500 font-bold mb-1">Fecha</label>
-            <input type="date" id="fich-fecha" class="bg-gray-900 border border-gray-700 text-white rounded-lg p-2.5">
+      <!-- Barra de control: empleado + navegación de semana -->
+      <div class="bg-black border border-gray-800 rounded-2xl p-4 mb-5">
+        <div class="flex flex-wrap gap-3 items-center">
+          <select id="fich-empleado" onchange="cargarFichajesLiq()" class="bg-gray-900 border border-gray-700 text-white rounded-lg p-2.5 min-w-[200px]">
+            <option value="">— Elegir empleado —</option>
+          </select>
+          <!-- Navegación semana -->
+          <div class="flex items-center gap-2 ml-auto">
+            <button onclick="semanaAnterior()" class="border border-gray-700 text-gray-300 hover:text-white px-3 py-2 rounded-lg text-sm font-bold">‹ Anterior</button>
+            <span id="label-semana" class="text-white font-bold text-sm min-w-[200px] text-center"></span>
+            <button onclick="semanaSiguiente()" class="border border-gray-700 text-gray-300 hover:text-white px-3 py-2 rounded-lg text-sm font-bold">Siguiente ›</button>
           </div>
-          <div>
-            <label class="block text-xs text-gray-500 font-bold mb-1">Empleado</label>
-            <select id="fich-empleado" class="bg-gray-900 border border-gray-700 text-white rounded-lg p-2.5 min-w-[180px]">
-              <option value="">Todos</option>
-            </select>
-          </div>
-          <button onclick="cargarFichajesLiq()" class="bg-neon text-black font-bold px-5 py-2.5 rounded-lg">Buscar</button>
-          <button onclick="abrirModalFichajeNuevo()" class="ml-auto border border-gray-700 text-gray-300 hover:text-white font-bold px-5 py-2.5 rounded-lg">+ Agregar fichaje</button>
+          <button onclick="abrirModalFichajeNuevo()" class="border border-neon text-neon hover:bg-neon hover:text-black font-bold px-4 py-2 rounded-lg text-sm transition">+ Agregar</button>
         </div>
       </div>
+      <!-- Tabla semanal -->
       <div id="tabla-fichajes-liq">
-        <p class="text-gray-500 text-center py-10">Elegí una fecha para ver los fichajes.</p>
+        <p class="text-gray-500 text-center py-10">Elegí un empleado para ver su semana.</p>
       </div>
     </div>
 
@@ -452,19 +473,21 @@ function imprimirPlanilla(){
 rangoRapido('semana');
 
 // ===== PESTAÑAS =====
-const TABS_LIQ = ['liquidacion','fichajes','anticipos','historial','anual'];
+const TABS_LIQ = ['liquidacion','fichajes','anticipos','planilla','historial','anual'];
+const TAB_IDS  = {liquidacion:'liq',fichajes:'fich',anticipos:'ant',planilla:'plan',historial:'hist',anual:'anual'};
 function cambiarTabLiq(tab) {
     TABS_LIQ.forEach(t => {
         const panel = document.getElementById('panel-' + t);
-        const btn   = document.getElementById('tab-' + (t==='historial'?'hist':t==='fichajes'?'fich':t==='anticipos'?'ant':t==='anual'?'anual':'liq'));
+        const btn   = document.getElementById('tab-' + TAB_IDS[t]);
         if(panel) panel.classList.toggle('hidden', t !== tab);
         if(btn) btn.className = (t === tab)
             ? 'py-2 px-3 text-sm font-bold border-b-2 border-neon text-white whitespace-nowrap'
             : 'py-2 px-3 text-sm font-bold text-gray-400 hover:text-white border-b-2 border-transparent whitespace-nowrap';
     });
     if (tab === 'historial') cargarHistorial();
-    if (tab === 'fichajes')  { const h = new Date().toISOString().split('T')[0]; if(!document.getElementById('fich-fecha').value) document.getElementById('fich-fecha').value = h; cargarFichajesLiq(); }
+    if (tab === 'fichajes')  { semanaOffset = 0; cargarFichajesLiq(); }
     if (tab === 'anticipos') { initFiltroAnticiposLiq(); cargarAnticiposLiq(); }
+    if (tab === 'planilla')  { planOffset = 0; cargarPlanilla(); }
     if (tab === 'anual')     { if(!document.getElementById('anual-anio').value) document.getElementById('anual-anio').value = new Date().getFullYear(); }
 }
 
@@ -523,46 +546,197 @@ let empleadosCache = [];
         // Historial anual
         const selAnual = document.getElementById('anual-empleado');
         if (selAnual) selAnual.innerHTML = '<option value="">— Elegir empleado —</option>' + opts;
+        // Planilla horaria
+        const selPlan = document.getElementById('plan-empleado');
+        if (selPlan) selPlan.innerHTML = '<option value="">— Elegir empleado —</option>' + opts;
     } catch(e) {}
 })();
 
-// ===== FICHAJES =====
+// ===== FICHAJES — vista semanal =====
+// Semana actual: lunes de la semana en curso
+let semanaOffset = 0; // 0 = semana actual, -1 = anterior, etc.
+
+function getLunes(offset) {
+    const hoy = new Date();
+    const dia = (hoy.getDay() + 6) % 7; // lunes=0
+    const lunes = new Date(hoy);
+    lunes.setDate(hoy.getDate() - dia + offset * 7);
+    lunes.setHours(0,0,0,0);
+    return lunes;
+}
+
+function isoDate(d) { return d.toISOString().split('T')[0]; }
+
+function semanaAnterior()  { semanaOffset--; cargarFichajesLiq(); }
+function semanaSiguiente() { semanaOffset++; cargarFichajesLiq(); }
+
 async function cargarFichajesLiq() {
-    const fecha = document.getElementById('fich-fecha').value;
     const idEmp = document.getElementById('fich-empleado').value;
-    if(!fecha) return;
-    const url = API_URL + '/fichajes?fecha=' + fecha + (idEmp ? '&id_empleado=' + idEmp : '');
-    const lista = await fetch(url).then(r=>r.json()).catch(()=>[]);
-    const el = document.getElementById('tabla-fichajes-liq');
-    if(!lista.length){
-        el.innerHTML = '<p class="text-gray-500 text-center py-10">Sin fichajes para esa fecha.</p>';
+    const el    = document.getElementById('tabla-fichajes-liq');
+    if(!idEmp){
+        el.innerHTML = '<p class="text-gray-500 text-center py-10">Elegí un empleado para ver su semana.</p>';
         return;
     }
-    el.innerHTML = '<div class="bg-black border border-gray-800 rounded-2xl overflow-hidden"><table class="w-full text-sm">' +
-        '<thead class="text-xs text-gray-500 border-b border-gray-800"><tr>' +
-        '<th class="p-3 text-left">Empleado</th><th class="p-3 text-center">Tipo</th>' +
-        '<th class="p-3 text-center">Fecha y hora</th><th class="p-3 text-left">Obs.</th><th class="p-3 text-right">Acciones</th>' +
-        '</tr></thead><tbody class="divide-y divide-gray-800">' +
-        lista.map(f => {
-            const badge = f.tipo === 'entrada'
-                ? '<span class="bg-green-900/50 text-green-400 border border-green-800 text-xs px-2 py-0.5 rounded-full">▶ Entrada</span>'
-                : '<span class="bg-red-900/50 text-red-400 border border-red-800 text-xs px-2 py-0.5 rounded-full">■ Salida</span>';
-            const fh = (f.fecha_hora||'').substring(0,16).replace('T',' ');
-            return '<tr id="fich-row-'+f.id+'">' +
-                '<td class="p-3 text-white font-semibold">'+f.nombre+' '+f.apellido+'</td>' +
-                '<td class="p-3 text-center">'+badge+'</td>' +
-                '<td class="p-3 text-center">' +
-                  '<input type="datetime-local" value="'+(f.fecha_hora||'').substring(0,16)+'" ' +
-                  'onchange="editarFichajeInline('+f.id+', this.value)" ' +
-                  'class="bg-gray-900 border border-gray-700 text-white rounded px-2 py-1 text-xs">' +
-                '</td>' +
-                '<td class="p-3 text-gray-400 text-xs">'+(f.observacion||'')+'</td>' +
-                '<td class="p-3 text-right">' +
-                  '<button onclick="eliminarFichajeConf('+f.id+')" class="text-red-500 hover:text-red-400 text-xs px-2 py-1 border border-red-900 hover:border-red-700 rounded">✕ Eliminar</button>' +
-                '</td>' +
-            '</tr>';
-        }).join('') +
-        '</tbody></table></div>';
+    const lunes  = getLunes(semanaOffset);
+    const domingo = new Date(lunes); domingo.setDate(lunes.getDate() + 6);
+    // Label semana
+    const opts = {day:'numeric', month:'short'};
+    document.getElementById('label-semana').textContent =
+        lunes.toLocaleDateString('es-AR', opts) + ' — ' + domingo.toLocaleDateString('es-AR', opts);
+
+    // Pedir fichajes de lunes a domingo
+    const desde = isoDate(lunes);
+    const hasta = isoDate(domingo);
+    const url = `${API_URL}/fichajes?fecha=${desde}&id_empleado=${idEmp}`;
+    // Pedimos día a día porque la API filtra por fecha exacta
+    // Mejor: pedir desde-hasta si el endpoint lo soporta, si no, iteramos
+    // Usamos el endpoint de liquidacion/detalle para 7 días
+    const [detalleRes, fichajesRaw, planillaRes] = await Promise.all([
+        fetch(`${API_URL}/liquidacion/detalle?fecha_desde=${desde}&fecha_hasta=${hasta}`).then(r=>r.json()).catch(()=>[]),
+        fetch(`${API_URL}/fichajes_semana?desde=${desde}&hasta=${hasta}&id_empleado=${idEmp}`).then(r=>r.json()).catch(()=>null),
+        fetch(`${API_URL}/planilla_horaria?id_empleado=${idEmp}&semana_lunes=${desde}`).then(r=>r.json()).catch(()=>null)
+    ]);
+
+    // detalle agrupa por día con entrada/salida calculadas
+    const empData = Array.isArray(detalleRes) ? detalleRes.find(e=>String(e.id_empleado)===String(idEmp)) : null;
+    const diasDetalle = {}; // dia -> {entrada, salida, horas}
+    if(empData) empData.dias.forEach(d => { diasDetalle[d.dia] = d; });
+
+    // fichajes crudos: si el endpoint no existe todavía, los pedimos uno por día
+    let fichajesCrudos = [];
+    if(Array.isArray(fichajesRaw)) {
+        fichajesCrudos = fichajesRaw;
+    } else {
+        // fallback: pedir los 7 días por separado usando el endpoint existente
+        const promesas = [];
+        for(let i=0;i<7;i++){
+            const d = new Date(lunes); d.setDate(lunes.getDate()+i);
+            promesas.push(fetch(`${API_URL}/fichajes?fecha=${isoDate(d)}&id_empleado=${idEmp}`).then(r=>r.json()).catch(()=>[]));
+        }
+        const resultados = await Promise.all(promesas);
+        fichajesCrudos = resultados.flat();
+    }
+
+    // Indexar crudos por fecha
+    const crudosPorDia = {};
+    fichajesCrudos.forEach(f => {
+        const dia = (f.fecha_hora||'').substring(0,10);
+        if(!crudosPorDia[dia]) crudosPorDia[dia] = [];
+        crudosPorDia[dia].push(f);
+    });
+    // Planilla indexada por día de semana (0=lun...6=dom)
+    const planPorDia = {};
+    if(Array.isArray(planillaRes)) planillaRes.forEach(p => { planPorDia[p.dia_semana] = p; });
+
+    // Helper: diferencia en minutos entre hora planificada y fichada
+    function diffMin(horaBase, fechaHoraFichada) {
+        if(!horaBase || !fechaHoraFichada) return null;
+        const [hb,mb] = horaBase.substring(0,5).split(':').map(Number);
+        const hf = parseInt((fechaHoraFichada||'').substring(11,13));
+        const mf = parseInt((fechaHoraFichada||'').substring(14,16));
+        return Math.abs((hf*60+mf) - (hb*60+mb));
+    }
+
+    const diasSemana = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
+    let html = '<div class="space-y-2">';
+    for(let i=0; i<7; i++){
+        const fecha = new Date(lunes); fecha.setDate(lunes.getDate()+i);
+        const diaStr = isoDate(fecha);
+        const esDom  = i === 6;
+        const detalle = diasDetalle[diaStr];
+        const crudos  = crudosPorDia[diaStr] || [];
+        const plan    = planPorDia[i];
+        const sinFichaje = crudos.length === 0;
+        const planificado = plan && plan.trabaja;
+
+        const entradaInput = crudos.find(f=>f.tipo==='entrada');
+        const salidaInput  = crudos.find(f=>f.tipo==='salida');
+
+        // Desvíos: > 10 min de diferencia con planificado
+        const diffEnt = plan ? diffMin(plan.hora_entrada, entradaInput?.fecha_hora) : null;
+        const diffSal = plan ? diffMin(plan.hora_salida,  salidaInput?.fecha_hora)  : null;
+        const desvioEntrada = diffEnt !== null && diffEnt > 10;
+        const desvioSalida  = diffSal !== null && diffSal > 10;
+
+        // Alerta roja: sin fichaje (y día planificado), o desvío importante
+        const alertaSinFichaje = sinFichaje && planificado;
+        const alertaDesvio = desvioEntrada || desvioSalida;
+        const alertaRoja   = alertaSinFichaje || alertaDesvio;
+        const bgRow = alertaRoja
+            ? 'bg-red-950/30 border border-red-800'
+            : (planificado ? 'bg-black border border-gray-700' : 'bg-gray-950 border border-gray-900');
+
+        const entradaVal = entradaInput ? (entradaInput.fecha_hora||'').substring(0,16) : '';
+        const salidaVal  = salidaInput  ? (salidaInput.fecha_hora||'').substring(0,16)  : '';
+
+        const horas = detalle ? detalle.horas.toFixed(2) + ' h' : (sinFichaje ? '—' : '?');
+        const horasColor = sinFichaje ? 'text-red-400' : 'text-neon font-bold';
+
+        // Planificado hint
+        const planHint = plan && plan.trabaja
+            ? `<span class="text-xs text-gray-500">Plan: ${plan.hora_entrada||'?'} - ${plan.hora_salida||'?'}</span>`
+            : (!plan ? '' : '<span class="text-xs text-gray-700">No planificado</span>');
+
+        let alertaMsg = '';
+        if(alertaSinFichaje) alertaMsg = `⚠ Sin fichaje${esDom?' — se pagará según planilla':''}`;
+        else if(desvioEntrada && desvioSalida) alertaMsg = `⚠ Entrada y salida con desvío > 10 min`;
+        else if(desvioEntrada) alertaMsg = `⚠ Entrada con desvío de ${diffEnt} min`;
+        else if(desvioSalida)  alertaMsg = `⚠ Salida con desvío de ${diffSal} min`;
+
+        html += `<div class="${bgRow} rounded-xl p-4">
+          <div class="flex items-center gap-4 flex-wrap">
+            <div class="w-20 shrink-0">
+              <p class="text-xs text-gray-500 font-bold">${diasSemana[i]}</p>
+              <p class="text-white font-bold">${fecha.getDate()}/${fecha.getMonth()+1}</p>
+              ${esDom ? '<span class="text-xs text-orange-400 font-bold">Dom</span>' : ''}
+            </div>
+            <div class="flex gap-4 flex-1 items-center flex-wrap">
+              <div>
+                <label class="block text-xs mb-0.5 ${desvioEntrada?'text-red-400':'text-gray-500'}">Entrada ${desvioEntrada?'⚠':''}</label>
+                <input type="datetime-local" value="${entradaVal}"
+                  onchange="editarOCrearFichaje('entrada','${diaStr}',${idEmp},this.value,${entradaInput?entradaInput.id:'null'})"
+                  class="bg-gray-900 border ${(alertaSinFichaje||desvioEntrada)?'border-red-700':'border-gray-700'} text-white rounded-lg px-2 py-1.5 text-sm w-44">
+              </div>
+              <div>
+                <label class="block text-xs mb-0.5 ${desvioSalida?'text-red-400':'text-gray-500'}">Salida ${desvioSalida?'⚠':''}</label>
+                <input type="datetime-local" value="${salidaVal}"
+                  onchange="editarOCrearFichaje('salida','${diaStr}',${idEmp},this.value,${salidaInput?salidaInput.id:'null'})"
+                  class="bg-gray-900 border ${(alertaSinFichaje||desvioSalida)?'border-red-700':'border-gray-700'} text-white rounded-lg px-2 py-1.5 text-sm w-44">
+              </div>
+              <div class="text-center">
+                <p class="text-xs text-gray-500 mb-0.5">Horas</p>
+                <p class="${horasColor} text-lg">${horas}</p>
+                ${planHint}
+              </div>
+            </div>
+            ${alertaMsg ? `<div class="w-full mt-1"><p class="text-red-400 text-xs font-bold">${alertaMsg}</p></div>` : ''}
+          </div>
+        </div>`;
+    }
+    html += '</div>';
+    el.innerHTML = html;
+}
+
+async function editarOCrearFichaje(tipo, dia, idEmp, valor, idExistente) {
+    if(!valor) return;
+    const fechaHora = valor.length === 16 ? valor + ':00' : valor;
+    if(idExistente && idExistente !== 'null') {
+        // Editar existente
+        const r = await fetch(`${API_URL}/fichajes/${idExistente}`, {
+            method:'PUT', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({fecha_hora: fechaHora})
+        });
+        if(r.ok) showToast('✅ Fichaje actualizado');
+        else { showToast('❌ Error al actualizar', true); cargarFichajesLiq(); }
+    } else {
+        // Crear nuevo
+        const r = await fetch(`${API_URL}/fichajes/manual`, {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({id_empleado: parseInt(idEmp), tipo, fecha_hora: fechaHora, observacion: 'Cargado desde liquidación'})
+        });
+        if(r.ok) { showToast('✅ Fichaje registrado'); setTimeout(cargarFichajesLiq, 300); }
+        else { const e = await r.json(); showToast('❌ ' + (e.detail||'Error'), true); }
+    }
 }
 
 async function editarFichajeInline(id, nuevaFechaHora) {
@@ -583,8 +757,12 @@ async function eliminarFichajeConf(id) {
 function abrirModalFichajeNuevo() {
     document.getElementById('mfich-id').value = '';
     document.getElementById('modal-fich-titulo').textContent = 'Agregar fichaje';
-    document.getElementById('mfich-fecha').value = document.getElementById('fich-fecha').value ? document.getElementById('fich-fecha').value + 'T08:00' : new Date().toISOString().substring(0,16);
+    const lunes = getLunes(semanaOffset);
+    document.getElementById('mfich-fecha').value = isoDate(lunes) + 'T08:00';
     document.getElementById('mfich-obs').value = '';
+    // Pre-seleccionar el empleado activo
+    const idEmp = document.getElementById('fich-empleado').value;
+    if(idEmp) document.getElementById('mfich-emp').value = idEmp;
     document.getElementById('modal-fichaje').classList.remove('hidden');
 }
 
@@ -600,7 +778,7 @@ async function guardarFichajeModal() {
     if(!idEmp || !fecha){ alert('Elegí el empleado y la fecha.'); return; }
     const r = await fetch(API_URL+'/fichajes/manual', {
         method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({id_empleado: parseInt(idEmp), tipo, fecha_hora: fecha+':00', observacion: obs})
+        body: JSON.stringify({id_empleado: parseInt(idEmp), tipo, fecha_hora: fecha+':00', observacion: obs||'Cargado desde liquidación'})
     });
     if(r.ok){ cerrarModalFichaje(); cargarFichajesLiq(); showToast('✅ Fichaje registrado'); }
     else { const e = await r.json(); alert('❌ ' + (e.detail||'Error')); }
@@ -740,6 +918,117 @@ async function cargarHistAnual() {
         </table>
       </div>` : ''}
     `;
+}
+
+// ===== PLANILLA HORARIA =====
+let planOffset = 0;
+const DIAS_PLAN = ['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo'];
+
+function planLunes(offset) { return getLunes(offset); } // reutiliza getLunes de fichajes
+
+function planSemanaAnterior()  { planOffset--; cargarPlanilla(); }
+function planSemanaSiguiente() { planOffset++; cargarPlanilla(); }
+
+let planDatos = []; // estado de los 7 días mientras se edita
+
+async function cargarPlanilla() {
+    const idEmp = document.getElementById('plan-empleado').value;
+    const el    = document.getElementById('tabla-planilla');
+    if(!idEmp){ el.innerHTML = '<p class="text-gray-500 text-center py-10">Elegí un empleado.</p>'; return; }
+    const lunes = planLunes(planOffset);
+    const lunStr = isoDate(lunes);
+    const domingo = new Date(lunes); domingo.setDate(lunes.getDate()+6);
+    const opts = {day:'numeric', month:'short'};
+    document.getElementById('label-semana-plan').textContent =
+        lunes.toLocaleDateString('es-AR', opts) + ' — ' + domingo.toLocaleDateString('es-AR', opts);
+    const data = await fetch(`${API_URL}/planilla_horaria?id_empleado=${idEmp}&semana_lunes=${lunStr}`).then(r=>r.json()).catch(()=>null);
+    if(!data){ el.innerHTML = '<p class="text-red-400 text-center py-10">Error al cargar planilla.</p>'; return; }
+    planDatos = data;
+    renderPlanilla(idEmp, lunStr);
+}
+
+function renderPlanilla(idEmp, lunStr) {
+    const el = document.getElementById('tabla-planilla');
+    el.innerHTML = `
+      <div class="bg-black border border-gray-800 rounded-2xl overflow-hidden mb-4">
+        <table class="w-full text-sm">
+          <thead class="text-xs text-gray-500 border-b border-gray-800">
+            <tr>
+              <th class="p-3 text-left">Día</th>
+              <th class="p-3 text-center">¿Trabaja?</th>
+              <th class="p-3 text-center">Entrada</th>
+              <th class="p-3 text-center">Salida</th>
+              <th class="p-3 text-left">Obs.</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-800">
+            ${planDatos.map((d,i) => {
+              const esDom = i === 6;
+              return `<tr class="${esDom?'bg-orange-950/20':''}">
+                <td class="p-3">
+                  <span class="text-white font-bold">${DIAS_PLAN[i]}</span>
+                  ${esDom?'<span class="ml-1 text-xs text-orange-400">+pago planificado</span>':''}
+                </td>
+                <td class="p-3 text-center">
+                  <div onclick="toggleTrabaja(${i})" data-on="${d.trabaja?'1':'0'}"
+                    style="display:inline-flex;align-items:center;cursor:pointer;width:40px;height:22px;border-radius:11px;padding:2px;transition:background .2s;background:${d.trabaja?'#d4ff3f':'#374151'}">
+                    <div style="width:18px;height:18px;border-radius:50%;background:#fff;transition:transform .2s;transform:${d.trabaja?'translateX(18px)':'translateX(0)'}"></div>
+                  </div>
+                </td>
+                <td class="p-3 text-center">
+                  <input type="time" value="${d.hora_entrada||''}" ${d.trabaja?'':'disabled'}
+                    oninput="planDatos[${i}].hora_entrada=this.value"
+                    class="bg-gray-900 border border-gray-700 text-white rounded px-2 py-1 text-sm w-24 disabled:opacity-30">
+                </td>
+                <td class="p-3 text-center">
+                  <input type="time" value="${d.hora_salida||''}" ${d.trabaja?'':'disabled'}
+                    oninput="planDatos[${i}].hora_salida=this.value"
+                    class="bg-gray-900 border border-gray-700 text-white rounded px-2 py-1 text-sm w-24 disabled:opacity-30">
+                </td>
+                <td class="p-3">
+                  <input type="text" value="${d.observacion||''}" placeholder="opcional"
+                    oninput="planDatos[${i}].observacion=this.value"
+                    class="bg-gray-900 border border-gray-700 text-white rounded px-2 py-1 text-xs w-32">
+                </td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+      <div class="flex justify-end gap-3">
+        <p class="text-xs text-gray-500 self-center">Los cambios no se guardan solos — tocá Guardar.</p>
+        <button onclick="guardarPlanilla('${idEmp}','${lunStr}')" class="bg-neon text-black font-bold px-6 py-2.5 rounded-xl">💾 Guardar planilla</button>
+      </div>
+    `;
+}
+
+function toggleTrabaja(idx) {
+    planDatos[idx].trabaja = !planDatos[idx].trabaja;
+    const idEmp = document.getElementById('plan-empleado').value;
+    const lunes = isoDate(planLunes(planOffset));
+    renderPlanilla(idEmp, lunes);
+}
+
+async function guardarPlanilla(idEmp, lunStr) {
+    const r = await fetch(`${API_URL}/planilla_horaria`, {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({id_empleado: parseInt(idEmp), semana_lunes: lunStr, dias: planDatos})
+    });
+    if(r.ok) showToast('✅ Planilla guardada');
+    else { const e = await r.json(); showToast('❌ ' + (e.detail||'Error'), true); }
+}
+
+async function copiarSemanaAnterior() {
+    const idEmp = document.getElementById('plan-empleado').value;
+    if(!idEmp){ alert('Elegí el empleado primero.'); return; }
+    const lunStr = isoDate(planLunes(planOffset));
+    const data = await fetch(`${API_URL}/planilla_horaria/semana_anterior?id_empleado=${idEmp}&semana_lunes=${lunStr}`).then(r=>r.json()).catch(()=>null);
+    if(!data || data.every(d=>!d.trabaja)){
+        showToast('⚠ La semana anterior no tiene planilla cargada', true); return;
+    }
+    planDatos = data;
+    renderPlanilla(idEmp, lunStr);
+    showToast('↩ Planilla de semana anterior cargada — revisá y guardá');
 }
 
 // ===== TOAST =====

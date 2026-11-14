@@ -3650,6 +3650,122 @@ def listar_fichajes(fecha: Optional[str] = None, id_empleado: Optional[int] = No
     finally:
         liberar_conexion(conn)
 
+def crear_tabla_planilla(cur):
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS planilla_horaria (
+            id SERIAL PRIMARY KEY,
+            id_empleado INTEGER NOT NULL,
+            semana_lunes DATE NOT NULL,  -- fecha del lunes de esa semana
+            dia_semana SMALLINT NOT NULL, -- 0=lunes,1=mar,...,6=dom
+            trabaja BOOLEAN DEFAULT true,
+            hora_entrada TIME,
+            hora_salida TIME,
+            observacion TEXT,
+            UNIQUE(id_empleado, semana_lunes, dia_semana)
+        )
+    """)
+
+@app.get("/api/planilla_horaria")
+def get_planilla_horaria(id_empleado: int, semana_lunes: str):
+    """Devuelve los 7 días planificados de un empleado para la semana dada."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            crear_tabla_planilla(cur); conn.commit()
+        except Exception: conn.rollback()
+        cur.execute("""
+            SELECT dia_semana, trabaja, hora_entrada::text, hora_salida::text, observacion
+            FROM planilla_horaria
+            WHERE id_empleado=%s AND semana_lunes=%s
+            ORDER BY dia_semana
+        """, (id_empleado, semana_lunes))
+        filas = fetchall_dict(cur)
+        # Rellenar días faltantes con vacío
+        por_dia = {f['dia_semana']: f for f in filas}
+        result = []
+        for d in range(7):
+            result.append(por_dia.get(d, {'dia_semana': d, 'trabaja': False, 'hora_entrada': None, 'hora_salida': None, 'observacion': ''}))
+        return result
+    finally:
+        liberar_conexion(conn)
+
+@app.post("/api/planilla_horaria")
+def guardar_planilla_horaria(data: dict = Body(...)):
+    """Guarda (upsert) la planilla de una semana para un empleado."""
+    id_emp      = data.get('id_empleado')
+    semana      = data.get('semana_lunes')
+    dias        = data.get('dias', [])  # lista de {dia_semana, trabaja, hora_entrada, hora_salida}
+    if not id_emp or not semana:
+        raise HTTPException(status_code=400, detail="Faltan datos")
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        try:
+            crear_tabla_planilla(cur); conn.commit()
+        except Exception: conn.rollback()
+        for d in dias:
+            dia    = d.get('dia_semana')
+            trab   = bool(d.get('trabaja', False))
+            entrada = d.get('hora_entrada') or None
+            salida  = d.get('hora_salida') or None
+            obs     = d.get('observacion') or ''
+            cur.execute("""
+                INSERT INTO planilla_horaria (id_empleado, semana_lunes, dia_semana, trabaja, hora_entrada, hora_salida, observacion)
+                VALUES (%s,%s,%s,%s,%s,%s,%s)
+                ON CONFLICT (id_empleado, semana_lunes, dia_semana)
+                DO UPDATE SET trabaja=EXCLUDED.trabaja, hora_entrada=EXCLUDED.hora_entrada,
+                              hora_salida=EXCLUDED.hora_salida, observacion=EXCLUDED.observacion
+            """, (id_emp, semana, dia, trab, entrada, salida, obs))
+        conn.commit()
+        return {"status": "ok"}
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
+@app.get("/api/planilla_horaria/semana_anterior")
+def planilla_semana_anterior(id_empleado: int, semana_lunes: str):
+    """Devuelve la planilla de la semana anterior (para copiar)."""
+    import datetime
+    lunes_actual = datetime.date.fromisoformat(semana_lunes)
+    lunes_ant    = lunes_actual - datetime.timedelta(weeks=1)
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        try: crear_tabla_planilla(cur); conn.commit()
+        except Exception: conn.rollback()
+        cur.execute("""
+            SELECT dia_semana, trabaja, hora_entrada::text, hora_salida::text, observacion
+            FROM planilla_horaria WHERE id_empleado=%s AND semana_lunes=%s ORDER BY dia_semana
+        """, (id_empleado, str(lunes_ant)))
+        filas = fetchall_dict(cur)
+        por_dia = {f['dia_semana']: f for f in filas}
+        return [por_dia.get(d, {'dia_semana': d, 'trabaja': False, 'hora_entrada': None, 'hora_salida': None, 'observacion': ''}) for d in range(7)]
+    finally:
+        liberar_conexion(conn)
+
+@app.get("/api/fichajes_semana")
+def listar_fichajes_semana(desde: str, hasta: str, id_empleado: Optional[int] = None):
+    """Fichajes crudos de un rango de fechas (usado por la vista semanal)."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        filtros = ["DATE(r.fecha_hora) >= %s", "DATE(r.fecha_hora) <= %s"]
+        params = [desde, hasta]
+        if id_empleado:
+            filtros.append("r.id_empleado = %s"); params.append(id_empleado)
+        where = "WHERE " + " AND ".join(filtros)
+        cur.execute(f"""
+            SELECT r.id, r.tipo, r.fecha_hora::text, r.observacion, e.nombre, e.apellido, e.rol
+            FROM registros_horarios r JOIN empleados e ON r.id_empleado = e.id
+            {where} ORDER BY r.fecha_hora ASC LIMIT 500
+        """, params)
+        return fetchall_dict(cur)
+    finally:
+        liberar_conexion(conn)
+
 @app.put("/api/fichajes/{id}")
 def editar_fichaje(id: int, data: dict = Body(...)):
     """Edita un fichaje: tipo (entrada/salida), fecha_hora y/o observación.
