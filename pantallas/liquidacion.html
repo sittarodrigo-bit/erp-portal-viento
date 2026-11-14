@@ -14,16 +14,19 @@
   <header class="bg-black border-b border-gray-800 px-6 py-4 flex items-center justify-between sticky top-0 z-20">
     <div class="flex items-center gap-3">
       <a href="/admin" class="text-gray-400 hover:text-white text-sm">← Panel</a>
-      <h1 class="text-neon font-bold text-lg">💵 Liquidación de Sueldos</h1>
+      <h1 class="text-neon font-bold text-lg">👥 RRHH & Liquidación</h1>
     </div>
   </header>
 
   <main class="p-6 max-w-5xl mx-auto">
 
     <!-- Pestañas -->
-    <div class="flex gap-4 mb-5 border-b border-gray-800">
-        <button onclick="cambiarTabLiq('liquidacion')" id="tab-liq" class="py-2 text-sm font-bold border-b-2 border-neon text-white">💵 Liquidación</button>
-        <button onclick="cambiarTabLiq('historial')"   id="tab-hist" class="py-2 text-sm font-bold text-gray-400 hover:text-white border-b-2 border-transparent">📋 Historial de pagos</button>
+    <div class="flex gap-1 mb-5 border-b border-gray-800 overflow-x-auto">
+        <button onclick="cambiarTabLiq('liquidacion')" id="tab-liq" class="py-2 px-3 text-sm font-bold border-b-2 border-neon text-white whitespace-nowrap">💵 Liquidación</button>
+        <button onclick="cambiarTabLiq('fichajes')"    id="tab-fich" class="py-2 px-3 text-sm font-bold text-gray-400 hover:text-white border-b-2 border-transparent whitespace-nowrap">🕐 Fichajes</button>
+        <button onclick="cambiarTabLiq('anticipos')"   id="tab-ant" class="py-2 px-3 text-sm font-bold text-gray-400 hover:text-white border-b-2 border-transparent whitespace-nowrap">💸 Anticipos</button>
+        <button onclick="cambiarTabLiq('historial')"   id="tab-hist" class="py-2 px-3 text-sm font-bold text-gray-400 hover:text-white border-b-2 border-transparent whitespace-nowrap">📋 Historial pagos</button>
+        <button onclick="cambiarTabLiq('anual')"       id="tab-anual" class="py-2 px-3 text-sm font-bold text-gray-400 hover:text-white border-b-2 border-transparent whitespace-nowrap">📅 Historial anual</button>
     </div>
 
     <!-- PANEL LIQUIDACIÓN -->
@@ -67,6 +70,125 @@
         <div id="tabla-historial">
             <p class="text-gray-500 text-center py-8">Cargando historial...</p>
         </div>
+    </div>
+
+    <!-- PANEL FICHAJES -->
+    <div id="panel-fichajes" class="hidden">
+      <div class="bg-black border border-gray-800 rounded-2xl p-5 mb-5">
+        <div class="flex flex-wrap gap-3 items-end">
+          <div>
+            <label class="block text-xs text-gray-500 font-bold mb-1">Fecha</label>
+            <input type="date" id="fich-fecha" class="bg-gray-900 border border-gray-700 text-white rounded-lg p-2.5">
+          </div>
+          <div>
+            <label class="block text-xs text-gray-500 font-bold mb-1">Empleado</label>
+            <select id="fich-empleado" class="bg-gray-900 border border-gray-700 text-white rounded-lg p-2.5 min-w-[180px]">
+              <option value="">Todos</option>
+            </select>
+          </div>
+          <button onclick="cargarFichajesLiq()" class="bg-neon text-black font-bold px-5 py-2.5 rounded-lg">Buscar</button>
+          <button onclick="abrirModalFichajeNuevo()" class="ml-auto border border-gray-700 text-gray-300 hover:text-white font-bold px-5 py-2.5 rounded-lg">+ Agregar fichaje</button>
+        </div>
+      </div>
+      <div id="tabla-fichajes-liq">
+        <p class="text-gray-500 text-center py-10">Elegí una fecha para ver los fichajes.</p>
+      </div>
+    </div>
+
+    <!-- PANEL ANTICIPOS -->
+    <div id="panel-anticipos" class="hidden">
+      <div class="bg-black border border-gray-800 rounded-2xl p-5 mb-5">
+        <div class="flex flex-wrap gap-3 items-end">
+          <div>
+            <label class="block text-xs text-gray-500 font-bold mb-1">Empleado</label>
+            <select id="ant-empleado-sel" class="bg-gray-900 border border-gray-700 text-white rounded-lg p-2.5 min-w-[200px]">
+              <option value="">— Elegir empleado —</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs text-gray-500 font-bold mb-1">Monto $</label>
+            <input type="number" id="ant-monto" placeholder="0" min="0" class="bg-gray-900 border border-gray-700 text-white rounded-lg p-2.5 w-32">
+          </div>
+          <div>
+            <label class="block text-xs text-gray-500 font-bold mb-1">Concepto</label>
+            <input type="text" id="ant-obs" placeholder="Anticipo de quincena..." class="bg-gray-900 border border-gray-700 text-white rounded-lg p-2.5 w-52">
+          </div>
+          <button onclick="registrarAnticipoLiq()" class="bg-neon text-black font-bold px-5 py-2.5 rounded-lg">💸 Registrar anticipo</button>
+        </div>
+      </div>
+      <div class="flex gap-3 mb-4 items-end">
+        <div>
+          <label class="block text-xs text-gray-500 font-bold mb-1">Desde</label>
+          <input type="date" id="ant-desde-fil" class="bg-gray-900 border border-gray-700 text-white rounded-lg p-2">
+        </div>
+        <div>
+          <label class="block text-xs text-gray-500 font-bold mb-1">Hasta</label>
+          <input type="date" id="ant-hasta-fil" class="bg-gray-900 border border-gray-700 text-white rounded-lg p-2">
+        </div>
+        <button onclick="cargarAnticiposLiq()" class="border border-gray-700 text-gray-300 hover:text-white px-4 py-2 rounded-lg text-sm">🔍 Filtrar</button>
+      </div>
+      <div id="tabla-anticipos-liq">
+        <p class="text-gray-500 text-center py-10">Cargando anticipos...</p>
+      </div>
+    </div>
+
+    <!-- PANEL HISTORIAL ANUAL -->
+    <div id="panel-anual" class="hidden">
+      <div class="bg-black border border-gray-800 rounded-2xl p-5 mb-5">
+        <div class="flex flex-wrap gap-3 items-end">
+          <div>
+            <label class="block text-xs text-gray-500 font-bold mb-1">Empleado</label>
+            <select id="anual-empleado" class="bg-gray-900 border border-gray-700 text-white rounded-lg p-2.5 min-w-[200px]">
+              <option value="">— Elegir empleado —</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs text-gray-500 font-bold mb-1">Año</label>
+            <input type="number" id="anual-anio" value="" min="2020" max="2030" class="bg-gray-900 border border-gray-700 text-white rounded-lg p-2.5 w-28">
+          </div>
+          <button onclick="cargarHistAnual()" class="bg-neon text-black font-bold px-5 py-2.5 rounded-lg">📅 Ver historial</button>
+        </div>
+      </div>
+      <div id="contenido-anual">
+        <p class="text-gray-500 text-center py-10">Elegí un empleado y el año.</p>
+      </div>
+    </div>
+
+    <!-- MODAL FICHAJE NUEVO/EDITAR -->
+    <div id="modal-fichaje" class="hidden fixed inset-0 bg-black/80 flex items-center justify-center z-50">
+      <div class="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-[400px] shadow-2xl">
+        <h3 class="text-white font-bold text-lg mb-4" id="modal-fich-titulo">Agregar fichaje</h3>
+        <input type="hidden" id="mfich-id">
+        <div class="space-y-3">
+          <div>
+            <label class="block text-xs text-gray-500 font-bold mb-1">Empleado</label>
+            <select id="mfich-emp" class="w-full bg-black border border-gray-700 text-white rounded-lg p-2.5">
+              <option value="">— Elegir —</option>
+            </select>
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs text-gray-500 font-bold mb-1">Tipo</label>
+              <select id="mfich-tipo" class="w-full bg-black border border-gray-700 text-white rounded-lg p-2.5">
+                <option value="entrada">Entrada</option>
+                <option value="salida">Salida</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs text-gray-500 font-bold mb-1">Fecha y hora</label>
+              <input type="datetime-local" id="mfich-fecha" class="w-full bg-black border border-gray-700 text-white rounded-lg p-2.5">
+            </div>
+          </div>
+          <div>
+            <label class="block text-xs text-gray-500 font-bold mb-1">Observación</label>
+            <input type="text" id="mfich-obs" placeholder="Opcional..." class="w-full bg-black border border-gray-700 text-white rounded-lg p-2.5">
+          </div>
+        </div>
+        <div class="flex gap-3 mt-5">
+          <button onclick="cerrarModalFichaje()" class="flex-1 border border-gray-700 text-gray-400 hover:text-white font-bold py-2.5 rounded-xl">Cancelar</button>
+          <button onclick="guardarFichajeModal()" class="flex-1 bg-neon text-black font-bold py-2.5 rounded-xl">Guardar</button>
+        </div>
+      </div>
     </div>
 
   </main>
@@ -157,9 +279,9 @@ function renderEmpleado(emp){
   // Guardar datos calculados para imprimir/pagar
   emp._calc = { totalHoras: totalHoras, pagoHoras: pagoHoras, totalAnticipos: totalAnticipos, neto: neto, dobles: Object.keys(diasDobles).filter(k=>k.startsWith(emp.id_empleado+'-') && diasDobles[k]) };
 
-  return `<div class="bg-black border border-gray-800 rounded-2xl p-5 mb-5" id="emp-card-${emp.id_empleado}">
+  return `<div class="bg-black border ${emp.ya_pagado ? 'border-green-800' : 'border-gray-800'} rounded-2xl p-5 mb-5" id="emp-card-${emp.id_empleado}">
     <div class="flex justify-between items-center mb-4">
-      <h2 class="text-white font-bold text-xl">${emp.nombre} ${emp.apellido}</h2>
+      <h2 class="text-white font-bold text-xl">${emp.nombre} ${emp.apellido} ${emp.ya_pagado ? '<span class="text-xs bg-green-900/50 text-green-400 border border-green-700 px-2 py-0.5 rounded-full ml-2">✅ Pagado</span>' : ''}</h2>
       <span class="text-gray-500 text-sm">Valor hora: ${fmt(vh)}</span>
     </div>
 
@@ -186,7 +308,16 @@ function renderEmpleado(emp){
     </div>
 
     <div class="flex gap-3 mt-4 pt-4 border-t border-gray-800">
-      <button onclick="marcarPagado(${emp.id_empleado})" class="flex-1 bg-green-600 hover:bg-green-500 text-white font-bold py-3 rounded-xl">✓ Marcar pagado</button>
+      ${emp.ya_pagado
+        ? `<div class="flex-1 flex items-center gap-3 bg-green-900/30 border border-green-700 text-green-400 font-bold py-3 px-4 rounded-xl">
+            <span class="text-xl">✅</span>
+            <div>
+              <p class="text-sm font-bold">Ya pagado</p>
+              <p class="text-xs text-green-600">Neto: ${fmt(emp.pago_neto)} · ${(emp.pago_fecha||'').substring(0,10)}</p>
+            </div>
+           </div>`
+        : `<button onclick="marcarPagado(${emp.id_empleado})" class="flex-1 bg-green-600 hover:bg-green-500 text-white font-bold py-3 rounded-xl">✓ Marcar pagado</button>`
+      }
       <button onclick="imprimirRecibo(${emp.id_empleado})" class="flex-1 border border-gray-700 text-gray-300 hover:text-white font-bold py-3 rounded-xl">🖨️ Imprimir recibo</button>
     </div>
   </div>`;
@@ -321,12 +452,20 @@ function imprimirPlanilla(){
 rangoRapido('semana');
 
 // ===== PESTAÑAS =====
+const TABS_LIQ = ['liquidacion','fichajes','anticipos','historial','anual'];
 function cambiarTabLiq(tab) {
-    document.getElementById('panel-liquidacion').classList.toggle('hidden', tab !== 'liquidacion');
-    document.getElementById('panel-historial').classList.toggle('hidden', tab !== 'historial');
-    document.getElementById('tab-liq').className  = tab==='liquidacion' ? 'py-2 text-sm font-bold border-b-2 border-neon text-white' : 'py-2 text-sm font-bold text-gray-400 hover:text-white border-b-2 border-transparent';
-    document.getElementById('tab-hist').className = tab==='historial'   ? 'py-2 text-sm font-bold border-b-2 border-neon text-white' : 'py-2 text-sm font-bold text-gray-400 hover:text-white border-b-2 border-transparent';
+    TABS_LIQ.forEach(t => {
+        const panel = document.getElementById('panel-' + t);
+        const btn   = document.getElementById('tab-' + (t==='historial'?'hist':t==='fichajes'?'fich':t==='anticipos'?'ant':t==='anual'?'anual':'liq'));
+        if(panel) panel.classList.toggle('hidden', t !== tab);
+        if(btn) btn.className = (t === tab)
+            ? 'py-2 px-3 text-sm font-bold border-b-2 border-neon text-white whitespace-nowrap'
+            : 'py-2 px-3 text-sm font-bold text-gray-400 hover:text-white border-b-2 border-transparent whitespace-nowrap';
+    });
     if (tab === 'historial') cargarHistorial();
+    if (tab === 'fichajes')  { const h = new Date().toISOString().split('T')[0]; if(!document.getElementById('fich-fecha').value) document.getElementById('fich-fecha').value = h; cargarFichajesLiq(); }
+    if (tab === 'anticipos') { initFiltroAnticiposLiq(); cargarAnticiposLiq(); }
+    if (tab === 'anual')     { if(!document.getElementById('anual-anio').value) document.getElementById('anual-anio').value = new Date().getFullYear(); }
 }
 
 // ===== HISTORIAL DE PAGOS =====
@@ -363,15 +502,258 @@ async function eliminarPagoHistorial(id) {
 }
 
 // Poblar select de empleados en historial
-(async function initHistorial() {
+let empleadosCache = [];
+(async function initTodos() {
     try {
-        var emps = await fetch(API_URL + '/empleados').then(r=>r.json());
-        var activos = emps.filter(e=>e.activo);
-        var sel = document.getElementById('hist-empleado');
-        if (sel) sel.innerHTML = '<option value="">Todos los empleados</option>' +
-            activos.map(e=>'<option value="'+e.id+'">'+e.apellido+', '+e.nombre+'</option>').join('');
+        empleadosCache = await fetch(API_URL + '/empleados').then(r=>r.json());
+        const activos = empleadosCache.filter(e=>e.activo);
+        const opts = activos.map(e=>'<option value="'+e.id+'">'+e.apellido+', '+e.nombre+'</option>').join('');
+        // Historial pagos
+        const selHist = document.getElementById('hist-empleado');
+        if (selHist) selHist.innerHTML = '<option value="">Todos los empleados</option>' + opts;
+        // Fichajes empleado filter
+        const selFich = document.getElementById('fich-empleado');
+        if (selFich) selFich.innerHTML = '<option value="">Todos</option>' + opts;
+        // Modal fichaje nuevo
+        const selMFich = document.getElementById('mfich-emp');
+        if (selMFich) selMFich.innerHTML = '<option value="">— Elegir —</option>' + opts;
+        // Anticipos
+        const selAnt = document.getElementById('ant-empleado-sel');
+        if (selAnt) selAnt.innerHTML = '<option value="">— Elegir empleado —</option>' + opts;
+        // Historial anual
+        const selAnual = document.getElementById('anual-empleado');
+        if (selAnual) selAnual.innerHTML = '<option value="">— Elegir empleado —</option>' + opts;
     } catch(e) {}
 })();
+
+// ===== FICHAJES =====
+async function cargarFichajesLiq() {
+    const fecha = document.getElementById('fich-fecha').value;
+    const idEmp = document.getElementById('fich-empleado').value;
+    if(!fecha) return;
+    const url = API_URL + '/fichajes?fecha=' + fecha + (idEmp ? '&id_empleado=' + idEmp : '');
+    const lista = await fetch(url).then(r=>r.json()).catch(()=>[]);
+    const el = document.getElementById('tabla-fichajes-liq');
+    if(!lista.length){
+        el.innerHTML = '<p class="text-gray-500 text-center py-10">Sin fichajes para esa fecha.</p>';
+        return;
+    }
+    el.innerHTML = '<div class="bg-black border border-gray-800 rounded-2xl overflow-hidden"><table class="w-full text-sm">' +
+        '<thead class="text-xs text-gray-500 border-b border-gray-800"><tr>' +
+        '<th class="p-3 text-left">Empleado</th><th class="p-3 text-center">Tipo</th>' +
+        '<th class="p-3 text-center">Fecha y hora</th><th class="p-3 text-left">Obs.</th><th class="p-3 text-right">Acciones</th>' +
+        '</tr></thead><tbody class="divide-y divide-gray-800">' +
+        lista.map(f => {
+            const badge = f.tipo === 'entrada'
+                ? '<span class="bg-green-900/50 text-green-400 border border-green-800 text-xs px-2 py-0.5 rounded-full">▶ Entrada</span>'
+                : '<span class="bg-red-900/50 text-red-400 border border-red-800 text-xs px-2 py-0.5 rounded-full">■ Salida</span>';
+            const fh = (f.fecha_hora||'').substring(0,16).replace('T',' ');
+            return '<tr id="fich-row-'+f.id+'">' +
+                '<td class="p-3 text-white font-semibold">'+f.nombre+' '+f.apellido+'</td>' +
+                '<td class="p-3 text-center">'+badge+'</td>' +
+                '<td class="p-3 text-center">' +
+                  '<input type="datetime-local" value="'+(f.fecha_hora||'').substring(0,16)+'" ' +
+                  'onchange="editarFichajeInline('+f.id+', this.value)" ' +
+                  'class="bg-gray-900 border border-gray-700 text-white rounded px-2 py-1 text-xs">' +
+                '</td>' +
+                '<td class="p-3 text-gray-400 text-xs">'+(f.observacion||'')+'</td>' +
+                '<td class="p-3 text-right">' +
+                  '<button onclick="eliminarFichajeConf('+f.id+')" class="text-red-500 hover:text-red-400 text-xs px-2 py-1 border border-red-900 hover:border-red-700 rounded">✕ Eliminar</button>' +
+                '</td>' +
+            '</tr>';
+        }).join('') +
+        '</tbody></table></div>';
+}
+
+async function editarFichajeInline(id, nuevaFechaHora) {
+    const r = await fetch(API_URL+'/fichajes/'+id, {
+        method:'PUT', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({fecha_hora: nuevaFechaHora+':00'})
+    });
+    if(r.ok){ showToast('✅ Fichaje actualizado'); }
+    else { showToast('❌ Error al actualizar', true); cargarFichajesLiq(); }
+}
+
+async function eliminarFichajeConf(id) {
+    if(!confirm('¿Eliminar este fichaje?')) return;
+    await fetch(API_URL+'/fichajes/'+id, {method:'DELETE'});
+    cargarFichajesLiq();
+}
+
+function abrirModalFichajeNuevo() {
+    document.getElementById('mfich-id').value = '';
+    document.getElementById('modal-fich-titulo').textContent = 'Agregar fichaje';
+    document.getElementById('mfich-fecha').value = document.getElementById('fich-fecha').value ? document.getElementById('fich-fecha').value + 'T08:00' : new Date().toISOString().substring(0,16);
+    document.getElementById('mfich-obs').value = '';
+    document.getElementById('modal-fichaje').classList.remove('hidden');
+}
+
+function cerrarModalFichaje() {
+    document.getElementById('modal-fichaje').classList.add('hidden');
+}
+
+async function guardarFichajeModal() {
+    const idEmp = document.getElementById('mfich-emp').value;
+    const tipo  = document.getElementById('mfich-tipo').value;
+    const fecha = document.getElementById('mfich-fecha').value;
+    const obs   = document.getElementById('mfich-obs').value;
+    if(!idEmp || !fecha){ alert('Elegí el empleado y la fecha.'); return; }
+    const r = await fetch(API_URL+'/fichajes/manual', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({id_empleado: parseInt(idEmp), tipo, fecha_hora: fecha+':00', observacion: obs})
+    });
+    if(r.ok){ cerrarModalFichaje(); cargarFichajesLiq(); showToast('✅ Fichaje registrado'); }
+    else { const e = await r.json(); alert('❌ ' + (e.detail||'Error')); }
+}
+
+// ===== ANTICIPOS =====
+function initFiltroAnticiposLiq() {
+    const hoy = new Date();
+    const desde = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
+    if (!document.getElementById('ant-desde-fil').value)
+        document.getElementById('ant-desde-fil').value = desde.toISOString().split('T')[0];
+    if (!document.getElementById('ant-hasta-fil').value)
+        document.getElementById('ant-hasta-fil').value = hoy.toISOString().split('T')[0];
+}
+
+async function registrarAnticipoLiq() {
+    const idEmp = document.getElementById('ant-empleado-sel').value;
+    const monto = parseFloat(document.getElementById('ant-monto').value);
+    const obs   = document.getElementById('ant-obs').value || 'Anticipo';
+    if(!idEmp){ alert('Elegí el empleado.'); return; }
+    if(!monto || monto <= 0){ alert('Ingresá un monto válido.'); return; }
+    const r = await fetch(API_URL+'/anticipos', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({id_empleado: parseInt(idEmp), monto, observaciones: obs})
+    });
+    if(r.ok){
+        document.getElementById('ant-monto').value = '';
+        document.getElementById('ant-obs').value = '';
+        showToast('✅ Anticipo registrado por $' + monto.toLocaleString('es-AR'));
+        cargarAnticiposLiq();
+    } else {
+        const e = await r.json(); alert('❌ ' + (e.detail||'Error'));
+    }
+}
+
+async function cargarAnticiposLiq() {
+    const desde = document.getElementById('ant-desde-fil').value;
+    const hasta = document.getElementById('ant-hasta-fil').value;
+    if(!desde || !hasta) return;
+    const lista = await fetch(API_URL+'/anticipos?fecha_desde='+desde+'&fecha_hasta='+hasta).then(r=>r.json()).catch(()=>[]);
+    const el = document.getElementById('tabla-anticipos-liq');
+    if(!lista.length){ el.innerHTML = '<p class="text-gray-500 text-center py-10">Sin anticipos en ese período.</p>'; return; }
+    el.innerHTML = '<div class="space-y-2">' + lista.map(a => {
+        const badge = a.pagado
+            ? '<span class="text-xs bg-green-900/40 text-green-400 border border-green-800 px-2 py-0.5 rounded-full">✅ Descontado</span>'
+            : '<span class="text-xs bg-orange-900/40 text-orange-400 border border-orange-800 px-2 py-0.5 rounded-full">⏳ Pendiente</span>';
+        return '<div class="bg-black border border-gray-800 rounded-xl p-4 flex items-center gap-4">' +
+            '<div class="flex-1">' +
+              '<p class="text-white font-bold">'+(a.apellido||'')+', '+(a.nombre||'')+'</p>' +
+              '<p class="text-gray-500 text-xs">'+(a.observaciones||'Anticipo')+' · '+(a.fecha||'').substring(0,10)+'</p>' +
+            '</div>' +
+            '<div class="text-right">' +
+              '<p class="text-neon font-bold text-lg">$'+parseFloat(a.monto||0).toLocaleString('es-AR')+'</p>' +
+              badge +
+            '</div>' +
+        '</div>';
+    }).join('') + '</div>';
+}
+
+// ===== HISTORIAL ANUAL =====
+async function cargarHistAnual() {
+    const idEmp = document.getElementById('anual-empleado').value;
+    const anio  = document.getElementById('anual-anio').value;
+    if(!idEmp){ alert('Elegí el empleado.'); return; }
+    const data = await fetch(API_URL+'/liquidacion/historial_anual/'+idEmp+'?anio='+anio).then(r=>r.json()).catch(()=>null);
+    const el = document.getElementById('contenido-anual');
+    if(!data){ el.innerHTML = '<p class="text-red-400 text-center py-10">Error al cargar.</p>'; return; }
+    const emp = data.empleado || {};
+    const meses = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+    // Agrupar pagos por mes
+    const pagosPorMes = {};
+    (data.pagos||[]).forEach(p => {
+        const m = parseInt((p.fecha_pago||'').substring(5,7)) - 1;
+        if(!pagosPorMes[m]) pagosPorMes[m] = [];
+        pagosPorMes[m].push(p);
+    });
+    const filasPagos = (data.pagos||[]).map(p => {
+        const desde = (p.fecha_desde||'').substring(0,10);
+        const hasta = (p.fecha_hasta||'').substring(0,10);
+        const fpago = (p.fecha_pago||'').substring(0,10);
+        return '<tr class="border-b border-gray-800">' +
+            '<td class="p-3 text-gray-400">'+fpago+'</td>' +
+            '<td class="p-3 text-gray-300 text-xs">'+desde+' → '+hasta+'</td>' +
+            '<td class="p-3 text-center text-gray-300">'+(parseFloat(p.total_horas||0).toFixed(1))+'h</td>' +
+            '<td class="p-3 text-right text-white">$'+Math.round(p.pago_horas||0).toLocaleString('es-AR')+'</td>' +
+            '<td class="p-3 text-right text-red-400">'+((p.anticipos_descontados>0)?'-$'+Math.round(p.anticipos_descontados).toLocaleString('es-AR'):'')+'</td>' +
+            '<td class="p-3 text-right text-neon font-bold">$'+Math.round(p.neto_pagado||0).toLocaleString('es-AR')+'</td>' +
+        '</tr>';
+    }).join('');
+    const filasAnt = (data.anticipos||[]).map(a => {
+        return '<tr class="border-b border-gray-800">' +
+            '<td class="p-3 text-gray-400">'+(a.fecha||'').substring(0,10)+'</td>' +
+            '<td class="p-3 text-gray-300">'+(a.observaciones||'Anticipo')+'</td>' +
+            '<td class="p-3 text-right text-orange-400 font-bold">$'+Math.round(a.monto||0).toLocaleString('es-AR')+'</td>' +
+            '<td class="p-3 text-center">'+(a.pagado?'<span class="text-green-400 text-xs">✅</span>':'<span class="text-orange-400 text-xs">⏳</span>')+'</td>' +
+        '</tr>';
+    }).join('');
+    el.innerHTML = `
+      <div class="grid md:grid-cols-3 gap-4 mb-6">
+        <div class="bg-black border border-gray-800 rounded-xl p-4 text-center">
+          <p class="text-gray-500 text-xs uppercase font-bold mb-1">Total cobrado</p>
+          <p class="text-neon font-black text-2xl">$${Math.round(data.total_pagado||0).toLocaleString('es-AR')}</p>
+          <p class="text-gray-600 text-xs">${data.pagos.length} liquidaciones</p>
+        </div>
+        <div class="bg-black border border-gray-800 rounded-xl p-4 text-center">
+          <p class="text-gray-500 text-xs uppercase font-bold mb-1">Horas trabajadas</p>
+          <p class="text-white font-black text-2xl">${(data.total_horas||0).toFixed(1)} h</p>
+          <p class="text-gray-600 text-xs">en ${anio}</p>
+        </div>
+        <div class="bg-black border border-gray-800 rounded-xl p-4 text-center">
+          <p class="text-gray-500 text-xs uppercase font-bold mb-1">Anticipos recibidos</p>
+          <p class="text-orange-400 font-black text-2xl">$${Math.round(data.total_anticipos||0).toLocaleString('es-AR')}</p>
+          <p class="text-gray-600 text-xs">${data.anticipos.length} anticipos</p>
+        </div>
+      </div>
+      ${data.pagos.length ? `
+      <div class="bg-black border border-gray-800 rounded-2xl overflow-hidden mb-5">
+        <div class="px-5 py-3 border-b border-gray-800"><p class="text-white font-bold">💵 Liquidaciones del año</p></div>
+        <table class="w-full text-sm">
+          <thead class="text-xs text-gray-500 border-b border-gray-800">
+            <tr><th class="p-3 text-left">Fecha pago</th><th class="p-3 text-left">Período</th><th class="p-3 text-center">Horas</th><th class="p-3 text-right">Bruto</th><th class="p-3 text-right">Anticipos</th><th class="p-3 text-right">Neto</th></tr>
+          </thead>
+          <tbody>${filasPagos}</tbody>
+          <tfoot class="bg-gray-900 text-sm font-bold">
+            <tr><td colspan="3" class="p-3 text-gray-400">TOTAL AÑO</td><td class="p-3 text-right text-white">-</td><td class="p-3 text-right text-red-400">-</td><td class="p-3 text-right text-neon">$${Math.round(data.total_pagado).toLocaleString('es-AR')}</td></tr>
+          </tfoot>
+        </table>
+      </div>` : '<p class="text-gray-600 text-center py-4">Sin liquidaciones en '+anio+'.</p>'}
+      ${data.anticipos.length ? `
+      <div class="bg-black border border-gray-800 rounded-2xl overflow-hidden">
+        <div class="px-5 py-3 border-b border-gray-800"><p class="text-white font-bold">💸 Anticipos del año</p></div>
+        <table class="w-full text-sm">
+          <thead class="text-xs text-gray-500 border-b border-gray-800">
+            <tr><th class="p-3 text-left">Fecha</th><th class="p-3 text-left">Concepto</th><th class="p-3 text-right">Monto</th><th class="p-3 text-center">Estado</th></tr>
+          </thead>
+          <tbody>${filasAnt}</tbody>
+        </table>
+      </div>` : ''}
+    `;
+}
+
+// ===== TOAST =====
+function showToast(msg, error=false) {
+    let t = document.getElementById('toast-liq');
+    if(!t){ t = document.createElement('div'); t.id='toast-liq'; t.style.cssText='position:fixed;bottom:24px;right:24px;z-index:9999;padding:12px 20px;border-radius:12px;font-weight:bold;font-size:14px;transition:opacity .3s'; document.body.appendChild(t); }
+    t.textContent = msg;
+    t.style.background = error ? '#7f1d1d' : '#1a2e05';
+    t.style.color = error ? '#fca5a5' : '#d4ff3f';
+    t.style.border = '1px solid ' + (error ? '#991b1b' : '#365314');
+    t.style.opacity = '1';
+    clearTimeout(t._to);
+    t._to = setTimeout(()=>{ t.style.opacity='0'; }, 2800);
+}
 </script>
 </body>
 </html>

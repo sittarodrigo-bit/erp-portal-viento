@@ -3853,6 +3853,24 @@ def liquidacion_detalle(fecha_desde: str, fecha_hasta: str):
             except Exception:
                 conn.rollback()
                 emp['anticipos'] = []
+        # Verificar si cada empleado ya tiene un pago registrado en este período exacto
+        for eid, emp in empleados.items():
+            try:
+                cur.execute("""SELECT id, neto_pagado, fecha_pago::text
+                               FROM pagos_sueldo
+                               WHERE id_empleado=%s AND fecha_desde=%s AND fecha_hasta=%s
+                               LIMIT 1""", (eid, fecha_desde, fecha_hasta))
+                pago_existente = cur.fetchone()
+                if pago_existente:
+                    emp['ya_pagado'] = True
+                    emp['pago_id'] = pago_existente['id']
+                    emp['pago_neto'] = float(pago_existente['neto_pagado'] or 0)
+                    emp['pago_fecha'] = pago_existente['fecha_pago']
+                else:
+                    emp['ya_pagado'] = False
+            except Exception:
+                conn.rollback()
+                emp['ya_pagado'] = False
         return list(empleados.values())
     finally:
         liberar_conexion(conn)
@@ -4308,6 +4326,58 @@ def marcar_anticipo_pagado(id_anticipo: int, pagado: bool = True):
             cur.execute("UPDATE anticipos_empleados SET pagado=false, fecha_pago=NULL WHERE id=%s", (id_anticipo,))
         conn.commit()
         return {"status": "ok"}
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
+@app.get("/api/liquidacion/historial_anual/{id_empleado}")
+def historial_anual_empleado(id_empleado: int, anio: Optional[int] = None):
+    """Historial anual de pagos + anticipos de un empleado (para aguinaldo y vacaciones)."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        import datetime
+        if not anio:
+            anio = datetime.date.today().year
+        # Pagos de sueldo del año
+        try:
+            cur.execute("""
+                SELECT 'sueldo' AS tipo, fecha_desde::text, fecha_hasta::text,
+                       pago_horas, anticipos_descontados, neto_pagado,
+                       total_horas, detalle, fecha_pago::text
+                FROM pagos_sueldo
+                WHERE id_empleado=%s AND EXTRACT(YEAR FROM fecha_pago)=%s
+                ORDER BY fecha_pago
+            """, (id_empleado, anio))
+            pagos = fetchall_dict(cur)
+        except Exception:
+            conn.rollback(); pagos = []
+        # Anticipos del año
+        try:
+            cur.execute("""
+                SELECT id, fecha::text, monto, observaciones,
+                       COALESCE(pagado,false) AS pagado, fecha_pago::text
+                FROM anticipos_empleados
+                WHERE id_empleado=%s AND EXTRACT(YEAR FROM fecha)=%s
+                ORDER BY fecha
+            """, (id_empleado, anio))
+            anticipos = fetchall_dict(cur)
+        except Exception:
+            conn.rollback(); anticipos = []
+        # Empleado básico
+        cur.execute("SELECT nombre, apellido, COALESCE(valor_hora,0) AS valor_hora FROM empleados WHERE id=%s", (id_empleado,))
+        emp = cur.fetchone() or {}
+        return {
+            "empleado": dict(emp) if emp else {},
+            "anio": anio,
+            "pagos": pagos,
+            "anticipos": anticipos,
+            "total_pagado": sum(float(p.get('neto_pagado') or 0) for p in pagos),
+            "total_anticipos": sum(float(a.get('monto') or 0) for a in anticipos),
+            "total_horas": sum(float(p.get('total_horas') or 0) for p in pagos),
+        }
     except Exception as e:
         conn.rollback()
         raise HTTPException(status_code=500, detail=str(e))
