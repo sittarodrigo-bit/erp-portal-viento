@@ -9894,10 +9894,11 @@ def ruleta_listar_giros():
                 cd.descuento_pct,
                 rg.fecha,
                 cd.usado,
-                COALESCE(pl.nombre, '') AS nombre_local
+                COALESCE(pl_canje.nombre, '') AS local_canje
             FROM pos_ruleta_giros rg
             LEFT JOIN pos_codigos_descuento cd ON cd.id = rg.id_codigo
-            LEFT JOIN pos_locales pl ON pl.id = rg.id_local
+            LEFT JOIN pos_ventas v ON v.id = cd.id_venta_uso
+            LEFT JOIN pos_locales pl_canje ON pl_canje.id = v.id_local
             ORDER BY rg.fecha DESC
         """)
         rows = cur.fetchall()
