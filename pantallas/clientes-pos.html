@@ -192,6 +192,7 @@
             html += '<thead><tr class="text-gray-500 text-xs border-b border-gray-800 bg-gray-900">';
             html += '<th class="text-left px-4 py-3 font-semibold">Nombre</th>';
             html += '<th class="text-left px-4 py-3 font-semibold">Teléfono</th>';
+            html += '<th class="text-left px-4 py-3 font-semibold hidden md:table-cell">Local</th>';
             html += '<th class="text-left px-4 py-3 font-semibold">Código</th>';
             html += '<th class="text-left px-4 py-3 font-semibold hidden md:table-cell">Descuento</th>';
             html += '<th class="text-left px-4 py-3 font-semibold hidden md:table-cell">Estado</th>';
@@ -214,9 +215,13 @@
                     ? '<span class="bg-green-900 text-green-300 text-xs font-bold px-2 py-0.5 rounded-full">Usado</span>'
                     : '<span class="bg-yellow-900 text-yellow-300 text-xs font-bold px-2 py-0.5 rounded-full">Sin usar</span>';
 
+                var localBadge = r.nombre_local
+                    ? '<span class="text-xs bg-gray-800 text-gray-300 px-2 py-0.5 rounded">' + r.nombre_local + '</span>'
+                    : '<span class="text-gray-600 text-xs">—</span>';
                 html += '<tr class="border-b border-gray-900 hover:bg-gray-900/50">';
                 html += '<td class="px-4 py-3 text-white font-medium">' + (r.nombre || '—') + '</td>';
                 html += '<td class="px-4 py-3">' + telLink + '</td>';
+                html += '<td class="px-4 py-3 hidden md:table-cell">' + localBadge + '</td>';
                 html += '<td class="px-4 py-3">' + codigoBadge + '</td>';
                 html += '<td class="px-4 py-3 hidden md:table-cell">' + descuento + '</td>';
                 html += '<td class="px-4 py-3 hidden md:table-cell">' + estado + '</td>';

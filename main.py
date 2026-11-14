@@ -9893,9 +9893,11 @@ def ruleta_listar_giros():
                 cd.codigo,
                 cd.descuento_pct,
                 rg.fecha,
-                cd.usado
+                cd.usado,
+                COALESCE(pl.nombre, '') AS nombre_local
             FROM pos_ruleta_giros rg
             LEFT JOIN pos_codigos_descuento cd ON cd.id = rg.id_codigo
+            LEFT JOIN pos_locales pl ON pl.id = rg.id_local
             ORDER BY rg.fecha DESC
         """)
         rows = cur.fetchall()
@@ -9907,7 +9909,8 @@ def ruleta_listar_giros():
                 "codigo": r[2],
                 "descuento_pct": r[3],
                 "fecha": r[4].isoformat() if r[4] else None,
-                "usado": r[5]
+                "usado": r[5],
+                "nombre_local": r[6]
             })
         return {"ok": True, "data": resultado}
     except Exception as e:
