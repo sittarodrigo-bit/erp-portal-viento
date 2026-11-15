@@ -2147,6 +2147,32 @@
             renderPlanSemana();
         }
 
+        // Genera opciones de horario cada 30 min de 06:00 a 23:30
+        function opcionesHorario(selVal) {
+            var opts = '<option value="">—</option>';
+            for (var h = 6; h <= 23; h++) {
+                for (var m = 0; m < 60; m += 30) {
+                    var hh = String(h).padStart(2,'0');
+                    var mm = String(m).padStart(2,'0');
+                    var v = hh + ':' + mm;
+                    opts += '<option value="' + v + '"' + (selVal === v ? ' selected' : '') + '>' + v + '</option>';
+                }
+            }
+            return opts;
+        }
+
+        // Parsea "09:00-17:00" → {ent:"09:00", sal:"17:00"} o "libre" → {libre:true}
+        function parsearHorario(val) {
+            if (!val) return { ent: '', sal: '' };
+            if (val === 'libre') return { libre: true, ent: '', sal: '' };
+            var parts = val.split('-');
+            return { ent: parts[0] || '', sal: parts[1] || '' };
+        }
+
+        function selectClase(disabled) {
+            return 'bg-gray-900 border border-gray-700 rounded text-white text-xs outline-none focus:border-yellow-500' + (disabled ? ' opacity-40 cursor-not-allowed' : '');
+        }
+
         async function renderPlanSemana() {
             var lunStr = isoDatePlan(planSemanaLunes);
             var labels = labelSemana(planSemanaLunes);
@@ -2154,7 +2180,6 @@
             container.innerHTML = '<p class="text-gray-500 text-sm text-center py-4">Cargando...</p>';
             document.getElementById('plan-semana-label').textContent = 'Semana del ' + labels[0] + ' al ' + labels[6];
 
-            // Cargar planilla de cada empleado para esta semana
             var rows = [];
             for (var i = 0; i < planEmpleados.length; i++) {
                 var emp = planEmpleados[i];
@@ -2163,10 +2188,9 @@
                     var dias = Array.isArray(data) ? data : (data.dias || []);
                     var ediciones = Array.isArray(data) ? 0 : (data.ediciones || 0);
                     var bloqueada = Array.isArray(data) ? false : (data.bloqueada || false);
-                    // Normalizar a array de 7 (lun=0..dom=6)
                     var horarios = new Array(7).fill('');
                     dias.forEach(function(d) {
-                        var idx = d.dia_semana; // 0=lun
+                        var idx = d.dia_semana;
                         if (idx >= 0 && idx < 7) horarios[idx] = d.horario || '';
                     });
                     var key = emp.id_empleado + '_' + lunStr;
@@ -2179,65 +2203,101 @@
                 }
             }
 
-            // Render tabla
-            var html = '<div class="overflow-x-auto"><table class="w-full text-xs">';
-            html += '<thead><tr class="text-gray-500"><th class="py-1 px-2 text-left w-28">Empleado</th>';
-            labels.forEach(function(l) { html += '<th class="py-1 px-1 text-center w-20">' + l + '</th>'; });
-            html += '<th class="py-1 px-2 text-center">Estado</th></tr></thead><tbody>';
+            if (rows.length === 0) {
+                container.innerHTML = '<p class="text-gray-500 text-sm text-center py-6">No hay empleados con acceso al POS.</p>';
+                return;
+            }
 
+            // Una card por empleado (más cómodo que tabla ancha)
+            var html = '';
             rows.forEach(function(row) {
                 var info = planEdicionesMap[row.key];
                 var limite = info.bloqueada || info.ediciones >= 2;
                 var nombre = row.emp.nombre + ' ' + (row.emp.apellido || '');
-                html += '<tr class="border-t border-gray-800">';
-                html += '<td class="py-1.5 px-2 text-gray-300 font-medium">' + nombre + '</td>';
-                for (var d = 0; d < 7; d++) {
-                    var val = row.horarios[d] || '';
-                    if (limite) {
-                        html += '<td class="py-1 px-1 text-center text-gray-500">' + (val || '—') + '</td>';
-                    } else {
-                        html += '<td class="py-1 px-1"><input type="text" ' +
-                            'data-emp="' + row.emp.id_empleado + '" data-dia="' + d + '" ' +
-                            'value="' + val.replace(/"/g,'&quot;') + '" ' +
-                            'placeholder="—" ' +
-                            'class="w-full bg-gray-900 border border-gray-700 rounded px-1 py-1 text-center text-white text-xs focus:border-yellow-500 outline-none" ' +
-                            'style="min-width:68px">' +
-                            '</td>';
-                    }
-                }
-                var badge = '';
-                if (info.bloqueada) {
-                    badge = '<span class="text-red-400">🔒 Bloqueada</span>';
-                } else if (info.ediciones === 0) {
-                    badge = '<span class="text-gray-500">Sin guardar</span>';
-                } else if (info.ediciones === 1) {
-                    badge = '<span class="text-yellow-400">1/2 edic.</span>';
-                } else {
-                    badge = '<span class="text-orange-400">Límite</span>';
-                }
-                html += '<td class="py-1 px-2 text-center whitespace-nowrap">' + badge;
+                var badge = info.bloqueada
+                    ? '<span class="text-red-400 text-xs">🔒 Bloqueada</span>'
+                    : info.ediciones === 0
+                        ? '<span class="text-gray-600 text-xs">Sin guardar</span>'
+                        : info.ediciones === 1
+                            ? '<span class="text-yellow-400 text-xs">1/2 ediciones</span>'
+                            : '<span class="text-orange-400 text-xs">Límite alcanzado</span>';
+
+                html += '<div class="bg-gray-900 border border-gray-800 rounded-xl p-3 mb-3">';
+                html += '<div class="flex items-center justify-between mb-2">';
+                html += '<span class="font-bold text-white text-sm">' + nombre + '</span>';
+                html += '<div class="flex items-center gap-2">' + badge;
                 if (!limite) {
-                    html += ' <button onclick="guardarPlanEmp(' + row.emp.id_empleado + ')" class="ml-1 bg-yellow-700 hover:bg-yellow-600 text-black font-bold text-xs px-2 py-0.5 rounded">Guardar</button>';
+                    html += ' <button onclick="guardarPlanEmp(' + row.emp.id_empleado + ')" class="bg-yellow-600 hover:bg-yellow-500 text-black font-bold text-xs px-3 py-1 rounded">Guardar</button>';
                 }
-                html += '</td></tr>';
+                html += '</div></div>';
+
+                // Grid 7 días
+                html += '<div class="grid grid-cols-7 gap-1">';
+                var diasNombre = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
+                for (var d = 0; d < 7; d++) {
+                    var h = parsearHorario(row.horarios[d]);
+                    var esLibre = !!(row.horarios[d] === 'libre');
+                    html += '<div class="flex flex-col gap-0.5">';
+                    html += '<span class="text-gray-500 text-xs text-center font-bold">' + diasNombre[d] + '</span>';
+
+                    if (limite) {
+                        // Solo lectura
+                        var txt = esLibre ? 'Libre' : (h.ent && h.sal ? h.ent + ' ' + h.sal : (h.ent || '—'));
+                        html += '<div class="text-center text-gray-500 text-xs py-1">' + txt + '</div>';
+                    } else {
+                        // Checkbox libre
+                        var libreId = 'libre_' + row.emp.id_empleado + '_' + d;
+                        html += '<label class="flex items-center gap-0.5 justify-center text-xs text-gray-400 cursor-pointer">'
+                            + '<input type="checkbox" id="' + libreId + '" '
+                            + 'data-emp="' + row.emp.id_empleado + '" data-dia="' + d + '" data-tipo="libre" '
+                            + (esLibre ? 'checked ' : '')
+                            + 'onchange="toggleLibre(this)" class="accent-yellow-400 w-3 h-3"> Libre</label>';
+                        // Select entrada
+                        html += '<select data-emp="' + row.emp.id_empleado + '" data-dia="' + d + '" data-tipo="ent" '
+                            + (esLibre ? 'disabled ' : '')
+                            + 'class="' + selectClase(esLibre) + ' px-0.5 py-0.5 w-full text-center">'
+                            + opcionesHorario(h.ent) + '</select>';
+                        // Select salida
+                        html += '<select data-emp="' + row.emp.id_empleado + '" data-dia="' + d + '" data-tipo="sal" '
+                            + (esLibre ? 'disabled ' : '')
+                            + 'class="' + selectClase(esLibre) + ' px-0.5 py-0.5 w-full text-center">'
+                            + opcionesHorario(h.sal) + '</select>';
+                    }
+                    html += '</div>';
+                }
+                html += '</div></div>';
             });
 
-            html += '</tbody></table></div>';
-            if (rows.length === 0) {
-                html = '<p class="text-gray-500 text-sm text-center py-6">No hay empleados con acceso al POS.</p>';
-            }
             container.innerHTML = html;
+        }
+
+        function toggleLibre(cb) {
+            var emp = cb.getAttribute('data-emp');
+            var dia = cb.getAttribute('data-dia');
+            var libre = cb.checked;
+            var selects = document.querySelectorAll('select[data-emp="' + emp + '"][data-dia="' + dia + '"]');
+            selects.forEach(function(s) {
+                s.disabled = libre;
+                s.className = selectClase(libre) + ' px-0.5 py-0.5 w-full text-center';
+                if (libre) s.value = '';
+            });
         }
 
         async function guardarPlanEmp(idEmp) {
             var lunStr = isoDatePlan(planSemanaLunes);
-            var inputs = document.querySelectorAll('[data-emp="' + idEmp + '"]');
             var dias = [];
-            inputs.forEach(function(inp) {
-                var d = parseInt(inp.getAttribute('data-dia'));
-                var val = inp.value.trim();
-                dias.push({ dia_semana: d, horario: val });
-            });
+            for (var d = 0; d < 7; d++) {
+                var cbLibre = document.querySelector('input[data-emp="' + idEmp + '"][data-dia="' + d + '"][data-tipo="libre"]');
+                var selEnt = document.querySelector('select[data-emp="' + idEmp + '"][data-dia="' + d + '"][data-tipo="ent"]');
+                var selSal = document.querySelector('select[data-emp="' + idEmp + '"][data-dia="' + d + '"][data-tipo="sal"]');
+                var horario = '';
+                if (cbLibre && cbLibre.checked) {
+                    horario = 'libre';
+                } else if (selEnt && selSal && (selEnt.value || selSal.value)) {
+                    horario = (selEnt.value || '') + '-' + (selSal.value || '');
+                }
+                dias.push({ dia_semana: d, horario: horario });
+            }
             try {
                 var res = await fetch(API_URL + '/planilla_horaria', {
                     method: 'POST',
