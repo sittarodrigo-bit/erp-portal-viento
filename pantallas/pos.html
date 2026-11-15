@@ -553,8 +553,10 @@
         async function init() {
             if (posUsuario) {
                 document.getElementById('pos-cajero').textContent = '👤 ' + posUsuario.nombre + ' ' + posUsuario.apellido;
-                // Mostrar botón planilla — primero chequeo sesión guardada, luego confirmo con backend
-                var tienePlanilla = !!posUsuario.acceso_planilla_horaria;
+                // Mostrar botón planilla si tiene el flag O si es encargada_horarios
+                var tienePlanilla = !!posUsuario.acceso_planilla_horaria
+                    || posUsuario.rol === 'encargada_horarios'
+                    || posUsuario.rol === 'admin';
                 if (!tienePlanilla && posUsuario.id_empleado) {
                     try {
                         var rp = await fetch(API_URL + '/empleados/' + posUsuario.id_empleado + '/acceso_planilla');
@@ -562,7 +564,6 @@
                             var dp = await rp.json();
                             tienePlanilla = !!dp.acceso_planilla_horaria;
                             if (tienePlanilla) {
-                                // Actualizar sesión guardada para próximas veces
                                 posUsuario.acceso_planilla_horaria = true;
                                 try { sessionStorage.setItem('pos_usuario', JSON.stringify(posUsuario)); } catch(e) {}
                             }
