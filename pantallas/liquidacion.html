@@ -613,7 +613,13 @@ function getLunes(offset) {
     return lunes;
 }
 
-function isoDate(d) { return d.toISOString().split('T')[0]; }
+function isoDate(d) {
+    // Usar fecha LOCAL (no UTC) para evitar desfase de zona horaria
+    const y = d.getFullYear();
+    const m = String(d.getMonth()+1).padStart(2,'0');
+    const dd = String(d.getDate()).padStart(2,'0');
+    return `${y}-${m}-${dd}`;
+}
 
 function semanaAnterior()  { semanaOffset--; cargarFichajesLiq(); }
 function semanaSiguiente() { semanaOffset++; cargarFichajesLiq(); }
