@@ -929,7 +929,9 @@ function planLunes(offset) { return getLunes(offset); } // reutiliza getLunes de
 function planSemanaAnterior()  { planOffset--; cargarPlanilla(); }
 function planSemanaSiguiente() { planOffset++; cargarPlanilla(); }
 
-let planDatos = []; // estado de los 7 días mientras se edita
+let planDatos = [];      // estado de los 7 días mientras se edita
+let planEdiciones = 0;   // cuántas veces fue guardada esta planilla
+let planBloqueada = false;
 
 async function cargarPlanilla() {
     const idEmp = document.getElementById('plan-empleado').value;
@@ -941,15 +943,43 @@ async function cargarPlanilla() {
     const opts = {day:'numeric', month:'short'};
     document.getElementById('label-semana-plan').textContent =
         lunes.toLocaleDateString('es-AR', opts) + ' — ' + domingo.toLocaleDateString('es-AR', opts);
-    const data = await fetch(`${API_URL}/planilla_horaria?id_empleado=${idEmp}&semana_lunes=${lunStr}`).then(r=>r.json()).catch(()=>null);
-    if(!data){ el.innerHTML = '<p class="text-red-400 text-center py-10">Error al cargar planilla.</p>'; return; }
-    planDatos = data;
+    const raw = await fetch(`${API_URL}/planilla_horaria?id_empleado=${idEmp}&semana_lunes=${lunStr}`).then(r=>r.json()).catch(()=>null);
+    if(!raw){ el.innerHTML = '<p class="text-red-400 text-center py-10">Error al cargar planilla.</p>'; return; }
+    // compat: nuevo endpoint devuelve {dias, ediciones, bloqueada}; viejo devuelve array
+    if(Array.isArray(raw)) {
+        planDatos = raw; planEdiciones = 0; planBloqueada = false;
+    } else {
+        planDatos = raw.dias || []; planEdiciones = raw.ediciones || 0; planBloqueada = !!raw.bloqueada;
+    }
     renderPlanilla(idEmp, lunStr);
 }
 
 function renderPlanilla(idEmp, lunStr) {
+    const LIMITE = 2;
     const el = document.getElementById('tabla-planilla');
+    // Badge de ediciones (admin ve todo)
+    let badgeHtml = '';
+    const usuRol = (window.USUARIO||{}).rol || '';
+    if(planBloqueada) {
+        badgeHtml = `<div class="mb-3 flex items-center gap-3 bg-red-950/40 border border-red-900 rounded-xl p-3">
+            <span class="text-lg">🔒</span>
+            <div class="flex-1 text-sm"><b class="text-red-300">Planilla bloqueada</b> — Alejandra no puede modificarla.</div>
+            ${usuRol==='admin'?`<button onclick="desbloquearPlanilla('${idEmp}','${lunStr}')" class="bg-neon text-black text-xs font-bold px-3 py-1.5 rounded-lg">Desbloquear</button>`:''}
+        </div>`;
+    } else if(planEdiciones >= LIMITE) {
+        badgeHtml = `<div class="mb-3 flex items-center gap-3 bg-orange-950/40 border border-orange-900 rounded-xl p-3">
+            <span class="text-lg">⚠️</span>
+            <div class="flex-1 text-sm"><b class="text-orange-300">Límite de ediciones alcanzado (${planEdiciones}/${LIMITE})</b> — Alejandra no puede hacer más cambios.</div>
+            ${usuRol==='admin'?`<button onclick="desbloquearPlanilla('${idEmp}','${lunStr}')" class="bg-neon text-black text-xs font-bold px-3 py-1.5 rounded-lg">Resetear ediciones</button>`:''}
+        </div>`;
+    } else if(planEdiciones > 0) {
+        badgeHtml = `<div class="mb-3 text-xs text-gray-500 flex items-center gap-2">
+            <span class="bg-gray-800 border border-gray-700 px-2 py-1 rounded">Edición ${planEdiciones}/${LIMITE}</span>
+            <span>Alejandra tiene ${LIMITE - planEdiciones} modificación${LIMITE-planEdiciones!==1?'es':''} disponible${LIMITE-planEdiciones!==1?'s':''} para esta semana.</span>
+        </div>`;
+    }
     el.innerHTML = `
+      ${badgeHtml}
       <div class="bg-black border border-gray-800 rounded-2xl overflow-hidden mb-4">
         <table class="w-full text-sm">
           <thead class="text-xs text-gray-500 border-b border-gray-800">
@@ -995,7 +1025,7 @@ function renderPlanilla(idEmp, lunStr) {
           </tbody>
         </table>
       </div>
-      <div class="flex justify-end gap-3">
+      <div class="flex justify-end gap-3 flex-wrap">
         <p class="text-xs text-gray-500 self-center">Los cambios no se guardan solos — tocá Guardar.</p>
         <button onclick="guardarPlanilla('${idEmp}','${lunStr}')" class="bg-neon text-black font-bold px-6 py-2.5 rounded-xl">💾 Guardar planilla</button>
       </div>
@@ -1010,23 +1040,52 @@ function toggleTrabaja(idx) {
 }
 
 async function guardarPlanilla(idEmp, lunStr) {
+    const u = window.USUARIO || {};
     const r = await fetch(`${API_URL}/planilla_horaria`, {
         method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({id_empleado: parseInt(idEmp), semana_lunes: lunStr, dias: planDatos})
+        body: JSON.stringify({
+            id_empleado:   parseInt(idEmp),
+            semana_lunes:  lunStr,
+            dias:          planDatos,
+            id_usuario:    u.id || null,
+            nombre_editor: u.nombre || u.email || 'admin',
+            rol_editor:    u.rol || 'admin'
+        })
     });
-    if(r.ok) showToast('✅ Planilla guardada');
-    else { const e = await r.json(); showToast('❌ ' + (e.detail||'Error'), true); }
+    const res = await r.json().catch(()=>({}));
+    if(r.ok) {
+        planEdiciones = res.ediciones || planEdiciones + 1;
+        showToast('✅ Planilla guardada');
+        renderPlanilla(idEmp, lunStr);
+    } else {
+        showToast('❌ ' + (res.detail||'Error'), true);
+    }
+}
+
+async function desbloquearPlanilla(idEmp, lunStr) {
+    const r = await fetch(`${API_URL}/planilla_horaria/desbloquear`, {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({id_empleado: parseInt(idEmp), semana_lunes: lunStr})
+    });
+    if(r.ok) {
+        planEdiciones = 0; planBloqueada = false;
+        showToast('🔓 Planilla desbloqueada. Alejandra puede editarla nuevamente.');
+        renderPlanilla(idEmp, lunStr);
+    } else {
+        showToast('❌ Error al desbloquear', true);
+    }
 }
 
 async function copiarSemanaAnterior() {
     const idEmp = document.getElementById('plan-empleado').value;
-    if(!idEmp){ alert('Elegí el empleado primero.'); return; }
+    if(!idEmp){ showToast('Elegí el empleado primero.', true); return; }
     const lunStr = isoDate(planLunes(planOffset));
-    const data = await fetch(`${API_URL}/planilla_horaria/semana_anterior?id_empleado=${idEmp}&semana_lunes=${lunStr}`).then(r=>r.json()).catch(()=>null);
-    if(!data || data.every(d=>!d.trabaja)){
+    const raw = await fetch(`${API_URL}/planilla_horaria/semana_anterior?id_empleado=${idEmp}&semana_lunes=${lunStr}`).then(r=>r.json()).catch(()=>null);
+    const datos = Array.isArray(raw) ? raw : (raw||[]);
+    if(!datos.length || datos.every(d=>!d.trabaja)){
         showToast('⚠ La semana anterior no tiene planilla cargada', true); return;
     }
-    planDatos = data;
+    planDatos = datos;
     renderPlanilla(idEmp, lunStr);
     showToast('↩ Planilla de semana anterior cargada — revisá y guardá');
 }

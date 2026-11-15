@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Planilla Horaria · Portal del Viento</title>
+  <script>window.PANEL_ACTUAL = 'planilla_horaria';</script>
+  <script src="/static/auth.js"></script>
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <style>
+    body { background:#0a0a0a; color:#f3f4f6; font-family:system-ui,sans-serif; }
+    .card { background:#111827; border:1px solid #1f2937; border-radius:12px; }
+    .btn-primary { background:#d4ff3f; color:#000; font-weight:700; border:none; border-radius:8px; padding:10px 20px; cursor:pointer; transition:opacity .15s; }
+    .btn-primary:hover { opacity:.85; }
+    .btn-primary:disabled { opacity:.4; cursor:not-allowed; }
+    .btn-secondary { background:#1f2937; color:#d1d5db; border:1px solid #374151; border-radius:8px; padding:8px 16px; cursor:pointer; transition:background .15s; }
+    .btn-secondary:hover { background:#374151; }
+    .dia-row { display:grid; grid-template-columns:90px 1fr 110px 110px; gap:10px; align-items:center; padding:10px 0; border-bottom:1px solid #1f2937; }
+    .dia-row:last-child { border-bottom:none; }
+    input[type="time"] { background:#1f2937; border:1px solid #374151; color:#f3f4f6; border-radius:8px; padding:8px 10px; font-size:15px; width:100%; outline:none; }
+    input[type="time"]:focus { border-color:#d4ff3f; }
+    input[type="time"]:disabled { opacity:.4; cursor:not-allowed; }
+    select { background:#1f2937; border:1px solid #374151; color:#f3f4f6; border-radius:8px; padding:9px 12px; font-size:15px; width:100%; outline:none; cursor:pointer; }
+    select:focus { border-color:#d4ff3f; }
+    .toggle-wrap { display:inline-flex; align-items:center; cursor:pointer; }
+    .toggle-track { width:42px; height:24px; border-radius:12px; position:relative; transition:background .2s; }
+    .toggle-thumb { position:absolute; top:3px; width:18px; height:18px; border-radius:50%; background:#fff; transition:transform .2s; }
+    .badge-ediciones { font-size:12px; padding:3px 10px; border-radius:20px; font-weight:600; }
+    .badge-ok   { background:#1a3a1a; color:#86efac; border:1px solid #166534; }
+    .badge-warn { background:#3a2a00; color:#fbbf24; border:1px solid #92400e; }
+    .badge-lock { background:#3a1a1a; color:#fca5a5; border:1px solid #991b1b; }
+    #toast { position:fixed; bottom:24px; right:24px; padding:14px 20px; border-radius:10px; font-weight:600; font-size:14px; z-index:999; display:none; max-width:360px; }
+  </style>
+</head>
+<body class="min-h-screen p-4 md:p-6">
+
+  <!-- Header -->
+  <div class="flex items-center justify-between mb-6">
+    <div>
+      <h1 class="text-2xl font-bold">Planilla Horaria</h1>
+      <p class="text-gray-400 text-sm mt-1">Cargá los horarios semanales de las chicas del POS</p>
+    </div>
+    <button onclick="cerrarSesion()" class="btn-secondary text-sm">Cerrar sesión</button>
+  </div>
+
+  <!-- Controles: empleado + semana -->
+  <div class="card p-4 mb-4">
+    <div class="flex flex-wrap gap-3 items-end">
+      <div class="flex-1 min-w-[180px]">
+        <label class="block text-xs text-gray-400 mb-1">Empleada</label>
+        <select id="sel-empleado" onchange="cargarPlanilla()">
+          <option value="">— Elegí una empleada —</option>
+        </select>
+      </div>
+      <div class="flex items-center gap-2">
+        <button onclick="semanaAnterior()" class="btn-secondary px-3 py-2 text-lg">‹</button>
+        <div class="text-center min-w-[140px]">
+          <div id="lbl-semana" class="font-semibold text-sm"></div>
+          <div id="lbl-rango" class="text-xs text-gray-500"></div>
+        </div>
+        <button onclick="semanaSiguiente()" class="btn-secondary px-3 py-2 text-lg">›</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Estado de ediciones -->
+  <div id="estado-ediciones" class="mb-4 hidden">
+    <div class="card p-3 flex items-center gap-3">
+      <span id="badge-edic" class="badge-ediciones"></span>
+      <span id="txt-ediciones" class="text-sm text-gray-400"></span>
+    </div>
+  </div>
+
+  <!-- Grid de días -->
+  <div class="card p-4 mb-4" id="contenedor-planilla">
+    <div class="text-gray-500 text-sm text-center py-8">Elegí una empleada para cargar su planilla</div>
+  </div>
+
+  <!-- Botones de acción -->
+  <div id="acciones" class="hidden flex gap-3 flex-wrap">
+    <button id="btn-guardar" onclick="guardarPlanilla()" class="btn-primary">💾 Guardar planilla</button>
+    <button onclick="copiarSemanaAnterior()" class="btn-secondary">📋 Copiar semana anterior</button>
+  </div>
+
+  <div id="toast"></div>
+
+<script>
+// ───────── Estado ─────────
+var planOffset = 0;
+var diasData   = [];   // array 7 días
+var empleados  = [];
+var edicionesActuales = 0;
+var planillaBloqueada = false;
+
+const DIAS = ['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo'];
+
+// ───────── Semana ─────────
+function getLunes(offset) {
+  var d = new Date();
+  var dow = d.getDay(); // 0=dom
+  var diff = (dow === 0 ? -6 : 1 - dow);
+  d.setDate(d.getDate() + diff + offset * 7);
+  d.setHours(0,0,0,0);
+  return d;
+}
+function isoDate(d) {
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+}
+function planLunes() { return getLunes(planOffset); }
+
+function actualizarCabeceraSemana() {
+  var lunes = planLunes();
+  var dom   = new Date(lunes); dom.setDate(dom.getDate()+6);
+  var meses = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+  document.getElementById('lbl-semana').textContent = 'Semana del ' + lunes.getDate() + ' ' + meses[lunes.getMonth()];
+  document.getElementById('lbl-rango').textContent  = isoDate(lunes) + ' → ' + isoDate(dom);
+}
+
+function semanaAnterior()  { planOffset--; cargarPlanilla(); }
+function semanaSiguiente() { planOffset++; cargarPlanilla(); }
+
+// ───────── Inicializar ─────────
+async function init() {
+  actualizarCabeceraSemana();
+  try {
+    var r = await fetch('/api/empleados_pos');
+    empleados = await r.json();
+    var sel = document.getElementById('sel-empleado');
+    empleados.forEach(function(e) {
+      var opt = document.createElement('option');
+      opt.value = e.id;
+      opt.textContent = e.apellido + ', ' + e.nombre;
+      sel.appendChild(opt);
+    });
+  } catch(err) {
+    showToast('Error cargando empleadas', true);
+  }
+}
+
+// ───────── Cargar planilla ─────────
+async function cargarPlanilla() {
+  actualizarCabeceraSemana();
+  var idEmp = document.getElementById('sel-empleado').value;
+  if (!idEmp) {
+    document.getElementById('contenedor-planilla').innerHTML = '<div class="text-gray-500 text-sm text-center py-8">Elegí una empleada para cargar su planilla</div>';
+    document.getElementById('acciones').classList.add('hidden');
+    document.getElementById('estado-ediciones').classList.add('hidden');
+    return;
+  }
+  var semana = isoDate(planLunes());
+  try {
+    var r = await fetch('/api/planilla_horaria?id_empleado=' + idEmp + '&semana_lunes=' + semana);
+    var data = await r.json();
+    // compatibilidad: el endpoint nuevo devuelve {dias, ediciones, bloqueada}
+    if (Array.isArray(data)) {
+      diasData = data;
+      edicionesActuales = 0;
+      planillaBloqueada = false;
+    } else {
+      diasData = data.dias || [];
+      edicionesActuales = data.ediciones || 0;
+      planillaBloqueada = !!data.bloqueada;
+    }
+    renderPlanilla();
+    renderEstadoEdiciones();
+  } catch(err) {
+    showToast('Error cargando planilla', true);
+  }
+}
+
+// ───────── Render estado ediciones ─────────
+function renderEstadoEdiciones() {
+  var LIMITE = 2;
+  var el = document.getElementById('estado-ediciones');
+  var badge = document.getElementById('badge-edic');
+  var txt   = document.getElementById('txt-ediciones');
+  el.classList.remove('hidden');
+  if (planillaBloqueada) {
+    badge.className = 'badge-ediciones badge-lock';
+    badge.textContent = '🔒 Bloqueada';
+    txt.textContent = 'El administrador bloqueó esta planilla. Pedile que la desbloquee.';
+  } else if (edicionesActuales === 0) {
+    badge.className = 'badge-ediciones badge-ok';
+    badge.textContent = 'Sin guardar';
+    txt.textContent = 'Todavía no fue guardada esta semana.';
+  } else if (edicionesActuales < LIMITE) {
+    badge.className = 'badge-ediciones badge-warn';
+    badge.textContent = 'Edición ' + edicionesActuales + '/' + LIMITE;
+    txt.textContent = 'Podés hacer 1 modificación más. Si necesitás más cambios, pedile al admin que la desbloquee.';
+  } else {
+    badge.className = 'badge-ediciones badge-lock';
+    badge.textContent = '⚠️ Límite alcanzado (' + edicionesActuales + '/' + LIMITE + ')';
+    txt.textContent = 'Usaste todas las ediciones permitidas. Para modificarla, el administrador debe desbloquearla.';
+  }
+  // Deshabilitar botón guardar si está bloqueada o límite alcanzado
+  var btnG = document.getElementById('btn-guardar');
+  if (btnG) btnG.disabled = planillaBloqueada || edicionesActuales >= LIMITE;
+}
+
+// ───────── Toggle trabaja ─────────
+function toggleTrabaja(i) {
+  if (planillaBloqueada || edicionesActuales >= 2) return;
+  diasData[i].trabaja = !diasData[i].trabaja;
+  renderPlanilla();
+  renderEstadoEdiciones();
+}
+
+// ───────── Render planilla ─────────
+function renderPlanilla() {
+  var bloqueado = planillaBloqueada || edicionesActuales >= 2;
+  var lunes = planLunes();
+  var html = '<div class="dia-row font-semibold text-xs text-gray-400 uppercase tracking-wide pb-1"><span>Día</span><span></span><span>Entrada</span><span>Salida</span></div>';
+  diasData.forEach(function(d, i) {
+    var fechaDia = new Date(lunes); fechaDia.setDate(fechaDia.getDate() + i);
+    var etiq = DIAS[i] + ' ' + fechaDia.getDate();
+    var on = d.trabaja;
+    var trackBg = on ? '#d4ff3f' : '#374151';
+    var thumbPos = on ? 'translateX(18px)' : 'translateX(0)';
+    var thumbColor = on ? '#000' : '#fff';
+    var toggleHtml = bloqueado ? (on ? '<span class="text-xs text-green-400">Trabaja</span>' : '<span class="text-xs text-gray-500">No trabaja</span>') :
+      '<div class="toggle-wrap" onclick="toggleTrabaja(' + i + ')" title="' + (on?'Click para no trabajar':'Click para trabajar') + '">' +
+        '<div class="toggle-track" style="background:' + trackBg + '">' +
+          '<div class="toggle-thumb" style="transform:' + thumbPos + ';background:' + thumbColor + '"></div>' +
+        '</div>' +
+      '</div>';
+    var entVal = d.hora_entrada ? d.hora_entrada.substring(0,5) : '';
+    var salVal = d.hora_salida  ? d.hora_salida.substring(0,5)  : '';
+    html += '<div class="dia-row">' +
+      '<span class="text-sm font-medium">' + etiq + '</span>' +
+      '<span>' + toggleHtml + '</span>' +
+      '<input type="time" value="' + entVal + '" ' + (!on || bloqueado ? 'disabled' : '') + ' onchange="diasData[' + i + '].hora_entrada=this.value">' +
+      '<input type="time" value="' + salVal + '" ' + (!on || bloqueado ? 'disabled' : '') + ' onchange="diasData[' + i + '].hora_salida=this.value">' +
+      '</div>';
+  });
+  document.getElementById('contenedor-planilla').innerHTML = html;
+  document.getElementById('acciones').classList.remove('hidden');
+}
+
+// ───────── Guardar ─────────
+async function guardarPlanilla() {
+  var LIMITE = 2;
+  if (planillaBloqueada) { showToast('Esta planilla está bloqueada', true); return; }
+  if (edicionesActuales >= LIMITE) { showToast('Límite de ediciones alcanzado. Pedile al admin que la desbloquee.', true); return; }
+  var idEmp = document.getElementById('sel-empleado').value;
+  if (!idEmp) { showToast('Elegí una empleada primero', true); return; }
+  var semana = isoDate(planLunes());
+  var usuario = window.USUARIO || {};
+  document.getElementById('btn-guardar').disabled = true;
+  try {
+    var r = await fetch('/api/planilla_horaria', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        id_empleado:   parseInt(idEmp),
+        semana_lunes:  semana,
+        dias:          diasData,
+        id_usuario:    usuario.id || null,
+        nombre_editor: (usuario.nombre || usuario.email || 'encargada'),
+        rol_editor:    usuario.rol || 'encargada_horarios'
+      })
+    });
+    var res = await r.json();
+    if (!r.ok) {
+      showToast(res.detail || 'Error al guardar', true);
+      return;
+    }
+    edicionesActuales = res.ediciones || edicionesActuales + 1;
+    renderEstadoEdiciones();
+    showToast('Planilla guardada ✅');
+  } catch(err) {
+    showToast('Error de red al guardar', true);
+  } finally {
+    var btn = document.getElementById('btn-guardar');
+    if (btn) btn.disabled = planillaBloqueada || edicionesActuales >= LIMITE;
+  }
+}
+
+// ───────── Copiar semana anterior ─────────
+async function copiarSemanaAnterior() {
+  if (planillaBloqueada || edicionesActuales >= 2) {
+    showToast('No podés copiar: planilla bloqueada o límite alcanzado', true); return;
+  }
+  var idEmp = document.getElementById('sel-empleado').value;
+  if (!idEmp) { showToast('Elegí una empleada primero', true); return; }
+  var semana = isoDate(planLunes());
+  try {
+    var r = await fetch('/api/planilla_horaria/semana_anterior?id_empleado=' + idEmp + '&semana_lunes=' + semana);
+    var prev = await r.json();
+    // compat con endpoint viejo que devuelve array directo
+    diasData = Array.isArray(prev) ? prev : (prev.dias || prev);
+    renderPlanilla();
+    renderEstadoEdiciones();
+    showToast('Horarios copiados de la semana anterior. No olvidés guardar.');
+  } catch(err) {
+    showToast('Error copiando semana anterior', true);
+  }
+}
+
+// ───────── Toast ─────────
+function showToast(msg, error) {
+  var t = document.getElementById('toast');
+  t.textContent = msg;
+  t.style.background = error ? '#7f1d1d' : '#14532d';
+  t.style.color = error ? '#fca5a5' : '#86efac';
+  t.style.border = '1px solid ' + (error ? '#991b1b' : '#166534');
+  t.style.display = 'block';
+  setTimeout(function(){ t.style.display='none'; }, 3500);
+}
+
+// ───────── Cerrar sesión ─────────
+function cerrarSesion() {
+  sessionStorage.removeItem('usuario');
+  window.location.replace('/');
+}
+
+init();
+</script>
+</body>
+</html>

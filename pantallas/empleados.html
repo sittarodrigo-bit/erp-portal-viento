@@ -227,6 +227,7 @@
                         <option value="logistica">🗺️ Logística</option>
                         <option value="produccion">Producción</option>
                         <option value="deposito">Depósito</option>
+                        <option value="encargada_horarios">📅 Encargada Horarios</option>
                         <option value="admin">Admin</option>
                     </select>
                 </div>
@@ -293,6 +294,7 @@
                         <option value="deposito">📦 Depósito</option>
                         <option value="vendedor">💼 Vendedor</option>
                         <option value="administrativo">📋 Administrativo</option>
+                        <option value="encargada_horarios">📅 Encargada Horarios</option>
                     </select>
                 </div>
                 <div>
@@ -442,7 +444,7 @@
             empleados = await res.json();
             const tabla = document.getElementById('tabla-empleados');
             tabla.innerHTML = '';
-            const roles = { admin: '🔑 Admin', repartidor: '🚚 Repartidor', logistica: '🗺️ Logística', vendedor: '🏪 Vendedor', produccion: '🏭 Producción', deposito: '📦 Depósito', administrativo: '📋 Administrativo' };
+            const roles = { admin: '🔑 Admin', repartidor: '🚚 Repartidor', logistica: '🗺️ Logística', vendedor: '🏪 Vendedor', produccion: '🏭 Producción', deposito: '📦 Depósito', administrativo: '📋 Administrativo', encargada_horarios: '📅 Enc. Horarios' };
             
             let opcionesSelect = '<option value="">Seleccione un empleado...</option>';
 

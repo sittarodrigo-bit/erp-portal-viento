@@ -13,10 +13,11 @@
 
   // Qué paneles puede ver cada rol. 'admin' ve todo (caso especial abajo).
   var PERMISOS = {
-    administrativo: ['admin','reportes','distribuidores','historial_b2b','gastos','fichajes','b2b','mayoristas','catalogo_stock','locales','proveedores'],
-    vendedor:       [],   // el vendedor usa el POS, que tiene su login propio
-    produccion:     ['produccion','produccion_panel','insumos','proveedores','carga_stock'],
-    deposito:       ['armado','carga_stock','produccion_panel'],
+    administrativo:      ['admin','reportes','distribuidores','historial_b2b','gastos','fichajes','b2b','mayoristas','catalogo_stock','locales','proveedores'],
+    vendedor:            [],   // el vendedor usa el POS, que tiene su login propio
+    produccion:          ['produccion','produccion_panel','insumos','proveedores','carga_stock'],
+    deposito:            ['armado','carga_stock','produccion_panel'],
+    encargada_horarios:  ['planilla_horaria'],  // solo puede cargar planillas de empleados POS
   };
   // Paneles MUY sensibles: solo el admin real (no administrativo).
   // (empleados/sueldos, configuración) — no se listan en ningún rol salvo admin.

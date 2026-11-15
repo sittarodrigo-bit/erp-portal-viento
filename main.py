@@ -408,7 +408,7 @@ def login(data: LoginData):
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
         cur.execute("""
-            SELECT u.password_hash, u.activo,
+            SELECT u.id as id_usuario, u.password_hash, u.activo,
                    e.id as id_empleado, e.nombre, e.apellido, e.rol
             FROM usuarios u JOIN empleados e ON u.id_empleado = e.id
             WHERE u.username = %s
@@ -418,7 +418,7 @@ def login(data: LoginData):
             raise HTTPException(status_code=401, detail="Usuario o contraseña incorrectos")
         if not bcrypt.checkpw(data.password.encode(), usuario['password_hash'].encode()):
             raise HTTPException(status_code=401, detail="Usuario o contraseña incorrectos")
-        return {"status": "ok", "id_empleado": usuario['id_empleado'],
+        return {"status": "ok", "id": usuario['id_usuario'], "id_empleado": usuario['id_empleado'],
                 "nombre": usuario['nombre'], "apellido": usuario['apellido'], "rol": usuario['rol']}
     finally:
         liberar_conexion(conn)
@@ -3655,15 +3655,41 @@ def crear_tabla_planilla(cur):
         CREATE TABLE IF NOT EXISTS planilla_horaria (
             id SERIAL PRIMARY KEY,
             id_empleado INTEGER NOT NULL,
-            semana_lunes DATE NOT NULL,  -- fecha del lunes de esa semana
-            dia_semana SMALLINT NOT NULL, -- 0=lunes,1=mar,...,6=dom
+            semana_lunes DATE NOT NULL,
+            dia_semana SMALLINT NOT NULL,
             trabaja BOOLEAN DEFAULT true,
             hora_entrada TIME,
             hora_salida TIME,
             observacion TEXT,
+            ediciones INTEGER DEFAULT 0,       -- cuántas veces fue guardada
+            bloqueada BOOLEAN DEFAULT false,   -- admin puede bloquear/desbloquear
             UNIQUE(id_empleado, semana_lunes, dia_semana)
         )
     """)
+    # Migrar columnas si ya existía la tabla sin ellas
+    for col, defn in [('ediciones','INTEGER DEFAULT 0'), ('bloqueada','BOOLEAN DEFAULT false')]:
+        try:
+            cur.execute(f"ALTER TABLE planilla_horaria ADD COLUMN IF NOT EXISTS {col} {defn}")
+        except Exception:
+            pass
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS planilla_auditoria (
+            id SERIAL PRIMARY KEY,
+            id_empleado INTEGER NOT NULL,
+            semana_lunes DATE NOT NULL,
+            id_usuario_editor INTEGER,
+            nombre_editor TEXT,
+            rol_editor TEXT,
+            fecha_cambio TIMESTAMP DEFAULT NOW(),
+            resumen TEXT
+        )
+    """)
+
+def _planilla_ediciones(cur, id_emp, semana):
+    """Devuelve el max de ediciones registradas para cualquier día de esa semana/empleado."""
+    cur.execute("SELECT COALESCE(MAX(ediciones),0) AS n, bool_or(COALESCE(bloqueada,false)) AS bloq FROM planilla_horaria WHERE id_empleado=%s AND semana_lunes=%s", (id_emp, semana))
+    row = cur.fetchone()
+    return (int(row['n'] if row else 0), bool(row['bloq'] if row else False))
 
 @app.get("/api/planilla_horaria")
 def get_planilla_horaria(id_empleado: int, semana_lunes: str):
@@ -3671,57 +3697,144 @@ def get_planilla_horaria(id_empleado: int, semana_lunes: str):
     conn = obtener_conexion()
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
-        try:
-            crear_tabla_planilla(cur); conn.commit()
+        try: crear_tabla_planilla(cur); conn.commit()
         except Exception: conn.rollback()
         cur.execute("""
-            SELECT dia_semana, trabaja, hora_entrada::text, hora_salida::text, observacion
+            SELECT dia_semana, trabaja, hora_entrada::text, hora_salida::text, observacion,
+                   COALESCE(ediciones,0) AS ediciones, COALESCE(bloqueada,false) AS bloqueada
             FROM planilla_horaria
-            WHERE id_empleado=%s AND semana_lunes=%s
-            ORDER BY dia_semana
+            WHERE id_empleado=%s AND semana_lunes=%s ORDER BY dia_semana
         """, (id_empleado, semana_lunes))
         filas = fetchall_dict(cur)
-        # Rellenar días faltantes con vacío
         por_dia = {f['dia_semana']: f for f in filas}
+        ediciones = max((f.get('ediciones',0) for f in filas), default=0)
+        bloqueada = any(f.get('bloqueada', False) for f in filas)
         result = []
         for d in range(7):
-            result.append(por_dia.get(d, {'dia_semana': d, 'trabaja': False, 'hora_entrada': None, 'hora_salida': None, 'observacion': ''}))
-        return result
+            row = por_dia.get(d, {'dia_semana': d, 'trabaja': False, 'hora_entrada': None, 'hora_salida': None, 'observacion': '', 'ediciones': 0, 'bloqueada': False})
+            result.append(row)
+        return {"dias": result, "ediciones": ediciones, "bloqueada": bloqueada}
     finally:
         liberar_conexion(conn)
 
 @app.post("/api/planilla_horaria")
 def guardar_planilla_horaria(data: dict = Body(...)):
-    """Guarda (upsert) la planilla de una semana para un empleado."""
-    id_emp      = data.get('id_empleado')
-    semana      = data.get('semana_lunes')
-    dias        = data.get('dias', [])  # lista de {dia_semana, trabaja, hora_entrada, hora_salida}
+    """Guarda la planilla semanal. Controla límite de ediciones para rol encargada_horarios."""
+    id_emp   = data.get('id_empleado')
+    semana   = data.get('semana_lunes')
+    dias     = data.get('dias', [])
+    id_usu   = data.get('id_usuario')       # quien guarda (frontend lo manda)
+    nombre_e = data.get('nombre_editor', '')
+    rol_e    = data.get('rol_editor', '')
     if not id_emp or not semana:
         raise HTTPException(status_code=400, detail="Faltan datos")
     conn = obtener_conexion()
     try:
-        cur = conn.cursor()
-        try:
-            crear_tabla_planilla(cur); conn.commit()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        try: crear_tabla_planilla(cur); conn.commit()
         except Exception: conn.rollback()
+        # Límite de ediciones para encargada_horarios (máx 2: carga inicial + 1 modificación)
+        ediciones_actual, bloqueada = _planilla_ediciones(cur, id_emp, semana)
+        LIMITE = 2
+        if bloqueada:
+            raise HTTPException(status_code=423, detail="Esta planilla está bloqueada. El administrador debe desbloquearla para poder editarla.")
+        if rol_e == 'encargada_horarios' and ediciones_actual >= LIMITE:
+            raise HTTPException(status_code=423, detail=f"Ya usaste las {LIMITE} ediciones permitidas para esta planilla. El administrador debe desbloquearla.")
+        cur2 = conn.cursor()
+        nuevas_ediciones = ediciones_actual + 1
         for d in dias:
             dia    = d.get('dia_semana')
             trab   = bool(d.get('trabaja', False))
             entrada = d.get('hora_entrada') or None
             salida  = d.get('hora_salida') or None
             obs     = d.get('observacion') or ''
-            cur.execute("""
-                INSERT INTO planilla_horaria (id_empleado, semana_lunes, dia_semana, trabaja, hora_entrada, hora_salida, observacion)
-                VALUES (%s,%s,%s,%s,%s,%s,%s)
+            cur2.execute("""
+                INSERT INTO planilla_horaria (id_empleado, semana_lunes, dia_semana, trabaja, hora_entrada, hora_salida, observacion, ediciones)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
                 ON CONFLICT (id_empleado, semana_lunes, dia_semana)
                 DO UPDATE SET trabaja=EXCLUDED.trabaja, hora_entrada=EXCLUDED.hora_entrada,
-                              hora_salida=EXCLUDED.hora_salida, observacion=EXCLUDED.observacion
-            """, (id_emp, semana, dia, trab, entrada, salida, obs))
+                              hora_salida=EXCLUDED.hora_salida, observacion=EXCLUDED.observacion,
+                              ediciones=%s
+            """, (id_emp, semana, dia, trab, entrada, salida, obs, nuevas_ediciones, nuevas_ediciones))
+        # Auditoría
+        resumen = f"Guardada semana {semana} · {sum(1 for d in dias if d.get('trabaja'))} días trabajando"
+        cur2.execute("""
+            INSERT INTO planilla_auditoria (id_empleado, semana_lunes, id_usuario_editor, nombre_editor, rol_editor, resumen)
+            VALUES (%s,%s,%s,%s,%s,%s)
+        """, (id_emp, semana, id_usu, nombre_e, rol_e, resumen))
+        conn.commit()
+        return {"status": "ok", "ediciones": nuevas_ediciones}
+    except HTTPException:
+        raise
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
+@app.post("/api/planilla_horaria/desbloquear")
+def desbloquear_planilla(data: dict = Body(...)):
+    """Admin desbloquea una planilla (resetea ediciones y bloqueada=false)."""
+    id_emp = data.get('id_empleado')
+    semana = data.get('semana_lunes')
+    if not id_emp or not semana:
+        raise HTTPException(status_code=400, detail="Faltan datos")
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        try: crear_tabla_planilla(cur); conn.commit()
+        except Exception: conn.rollback()
+        cur.execute("UPDATE planilla_horaria SET ediciones=0, bloqueada=false WHERE id_empleado=%s AND semana_lunes=%s", (id_emp, semana))
         conn.commit()
         return {"status": "ok"}
     except Exception as e:
         conn.rollback()
         raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
+@app.get("/api/planilla_horaria/auditoria")
+def get_planilla_auditoria(id_empleado: Optional[int] = None, semana_lunes: Optional[str] = None):
+    """Historial de cambios en planillas. Solo para admin."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        try: crear_tabla_planilla(cur); conn.commit()
+        except Exception: conn.rollback()
+        filtros, params = [], []
+        if id_empleado: filtros.append("pa.id_empleado=%s"); params.append(id_empleado)
+        if semana_lunes: filtros.append("pa.semana_lunes=%s"); params.append(semana_lunes)
+        where = ("WHERE " + " AND ".join(filtros)) if filtros else ""
+        cur.execute(f"""
+            SELECT pa.*, e.nombre AS nombre_empleado, e.apellido AS apellido_empleado,
+                   pa.fecha_cambio::text
+            FROM planilla_auditoria pa
+            LEFT JOIN empleados e ON e.id = pa.id_empleado
+            {where} ORDER BY pa.fecha_cambio DESC LIMIT 100
+        """, params)
+        return fetchall_dict(cur)
+    finally:
+        liberar_conexion(conn)
+
+@app.get("/api/empleados_pos")
+def listar_empleados_pos():
+    """Lista empleados con acceso POS (para encargada_horarios)."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("""
+            SELECT DISTINCT e.id, e.nombre, e.apellido, e.rol
+            FROM empleados e
+            LEFT JOIN usuarios u ON u.id_empleado = e.id
+            WHERE COALESCE(u.acceso_pos, false) = true
+              AND COALESCE(e.activo, true) = true
+            ORDER BY e.apellido, e.nombre
+        """)
+        rows = fetchall_dict(cur)
+        return rows if rows else []
+    except Exception as ex:
+        conn.rollback()
+        return []
     finally:
         liberar_conexion(conn)
 
@@ -9861,6 +9974,10 @@ def route_historial_b2b():
 @app.get("/empleados")
 def route_empleados():
     return serve_html("empleados.html")
+
+@app.get("/planilla-horaria")
+def route_planilla_horaria():
+    return serve_html("planilla-horaria.html")
 
 @app.get("/api/reportes/ranking_vendedores")
 def reportes_ranking_vendedores(dias: int = 30, id_local: Optional[int] = None):
