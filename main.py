@@ -4082,19 +4082,26 @@ def liquidacion_detalle(fecha_desde: str, fecha_hasta: str):
             except Exception:
                 conn.rollback()
                 emp['anticipos'] = []
-        # Verificar si cada empleado ya tiene un pago registrado en este período exacto
+        # Verificar si cada empleado ya tiene un pago que cubra (o solape) este período.
+        # Se detecta cualquier pago donde los rangos se superpongan:
+        #   pago.fecha_desde <= periodo_hasta  AND  pago.fecha_hasta >= periodo_desde
         for eid, emp in empleados.items():
             try:
-                cur.execute("""SELECT id, neto_pagado, fecha_pago::text
+                cur.execute("""SELECT id, neto_pagado, fecha_pago::text, fecha_desde::text, fecha_hasta::text
                                FROM pagos_sueldo
-                               WHERE id_empleado=%s AND fecha_desde=%s AND fecha_hasta=%s
-                               LIMIT 1""", (eid, fecha_desde, fecha_hasta))
+                               WHERE id_empleado=%s
+                                 AND fecha_desde <= %s
+                                 AND fecha_hasta >= %s
+                               ORDER BY fecha_pago DESC
+                               LIMIT 1""", (eid, fecha_hasta, fecha_desde))
                 pago_existente = cur.fetchone()
                 if pago_existente:
                     emp['ya_pagado'] = True
                     emp['pago_id'] = pago_existente['id']
                     emp['pago_neto'] = float(pago_existente['neto_pagado'] or 0)
                     emp['pago_fecha'] = pago_existente['fecha_pago']
+                    emp['pago_desde'] = pago_existente['fecha_desde']
+                    emp['pago_hasta'] = pago_existente['fecha_hasta']
                 else:
                     emp['ya_pagado'] = False
             except Exception:

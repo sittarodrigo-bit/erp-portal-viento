@@ -44,6 +44,14 @@
           <input type="date" id="fecha-hasta" class="bg-gray-900 border border-gray-700 text-white rounded-lg p-2.5">
         </div>
         <button onclick="cargar()" class="bg-neon text-black font-bold px-6 py-2.5 rounded-lg">Calcular</button>
+        <!-- Toggle solo pendientes -->
+        <label class="flex items-center gap-2 cursor-pointer ml-2 select-none" title="Ocultar los empleados ya pagados">
+          <div onclick="toggleSoloPendientes()" id="toggle-pend-track"
+            style="display:inline-flex;align-items:center;width:40px;height:22px;border-radius:11px;padding:2px;transition:background .2s;background:#d4ff3f">
+            <div id="toggle-pend-thumb" style="width:18px;height:18px;border-radius:50%;background:#000;transition:transform .2s;transform:translateX(18px)"></div>
+          </div>
+          <span id="toggle-pend-label" class="text-xs text-gray-300 font-semibold">Solo pendientes</span>
+        </label>
         <div class="flex gap-2 ml-auto">
           <button onclick="rangoRapido('semana')" class="text-xs border border-gray-700 text-gray-300 hover:text-white px-3 py-2 rounded-lg">Esta semana</button>
           <button onclick="rangoRapido('quincena')" class="text-xs border border-gray-700 text-gray-300 hover:text-white px-3 py-2 rounded-lg">Quincena</button>
@@ -249,12 +257,51 @@ async function cargar(){
   }
 }
 
+let soloPendientes = true; // por defecto mostrar solo los que no están pagados
+
+function toggleSoloPendientes() {
+  soloPendientes = !soloPendientes;
+  const track = document.getElementById('toggle-pend-track');
+  const thumb = document.getElementById('toggle-pend-thumb');
+  const label = document.getElementById('toggle-pend-label');
+  if (soloPendientes) {
+    track.style.background = '#d4ff3f';
+    thumb.style.transform = 'translateX(18px)';
+    thumb.style.background = '#000';
+    label.textContent = 'Solo pendientes';
+  } else {
+    track.style.background = '#374151';
+    thumb.style.transform = 'translateX(0)';
+    thumb.style.background = '#fff';
+    label.textContent = 'Ver todos';
+  }
+  render();
+}
+
 function render(){
   if(!datos.length){
     $('contenido').innerHTML = '<div class="text-center py-16 text-gray-500"><div class="text-5xl mb-3">📭</div>No hay fichajes en ese rango.</div>';
     return;
   }
-  $('contenido').innerHTML = datos.map(renderEmpleado).join('');
+  const filtrados = soloPendientes ? datos.filter(e => !e.ya_pagado) : datos;
+  const pagados   = soloPendientes ? datos.filter(e =>  e.ya_pagado) : [];
+  let html = filtrados.map(renderEmpleado).join('');
+  if (soloPendientes && pagados.length) {
+    html += `<div class="text-center py-4 text-gray-600 text-sm border border-dashed border-gray-800 rounded-xl">
+      ${pagados.length} empleado${pagados.length!==1?'s':''} ya pagado${pagados.length!==1?'s':''} — ocultado${pagados.length!==1?'s':''}.
+      <button onclick="toggleSoloPendientes()" class="ml-2 text-gray-400 underline hover:text-white">Mostrar todos</button>
+    </div>`;
+  }
+  if (!filtrados.length && !pagados.length) {
+    html = '<div class="text-center py-16 text-gray-500"><div class="text-5xl mb-3">📭</div>No hay fichajes en ese rango.</div>';
+  } else if (!filtrados.length && pagados.length) {
+    html = `<div class="text-center py-16 text-gray-500">
+      <div class="text-5xl mb-3">✅</div>
+      <p class="font-bold text-green-400">Todos los empleados ya fueron pagados en este período.</p>
+      <button onclick="toggleSoloPendientes()" class="mt-3 text-gray-400 underline hover:text-white text-sm">Ver de todas formas</button>
+    </div>`;
+  }
+  $('contenido').innerHTML = html;
 }
 
 function renderEmpleado(emp){
@@ -335,6 +382,7 @@ function renderEmpleado(emp){
             <div>
               <p class="text-sm font-bold">Ya pagado</p>
               <p class="text-xs text-green-600">Neto: ${fmt(emp.pago_neto)} · ${(emp.pago_fecha||'').substring(0,10)}</p>
+              ${(emp.pago_desde||emp.pago_hasta) ? `<p class="text-xs text-green-700/80">Período: ${(emp.pago_desde||'').substring(0,10)} → ${(emp.pago_hasta||'').substring(0,10)}</p>` : ''}
             </div>
            </div>`
         : `<button onclick="marcarPagado(${emp.id_empleado})" class="flex-1 bg-green-600 hover:bg-green-500 text-white font-bold py-3 rounded-xl">✓ Marcar pagado</button>`
