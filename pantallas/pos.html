@@ -717,7 +717,17 @@
                     method:'POST', headers:{'Content-Type':'application/json'},
                     body: JSON.stringify({ id_local: localActual.id, nombre_responsable: resp, monto_apertura: monto, id_usuario: (posUsuario ? posUsuario.id_usuario : null) })
                 });
-                if (res.ok) { carrito = []; await verificarCaja(); }
+                if (res.ok) {
+                    carrito = [];
+                    // Fichar entrada automáticamente al abrir caja
+                    if (posUsuario && posUsuario.id_empleado) {
+                        fetch(API_URL + '/fichaje', {
+                            method:'POST', headers:{'Content-Type':'application/json'},
+                            body: JSON.stringify({ id_empleado: posUsuario.id_empleado, tipo: 'entrada', observacion: 'Apertura de caja — ' + (localActual ? localActual.nombre : '') })
+                        }).catch(function(){});  // silencioso: si ya había entrada registrada, no pasa nada
+                    }
+                    await verificarCaja();
+                }
                 else { var e = await res.json(); alert('❌ ' + (e.detail || 'No se pudo abrir')); }
             } catch(err) { alert('❌ Error de conexión.'); }
             finally { btn.disabled = false; btn.textContent = '🔓 Abrir Caja'; }
@@ -1274,6 +1284,13 @@
                 if (res.ok) {
                     var totales = await res.json().catch(function(){ return {}; });
                     imprimirTicketCierre(datosCaja, totales, contado, obs);
+                    // Fichar salida automáticamente al cerrar caja
+                    if (posUsuario && posUsuario.id_empleado) {
+                        fetch(API_URL + '/fichaje', {
+                            method:'POST', headers:{'Content-Type':'application/json'},
+                            body: JSON.stringify({ id_empleado: posUsuario.id_empleado, tipo: 'salida', observacion: 'Cierre de caja — ' + (localActual ? localActual.nombre : '') })
+                        }).catch(function(){});  // silencioso
+                    }
                     cerrarModales(); carrito = []; await verificarCaja();
                 }
                 else { var e = await res.json(); alert('❌ ' + (e.detail || 'Error al cerrar')); }
