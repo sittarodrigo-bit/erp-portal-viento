@@ -40,6 +40,7 @@
             <button onclick="abrirCierresPendientes()" id="btn-cierres-pend" class="hidden text-xs font-bold px-3 py-1.5 rounded-full bg-orange-900/40 text-orange-400 border border-orange-800">💵 Cierres pendientes: <span id="cont-cierres-pend">0</span></button>
             <span id="pos-cajero" class="text-gray-400 text-sm"></span>
             <button onclick="abrirNovedad()" class="text-xs font-bold px-3 py-1.5 rounded-full bg-blue-900/40 text-blue-300 border border-blue-800 hover:bg-blue-900/60">📣 Novedad</button>
+            <button id="btn-planilla-pos" onclick="abrirPlanillaPOS()" class="hidden text-xs font-bold px-3 py-1.5 rounded-full bg-yellow-900/40 text-yellow-300 border border-yellow-800 hover:bg-yellow-900/60">📋 Planilla</button>
             <button onclick="cerrarSesionPos()" class="text-gray-500 hover:text-white text-sm border border-gray-700 rounded px-3 py-1.5">Salir</button>
         </div>
     </header>
@@ -552,6 +553,10 @@
         async function init() {
             if (posUsuario) {
                 document.getElementById('pos-cajero').textContent = '👤 ' + posUsuario.nombre + ' ' + posUsuario.apellido;
+                // Mostrar botón planilla si tiene acceso
+                if (posUsuario.acceso_planilla_horaria) {
+                    document.getElementById('btn-planilla-pos').classList.remove('hidden');
+                }
             }
             try { empresa = await fetch(API_URL + '/empresa').then(function(r){return r.json();}); } catch(e){ empresa = {}; }
             await cargarLocales();
@@ -2081,7 +2086,202 @@
             document.querySelectorAll('.modal-visible').forEach(function(m){ m.classList.replace('modal-visible','modal-oculto'); });
         }
 
+        // ── PLANILLA HORARIA (POS) ──
+        var planEmpleados = [];
+        var planSemanaLunes = null;  // Date del lunes actual
+        var planEdicionesMap = {};   // {id_emp+"_"+lunStr: {ediciones, bloqueada}}
+
+        function lunesDe(d) {
+            var c = new Date(d);
+            var dia = c.getDay(); // 0=dom
+            var diff = (dia === 0) ? -6 : 1 - dia;
+            c.setDate(c.getDate() + diff);
+            c.setHours(0,0,0,0);
+            return c;
+        }
+        function isoDatePlan(d) {
+            var y = d.getFullYear();
+            var m = String(d.getMonth()+1).padStart(2,'0');
+            var dd = String(d.getDate()).padStart(2,'0');
+            return y+'-'+m+'-'+dd;
+        }
+        function labelSemana(lunes) {
+            var dias = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
+            var fechas = [];
+            for (var i = 0; i < 7; i++) {
+                var d = new Date(lunes); d.setDate(d.getDate() + i);
+                fechas.push(dias[i] + ' ' + d.getDate() + '/' + (d.getMonth()+1));
+            }
+            return fechas;
+        }
+
+        function abrirPlanillaPOS() {
+            planSemanaLunes = lunesDe(new Date());
+            document.getElementById('modal-planilla-pos').classList.replace('modal-oculto','modal-visible');
+            cargarEmpleadosPlan();
+        }
+        function cerrarPlanillaPOS() {
+            document.getElementById('modal-planilla-pos').classList.replace('modal-visible','modal-oculto');
+        }
+
+        async function cargarEmpleadosPlan() {
+            try {
+                planEmpleados = await fetch(API_URL + '/empleados_pos').then(function(r){return r.json();});
+            } catch(e) { planEmpleados = []; }
+            renderPlanSemana();
+        }
+
+        async function renderPlanSemana() {
+            var lunStr = isoDatePlan(planSemanaLunes);
+            var labels = labelSemana(planSemanaLunes);
+            var container = document.getElementById('plan-semana-body');
+            container.innerHTML = '<p class="text-gray-500 text-sm text-center py-4">Cargando...</p>';
+            document.getElementById('plan-semana-label').textContent = 'Semana del ' + labels[0] + ' al ' + labels[6];
+
+            // Cargar planilla de cada empleado para esta semana
+            var rows = [];
+            for (var i = 0; i < planEmpleados.length; i++) {
+                var emp = planEmpleados[i];
+                try {
+                    var data = await fetch(API_URL + '/planilla_horaria?id_empleado=' + emp.id_empleado + '&semana_lunes=' + lunStr).then(function(r){return r.json();});
+                    var dias = Array.isArray(data) ? data : (data.dias || []);
+                    var ediciones = Array.isArray(data) ? 0 : (data.ediciones || 0);
+                    var bloqueada = Array.isArray(data) ? false : (data.bloqueada || false);
+                    // Normalizar a array de 7 (lun=0..dom=6)
+                    var horarios = new Array(7).fill('');
+                    dias.forEach(function(d) {
+                        var idx = d.dia_semana; // 0=lun
+                        if (idx >= 0 && idx < 7) horarios[idx] = d.horario || '';
+                    });
+                    var key = emp.id_empleado + '_' + lunStr;
+                    planEdicionesMap[key] = { ediciones: ediciones, bloqueada: bloqueada };
+                    rows.push({ emp: emp, horarios: horarios, key: key });
+                } catch(e) {
+                    var key2 = emp.id_empleado + '_' + lunStr;
+                    planEdicionesMap[key2] = { ediciones: 0, bloqueada: false };
+                    rows.push({ emp: emp, horarios: new Array(7).fill(''), key: key2 });
+                }
+            }
+
+            // Render tabla
+            var html = '<div class="overflow-x-auto"><table class="w-full text-xs">';
+            html += '<thead><tr class="text-gray-500"><th class="py-1 px-2 text-left w-28">Empleado</th>';
+            labels.forEach(function(l) { html += '<th class="py-1 px-1 text-center w-20">' + l + '</th>'; });
+            html += '<th class="py-1 px-2 text-center">Estado</th></tr></thead><tbody>';
+
+            rows.forEach(function(row) {
+                var info = planEdicionesMap[row.key];
+                var limite = info.bloqueada || info.ediciones >= 2;
+                var nombre = row.emp.nombre + ' ' + (row.emp.apellido || '');
+                html += '<tr class="border-t border-gray-800">';
+                html += '<td class="py-1.5 px-2 text-gray-300 font-medium">' + nombre + '</td>';
+                for (var d = 0; d < 7; d++) {
+                    var val = row.horarios[d] || '';
+                    if (limite) {
+                        html += '<td class="py-1 px-1 text-center text-gray-500">' + (val || '—') + '</td>';
+                    } else {
+                        html += '<td class="py-1 px-1"><input type="text" ' +
+                            'data-emp="' + row.emp.id_empleado + '" data-dia="' + d + '" ' +
+                            'value="' + val.replace(/"/g,'&quot;') + '" ' +
+                            'placeholder="—" ' +
+                            'class="w-full bg-gray-900 border border-gray-700 rounded px-1 py-1 text-center text-white text-xs focus:border-yellow-500 outline-none" ' +
+                            'style="min-width:68px">' +
+                            '</td>';
+                    }
+                }
+                var badge = '';
+                if (info.bloqueada) {
+                    badge = '<span class="text-red-400">🔒 Bloqueada</span>';
+                } else if (info.ediciones === 0) {
+                    badge = '<span class="text-gray-500">Sin guardar</span>';
+                } else if (info.ediciones === 1) {
+                    badge = '<span class="text-yellow-400">1/2 edic.</span>';
+                } else {
+                    badge = '<span class="text-orange-400">Límite</span>';
+                }
+                html += '<td class="py-1 px-2 text-center whitespace-nowrap">' + badge;
+                if (!limite) {
+                    html += ' <button onclick="guardarPlanEmp(' + row.emp.id_empleado + ')" class="ml-1 bg-yellow-700 hover:bg-yellow-600 text-black font-bold text-xs px-2 py-0.5 rounded">Guardar</button>';
+                }
+                html += '</td></tr>';
+            });
+
+            html += '</tbody></table></div>';
+            if (rows.length === 0) {
+                html = '<p class="text-gray-500 text-sm text-center py-6">No hay empleados con acceso al POS.</p>';
+            }
+            container.innerHTML = html;
+        }
+
+        async function guardarPlanEmp(idEmp) {
+            var lunStr = isoDatePlan(planSemanaLunes);
+            var inputs = document.querySelectorAll('[data-emp="' + idEmp + '"]');
+            var dias = [];
+            inputs.forEach(function(inp) {
+                var d = parseInt(inp.getAttribute('data-dia'));
+                var val = inp.value.trim();
+                dias.push({ dia_semana: d, horario: val });
+            });
+            try {
+                var res = await fetch(API_URL + '/planilla_horaria', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        id_empleado: idEmp,
+                        semana_lunes: lunStr,
+                        dias: dias,
+                        id_usuario: posUsuario ? posUsuario.id_usuario : null,
+                        nombre_editor: posUsuario ? (posUsuario.nombre + ' ' + posUsuario.apellido) : null,
+                        rol_editor: posUsuario ? posUsuario.rol : null
+                    })
+                });
+                if (res.ok) {
+                    var json = await res.json();
+                    var key = idEmp + '_' + lunStr;
+                    if (json.ediciones !== undefined) {
+                        planEdicionesMap[key] = { ediciones: json.ediciones, bloqueada: json.bloqueada || false };
+                    }
+                    renderPlanSemana();
+                } else if (res.status === 423) {
+                    alert('Límite de ediciones alcanzado para este empleado.');
+                } else {
+                    alert('Error al guardar planilla.');
+                }
+            } catch(e) { alert('Error de red al guardar planilla.'); }
+        }
+
+        function planSemanaAnterior() {
+            planSemanaLunes = new Date(planSemanaLunes);
+            planSemanaLunes.setDate(planSemanaLunes.getDate() - 7);
+            renderPlanSemana();
+        }
+        function planSemanaSiguiente() {
+            planSemanaLunes = new Date(planSemanaLunes);
+            planSemanaLunes.setDate(planSemanaLunes.getDate() + 7);
+            renderPlanSemana();
+        }
+
         window.onload = init;
     </script>
+    <!-- MODAL PLANILLA HORARIA POS -->
+    <div id="modal-planilla-pos" class="modal-oculto fixed inset-0 bg-black/80 z-50 items-start justify-center pt-10 px-4">
+        <div class="bg-gray-950 border border-yellow-800 rounded-2xl shadow-2xl w-full max-w-5xl max-h-[85vh] flex flex-col">
+            <div class="flex items-center justify-between px-6 py-4 border-b border-gray-800 shrink-0">
+                <div>
+                    <h2 class="text-yellow-300 font-bold text-lg">📋 Planilla Horaria</h2>
+                    <p id="plan-semana-label" class="text-gray-500 text-xs mt-0.5"></p>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button onclick="planSemanaAnterior()" class="bg-gray-800 hover:bg-gray-700 text-gray-300 text-xs font-bold px-3 py-1.5 rounded-lg border border-gray-700">◀ Anterior</button>
+                    <button onclick="planSemanaSiguiente()" class="bg-gray-800 hover:bg-gray-700 text-gray-300 text-xs font-bold px-3 py-1.5 rounded-lg border border-gray-700">Siguiente ▶</button>
+                    <button onclick="cerrarPlanillaPOS()" class="text-gray-500 hover:text-white ml-4 text-xl leading-none">✕</button>
+                </div>
+            </div>
+            <div id="plan-semana-body" class="flex-1 overflow-y-auto p-4">
+                <p class="text-gray-500 text-sm text-center py-8">Cargando...</p>
+            </div>
+        </div>
+    </div>
+
 </body>
 </html>

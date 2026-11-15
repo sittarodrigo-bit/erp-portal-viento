@@ -334,9 +334,14 @@
             </div>
             <p id="acceso-hint" class="text-gray-600 text-xs mb-4 h-4"></p>
 
-            <label class="flex items-center gap-2 text-sm text-gray-300 cursor-pointer bg-black border border-gray-800 rounded-lg px-4 py-3 mb-5">
+            <label class="flex items-center gap-2 text-sm text-gray-300 cursor-pointer bg-black border border-gray-800 rounded-lg px-4 py-3 mb-2">
                 <input type="checkbox" id="acceso-pos" class="w-4 h-4 accent-neon">
                 <span>🛒 Puede usar el <b>Punto de Venta (POS)</b></span>
+            </label>
+
+            <label class="flex items-center gap-2 text-sm text-gray-300 cursor-pointer bg-black border border-yellow-900 rounded-lg px-4 py-3 mb-5">
+                <input type="checkbox" id="acceso-planilla-horaria" class="w-4 h-4 accent-yellow-400">
+                <span>📋 Puede ver y editar la <b>Planilla Horaria</b> desde el POS</span>
             </label>
 
             <div class="flex justify-end gap-3">
@@ -487,6 +492,14 @@
             document.getElementById('acceso-password').value = '';
             document.getElementById('acceso-pos').checked = !!e.acceso_pos;
             document.getElementById('acceso-hint').textContent = e.username ? 'Ya tiene usuario. Dejá la clave vacía si no querés cambiarla.' : 'Nuevo acceso: poné un usuario y una contraseña.';
+            // Cargar acceso planilla horaria
+            try {
+                const rp = await fetch(`${API_URL}/empleados/${e.id}/acceso_planilla`);
+                const dp = await rp.json();
+                document.getElementById('acceso-planilla-horaria').checked = !!dp.acceso_planilla_horaria;
+            } catch(err) {
+                document.getElementById('acceso-planilla-horaria').checked = false;
+            }
             document.getElementById('modal-acceso').classList.replace('modal-oculto','modal-visible');
         }
 
@@ -502,6 +515,7 @@
             const username = document.getElementById('acceso-username').value.trim();
             const password = document.getElementById('acceso-password').value;
             const acceso_pos = document.getElementById('acceso-pos').checked;
+            const acceso_planilla_horaria = document.getElementById('acceso-planilla-horaria').checked;
             if (!username) { alert('Poné un nombre de usuario.'); return; }
 
             const btn = document.getElementById('btn-guardar-acceso');
@@ -512,6 +526,11 @@
                 const res = await fetch(`${API_URL}/empleados/${id}/acceso`, {
                     method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)
                 });
+                // Guardar acceso planilla horaria en paralelo
+                await fetch(`${API_URL}/empleados/${id}/acceso_planilla`, {
+                    method:'PUT', headers:{'Content-Type':'application/json'},
+                    body: JSON.stringify({ acceso_planilla_horaria })
+                }).catch(function(){});
                 if (res.ok) {
                     cerrarModales();
                     await cargarEmpleados();

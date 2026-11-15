@@ -435,8 +435,15 @@ def pos_login(data: LoginPosData, request: Request):
     ip_cliente = request.headers.get("x-forwarded-for", request.client.host if request.client else "?")
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
+        # Migrar columna si no existe
+        try:
+            cur.execute("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS acceso_planilla_horaria BOOLEAN DEFAULT false")
+            conn.commit()
+        except Exception:
+            conn.rollback()
         cur.execute("""
             SELECT u.id AS id_usuario, u.password_hash, u.activo, COALESCE(u.acceso_pos, false) AS acceso_pos,
+                   COALESCE(u.acceso_planilla_horaria, false) AS acceso_planilla_horaria,
                    e.id as id_empleado, e.nombre, e.apellido, e.rol
             FROM usuarios u JOIN empleados e ON u.id_empleado = e.id
             WHERE u.username = %s
@@ -502,6 +509,7 @@ def pos_login(data: LoginPosData, request: Request):
 
         return {"status": "ok", "id_empleado": usuario['id_empleado'], "id_usuario": id_usuario,
                 "nombre": usuario['nombre'], "apellido": usuario['apellido'], "rol": usuario['rol'],
+                "acceso_planilla_horaria": bool(usuario.get('acceso_planilla_horaria', False)),
                 "token": token}
     finally:
         liberar_conexion(conn)
@@ -677,6 +685,43 @@ def set_acceso_empleado(id_emp: int, data: AccesoEmpleado):
     except Exception as e:
         conn.rollback()
         raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
+@app.put("/api/empleados/{id_emp}/acceso_planilla")
+def set_acceso_planilla(id_emp: int, data: dict = Body(...)):
+    """Habilita o deshabilita el acceso a planilla horaria desde el POS para un empleado."""
+    valor = bool(data.get('acceso_planilla_horaria', False))
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        try:
+            cur.execute("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS acceso_planilla_horaria BOOLEAN DEFAULT false")
+            conn.commit()
+        except Exception:
+            conn.rollback()
+        cur.execute("UPDATE usuarios SET acceso_planilla_horaria=%s WHERE id_empleado=%s", (valor, id_emp))
+        conn.commit()
+        return {"status": "ok", "acceso_planilla_horaria": valor}
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
+@app.get("/api/empleados/{id_emp}/acceso_planilla")
+def get_acceso_planilla(id_emp: int):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            cur.execute("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS acceso_planilla_horaria BOOLEAN DEFAULT false")
+            conn.commit()
+        except Exception:
+            conn.rollback()
+        cur.execute("SELECT COALESCE(acceso_planilla_horaria,false) AS acceso_planilla_horaria FROM usuarios WHERE id_empleado=%s", (id_emp,))
+        row = cur.fetchone()
+        return {"acceso_planilla_horaria": bool(row['acceso_planilla_horaria']) if row else False}
     finally:
         liberar_conexion(conn)
 
