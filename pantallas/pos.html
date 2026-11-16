@@ -2246,19 +2246,19 @@
                         html += '<div class="text-center text-gray-500 text-xs py-1">' + txt + '</div>';
                     } else {
                         // Checkbox libre
-                        var libreId = 'libre_' + row.emp.id_empleado + '_' + d;
+                        var eId = row.emp.id_empleado;
                         html += '<label class="flex items-center gap-0.5 justify-center text-xs text-gray-400 cursor-pointer">'
-                            + '<input type="checkbox" id="' + libreId + '" '
-                            + 'data-emp="' + row.emp.id_empleado + '" data-dia="' + d + '" data-tipo="libre" '
+                            + '<input type="checkbox" id="libre_' + eId + '_' + d + '" '
+                            + 'data-emp="' + eId + '" data-dia="' + d + '" '
                             + (esLibre ? 'checked ' : '')
                             + 'onchange="toggleLibre(this)" class="accent-yellow-400 w-3 h-3"> Libre</label>';
                         // Select entrada
-                        html += '<select data-emp="' + row.emp.id_empleado + '" data-dia="' + d + '" data-tipo="ent" '
+                        html += '<select id="ent_' + eId + '_' + d + '" '
                             + (esLibre ? 'disabled ' : '')
                             + 'class="' + selectClase(esLibre) + ' px-0.5 py-0.5 w-full text-center">'
                             + opcionesHorario(h.ent) + '</select>';
                         // Select salida
-                        html += '<select data-emp="' + row.emp.id_empleado + '" data-dia="' + d + '" data-tipo="sal" '
+                        html += '<select id="sal_' + eId + '_' + d + '" '
                             + (esLibre ? 'disabled ' : '')
                             + 'class="' + selectClase(esLibre) + ' px-0.5 py-0.5 w-full text-center">'
                             + opcionesHorario(h.sal) + '</select>';
@@ -2275,8 +2275,10 @@
             var emp = cb.getAttribute('data-emp');
             var dia = cb.getAttribute('data-dia');
             var libre = cb.checked;
-            var selects = document.querySelectorAll('select[data-emp="' + emp + '"][data-dia="' + dia + '"]');
-            selects.forEach(function(s) {
+            var selEnt = document.getElementById('ent_' + emp + '_' + dia);
+            var selSal = document.getElementById('sal_' + emp + '_' + dia);
+            [selEnt, selSal].forEach(function(s) {
+                if (!s) return;
                 s.disabled = libre;
                 s.className = selectClase(libre) + ' px-0.5 py-0.5 w-full text-center';
                 if (libre) s.value = '';
@@ -2287,9 +2289,9 @@
             var lunStr = isoDatePlan(planSemanaLunes);
             var dias = [];
             for (var d = 0; d < 7; d++) {
-                var cbLibre = document.querySelector('input[data-emp="' + idEmp + '"][data-dia="' + d + '"][data-tipo="libre"]');
-                var selEnt = document.querySelector('select[data-emp="' + idEmp + '"][data-dia="' + d + '"][data-tipo="ent"]');
-                var selSal = document.querySelector('select[data-emp="' + idEmp + '"][data-dia="' + d + '"][data-tipo="sal"]');
+                var cbLibre = document.getElementById('libre_' + idEmp + '_' + d);
+                var selEnt  = document.getElementById('ent_'   + idEmp + '_' + d);
+                var selSal  = document.getElementById('sal_'   + idEmp + '_' + d);
                 var horario = '';
                 if (cbLibre && cbLibre.checked) {
                     horario = 'libre';
