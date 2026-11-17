@@ -98,8 +98,17 @@ let localReloj = null;
 // ¿Ya está vinculado este dispositivo?
 try { localReloj = JSON.parse(localStorage.getItem('reloj_local') || 'null'); } catch(e) {}
 
-function init(){
+async function init(){
   if(localReloj && localReloj.id){
+    // Refrescar nombre del local desde la base de datos
+    try {
+      const locales = await fetch(`${API_URL}/pos/locales`).then(r=>r.json());
+      const local = locales.find(l => l.id === localReloj.id);
+      if(local && local.nombre !== localReloj.nombre){
+        localReloj.nombre = local.nombre;
+        localStorage.setItem('reloj_local', JSON.stringify(localReloj));
+      }
+    } catch(e){}
     $('pantalla-reloj').classList.remove('hidden');
     $('reloj-local').textContent = '· ' + (localReloj.nombre || 'Local');
     tick();
