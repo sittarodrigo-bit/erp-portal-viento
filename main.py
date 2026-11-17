@@ -10175,7 +10175,8 @@ def route_proveedores2():
 
 @app.get("/proveedores")
 def route_proveedores():
-    return serve_html("proveedores.html")
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url="/proveedores2", status_code=301)
 
 @app.get("/api/distribuidores/metricas")
 def distribuidores_metricas():
