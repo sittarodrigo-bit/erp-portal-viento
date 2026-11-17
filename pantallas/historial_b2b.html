@@ -358,16 +358,14 @@
             relNom.appendChild(btnNom); relNom.appendChild(menuNom);
             tdNom.appendChild(relNom); tr.appendChild(tdNom);
 
-            // Importe — calcular neto real: si hay total_sin_descuento usarlo como bruto,
-            // sino usar p.total. Restar descuento_monto si existe.
+            // total_sin_descuento guarda el neto real (subtotal items con desc por producto)
+            // total guarda el bruto (precio lista sin descuentos de orden)
+            // Neto final = total_sin_descuento si existe, sino total
             var tdImp = document.createElement('td');
             tdImp.className = 'px-3 py-2 text-white font-bold text-sm';
-            var brutoReal = parseFloat(p.total_sin_descuento||0) > 0 ? parseFloat(p.total_sin_descuento) : parseFloat(p.total||0);
-            var descMonto = parseFloat(p.descuento_monto||0);
-            var descPct   = parseFloat(p.descuento_porcentaje||0);
-            // descuento de orden sobre el subtotal neto de items
-            var descOrden = descPct > 0 ? Math.round(brutoReal * descPct / 100) : descMonto;
-            var netoLista = brutoReal - descOrden;
+            var netoLista = parseFloat(p.total_sin_descuento||0) > 0
+                ? parseFloat(p.total_sin_descuento)
+                : parseFloat(p.total||0);
             function actualizarImporte() {
                 var chkEl = document.getElementById('chk-iva-' + p.id);
                 var conIva = chkEl ? chkEl.checked : false;
