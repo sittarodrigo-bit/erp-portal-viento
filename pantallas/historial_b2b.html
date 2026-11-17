@@ -301,7 +301,10 @@
                 tbody.innerHTML = '<tr><td colspan="6" class="px-3 py-4 text-center text-gray-500">Sin pedidos para mostrar.</td></tr>';
                 return;
             }
-            lista.forEach(function(p) { tbody.appendChild(crearFila(p)); });
+            lista.forEach(function(p) {
+                if (p.id === 552) console.log('[IVA DEBUG] pedido 552:', JSON.stringify({iva_aplicado: p.iva_aplicado, total: p.total, total_sin_descuento: p.total_sin_descuento}));
+                tbody.appendChild(crearFila(p));
+            });
         }
 
         function crearFila(p) {
@@ -358,19 +361,20 @@
             relNom.appendChild(btnNom); relNom.appendChild(menuNom);
             tdNom.appendChild(relNom); tr.appendChild(tdNom);
 
-            // total_sin_descuento guarda el neto real (subtotal items con desc por producto)
-            // total guarda el bruto (precio lista sin descuentos de orden)
-            // Neto final = total_sin_descuento si existe, sino total
+            // total_sin_descuento = neto real (subtotal items con desc por producto)
+            // total = bruto (precio lista sin descuentos de orden)
+            // iva_aplicado = IVA guardado en BD (0 si no aplica)
             var tdImp = document.createElement('td');
             tdImp.className = 'px-3 py-2 text-white font-bold text-sm';
             var netoLista = parseFloat(p.total_sin_descuento||0) > 0
                 ? parseFloat(p.total_sin_descuento)
                 : parseFloat(p.total||0);
+            var ivaEnBD = parseFloat(p.iva_aplicado||0);
             function actualizarImporte() {
                 var chkEl = document.getElementById('chk-iva-' + p.id);
                 var conIva = chkEl ? chkEl.checked : false;
-                var importe = conIva ? Math.round(netoLista * 1.21) : netoLista;
-                tdImp.textContent = '$ ' + Math.round(importe).toLocaleString('es-AR');
+                var importe = conIva ? Math.round(netoLista * 1.21) : Math.round(netoLista);
+                tdImp.textContent = '$ ' + importe.toLocaleString('es-AR');
                 tdImp.className = 'px-3 py-2 font-bold text-sm ' + (conIva ? 'text-orange-300' : 'text-white');
             }
             tr.appendChild(tdImp);
