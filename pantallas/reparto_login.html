@@ -25,10 +25,21 @@
       <input id="password" type="password" class="w-full bg-black border border-gray-700 text-white rounded-lg p-3 mb-2 focus:outline-none" autocomplete="current-password" onkeydown="if(event.key==='Enter')entrar()">
       <p id="error" class="hidden text-red-400 text-sm mb-2"></p>
       <button onclick="entrar()" id="btn" class="w-full bg-neon text-black font-bold rounded-lg py-3 mt-3">Entrar</button>
+      <div id="gps-aviso" class="hidden mt-3 text-xs text-center text-yellow-400">📍 Se necesita permiso de ubicación para el seguimiento de reparto.</div>
     </div>
   </div>
 <script>
   const API_URL = '/api';
+
+  // Pedir GPS al cargar la página
+  window.addEventListener('load', function() {
+    if (!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      function() { /* permiso ok */ },
+      function() { document.getElementById('gps-aviso').classList.remove('hidden'); }
+    );
+  });
+
   async function entrar() {
     const username = document.getElementById('username').value.trim();
     const password = document.getElementById('password').value;
