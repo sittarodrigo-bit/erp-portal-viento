@@ -206,6 +206,7 @@ async function verificarStatus() {
         const data = await r.json();
         mostrarEstado(data.estado, data);
         if (data.estado === 'esperando_qr') {
+            document.getElementById('modal-qr').classList.replace('modal-oculto', 'modal-visible');
             cargarQR();
         }
     } catch(e) {
