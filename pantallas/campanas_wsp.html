@@ -142,7 +142,7 @@
 <script>
 const WSP_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
     ? 'http://localhost:3001'
-    : (window.__WSP_URL__ || '');  // se inyecta desde config
+    : 'https://wsp-service-production-17408315.up.railway.app';
 const WSP_KEY = window.__WSP_KEY__ || 'portal-viento-wsp-key';
 
 var todosContactos = [];
