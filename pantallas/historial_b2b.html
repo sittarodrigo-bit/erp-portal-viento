@@ -405,7 +405,12 @@
                 var endpoint = chkIva.checked ? 'aplicar-iva' : 'quitar-iva';
                 fetch(API_URL + '/pedidos_b2b/' + p.id + '/' + endpoint, {method:'PUT', headers:{'Content-Type':'application/json'}, body:'{}'})
                     .then(function(r){ return r.json(); })
-                    .then(function(data){ if(data.status==='ok') actualizarImporte(); })
+                    .then(function(data){
+                        if(data.status==='ok'){
+                            ivaGuardado = chkIva.checked ? (data.iva || Math.round(netoLista * 0.21)) : 0;
+                            actualizarImporte();
+                        }
+                    })
                     .catch(function(){ chkIva.checked = !chkIva.checked; });
             });
             var lblIva = document.createElement('label');
