@@ -4959,7 +4959,7 @@ def rrhh_liquidacion(fecha_desde: str, fecha_hasta: str):
 
 @app.get("/rrhh")
 def route_rrhh():
-    return FileResponse("pantallas/rrhh.html")
+    return serve_html("rrhh.html")
 
 # ==============================================================================
 # INSUMOS
