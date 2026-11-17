@@ -1007,13 +1007,25 @@
 
             // Facturas
             var lf = document.getElementById('ficha-lista-facturas');
-            lf.innerHTML = d.facturas.length ? d.facturas.map(fc=>`
-                <div class="bg-black border border-gray-800 rounded-lg p-3 flex justify-between items-center">
-                    <div><p class="text-white font-bold">${fc.tipo||''} ${fc.numero||'s/n'}</p>
-                    <p class="text-gray-500 text-xs">${fc.fecha||''}${fc.fecha_vencimiento?' · vence '+fc.fecha_vencimiento:''}</p></div>
-                    <div class="text-right"><p class="text-red-400 font-bold">${f$(fc.total)}</p>
-                    <button onclick="eliminarFactura(${fc.id})" class="text-red-500 text-xs">✕ eliminar</button></div>
-                </div>`).join('') : '<p class="text-gray-600 text-sm">Sin facturas cargadas.</p>';
+            lf.innerHTML = d.facturas.length ? d.facturas.map(fc=>{
+                var titulo = (fc.tipo||'') + ' ' + (fc.numero||'s/n');
+                return `
+                <div class="bg-black border border-gray-800 rounded-lg p-3">
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <p class="text-white font-bold">${titulo}</p>
+                            <p class="text-gray-500 text-xs">${fc.fecha||''}${fc.fecha_vencimiento?' · vence '+fc.fecha_vencimiento:''}</p>
+                        </div>
+                        <div class="text-right">
+                            <p class="text-red-400 font-bold">${f$(fc.total)}</p>
+                            <div class="flex gap-2 mt-1 justify-end">
+                                <button onclick="verDetalleFactura(${fc.id}, '${titulo.replace(/'/g,"\\'")}' )" class="text-blue-400 hover:text-blue-300 text-xs border border-blue-800 rounded px-2 py-0.5">📋 Detalle</button>
+                                <button onclick="eliminarFactura(${fc.id})" class="text-red-500 hover:text-red-400 text-xs">✕ eliminar</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>`;
+            }).join('') : '<p class="text-gray-600 text-sm">Sin facturas cargadas.</p>';
 
             // Pagos
             var lp = document.getElementById('ficha-lista-pagos');
@@ -1107,6 +1119,26 @@
             await fetch(`${API_URL}/proveedores/facturas/${id}`, {method:'DELETE'});
             cargarFicha();
         }
+
+        async function verDetalleFactura(id, titulo) {
+            var items = await fetch(`${API_URL}/proveedores/facturas/${id}/items`).then(r=>r.json()).catch(()=>[]);
+            var el = document.getElementById('modal-det-factura');
+            document.getElementById('det-fac-titulo').textContent = titulo;
+            var tbody = document.getElementById('det-fac-tbody');
+            if (!items.length) {
+                tbody.innerHTML = '<tr><td colspan="4" class="text-center text-gray-500 py-4 text-sm">Sin ítems cargados.</td></tr>';
+            } else {
+                tbody.innerHTML = items.map(it=>`
+                    <tr class="border-b border-gray-800">
+                        <td class="py-2 pr-3 text-sm text-white">${it.insumo_nombre || it.descripcion || '—'}</td>
+                        <td class="py-2 pr-3 text-sm text-gray-300 text-center">${parseFloat(it.cantidad||0).toLocaleString('es-AR')}</td>
+                        <td class="py-2 pr-3 text-sm text-gray-300 text-right">${f$(it.precio_unitario)}</td>
+                        <td class="py-2 text-sm text-neon font-bold text-right">${f$(it.subtotal)}</td>
+                    </tr>`).join('');
+            }
+            el.classList.remove('hidden');
+        }
+        function cerrarDetFactura() { document.getElementById('modal-det-factura').classList.add('hidden'); }
 
         // ===== NUEVA FACTURA =====
         var facItems = [];
@@ -1275,6 +1307,32 @@
       <span id="fac-total" class="text-neon font-bold text-xl">$ 0</span>
     </div>
     <button onclick="guardarFactura()" class="w-full bg-neon text-black font-bold py-2.5 rounded">💾 Guardar factura</button>
+  </div>
+</div>
+
+<!-- MODAL DETALLE FACTURA/REMITO -->
+<div id="modal-det-factura" class="hidden fixed inset-0 bg-black/85 z-[70] flex items-center justify-center p-4">
+  <div class="bg-gray-900 border border-gray-700 rounded-2xl w-full max-w-lg shadow-2xl">
+    <div class="flex justify-between items-center p-5 border-b border-gray-800">
+      <h3 id="det-fac-titulo" class="text-white font-bold text-lg">Detalle</h3>
+      <button onclick="cerrarDetFactura()" class="text-gray-500 hover:text-white text-2xl leading-none">×</button>
+    </div>
+    <div class="p-5 overflow-y-auto max-h-[60vh]">
+      <table class="w-full">
+        <thead>
+          <tr class="border-b border-gray-700">
+            <th class="text-left text-gray-500 text-xs pb-2 font-semibold uppercase tracking-wider">Descripción</th>
+            <th class="text-center text-gray-500 text-xs pb-2 font-semibold uppercase tracking-wider">Cant.</th>
+            <th class="text-right text-gray-500 text-xs pb-2 font-semibold uppercase tracking-wider">P. Unit.</th>
+            <th class="text-right text-gray-500 text-xs pb-2 font-semibold uppercase tracking-wider">Subtotal</th>
+          </tr>
+        </thead>
+        <tbody id="det-fac-tbody"></tbody>
+      </table>
+    </div>
+    <div class="p-4 border-t border-gray-800 text-right">
+      <button onclick="cerrarDetFactura()" class="bg-gray-800 hover:bg-gray-700 text-white px-5 py-2 rounded text-sm">Cerrar</button>
+    </div>
   </div>
 </div>
 
