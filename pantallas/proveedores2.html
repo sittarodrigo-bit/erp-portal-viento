@@ -278,7 +278,7 @@ function volverLista() {
 }
 async function cargarDetalle(id) {
     try {
-        const data = await fetch(API+'/api/prov2/proveedores/'+id).then(r=>r.json());
+        const data = await fetch(API+'/api/prov2/proveedores/'+id+'/cuenta').then(r=>r.json());
         const p = data.proveedor;
         provActual = p;
         historialActual = data.historial;
