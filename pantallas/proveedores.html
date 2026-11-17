@@ -1145,24 +1145,36 @@
         function abrirNuevaFactura() {
             facItems = [{descripcion:'', cantidad:1, precio_unitario:0, id_insumo:null}];
             document.getElementById('fac-numero').value = '';
+            document.getElementById('fac-tipo').value = 'A';
             document.getElementById('fac-fecha').value = new Date().toISOString().split('T')[0];
             document.getElementById('fac-venc').value = '';
-            renderFacItems();
+            toggleTipoFac('A');
             document.getElementById('modal-factura').classList.remove('hidden');
         }
-        function cerrarModalFactura() { document.getElementById('modal-factura').classList.add('hidden'); }
+        function cerrarModalFactura() {
+            document.getElementById('modal-factura').classList.add('hidden');
+            toggleTipoFac('A');
+        }
+        function toggleTipoFac(tipo) {
+            var esRemito = tipo === 'X';
+            document.getElementById('fac-nota-remito').classList.toggle('hidden', !esRemito);
+            document.getElementById('fac-total-row').classList.toggle('hidden', esRemito);
+            document.getElementById('fac-venc').closest('div').classList.toggle('hidden', esRemito);
+            renderFacItems();
+        }
         function agregarItemFactura() {
             facItems.push({descripcion:'', cantidad:1, precio_unitario:0, id_insumo:null});
             renderFacItems();
         }
         function renderFacItems() {
+            var esRemito = document.getElementById('fac-tipo') && document.getElementById('fac-tipo').value === 'X';
             var insumosOpts = '<option value="">— Libre —</option>' + fichaInsumos.map(i=>`<option value="${i.id}">${i.nombre}</option>`).join('');
             document.getElementById('fac-items').innerHTML = facItems.map((it,idx)=>`
                 <div class="flex gap-2 items-center">
                     <select onchange="setItemInsumo(${idx}, this.value)" class="bg-gray-800 border border-gray-700 text-white rounded p-1.5 text-xs w-32">${insumosOpts}</select>
                     <input value="${it.descripcion}" oninput="setItem(${idx},'descripcion',this.value)" placeholder="Descripción" class="flex-1 bg-gray-800 border border-gray-700 text-white rounded p-1.5 text-sm">
                     <input type="number" value="${it.cantidad}" oninput="setItem(${idx},'cantidad',this.value)" placeholder="Cant" class="w-16 bg-gray-800 border border-gray-700 text-white rounded p-1.5 text-sm text-center">
-                    <input type="number" value="${it.precio_unitario}" oninput="setItem(${idx},'precio_unitario',this.value)" placeholder="Precio" class="w-24 bg-gray-800 border border-gray-700 text-white rounded p-1.5 text-sm text-right">
+                    ${esRemito ? '' : `<input type="number" value="${it.precio_unitario}" oninput="setItem(${idx},'precio_unitario',this.value)" placeholder="Precio" class="w-24 bg-gray-800 border border-gray-700 text-white rounded p-1.5 text-sm text-right">`}
                     <button onclick="quitarItemFactura(${idx})" class="text-red-500 text-xs">✕</button>
                 </div>`).join('');
             actualizarTotalFactura();
@@ -1187,8 +1199,14 @@
             document.getElementById('fac-total').textContent = f$(total);
         }
         async function guardarFactura() {
-            var items = facItems.filter(it=>it.descripcion && it.precio_unitario>0);
-            if (!items.length) { alert('Agregá al menos un ítem con descripción y precio.'); return; }
+            var esRemito = document.getElementById('fac-tipo').value === 'X';
+            var items = esRemito
+                ? facItems.filter(it=>it.descripcion)
+                : facItems.filter(it=>it.descripcion && it.precio_unitario>0);
+            if (!items.length) {
+                alert(esRemito ? 'Agregá al menos un ítem con descripción.' : 'Agregá al menos un ítem con descripción y precio.');
+                return;
+            }
             var body = {
                 id_proveedor: fichaProvId,
                 numero: document.getElementById('fac-numero').value,
@@ -1291,7 +1309,7 @@
       <div><label class="text-gray-500 text-xs">Número</label>
         <input id="fac-numero" class="w-full bg-gray-800 border border-gray-700 text-white rounded p-2 text-sm" placeholder="0001-00001234"></div>
       <div><label class="text-gray-500 text-xs">Tipo</label>
-        <select id="fac-tipo" class="w-full bg-gray-800 border border-gray-700 text-white rounded p-2 text-sm">
+        <select id="fac-tipo" onchange="toggleTipoFac(this.value)" class="w-full bg-gray-800 border border-gray-700 text-white rounded p-2 text-sm">
           <option>A</option><option>B</option><option>C</option><option value="X">Remito</option>
         </select></div>
       <div><label class="text-gray-500 text-xs">Fecha</label>
@@ -1299,14 +1317,15 @@
       <div><label class="text-gray-500 text-xs">Vencimiento</label>
         <input type="date" id="fac-venc" class="w-full bg-gray-800 border border-gray-700 text-white rounded p-2 text-sm"></div>
     </div>
-    <p class="text-gray-400 text-sm font-bold mb-2">Ítems</p>
+    <p id="fac-label-items" class="text-gray-400 text-sm font-bold mb-2">Ítems</p>
+    <p id="fac-nota-remito" class="hidden text-gray-500 text-xs mb-2">Remito: el precio es opcional. Podés cargar solo la descripción y cantidad.</p>
     <div id="fac-items" class="space-y-2 mb-2"></div>
     <button onclick="agregarItemFactura()" class="text-neon text-sm mb-3">+ Agregar ítem</button>
-    <div class="flex justify-between items-center border-t border-gray-700 pt-3 mb-4">
+    <div id="fac-total-row" class="flex justify-between items-center border-t border-gray-700 pt-3 mb-4">
       <span class="text-gray-400">Total</span>
       <span id="fac-total" class="text-neon font-bold text-xl">$ 0</span>
     </div>
-    <button onclick="guardarFactura()" class="w-full bg-neon text-black font-bold py-2.5 rounded">💾 Guardar factura</button>
+    <button onclick="guardarFactura()" class="w-full bg-neon text-black font-bold py-2.5 rounded">💾 Guardar</button>
   </div>
 </div>
 
