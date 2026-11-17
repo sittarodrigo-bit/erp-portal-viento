@@ -3278,20 +3278,17 @@ def aplicar_iva_pedido(id: int, data: dict = Body(default={})):
     conn = obtener_conexion()
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
-        cur.execute("SELECT total FROM pedidos_b2b WHERE id=%s", (id,))
+        cur.execute("SELECT total, total_sin_descuento FROM pedidos_b2b WHERE id=%s", (id,))
         row = cur.fetchone()
         if not row:
             raise HTTPException(status_code=404, detail="Pedido no encontrado.")
-        
-        total_actual = float(row['total'])
-        iva = round(total_actual * 0.21 * 100) / 100
-        
-        # Guardar el IVA en columna separada (NO modificar total)
-        cur.execute("""
-            UPDATE pedidos_b2b
-            SET iva_aplicado = %s
-            WHERE id = %s
-        """, (iva, id))
+
+        # neto real = total_sin_descuento si existe (es el subtotal con desc por producto),
+        # sino total (bruto sin descuentos)
+        neto = float(row['total_sin_descuento'] or 0) if row['total_sin_descuento'] else float(row['total'])
+        iva = round(neto * 0.21, 2)
+
+        cur.execute("UPDATE pedidos_b2b SET iva_aplicado = %s WHERE id = %s", (iva, id))
         conn.commit()
         
         return {
