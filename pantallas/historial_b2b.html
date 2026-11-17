@@ -375,7 +375,6 @@
                 tdImp.textContent = '$ ' + Math.round(importe).toLocaleString('es-AR');
                 tdImp.className = 'px-3 py-2 font-bold text-sm ' + (conIva ? 'text-orange-300' : 'text-white');
             }
-            actualizarImporte();
             tr.appendChild(tdImp);
 
             // Estado
@@ -426,6 +425,7 @@
             divComp.appendChild(chkIva); divComp.appendChild(lblIva); divComp.appendChild(btnComp);
             tdEst.appendChild(divComp);
             tr.appendChild(tdEst);
+            actualizarImporte();
 
             // Acciones
             var tdAcc = document.createElement('td'); tdAcc.className = 'px-3 py-2';
