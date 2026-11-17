@@ -358,13 +358,10 @@
             relNom.appendChild(btnNom); relNom.appendChild(menuNom);
             tdNom.appendChild(relNom); tr.appendChild(tdNom);
 
-            // Importe — neto con descuentos; si checkbox IVA tildado suma 21%
+            // Importe — p.total ya es el neto con todos los descuentos; si IVA tildado suma 21%
             var tdImp = document.createElement('td');
             tdImp.className = 'px-3 py-2 text-white font-bold text-sm';
-            var bruto = parseFloat(p.total||0);
-            var descPct = parseFloat(p.descuento_porcentaje||0);
-            var descMonto = parseFloat(p.descuento_monto||0);
-            var netoLista = bruto * (1 - descPct/100) - descMonto;
+            var netoLista = parseFloat(p.total||0);
             function actualizarImporte() {
                 var chkEl = document.getElementById('chk-iva-' + p.id);
                 var conIva = chkEl ? chkEl.checked : false;
