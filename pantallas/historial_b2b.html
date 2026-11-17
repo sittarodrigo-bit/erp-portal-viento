@@ -358,10 +358,14 @@
             relNom.appendChild(btnNom); relNom.appendChild(menuNom);
             tdNom.appendChild(relNom); tr.appendChild(tdNom);
 
-            // Importe
+            // Importe — neto con descuentos (sin IVA; IVA es opcional al emitir comprobante)
             var tdImp = document.createElement('td');
             tdImp.className = 'px-3 py-2 text-white font-bold text-sm';
-            tdImp.textContent = '$ ' + (parseFloat(p.total||0) + parseFloat(p.iva_aplicado||0)).toLocaleString('es-AR');
+            var bruto = parseFloat(p.total||0);
+            var descPct = parseFloat(p.descuento_porcentaje||0);
+            var descMonto = parseFloat(p.descuento_monto||0);
+            var netoLista = bruto * (1 - descPct/100) - descMonto;
+            tdImp.textContent = '$ ' + netoLista.toLocaleString('es-AR', {maximumFractionDigits:0});
             tr.appendChild(tdImp);
 
             // Estado
