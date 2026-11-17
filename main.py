@@ -9859,6 +9859,7 @@ def prov2_listar():
             SELECT p.*,
                 (p.deuda_inicial
                  + COALESCE((SELECT SUM(monto) FROM prov2_movimientos m WHERE m.id_proveedor=p.id AND m.tipo='factura'),0)
+                 + COALESCE((SELECT SUM(monto) FROM prov2_movimientos m WHERE m.id_proveedor=p.id AND m.tipo='remito' AND monto > 0),0)
                  - COALESCE((SELECT SUM(monto) FROM prov2_movimientos m WHERE m.id_proveedor=p.id AND m.tipo='pago'),0)
                 ) AS saldo
             FROM prov2_proveedores p WHERE p.activo=true ORDER BY p.razon_social
