@@ -33,6 +33,10 @@
         </div>
         <button onclick="conectar()" id="btn-conectar" class="hidden bg-green-700 hover:bg-green-600 text-white font-bold px-4 py-1.5 rounded text-sm">Conectar</button>
         <button onclick="desconectar()" id="btn-desconectar" class="hidden bg-gray-800 border border-gray-700 hover:border-red-500 text-gray-400 hover:text-red-400 font-bold px-4 py-1.5 rounded text-sm">Desconectar</button>
+        <button onclick="cambiarVista('bandeja')" id="btn-bandeja" class="relative bg-gray-900 border border-gray-700 hover:border-green-600 text-gray-400 hover:text-green-400 font-bold px-4 py-1.5 rounded text-sm">
+            💬 Respuestas
+            <span id="badge-nuevos" class="hidden absolute -top-1.5 -right-1.5 bg-red-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center font-bold">0</span>
+        </button>
     </div>
 </header>
 
@@ -123,6 +127,17 @@
         <div id="panel-log" class="hidden border-t border-gray-800 p-4 max-h-48 overflow-y-auto bg-gray-950">
             <p class="text-xs text-gray-500 font-bold uppercase mb-2">Log de envío</p>
             <div id="log-contenido" class="space-y-1 text-xs font-mono"></div>
+        </div>
+    </div>
+
+    <!-- BANDEJA DE RESPUESTAS (oculta por defecto) -->
+    <div id="panel-bandeja" class="hidden flex-1 flex flex-col overflow-hidden">
+        <div class="p-4 border-b border-gray-800 flex items-center justify-between">
+            <h2 class="text-sm font-bold text-white uppercase tracking-widest border-l-4 border-green-500 pl-2">💬 Respuestas recibidas</h2>
+            <button onclick="cambiarVista('campana')" class="text-xs text-gray-500 hover:text-white border border-gray-700 hover:border-gray-500 px-3 py-1.5 rounded">← Volver a campaña</button>
+        </div>
+        <div id="lista-mensajes" class="flex-1 overflow-y-auto p-4 space-y-3">
+            <p class="text-gray-600 text-sm text-center py-8">Sin respuestas aún.</p>
         </div>
     </div>
 </div>
@@ -419,11 +434,97 @@ async function lanzarCampana() {
     }
 }
 
+// ── Bandeja de respuestas ───────────────────────────────────────
+var vistaActual = 'campana';
+var ultimaFechaMensaje = null;
+var mensajesNoLeidos = 0;
+
+function cambiarVista(vista) {
+    vistaActual = vista;
+    var panelCampana = document.querySelector('.flex-1.flex.overflow-hidden > div:first-child');
+    var panelBandeja = document.getElementById('panel-bandeja');
+    if (vista === 'bandeja') {
+        if (panelCampana) panelCampana.classList.add('hidden');
+        panelBandeja.classList.remove('hidden');
+        mensajesNoLeidos = 0;
+        actualizarBadge();
+        cargarMensajes();
+    } else {
+        if (panelCampana) panelCampana.classList.remove('hidden');
+        panelBandeja.classList.add('hidden');
+    }
+}
+
+function actualizarBadge() {
+    var badge = document.getElementById('badge-nuevos');
+    if (mensajesNoLeidos > 0) {
+        badge.textContent = mensajesNoLeidos > 9 ? '9+' : mensajesNoLeidos;
+        badge.classList.remove('hidden');
+    } else {
+        badge.classList.add('hidden');
+    }
+}
+
+async function cargarMensajes() {
+    if (!WSP_URL || estado !== 'conectado') return;
+    try {
+        var url = WSP_URL + '/mensajes';
+        if (ultimaFechaMensaje) url += '?desde=' + encodeURIComponent(ultimaFechaMensaje);
+        const r = await fetch(url, { headers: { 'x-api-key': WSP_KEY } });
+        const data = await r.json();
+        if (!data.mensajes || !data.mensajes.length) return;
+
+        ultimaFechaMensaje = data.mensajes[0].ts;
+        var lista = document.getElementById('lista-mensajes');
+
+        // Si es primera carga, limpiar placeholder
+        if (!ultimaFechaMensaje || lista.querySelector('p')) lista.innerHTML = '';
+
+        data.mensajes.forEach(function(m) {
+            if (document.getElementById('msg-' + m.id)) return; // ya existe
+            var fecha = new Date(m.ts);
+            var hora = fecha.toLocaleString('es-AR', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' });
+            var div = document.createElement('div');
+            div.id = 'msg-' + m.id;
+            div.className = 'bg-gray-900 border border-gray-800 rounded-lg p-3 hover:border-gray-600 transition';
+            div.innerHTML = `
+                <div class="flex items-center justify-between mb-1">
+                    <span class="text-green-400 font-bold text-sm">+${m.numero}</span>
+                    <span class="text-gray-600 text-xs">${hora}</span>
+                </div>
+                <p class="text-gray-300 text-sm">${m.texto}</p>
+                <a href="https://wa.me/${m.numero}" target="_blank" class="mt-2 inline-block text-xs text-green-600 hover:text-green-400">Responder en WhatsApp →</a>
+            `;
+            lista.prepend(div);
+        });
+    } catch(e) {}
+}
+
+// Polling mensajes cada 15 segundos (en background)
+async function pollingMensajes() {
+    if (!WSP_URL || estado !== 'conectado') return;
+    try {
+        var url = WSP_URL + '/mensajes' + (ultimaFechaMensaje ? '?desde=' + encodeURIComponent(ultimaFechaMensaje) : '');
+        const r = await fetch(url, { headers: { 'x-api-key': WSP_KEY } });
+        const data = await r.json();
+        if (data.mensajes && data.mensajes.length) {
+            if (vistaActual === 'bandeja') {
+                cargarMensajes();
+            } else {
+                mensajesNoLeidos += data.mensajes.length;
+                actualizarBadge();
+                ultimaFechaMensaje = data.mensajes[0].ts;
+            }
+        }
+    } catch(e) {}
+}
+
 // ── Init ────────────────────────────────────────────────────────
 window.onload = function() {
     cargarContactos();
     verificarStatus();
     intervalStatus = setInterval(verificarStatus, 10000);
+    setInterval(pollingMensajes, 15000);
 };
 </script>
 </body>
