@@ -13,6 +13,23 @@
         .border-neon { border-color: #e4fc74; }
         .modal-oculto { display: none; }
         .modal-visible { display: flex; }
+
+        @media print {
+            body { background: #fff !important; color: #000 !important; font-family: Arial, sans-serif; }
+            #vista-lista, header, #vista-detalle > div:first-child, .modal-oculto, .modal-visible { display: none !important; }
+            #print-area { display: block !important; }
+            #print-area table { width: 100%; border-collapse: collapse; font-size: 11px; }
+            #print-area th, #print-area td { border: 1px solid #ccc; padding: 5px 8px; }
+            #print-area th { background: #f0f0f0 !important; color: #000 !important; font-weight: bold; }
+            #print-area .print-header { margin-bottom: 16px; }
+            #print-area .print-header h2 { font-size: 16px; font-weight: bold; margin: 0 0 4px; }
+            #print-area .print-header p { font-size: 11px; color: #555; margin: 0; }
+            #print-area .text-red { color: #c00 !important; font-weight: bold; }
+            #print-area .text-green { color: #060 !important; font-weight: bold; }
+            #print-area .text-gray { color: #888; }
+            #print-area .saldo-final { margin-top: 12px; text-align: right; font-size: 13px; font-weight: bold; }
+            @page { margin: 1.5cm; }
+        }
     </style>
 </head>
 <body class="bg-gray-950 text-gray-200 font-sans min-h-screen flex flex-col">
@@ -66,6 +83,7 @@
             <button onclick="abrirModalMovimiento('factura')" class="bg-gray-800 border border-gray-700 hover:border-gray-500 text-white font-bold px-4 py-1.5 rounded text-sm">📄 Factura</button>
             <button onclick="abrirModalMovimiento('remito')"  class="bg-gray-800 border border-gray-700 hover:border-gray-500 text-white font-bold px-4 py-1.5 rounded text-sm">📦 Remito</button>
             <button onclick="abrirModalMovimiento('pago')"    class="bg-neon text-black font-bold px-4 py-1.5 rounded text-sm hover:bg-yellow-300">💵 Pago</button>
+            <button onclick="imprimirCuenta()" class="bg-gray-800 border border-gray-700 hover:border-gray-500 text-white font-bold px-3 py-1.5 rounded text-sm" title="Imprimir / Guardar PDF">🖨️</button>
         </div>
     </div>
 
@@ -93,6 +111,9 @@
         </div>
     </div>
 </div>
+
+<!-- ÁREA DE IMPRESIÓN (oculta en pantalla) -->
+<div id="print-area" style="display:none"></div>
 
 <!-- ══ MODALES ══ -->
 
@@ -532,6 +553,67 @@ async function eliminarMovimiento(id) {
     const r = await fetch(API+'/api/prov2/movimientos/'+id,{method:'DELETE'});
     if (r.ok) cargarDetalle(provActual.id);
     else alert('No se pudo eliminar.');
+}
+
+function imprimirCuenta() {
+    if (!provActual || !historialActual) return;
+    var saldoFinal = parseFloat(document.getElementById('det-saldo').textContent.replace(/[^0-9,.\-]/g,'').replace(',','.')) || 0;
+    var saldoTexto = document.getElementById('det-saldo').textContent;
+
+    const TIPO = {
+        saldo_inicial: 'Saldo inicial',
+        factura: 'Factura',
+        remito: 'Remito',
+        pago: 'Pago'
+    };
+
+    var filas = historialActual.map(function(m) {
+        var monto = parseFloat(m.monto||0);
+        var esDebe = m.tipo==='factura' || m.tipo==='saldo_inicial' || (m.tipo==='remito' && monto > 0);
+        var esHaber = m.tipo==='pago';
+        var debe  = esDebe  ? formatPeso(monto) : '—';
+        var haber = esHaber ? formatPeso(monto) : '—';
+        var saldoFila = parseFloat(m.saldo||0);
+        var saldoClass = saldoFila > 0 ? 'text-red' : saldoFila < 0 ? 'text-green' : 'text-gray';
+        var tipoLabel = TIPO[m.tipo] || m.tipo;
+
+        // concepto/detalle
+        var concepto = m.concepto || '';
+        if (m.tipo==='remito' && m.detalle_remito) {
+            try {
+                var its = JSON.parse(m.detalle_remito);
+                if (Array.isArray(its) && its.length) concepto = its.map(function(i){ return i.cant+'x '+i.desc; }).join(', ');
+            } catch(e) { concepto = m.detalle_remito; }
+        }
+
+        return '<tr>'
+            +'<td>'+(m.fecha||'—')+'</td>'
+            +'<td>'+tipoLabel+'</td>'
+            +'<td>'+(m.numero||'—')+'</td>'
+            +'<td>'+escHtmlCta(concepto||'—')+'</td>'
+            +'<td style="text-align:right" class="text-red">'+debe+'</td>'
+            +'<td style="text-align:right" class="text-green">'+haber+'</td>'
+            +'<td style="text-align:right; font-weight:bold" class="'+saldoClass+'">'+formatPeso(saldoFila)+'</td>'
+            +'</tr>';
+    }).join('');
+
+    var now = new Date();
+    var fechaImp = now.toLocaleDateString('es-AR') + ' ' + now.toLocaleTimeString('es-AR', {hour:'2-digit',minute:'2-digit'});
+    var cuit = provActual.cuit ? ' · CUIT: '+provActual.cuit : '';
+    var saldoColorImp = parseFloat(document.getElementById('det-saldo').textContent.replace(/\$/,'')) >= 0 ? 'color:#c00' : 'color:#060';
+
+    document.getElementById('print-area').innerHTML =
+        '<div class="print-header">'
+        +'<h2>Cuenta Corriente — '+escHtmlCta(provActual.razon_social)+'</h2>'
+        +'<p>'+cuit+' · Impreso el '+fechaImp+'</p>'
+        +'</div>'
+        +'<table>'
+        +'<thead><tr><th>Fecha</th><th>Tipo</th><th>N°</th><th>Concepto</th><th style="text-align:right">Debe</th><th style="text-align:right">Haber</th><th style="text-align:right">Saldo</th></tr></thead>'
+        +'<tbody>'+filas+'</tbody>'
+        +'</table>'
+        +'<div class="saldo-final">Saldo total: <span style="'+saldoColorImp+'">'+saldoTexto+'</span></div>';
+
+    window.print();
 }
 
 function toggleItemsRemitoCta(rowId) {
