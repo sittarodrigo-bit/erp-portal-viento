@@ -268,7 +268,7 @@ function cerrarQR() {
 async function cargarContactos() {
     // Distribuidores
     try {
-        const r = await fetch('/api/distribuidores');
+        const r = await fetch('/api/distribuidores_lista');
         const dist = await r.json();
         todosContactos = todosContactos.filter(c => c.tipo !== 'dist');
         dist.forEach(d => {
