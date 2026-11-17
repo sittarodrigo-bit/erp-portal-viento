@@ -10051,6 +10051,24 @@ def prov2_movimiento_crear(m: Prov2Movimiento):
     finally:
         liberar_conexion(conn)
 
+@app.put("/api/prov2/movimientos/{id}")
+def prov2_movimiento_editar(id: int, m: Prov2Movimiento):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        cur.execute("""UPDATE prov2_movimientos
+                       SET fecha=COALESCE(%s,CURRENT_DATE), numero=%s, monto=%s,
+                           concepto=%s, metodo=%s, detalle_remito=%s
+                       WHERE id=%s""",
+                    (m.fecha, m.numero, m.monto, m.concepto, m.metodo, m.detalle_remito, id))
+        conn.commit()
+        return {"status": "ok"}
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
 @app.delete("/api/prov2/movimientos/{id}")
 def prov2_movimiento_eliminar(id: int):
     conn = obtener_conexion()

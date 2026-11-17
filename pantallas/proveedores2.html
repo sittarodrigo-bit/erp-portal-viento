@@ -112,6 +112,73 @@
     </div>
 </div>
 
+<!-- EDITAR MOVIMIENTO -->
+<div id="modal-editar-mov" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
+    <div class="bg-gray-900 border border-gray-700 rounded-xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto" style="width:580px">
+        <h3 id="edit-titulo" class="text-lg font-bold text-white mb-4 border-l-4 border-yellow-400 pl-2"></h3>
+        <input type="hidden" id="edit-id">
+        <input type="hidden" id="edit-tipo">
+        <div class="grid grid-cols-2 gap-4">
+            <div>
+                <label class="block text-xs text-gray-500 font-bold mb-1">Fecha</label>
+                <input type="date" id="edit-fecha" class="w-full bg-black border border-gray-700 text-white rounded p-2 text-sm">
+            </div>
+            <div>
+                <label class="block text-xs text-gray-500 font-bold mb-1">N° Documento</label>
+                <input type="text" id="edit-numero" class="w-full bg-black border border-gray-700 text-white rounded p-2 text-sm">
+            </div>
+            <div id="edit-monto-wrap" class="col-span-2">
+                <label class="block text-xs text-neon font-bold mb-1">Monto ($)</label>
+                <input type="number" id="edit-monto" min="0" step="0.01" class="w-full bg-black border border-neon text-white rounded p-2 text-xl font-bold text-center">
+            </div>
+            <div id="edit-metodo-wrap" class="hidden col-span-2">
+                <label class="block text-xs text-gray-500 font-bold mb-1">Método de pago</label>
+                <select id="edit-metodo" class="w-full bg-black border border-gray-700 text-white rounded p-2 text-sm">
+                    <option value="transferencia">Transferencia</option>
+                    <option value="efectivo">Efectivo</option>
+                    <option value="cheque">Cheque</option>
+                    <option value="otro">Otro</option>
+                </select>
+            </div>
+            <div id="edit-concepto-wrap" class="col-span-2">
+                <label class="block text-xs text-gray-500 font-bold mb-1">Concepto general (opcional)</label>
+                <input type="text" id="edit-concepto" class="w-full bg-black border border-gray-700 text-white rounded p-2 text-sm">
+            </div>
+        </div>
+        <!-- ÍTEMS REMITO EDICIÓN -->
+        <div id="edit-items-wrap" class="hidden mt-4">
+            <div class="flex items-center justify-between mb-2">
+                <label class="text-xs text-neon font-bold uppercase">Ítems del remito</label>
+                <button type="button" onclick="agregarItemEdicion()" class="text-xs bg-gray-800 hover:bg-gray-700 border border-gray-600 text-neon px-3 py-1 rounded font-bold">+ Agregar ítem</button>
+            </div>
+            <div class="rounded-lg border border-gray-700 overflow-hidden">
+                <table class="w-full text-xs">
+                    <thead class="bg-gray-800 text-gray-500 uppercase">
+                        <tr>
+                            <th class="px-3 py-2 text-left">Descripción</th>
+                            <th class="px-3 py-2 text-center w-16">Cant.</th>
+                            <th class="px-3 py-2 text-right w-28">P. Unit. ($)</th>
+                            <th class="px-3 py-2 text-right w-24">Subtotal</th>
+                            <th class="px-2 py-2 w-8"></th>
+                        </tr>
+                    </thead>
+                    <tbody id="edit-items-tbody"></tbody>
+                </table>
+            </div>
+            <div class="flex justify-end mt-2">
+                <div class="bg-gray-800 border border-gray-700 rounded px-4 py-2 text-right">
+                    <span class="text-xs text-gray-500 uppercase font-bold mr-3">Total remito</span>
+                    <span id="edit-total-display" class="text-neon font-black text-lg">$0,00</span>
+                </div>
+            </div>
+        </div>
+        <div class="flex justify-end gap-3 mt-5">
+            <button onclick="cerrarModales()" class="text-gray-400 hover:text-white font-bold px-4 py-2">Cancelar</button>
+            <button onclick="guardarEdicionMovimiento()" id="btn-guardar-edit" class="bg-yellow-400 text-black px-6 py-2 rounded font-bold hover:bg-yellow-300">Guardar cambios</button>
+        </div>
+    </div>
+</div>
+
 <!-- ÁREA DE IMPRESIÓN (oculta en pantalla) -->
 <div id="print-area" style="display:none"></div>
 
@@ -362,6 +429,7 @@ async function cargarDetalle(id) {
             const haber = esHaber ? `<span class="text-green-400 font-bold">${formatPeso(monto)}</span>` : '<span class="text-gray-700">—</span>';
             const saldoFila = parseFloat(m.saldo||0);
             const saldoColor = saldoFila > 0 ? 'text-red-400' : saldoFila < 0 ? 'text-green-400' : 'text-gray-500';
+            const accionEditar = (m.id && m.tipo !== 'saldo_inicial') ? `<button onclick="editarMovimiento(${m.id})" class="text-gray-500 hover:text-yellow-300 text-sm px-1" title="Editar">✏️</button>` : '';
             const acciones = m.id ? `<button onclick="eliminarMovimiento(${m.id})" class="text-gray-600 hover:text-red-400 text-sm px-2">✕</button>` : '';
             // Días transcurridos — solo para facturas con fecha
             let diasCell = '<td class="p-4 text-center text-gray-700">—</td>';
@@ -398,7 +466,7 @@ async function cargarDetalle(id) {
                 <td class="p-4 text-right">${debe}</td>
                 <td class="p-4 text-right">${haber}</td>
                 <td class="p-4 text-right font-bold font-mono text-sm ${saldoColor}">${formatPeso(saldoFila)}</td>
-                <td class="p-4 text-center flex items-center justify-center gap-1">${btnExpandir}${acciones}</td>
+                <td class="p-4 text-center flex items-center justify-center gap-1">${btnExpandir}${accionEditar}${acciones}</td>
             </tr>`);
 
             // Fila expandible de ítems (oculta por defecto)
@@ -553,6 +621,136 @@ async function eliminarMovimiento(id) {
     const r = await fetch(API+'/api/prov2/movimientos/'+id,{method:'DELETE'});
     if (r.ok) cargarDetalle(provActual.id);
     else alert('No se pudo eliminar.');
+}
+
+// ══ EDICIÓN DE MOVIMIENTO ══
+var itemsEdicion = [];
+
+function editarMovimiento(id) {
+    var m = historialActual.find(function(x){ return x.id === id; });
+    if (!m) return;
+    var tipo = m.tipo;
+    var TITULOS_EDIT = { factura:'✏️ Editar Factura', remito:'✏️ Editar Remito', pago:'✏️ Editar Pago' };
+    document.getElementById('edit-id').value = id;
+    document.getElementById('edit-tipo').value = tipo;
+    document.getElementById('edit-titulo').textContent = TITULOS_EDIT[tipo] || '✏️ Editar';
+    document.getElementById('edit-fecha').value = m.fecha || '';
+    document.getElementById('edit-numero').value = m.numero || '';
+    document.getElementById('edit-monto').value = tipo === 'remito' ? '' : (m.monto || '');
+    document.getElementById('edit-concepto').value = m.concepto || '';
+    // monto y método
+    document.getElementById('edit-monto-wrap').classList.toggle('hidden', tipo === 'remito');
+    document.getElementById('edit-metodo-wrap').classList.toggle('hidden', tipo !== 'pago');
+    if (tipo === 'pago') document.getElementById('edit-metodo').value = m.metodo || 'transferencia';
+    // ítems remito
+    var esRemito = tipo === 'remito';
+    document.getElementById('edit-items-wrap').classList.toggle('hidden', !esRemito);
+    var concLabel = document.querySelector('#edit-concepto-wrap label');
+    if (concLabel) concLabel.textContent = esRemito ? 'Concepto general (opcional)' : 'Concepto / Detalle';
+    if (esRemito) {
+        itemsEdicion = [];
+        if (m.detalle_remito) {
+            try {
+                var its = JSON.parse(m.detalle_remito);
+                if (Array.isArray(its)) itemsEdicion = its.map(function(i){ return { desc: i.desc||'', cant: i.cant||1, precio: i.precio||0 }; });
+            } catch(e) {}
+        }
+        if (!itemsEdicion.length) itemsEdicion.push({ desc:'', cant:1, precio:0 });
+        renderItemsEdicion();
+    }
+    document.getElementById('modal-editar-mov').classList.replace('modal-oculto','modal-visible');
+}
+
+function agregarItemEdicion() {
+    itemsEdicion.push({ desc:'', cant:1, precio:0 });
+    renderItemsEdicion();
+    var idx = itemsEdicion.length - 1;
+    var inp = document.getElementById('ei-desc-'+idx);
+    if (inp) inp.focus();
+}
+
+function renderItemsEdicion() {
+    var tbody = document.getElementById('edit-items-tbody');
+    if (!tbody) return;
+    if (!itemsEdicion.length) {
+        tbody.innerHTML = '<tr><td colspan="5" class="px-3 py-3 text-center text-gray-600 text-xs">Sin ítems.</td></tr>';
+        document.getElementById('edit-total-display').textContent = '$0,00';
+        return;
+    }
+    tbody.innerHTML = itemsEdicion.map(function(it, idx) {
+        var subtotal = (parseFloat(it.cant)||0) * (parseFloat(it.precio)||0);
+        return '<tr class="border-t border-gray-800">'
+            +'<td class="px-2 py-1"><input type="text" id="ei-desc-'+idx+'" value="'+escHtml(it.desc)+'" oninput="updateItemEdicion('+idx+',\'desc\',this.value)" class="w-full bg-transparent text-white text-xs rounded px-1 py-0.5 border border-transparent focus:border-gray-600 outline-none"></td>'
+            +'<td class="px-2 py-1"><input type="number" id="ei-cant-'+idx+'" value="'+(it.cant||'')+'" min="0" step="0.001" oninput="updateItemEdicion('+idx+',\'cant\',this.value)" class="w-16 bg-gray-800 text-white text-xs rounded px-2 py-0.5 text-center border border-gray-700 outline-none focus:border-neon"></td>'
+            +'<td class="px-2 py-1"><input type="number" id="ei-prec-'+idx+'" value="'+(it.precio||'')+'" min="0" step="0.01" oninput="updateItemEdicion('+idx+',\'precio\',this.value)" class="w-28 bg-gray-800 text-white text-xs rounded px-2 py-0.5 text-right border border-gray-700 outline-none focus:border-neon"></td>'
+            +'<td class="px-3 py-1 text-right text-xs font-bold '+(subtotal>0?'text-neon':'text-gray-600')+'" id="ei-sub-'+idx+'">'+(subtotal>0?formatPeso(subtotal):'—')+'</td>'
+            +'<td class="px-1 py-1 text-center"><button type="button" onclick="quitarItemEdicion('+idx+')" class="text-gray-600 hover:text-red-400 text-sm font-bold">✕</button></td>'
+            +'</tr>';
+    }).join('');
+    actualizarTotalEdicion();
+}
+
+function updateItemEdicion(idx, campo, val) {
+    if (!itemsEdicion[idx]) return;
+    itemsEdicion[idx][campo] = val;
+    var cant = parseFloat(itemsEdicion[idx].cant)||0;
+    var precio = parseFloat(itemsEdicion[idx].precio)||0;
+    var sub = cant * precio;
+    var subEl = document.getElementById('ei-sub-'+idx);
+    if (subEl) {
+        subEl.textContent = sub > 0 ? formatPeso(sub) : '—';
+        subEl.className = 'px-3 py-1 text-right text-xs font-bold '+(sub>0?'text-neon':'text-gray-600');
+    }
+    actualizarTotalEdicion();
+}
+
+function quitarItemEdicion(idx) {
+    itemsEdicion.splice(idx, 1);
+    renderItemsEdicion();
+}
+
+function actualizarTotalEdicion() {
+    var total = itemsEdicion.reduce(function(acc, it) {
+        return acc + (parseFloat(it.cant)||0) * (parseFloat(it.precio)||0);
+    }, 0);
+    var el = document.getElementById('edit-total-display');
+    if (el) el.textContent = formatPeso(total);
+}
+
+async function guardarEdicionMovimiento() {
+    var id = parseInt(document.getElementById('edit-id').value);
+    var tipo = document.getElementById('edit-tipo').value;
+    var monto, detalleRemito;
+    if (tipo === 'remito') {
+        var validos = itemsEdicion.filter(function(it){ return String(it.desc||'').trim() !== ''; });
+        if (!validos.length) { alert('Agregá al menos un ítem con descripción.'); return; }
+        monto = validos.reduce(function(acc,it){ return acc+(parseFloat(it.cant)||0)*(parseFloat(it.precio)||0); }, 0);
+        detalleRemito = JSON.stringify(validos.map(function(it){
+            return { desc: String(it.desc||'').trim(), cant: parseFloat(it.cant)||0, precio: parseFloat(it.precio)||0 };
+        }));
+    } else {
+        monto = parseFloat(document.getElementById('edit-monto').value);
+        if (!monto || monto <= 0) { alert('Ingresá un monto válido.'); return; }
+        detalleRemito = null;
+    }
+    var btn = document.getElementById('btn-guardar-edit');
+    btn.disabled = true; btn.textContent = 'Guardando...';
+    try {
+        var data = {
+            id_proveedor: provActual.id,
+            tipo: tipo,
+            fecha: document.getElementById('edit-fecha').value || null,
+            numero: document.getElementById('edit-numero').value.trim() || null,
+            monto: monto,
+            concepto: document.getElementById('edit-concepto').value.trim() || null,
+            metodo: tipo === 'pago' ? document.getElementById('edit-metodo').value : null,
+            detalle_remito: detalleRemito
+        };
+        var r = await fetch(API+'/api/prov2/movimientos/'+id, { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data) });
+        if (r.ok) { cerrarModales(); cargarDetalle(provActual.id); }
+        else { var e = await r.json(); alert('Error: '+e.detail); }
+    } catch(e) { alert('Error de conexión.'); }
+    finally { btn.disabled = false; btn.textContent = 'Guardar cambios'; }
 }
 
 function imprimirCuenta() {
