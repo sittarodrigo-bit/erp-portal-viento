@@ -10013,7 +10013,8 @@ def prov2_cuenta(id: int):
                 saldo += monto
             elif m['tipo'] == 'pago':
                 saldo -= monto
-            # remito no afecta saldo
+            elif m['tipo'] == 'remito' and monto > 0:
+                saldo += monto
             m['saldo'] = saldo
             historial.append(m)
         # Insumos del proveedor
