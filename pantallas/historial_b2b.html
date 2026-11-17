@@ -1059,6 +1059,16 @@
         }
 
         function imprimirComprobanteInterno() {
+            // Abrir modal para preguntar si aplica IVA
+            document.getElementById('modal-iva').classList.replace('modal-oculto','modal-visible');
+        }
+
+        function confirmarComprobanteConIva(aplicar) {
+            document.getElementById('modal-iva').classList.replace('modal-visible','modal-oculto');
+            _generarComprobanteInterno(aplicar);
+        }
+
+        function _generarComprobanteInterno(forzarIva) {
             var jsPDF = window.jspdf.jsPDF;
             var doc = new jsPDF();
             var num = String(pedidoActual.id).padStart(4,'0');
@@ -1149,10 +1159,8 @@
             var descOrdenPct = parseFloat(pedidoActual.descuento_porcentaje || 0);
             var descOrdenMonto = descOrdenPct > 0 ? subtotalNeto * descOrdenPct / 100 : 0;
             var netoFinal = subtotalNeto - descOrdenMonto;
-            // El IVA guardado corresponde al pedido completo; acá se recalcula sobre lo
-            // efectivamente despachado para que el comprobante cierre con lo que salió.
-            var tieneIva = parseFloat(pedidoActual.iva_aplicado || 0) > 0;
-            var iva = tieneIva ? Math.round(netoFinal * 0.21 * 100) / 100 : 0;
+            // forzarIva viene del modal de IVA; si true, aplica 21% sobre el neto final
+            var iva = forzarIva ? Math.round(netoFinal * 0.21 * 100) / 100 : 0;
             var totalFinal = netoFinal + iva;
             var ahorroTotal = descProductoTotal + descOrdenMonto;
 
@@ -1247,26 +1255,7 @@
                 styles: {fontSize:8, cellPadding:1.5, lineWidth:0.1, lineColor:[120,120,120]},
                 columnStyles: hayArmado ? {1:{halign:'center'}, 2:{halign:'center'}, 3:{halign:'center'}} : {1:{halign:'center'}, 2:{halign:'center'}}
             });
-            // Usar el IVA REAL ya aplicado al pedido (recalculado con descuentos), no un checkbox aparte
-            var total = parseFloat(pedidoActual.total || 0);
-            var iva = parseFloat(pedidoActual.iva_aplicado || 0);
-            var totalConIva = total + iva;
-            var conIva = iva > 0;
-
-            var y = doc.lastAutoTable.finalY + 8;
-            if (y > 265) y = 265;
-            // Mostrar total e IVA
-            doc.setFontSize(9); doc.setFont('helvetica', 'bold'); doc.setTextColor(0, 0, 0);
-            if (conIva) {
-                doc.text('Subtotal: $ ' + total.toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2}), 130, y);
-                doc.text('IVA (21%): $ ' + iva.toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2}), 130, y + 6);
-                doc.setFontSize(11); doc.setTextColor(255, 100, 0);
-                doc.text('TOTAL + IVA: $ ' + totalConIva.toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2}), 130, y + 12);
-            } else {
-                doc.setFontSize(11); doc.setTextColor(0, 100, 150);
-                doc.text('TOTAL: $ ' + total.toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2}), 130, y);
-            }
-            y = y + (conIva ? 20 : 10);
+            var y = doc.lastAutoTable.finalY + 12;
             if (y > 270) y = 270;
             doc.setTextColor(0, 0, 0); doc.setLineWidth(0.5);
             doc.line(14, y, 80, y); doc.line(130, y, 196, y);
@@ -1784,6 +1773,26 @@
     </div>
 
     <!-- Modal selector transporte -->
+    <!-- Modal IVA para comprobante interno -->
+    <div id="modal-iva" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-[70]">
+        <div class="bg-gray-900 border border-gray-700 rounded-xl p-6 w-80 shadow-2xl">
+            <h3 class="text-lg font-bold text-white mb-2 border-l-4 border-purple-500 pl-2">Comprobante Interno</h3>
+            <p class="text-gray-400 text-sm mb-5">¿Aplicar IVA (21%) al total?</p>
+            <div class="flex gap-3">
+                <button onclick="confirmarComprobanteConIva(false)"
+                    class="flex-1 bg-gray-700 hover:bg-gray-600 text-white px-4 py-3 rounded-lg font-bold transition">
+                    Sin IVA
+                </button>
+                <button onclick="confirmarComprobanteConIva(true)"
+                    class="flex-1 bg-purple-700 hover:bg-purple-600 text-white px-4 py-3 rounded-lg font-bold transition">
+                    Con IVA 21%
+                </button>
+            </div>
+            <button onclick="document.getElementById('modal-iva').classList.replace('modal-visible','modal-oculto')"
+                class="w-full mt-3 text-gray-500 hover:text-gray-300 text-sm py-1">Cancelar</button>
+        </div>
+    </div>
+
     <div id="modal-transporte" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-[70]">
         <div class="bg-gray-900 border border-gray-700 rounded-xl p-6 w-80 shadow-2xl">
             <h3 class="text-lg font-bold text-white mb-4 border-l-4 border-neon pl-2">Empresa de Transporte</h3>
