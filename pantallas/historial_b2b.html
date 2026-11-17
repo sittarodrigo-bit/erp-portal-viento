@@ -358,14 +358,21 @@
             relNom.appendChild(btnNom); relNom.appendChild(menuNom);
             tdNom.appendChild(relNom); tr.appendChild(tdNom);
 
-            // Importe — neto con descuentos (sin IVA; IVA es opcional al emitir comprobante)
+            // Importe — neto con descuentos; si checkbox IVA tildado suma 21%
             var tdImp = document.createElement('td');
             tdImp.className = 'px-3 py-2 text-white font-bold text-sm';
             var bruto = parseFloat(p.total||0);
             var descPct = parseFloat(p.descuento_porcentaje||0);
             var descMonto = parseFloat(p.descuento_monto||0);
             var netoLista = bruto * (1 - descPct/100) - descMonto;
-            tdImp.textContent = '$ ' + netoLista.toLocaleString('es-AR', {maximumFractionDigits:0});
+            function actualizarImporte() {
+                var chkEl = document.getElementById('chk-iva-' + p.id);
+                var conIva = chkEl ? chkEl.checked : false;
+                var importe = conIva ? netoLista * 1.21 : netoLista;
+                tdImp.textContent = '$ ' + Math.round(importe).toLocaleString('es-AR');
+                tdImp.className = 'px-3 py-2 font-bold text-sm ' + (conIva ? 'text-orange-300' : 'text-white');
+            }
+            actualizarImporte();
             tr.appendChild(tdImp);
 
             // Estado
@@ -389,6 +396,7 @@
             chkIva.className = 'accent-purple-500 w-3.5 h-3.5 cursor-pointer';
             chkIva.title = 'Aplicar IVA 21%';
             chkIva.onclick = function(e) { e.stopPropagation(); };
+            chkIva.addEventListener('change', function() { actualizarImporte(); });
             var lblIva = document.createElement('label');
             lblIva.htmlFor = 'chk-iva-' + p.id;
             lblIva.className = 'text-[10px] text-gray-500 cursor-pointer select-none';
