@@ -79,6 +79,7 @@
                         <th class="p-4 text-left">Tipo</th>
                         <th class="p-4 text-left">N°</th>
                         <th class="p-4 text-left">Concepto</th>
+                        <th class="p-4 text-center">Días</th>
                         <th class="p-4 text-right">Debe</th>
                         <th class="p-4 text-right">Haber</th>
                         <th class="p-4 text-right">Saldo</th>
@@ -86,7 +87,7 @@
                     </tr>
                 </thead>
                 <tbody id="tabla-movimientos" class="divide-y divide-gray-800">
-                    <tr><td colspan="8" class="p-6 text-center text-gray-600">Cargando...</td></tr>
+                    <tr><td colspan="9" class="p-6 text-center text-gray-600">Cargando...</td></tr>
                 </tbody>
             </table>
         </div>
@@ -291,7 +292,7 @@ async function cargarDetalle(id) {
 
         const tbody = document.getElementById('tabla-movimientos');
         if (!historialActual.length) {
-            tbody.innerHTML='<tr><td colspan="8" class="p-6 text-center text-gray-600">Sin movimientos. Registrá una factura, remito o pago.</td></tr>';
+            tbody.innerHTML='<tr><td colspan="9" class="p-6 text-center text-gray-600">Sin movimientos. Registrá una factura, remito o pago.</td></tr>';
             return;
         }
         const TIPO = {
@@ -309,11 +310,19 @@ async function cargarDetalle(id) {
             const saldoFila = parseFloat(m.saldo||0);
             const saldoColor = saldoFila > 0 ? 'text-red-400' : saldoFila < 0 ? 'text-green-400' : 'text-gray-500';
             const acciones = m.id ? `<button onclick="eliminarMovimiento(${m.id})" class="text-gray-600 hover:text-red-400 text-sm px-2">✕</button>` : '';
+            // Días transcurridos — solo para facturas con fecha
+            let diasCell = '<td class="p-4 text-center text-gray-700">—</td>';
+            if (m.tipo === 'factura' && m.fecha) {
+                const dias = Math.floor((Date.now() - new Date(m.fecha).getTime()) / 86400000);
+                const color = dias > 30 ? 'text-red-400 font-bold' : dias > 15 ? 'text-orange-400 font-bold' : 'text-gray-400';
+                diasCell = `<td class="p-4 text-center text-sm ${color}">${dias}d</td>`;
+            }
             return `<tr class="hover:bg-gray-900 border-b border-gray-800">
                 <td class="p-4 text-xs text-gray-400">${m.fecha||'—'}</td>
                 <td class="p-4"><span class="${t.color} text-xs font-bold">${t.icon} ${t.label}</span></td>
                 <td class="p-4 text-xs text-gray-400 font-mono">${m.numero||'—'}</td>
                 <td class="p-4 text-xs text-gray-300">${m.concepto||m.detalle_remito||'—'}</td>
+                ${diasCell}
                 <td class="p-4 text-right">${debe}</td>
                 <td class="p-4 text-right">${haber}</td>
                 <td class="p-4 text-right font-bold font-mono text-sm ${saldoColor}">${formatPeso(saldoFila)}</td>
