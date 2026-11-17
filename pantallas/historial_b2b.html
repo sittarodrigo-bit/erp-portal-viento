@@ -366,12 +366,10 @@
             var netoLista = parseFloat(p.total_sin_descuento||0) > 0
                 ? parseFloat(p.total_sin_descuento)
                 : parseFloat(p.total||0);
-            var ivaGuardado = parseFloat(p.iva_aplicado||0);
             function actualizarImporte() {
                 var chkEl = document.getElementById('chk-iva-' + p.id);
                 var conIva = chkEl ? chkEl.checked : false;
-                var iva = conIva ? (ivaGuardado > 0 ? ivaGuardado : Math.round(netoLista * 0.21)) : 0;
-                var importe = netoLista + iva;
+                var importe = conIva ? Math.round(netoLista * 1.21) : netoLista;
                 tdImp.textContent = '$ ' + Math.round(importe).toLocaleString('es-AR');
                 tdImp.className = 'px-3 py-2 font-bold text-sm ' + (conIva ? 'text-orange-300' : 'text-white');
             }
@@ -406,8 +404,9 @@
                     .then(function(r){ return r.json(); })
                     .then(function(data){
                         if(data.status==='ok'){
-                            ivaGuardado = chkIva.checked ? (data.iva || Math.round(netoLista * 0.21)) : 0;
                             actualizarImporte();
+                        } else {
+                            chkIva.checked = !chkIva.checked;
                         }
                     })
                     .catch(function(){ chkIva.checked = !chkIva.checked; });

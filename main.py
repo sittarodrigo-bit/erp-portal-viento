@@ -3290,11 +3290,12 @@ def aplicar_iva_pedido(id: int, data: dict = Body(default={})):
 
         cur.execute("UPDATE pedidos_b2b SET iva_aplicado = %s WHERE id = %s", (iva, id))
         conn.commit()
-        
+
         return {
             "status": "ok",
             "iva": iva,
-            "total_con_iva": total_actual + iva
+            "neto": neto,
+            "total_con_iva": neto + iva
         }
     except HTTPException:
         raise
