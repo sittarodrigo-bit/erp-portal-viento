@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RRHH | Portal del Viento</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .tab-btn { @apply px-4 py-2 text-sm font-bold border-b-2 border-transparent text-gray-500 hover:text-white transition; }
+        .tab-btn.activo { border-color: #e4fc74; color: #e4fc74; }
+        .text-neon { color: #e4fc74; }
+        .bg-neon { background-color: #e4fc74; }
+        .border-neon { border-color: #e4fc74; }
+        .modal-oculto { display: none; }
+        .modal-visible { display: flex; }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
+    </style>
+</head>
+<body class="bg-gray-950 text-gray-200 font-sans min-h-screen">
+
+<!-- HEADER -->
+<header class="bg-black border-b border-gray-800 px-6 py-3 flex items-center justify-between">
+    <div class="flex items-center gap-4">
+        <a href="/panel" class="text-gray-500 hover:text-white text-sm">← Panel</a>
+        <div class="h-5 w-px bg-gray-800"></div>
+        <h1 class="text-neon font-bold text-lg tracking-widest uppercase">RRHH</h1>
+    </div>
+</header>
+
+<!-- TABS -->
+<div class="bg-black border-b border-gray-800 px-6 flex gap-1">
+    <button class="tab-btn activo" onclick="cambiarTab('empleados')">👥 Empleados</button>
+    <button class="tab-btn" onclick="cambiarTab('fichajes')">🕐 Fichajes</button>
+    <button class="tab-btn" onclick="cambiarTab('liquidacion')">💰 Liquidación</button>
+    <button class="tab-btn" onclick="cambiarTab('feriados')">📅 Feriados</button>
+</div>
+
+<main class="p-6 max-w-7xl mx-auto">
+
+    <!-- ═══════════════════════════════ EMPLEADOS ═══════════════════════════════ -->
+    <div id="tab-empleados">
+        <div class="flex items-center justify-between mb-4">
+            <h2 class="text-white font-bold text-lg">Configuración RRHH por empleado</h2>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="text-gray-500 text-xs border-b border-gray-800">
+                        <th class="py-2 px-3 text-left">Empleado</th>
+                        <th class="py-2 px-3 text-left">Rol</th>
+                        <th class="py-2 px-3 text-center">Modalidad</th>
+                        <th class="py-2 px-3 text-right">Valor hora / Fijo semanal</th>
+                        <th class="py-2 px-3 text-center">Lugar fichaje</th>
+                        <th class="py-2 px-3 text-center">Acción</th>
+                    </tr>
+                </thead>
+                <tbody id="tabla-empleados-rrhh">
+                    <tr><td colspan="6" class="text-center text-gray-600 py-8">Cargando...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════ FICHAJES ═══════════════════════════════ -->
+    <div id="tab-fichajes" class="hidden">
+        <div class="flex items-center gap-4 mb-5 flex-wrap">
+            <div class="flex items-center gap-2">
+                <label class="text-xs text-gray-500 font-bold">DESDE</label>
+                <input type="date" id="fich-desde" class="bg-black border border-gray-700 text-white rounded px-3 py-1.5 text-sm">
+            </div>
+            <div class="flex items-center gap-2">
+                <label class="text-xs text-gray-500 font-bold">HASTA</label>
+                <input type="date" id="fich-hasta" class="bg-black border border-gray-700 text-white rounded px-3 py-1.5 text-sm">
+            </div>
+            <div class="flex items-center gap-2">
+                <label class="text-xs text-gray-500 font-bold">EMPLEADO</label>
+                <select id="fich-empleado" class="bg-black border border-gray-700 text-white rounded px-3 py-1.5 text-sm">
+                    <option value="">Todos</option>
+                </select>
+            </div>
+            <button onclick="cargarFichajes()" class="bg-neon text-black font-bold px-4 py-1.5 rounded text-sm hover:bg-yellow-300">Buscar</button>
+        </div>
+        <div id="tabla-fichajes-container">
+            <p class="text-gray-600 text-sm text-center py-8">Seleccioná un rango y buscá.</p>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════ LIQUIDACIÓN ═══════════════════════════════ -->
+    <div id="tab-liquidacion" class="hidden">
+        <div class="flex items-center gap-4 mb-5 flex-wrap">
+            <div class="flex items-center gap-2">
+                <label class="text-xs text-gray-500 font-bold">DESDE</label>
+                <input type="date" id="liq-desde" class="bg-black border border-gray-700 text-white rounded px-3 py-1.5 text-sm">
+            </div>
+            <div class="flex items-center gap-2">
+                <label class="text-xs text-gray-500 font-bold">HASTA</label>
+                <input type="date" id="liq-hasta" class="bg-black border border-gray-700 text-white rounded px-3 py-1.5 text-sm">
+            </div>
+            <button onclick="calcularLiquidacion()" class="bg-neon text-black font-bold px-4 py-1.5 rounded text-sm hover:bg-yellow-300">Calcular</button>
+            <label class="flex items-center gap-2 text-sm text-gray-400 cursor-pointer ml-2">
+                <input type="checkbox" id="liq-solo-pendientes" checked class="accent-yellow-400">
+                Solo pendientes de pago
+            </label>
+        </div>
+        <div id="liq-resumen" class="hidden mb-4 bg-gray-900 border border-gray-800 rounded-xl px-5 py-3 flex gap-8 text-sm">
+            <span>Total a pagar: <strong id="liq-total-str" class="text-neon"></strong></span>
+            <span>Empleados: <strong id="liq-cant-emp" class="text-white"></strong></span>
+            <span>Ya pagados ocultos: <strong id="liq-ya-pagados" class="text-gray-500"></strong></span>
+        </div>
+        <div id="liq-container">
+            <p class="text-gray-600 text-sm text-center py-8">Seleccioná el período y calculá.</p>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════ FERIADOS ═══════════════════════════════ -->
+    <div id="tab-feriados" class="hidden">
+        <div class="flex items-center gap-4 mb-5">
+            <select id="fer-anio" class="bg-black border border-gray-700 text-white rounded px-3 py-1.5 text-sm" onchange="cargarFeriados()"></select>
+            <button onclick="abrirModalFeriado()" class="bg-neon text-black font-bold px-4 py-1.5 rounded text-sm hover:bg-yellow-300">+ Agregar feriado</button>
+        </div>
+        <div id="tabla-feriados-container">
+            <p class="text-gray-600 text-sm text-center py-8">Cargando...</p>
+        </div>
+    </div>
+
+</main>
+
+<!-- MODAL EDITAR EMPLEADO RRHH -->
+<div id="modal-emp-rrhh" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
+    <div class="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-96 shadow-2xl">
+        <h3 id="modal-emp-rrhh-titulo" class="text-lg font-bold text-white mb-4 border-l-4 border-neon pl-2">Configurar empleado</h3>
+        <input type="hidden" id="emp-rrhh-id">
+        <div class="mb-3">
+            <label class="text-xs text-gray-500 font-bold block mb-1">Modalidad de pago</label>
+            <select id="emp-rrhh-modalidad" onchange="toggleModalidadRrhh()" class="w-full bg-black border border-gray-700 text-white rounded p-2 text-sm">
+                <option value="por_hora">Por hora (según fichaje)</option>
+                <option value="fijo_semanal">Fijo semanal</option>
+            </select>
+        </div>
+        <div id="campo-valor-hora" class="mb-3">
+            <label class="text-xs text-gray-500 font-bold block mb-1">Valor hora ($)</label>
+            <input type="number" id="emp-rrhh-valor-hora" step="0.01" min="0" class="w-full bg-black border border-neon text-white rounded p-2 text-sm">
+        </div>
+        <div id="campo-fijo-semanal" class="mb-3 hidden">
+            <label class="text-xs text-gray-500 font-bold block mb-1">Monto fijo semanal ($)</label>
+            <input type="number" id="emp-rrhh-monto-fijo" step="0.01" min="0" class="w-full bg-black border border-neon text-white rounded p-2 text-sm">
+        </div>
+        <div class="mb-5">
+            <label class="text-xs text-gray-500 font-bold block mb-1">Lugar de fichaje</label>
+            <select id="emp-rrhh-lugar" class="w-full bg-black border border-gray-700 text-white rounded p-2 text-sm">
+                <option value="fabrica">Fábrica</option>
+                <option value="local">Local (POS)</option>
+                <option value="libre">Libre (celular/portal)</option>
+                <option value="ambos">Fábrica y local</option>
+            </select>
+        </div>
+        <div class="flex justify-end gap-3">
+            <button onclick="cerrarModales()" class="text-gray-400 hover:text-white font-bold px-4 py-2">Cancelar</button>
+            <button onclick="guardarEmpRrhh()" class="bg-neon text-black font-bold px-6 py-2 rounded hover:bg-yellow-300">Guardar</button>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL FERIADO -->
+<div id="modal-feriado" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
+    <div class="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-80 shadow-2xl">
+        <h3 class="text-lg font-bold text-white mb-4 border-l-4 border-neon pl-2">Agregar feriado</h3>
+        <div class="mb-3">
+            <label class="text-xs text-gray-500 font-bold block mb-1">Fecha</label>
+            <input type="date" id="fer-fecha" class="w-full bg-black border border-neon text-white rounded p-2 text-sm">
+        </div>
+        <div class="mb-3">
+            <label class="text-xs text-gray-500 font-bold block mb-1">Descripción</label>
+            <input type="text" id="fer-desc" placeholder="Ej: Día de la Independencia" class="w-full bg-black border border-gray-700 text-white rounded p-2 text-sm">
+        </div>
+        <div class="mb-5">
+            <label class="text-xs text-gray-500 font-bold block mb-1">Tipo</label>
+            <select id="fer-tipo" class="w-full bg-black border border-gray-700 text-white rounded p-2 text-sm">
+                <option value="nacional">Nacional</option>
+                <option value="provincial">Provincial</option>
+                <option value="propio">Propio (empresa)</option>
+            </select>
+        </div>
+        <div class="flex justify-end gap-3">
+            <button onclick="cerrarModales()" class="text-gray-400 hover:text-white font-bold px-4 py-2">Cancelar</button>
+            <button onclick="guardarFeriado()" class="bg-neon text-black font-bold px-6 py-2 rounded hover:bg-yellow-300">Guardar</button>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL DETALLE EMPLEADO LIQUIDACIÓN -->
+<div id="modal-liq-detalle" class="modal-oculto fixed inset-0 bg-black/80 items-start justify-center z-50 pt-10 px-4">
+    <div class="bg-gray-950 border border-gray-700 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col">
+        <div class="flex items-center justify-between px-6 py-4 border-b border-gray-800">
+            <h3 id="liq-det-titulo" class="font-bold text-white text-lg"></h3>
+            <button onclick="cerrarModales()" class="text-gray-500 hover:text-white text-xl">✕</button>
+        </div>
+        <div id="liq-det-body" class="flex-1 overflow-y-auto p-5"></div>
+        <div class="px-6 py-4 border-t border-gray-800 flex justify-between items-center">
+            <div id="liq-det-total" class="text-neon font-bold text-xl"></div>
+            <button onclick="marcarPagadoDesdeDetalle()" id="btn-liq-det-pagar" class="bg-neon text-black font-bold px-6 py-2 rounded hover:bg-yellow-300">Marcar como pagado</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    const API_URL = '';
+    var tabActual = 'empleados';
+    var empleadosRrhh = [];
+    var liqData = [];
+    var liqEmpActual = null;
+
+    // ── UTILS ──
+    function isoHoy() {
+        const d = new Date();
+        return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+    }
+    function lunesDe(d) {
+        const c = new Date(d); const dia = c.getDay();
+        c.setDate(c.getDate() - (dia === 0 ? 6 : dia - 1)); return c;
+    }
+    function isoDate(d) {
+        return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+    }
+    function domingoDe(lunes) {
+        const d = new Date(lunes); d.setDate(d.getDate()+6); return d;
+    }
+    function formatPeso(n) { return '$' + parseFloat(n||0).toLocaleString('es-AR', {minimumFractionDigits:2, maximumFractionDigits:2}); }
+    function cerrarModales() {
+        document.querySelectorAll('.modal-visible').forEach(m => m.classList.replace('modal-visible','modal-oculto'));
+    }
+
+    // ── TABS ──
+    function cambiarTab(tab) {
+        tabActual = tab;
+        document.querySelectorAll('.tab-btn').forEach((b,i) => {
+            const tabs = ['empleados','fichajes','liquidacion','feriados'];
+            b.classList.toggle('activo', tabs[i] === tab);
+        });
+        ['empleados','fichajes','liquidacion','feriados'].forEach(t => {
+            document.getElementById('tab-'+t).classList.toggle('hidden', t !== tab);
+        });
+        if (tab === 'feriados' && !document.getElementById('tabla-feriados-container').dataset.cargado) cargarFeriados();
+    }
+
+    // ══════════════════════════════════════════════════
+    // TAB EMPLEADOS
+    // ══════════════════════════════════════════════════
+    async function cargarEmpleadosRrhh() {
+        const tbody = document.getElementById('tabla-empleados-rrhh');
+        try {
+            empleadosRrhh = await fetch(API_URL + '/api/rrhh/empleados').then(r => r.json());
+            if (!empleadosRrhh.length) { tbody.innerHTML = '<tr><td colspan="6" class="text-center text-gray-600 py-8">Sin empleados activos.</td></tr>'; return; }
+            const modalidades = { por_hora: '⏱ Por hora', fijo_semanal: '📋 Fijo semanal' };
+            const lugares = { fabrica: '🏭 Fábrica', local: '🛒 Local', libre: '📱 Libre', ambos: '🏭🛒 Ambos' };
+            tbody.innerHTML = empleadosRrhh.map(e => `
+                <tr class="border-t border-gray-800 hover:bg-gray-900 transition">
+                    <td class="py-2 px-3 font-bold text-white">${e.apellido}, ${e.nombre}</td>
+                    <td class="py-2 px-3 text-gray-400 text-xs">${e.rol}</td>
+                    <td class="py-2 px-3 text-center">
+                        <span class="text-xs px-2 py-1 rounded-full ${e.modalidad_pago==='por_hora' ? 'bg-blue-900/40 text-blue-300' : 'bg-purple-900/40 text-purple-300'}">
+                            ${modalidades[e.modalidad_pago] || e.modalidad_pago}
+                        </span>
+                    </td>
+                    <td class="py-2 px-3 text-right font-mono text-sm">
+                        ${e.modalidad_pago === 'por_hora'
+                            ? formatPeso(e.valor_hora) + '/h'
+                            : formatPeso(e.monto_fijo_semanal) + '/sem'}
+                    </td>
+                    <td class="py-2 px-3 text-center text-xs text-gray-400">${lugares[e.lugar_fichaje] || e.lugar_fichaje}</td>
+                    <td class="py-2 px-3 text-center">
+                        <button onclick="abrirModalEmpRrhh(${e.id})" class="text-xs bg-gray-800 hover:bg-gray-700 text-gray-300 px-3 py-1 rounded border border-gray-700">Editar</button>
+                    </td>
+                </tr>
+            `).join('');
+        } catch(e) { tbody.innerHTML = '<tr><td colspan="6" class="text-center text-red-400 py-4">Error al cargar empleados.</td></tr>'; }
+    }
+
+    function abrirModalEmpRrhh(id) {
+        const e = empleadosRrhh.find(x => x.id === id); if (!e) return;
+        document.getElementById('emp-rrhh-id').value = e.id;
+        document.getElementById('modal-emp-rrhh-titulo').textContent = e.apellido + ', ' + e.nombre;
+        document.getElementById('emp-rrhh-modalidad').value = e.modalidad_pago || 'por_hora';
+        document.getElementById('emp-rrhh-valor-hora').value = e.valor_hora || 0;
+        document.getElementById('emp-rrhh-monto-fijo').value = e.monto_fijo_semanal || 0;
+        document.getElementById('emp-rrhh-lugar').value = e.lugar_fichaje || 'libre';
+        toggleModalidadRrhh();
+        document.getElementById('modal-emp-rrhh').classList.replace('modal-oculto','modal-visible');
+    }
+
+    function toggleModalidadRrhh() {
+        const mod = document.getElementById('emp-rrhh-modalidad').value;
+        document.getElementById('campo-valor-hora').classList.toggle('hidden', mod !== 'por_hora');
+        document.getElementById('campo-fijo-semanal').classList.toggle('hidden', mod !== 'fijo_semanal');
+    }
+
+    async function guardarEmpRrhh() {
+        const id = document.getElementById('emp-rrhh-id').value;
+        const body = {
+            modalidad_pago: document.getElementById('emp-rrhh-modalidad').value,
+            valor_hora: parseFloat(document.getElementById('emp-rrhh-valor-hora').value) || 0,
+            monto_fijo_semanal: parseFloat(document.getElementById('emp-rrhh-monto-fijo').value) || 0,
+            lugar_fichaje: document.getElementById('emp-rrhh-lugar').value,
+        };
+        try {
+            const r = await fetch(API_URL + '/api/rrhh/empleados/' + id, { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
+            if (!r.ok) { alert('Error al guardar.'); return; }
+            cerrarModales(); cargarEmpleadosRrhh();
+        } catch(e) { alert('Error de red.'); }
+    }
+
+    // ══════════════════════════════════════════════════
+    // TAB FICHAJES
+    // ══════════════════════════════════════════════════
+    async function cargarFichajes() {
+        const desde = document.getElementById('fich-desde').value;
+        const hasta = document.getElementById('fich-hasta').value;
+        const emp = document.getElementById('fich-empleado').value;
+        if (!desde || !hasta) { alert('Seleccioná rango de fechas.'); return; }
+        const container = document.getElementById('tabla-fichajes-container');
+        container.innerHTML = '<p class="text-gray-500 text-sm text-center py-6">Cargando...</p>';
+        try {
+            let url = API_URL + '/api/fichajes_semana?desde=' + desde + '&hasta=' + hasta;
+            if (emp) url += '&id_empleado=' + emp;
+            const data = await fetch(url).then(r => r.json());
+            if (!data.length) { container.innerHTML = '<p class="text-gray-600 text-sm text-center py-6">Sin fichajes en ese período.</p>'; return; }
+
+            // Agrupar por empleado → día
+            const empMap = {};
+            data.forEach(f => {
+                const key = f.id_empleado || (f.nombre + ' ' + f.apellido);
+                if (!empMap[key]) empMap[key] = { nombre: f.nombre, apellido: f.apellido, rol: f.rol, dias: {} };
+                const dia = f.fecha_hora.substring(0,10);
+                if (!empMap[key].dias[dia]) empMap[key].dias[dia] = [];
+                empMap[key].dias[dia].push(f);
+            });
+
+            let html = '';
+            Object.values(empMap).forEach(emp => {
+                html += `<div class="bg-gray-900 border border-gray-800 rounded-xl p-4 mb-3">
+                    <div class="font-bold text-white mb-2">${emp.apellido}, ${emp.nombre} <span class="text-gray-500 text-xs font-normal">${emp.rol}</span></div>
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-2">`;
+                Object.entries(emp.dias).sort().forEach(([dia, fichs]) => {
+                    const entradas = fichs.filter(f => f.tipo?.toLowerCase() === 'entrada');
+                    const salidas = fichs.filter(f => f.tipo?.toLowerCase() === 'salida');
+                    const ent = entradas[0]?.fecha_hora?.substring(11,16) || '—';
+                    const sal = salidas[salidas.length-1]?.fecha_hora?.substring(11,16) || '—';
+                    const diasNombre = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+                    const dObj = new Date(dia + 'T12:00:00');
+                    const nomDia = diasNombre[dObj.getDay()];
+                    html += `<div class="bg-gray-950 rounded-lg px-3 py-2 text-xs">
+                        <div class="text-gray-400 font-bold">${nomDia} ${dia.substring(5)}</div>
+                        <div class="text-green-400">▶ ${ent}</div>
+                        <div class="text-red-400">■ ${sal}</div>
+                    </div>`;
+                });
+                html += '</div></div>';
+            });
+            container.innerHTML = html;
+        } catch(e) { container.innerHTML = '<p class="text-red-400 text-sm text-center py-4">Error al cargar fichajes.</p>'; }
+    }
+
+    // ══════════════════════════════════════════════════
+    // TAB LIQUIDACIÓN
+    // ══════════════════════════════════════════════════
+    async function calcularLiquidacion() {
+        const desde = document.getElementById('liq-desde').value;
+        const hasta = document.getElementById('liq-hasta').value;
+        if (!desde || !hasta) { alert('Seleccioná rango de fechas.'); return; }
+        const container = document.getElementById('liq-container');
+        container.innerHTML = '<p class="text-gray-500 text-sm text-center py-6">Calculando...</p>';
+        try {
+            liqData = await fetch(API_URL + '/api/rrhh/liquidacion?fecha_desde=' + desde + '&fecha_hasta=' + hasta).then(r => r.json());
+            renderLiquidacion();
+        } catch(e) { container.innerHTML = '<p class="text-red-400 text-sm text-center py-4">Error al calcular.</p>'; }
+    }
+
+    function renderLiquidacion() {
+        const container = document.getElementById('liq-container');
+        const soloPend = document.getElementById('liq-solo-pendientes').checked;
+        const visibles = soloPend ? liqData.filter(e => !e.ya_pagado) : liqData;
+        const ocultos = liqData.length - visibles.length;
+        const totalPagar = visibles.reduce((s, e) => s + (e.ya_pagado ? 0 : (e.total||0)), 0);
+
+        document.getElementById('liq-resumen').classList.remove('hidden');
+        document.getElementById('liq-total-str').textContent = formatPeso(totalPagar);
+        document.getElementById('liq-cant-emp').textContent = visibles.filter(e=>!e.ya_pagado).length;
+        document.getElementById('liq-ya-pagados').textContent = ocultos;
+
+        if (!visibles.length) { container.innerHTML = '<p class="text-gray-600 text-sm text-center py-6">No hay empleados pendientes de pago.</p>'; return; }
+
+        let html = '<div class="grid gap-3">';
+        visibles.forEach(emp => {
+            const totalAnt = (emp.anticipos||[]).reduce((s,a) => s+a.saldo, 0);
+            const neto = Math.max(0, (emp.total||0) - totalAnt);
+            html += `
+            <div class="bg-gray-900 border ${emp.ya_pagado ? 'border-green-900' : 'border-gray-800'} rounded-xl p-4">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <span class="font-bold text-white">${emp.apellido}, ${emp.nombre}</span>
+                        <span class="ml-2 text-xs px-2 py-0.5 rounded-full ${emp.modalidad === 'por_hora' ? 'bg-blue-900/40 text-blue-300' : 'bg-purple-900/40 text-purple-300'}">
+                            ${emp.modalidad === 'por_hora' ? '⏱ Por hora' : '📋 Fijo semanal'}
+                        </span>
+                        ${emp.ya_pagado ? '<span class="ml-2 text-xs text-green-400">✓ Pagado</span>' : ''}
+                    </div>
+                    <div class="text-right">
+                        <div class="text-neon font-bold text-lg">${formatPeso(emp.total)}</div>
+                        ${totalAnt > 0 ? `<div class="text-xs text-orange-400">Anticipos: -${formatPeso(totalAnt)}</div><div class="text-xs text-white font-bold">Neto: ${formatPeso(neto)}</div>` : ''}
+                    </div>
+                </div>
+                <div class="mt-2 text-xs text-gray-500">
+                    ${emp.modalidad === 'por_hora'
+                        ? `${emp.horas_normales}h normales + ${emp.horas_recargo}h con recargo x2 · ${formatPeso(emp.valor_hora)}/h`
+                        : `${emp.dias_trabajados}/${emp.dias_habiles} días · ${emp.ausencias} ausencia${emp.ausencias!==1?'s':''} = -${formatPeso(emp.descuento_ausencias)}`
+                    }
+                </div>
+                ${!emp.ya_pagado ? `
+                <div class="mt-3 flex gap-2 justify-end">
+                    <button onclick="verDetalleLiq(${emp.id_empleado})" class="text-xs border border-gray-700 text-gray-400 hover:text-white px-3 py-1 rounded">Ver detalle</button>
+                    <button onclick="marcarPagado(${emp.id_empleado}, ${neto})" class="text-xs bg-neon text-black font-bold px-4 py-1 rounded hover:bg-yellow-300">💰 Marcar pagado</button>
+                </div>` : ''}
+            </div>`;
+        });
+        html += '</div>';
+        container.innerHTML = html;
+    }
+
+    function verDetalleLiq(idEmp) {
+        liqEmpActual = liqData.find(e => e.id_empleado === idEmp); if (!liqEmpActual) return;
+        document.getElementById('liq-det-titulo').textContent = liqEmpActual.apellido + ', ' + liqEmpActual.nombre;
+        const totalAnt = (liqEmpActual.anticipos||[]).reduce((s,a) => s+a.saldo, 0);
+        const neto = Math.max(0, (liqEmpActual.total||0) - totalAnt);
+        document.getElementById('liq-det-total').textContent = 'Neto a pagar: ' + formatPeso(neto);
+
+        let html = '';
+        if (liqEmpActual.modalidad === 'por_hora') {
+            html += `<div class="mb-3 text-sm text-gray-400">Valor hora: <strong class="text-white">${formatPeso(liqEmpActual.valor_hora)}</strong></div>`;
+            html += '<table class="w-full text-xs mb-4"><thead><tr class="text-gray-500 border-b border-gray-800"><th class="py-1 text-left">Día</th><th class="text-center">Entrada</th><th class="text-center">Salida</th><th class="text-center">Horas</th><th class="text-center">Tipo</th><th class="text-right">Monto</th></tr></thead><tbody>';
+            liqEmpActual.dias.forEach(d => {
+                const factor = d.recargo ? 2 : 1;
+                const monto = d.horas * liqEmpActual.valor_hora * factor;
+                const tipoBadge = d.tipo_dia === 'feriado' ? '<span class="text-red-400">Feriado x2</span>'
+                    : d.tipo_dia === 'domingo' ? '<span class="text-orange-400">Dom x2</span>'
+                    : '<span class="text-gray-500">Normal</span>';
+                html += `<tr class="border-t border-gray-900"><td class="py-1">${d.dia}</td><td class="text-center">${d.entrada||'—'}</td><td class="text-center">${d.salida||'—'}</td><td class="text-center">${d.horas}h</td><td class="text-center">${tipoBadge}</td><td class="text-right font-mono">${formatPeso(monto)}</td></tr>`;
+            });
+            html += `</tbody></table>`;
+            html += `<div class="text-sm text-gray-400 mb-1">Horas normales: <strong class="text-white">${liqEmpActual.horas_normales}h</strong> → ${formatPeso(liqEmpActual.monto_normal)}</div>`;
+            html += `<div class="text-sm text-gray-400 mb-3">Horas recargo x2: <strong class="text-white">${liqEmpActual.horas_recargo}h</strong> → ${formatPeso(liqEmpActual.monto_recargo)}</div>`;
+        } else {
+            html += `<div class="mb-3 text-sm text-gray-400">Fijo semanal: <strong class="text-white">${formatPeso(liqEmpActual.monto_fijo_semanal)}</strong> · Valor día: <strong class="text-white">${formatPeso(liqEmpActual.valor_dia)}</strong></div>`;
+            html += '<table class="w-full text-xs mb-4"><thead><tr class="text-gray-500 border-b border-gray-800"><th class="py-1 text-left">Día</th><th class="text-center">Entrada</th><th class="text-center">Salida</th><th class="text-center">Estado</th></tr></thead><tbody>';
+            liqEmpActual.dias.forEach(d => {
+                const estadoBadge = d.presente
+                    ? '<span class="text-green-400">✓ Presente</span>'
+                    : '<span class="text-red-400">✗ Ausente</span>';
+                html += `<tr class="border-t border-gray-900"><td class="py-1">${d.dia}</td><td class="text-center">${d.entrada||'—'}</td><td class="text-center">${d.salida||'—'}</td><td class="text-center">${estadoBadge}</td></tr>`;
+            });
+            html += `</tbody></table>`;
+            html += `<div class="text-sm text-gray-400 mb-1">Días hábiles: ${liqEmpActual.dias_habiles} · Trabajados: ${liqEmpActual.dias_trabajados} · Ausencias: <strong class="text-red-400">${liqEmpActual.ausencias}</strong></div>`;
+            html += `<div class="text-sm text-gray-400 mb-3">Descuento por ausencias: <strong class="text-red-400">-${formatPeso(liqEmpActual.descuento_ausencias)}</strong></div>`;
+        }
+
+        if (liqEmpActual.anticipos?.length) {
+            html += '<div class="text-sm font-bold text-orange-400 mb-2">Anticipos a descontar:</div>';
+            liqEmpActual.anticipos.forEach(a => {
+                html += `<div class="text-xs text-gray-400 mb-1 flex justify-between"><span>${a.fecha} — ${a.obs||'Anticipo'}</span><span class="text-orange-400">-${formatPeso(a.saldo)}</span></div>`;
+            });
+        }
+
+        document.getElementById('liq-det-body').innerHTML = html;
+        document.getElementById('btn-liq-det-pagar').dataset.idEmp = idEmp;
+        document.getElementById('btn-liq-det-pagar').dataset.neto = neto;
+        document.getElementById('modal-liq-detalle').classList.replace('modal-oculto','modal-visible');
+    }
+
+    async function marcarPagado(idEmp, neto) {
+        const emp = liqData.find(e => e.id_empleado === idEmp); if (!emp) return;
+        const desde = document.getElementById('liq-desde').value;
+        const hasta = document.getElementById('liq-hasta').value;
+        if (!confirm('¿Marcar como pagado ' + emp.apellido + ', ' + emp.nombre + ' por ' + formatPeso(neto) + '?')) return;
+        try {
+            const detalle = emp.dias.map(d => ({
+                dia: d.dia,
+                horas: d.horas || 0,
+                monto: d.horas ? (d.horas * emp.valor_hora * (d.recargo ? 2 : 1)) : emp.valor_dia
+            }));
+            const anticiposIds = (emp.anticipos||[]).map(a => a.id);
+            const r = await fetch(API_URL + '/api/liquidacion/marcar_pagado', {
+                method:'POST', headers:{'Content-Type':'application/json'},
+                body: JSON.stringify({
+                    id_empleado: idEmp,
+                    fecha_desde: desde, fecha_hasta: hasta,
+                    neto_pagado: neto,
+                    pago_horas: emp.horas_totales || 0,
+                    total_horas: emp.horas_totales || 0,
+                    anticipos_a_descontar: anticiposIds,
+                    detalle: detalle
+                })
+            });
+            if (r.ok) { calcularLiquidacion(); } else { alert('Error al registrar pago.'); }
+        } catch(e) { alert('Error de red.'); }
+    }
+
+    function marcarPagadoDesdeDetalle() {
+        const btn = document.getElementById('btn-liq-det-pagar');
+        const idEmp = parseInt(btn.dataset.idEmp);
+        const neto = parseFloat(btn.dataset.neto);
+        cerrarModales();
+        marcarPagado(idEmp, neto);
+    }
+
+    // ══════════════════════════════════════════════════
+    // TAB FERIADOS
+    // ══════════════════════════════════════════════════
+    async function cargarFeriados() {
+        const anio = document.getElementById('fer-anio').value;
+        const container = document.getElementById('tabla-feriados-container');
+        container.dataset.cargado = '1';
+        container.innerHTML = '<p class="text-gray-500 text-sm text-center py-4">Cargando...</p>';
+        try {
+            const data = await fetch(API_URL + '/api/rrhh/feriados?anio=' + anio).then(r => r.json());
+            if (!data.length) {
+                container.innerHTML = '<p class="text-gray-600 text-sm text-center py-6">Sin feriados cargados para ' + anio + '.</p>';
+                return;
+            }
+            const tipos = { nacional: '🇦🇷 Nacional', provincial: '🏔 Provincial', propio: '🏢 Empresa' };
+            container.innerHTML = `<div class="grid gap-2 md:grid-cols-2 lg:grid-cols-3">` +
+                data.map(f => `
+                    <div class="bg-gray-900 border border-gray-800 rounded-lg px-4 py-3 flex items-center justify-between">
+                        <div>
+                            <div class="text-white font-bold text-sm">${f.fecha}</div>
+                            <div class="text-gray-400 text-xs">${f.descripcion || '—'} · ${tipos[f.tipo]||f.tipo}</div>
+                        </div>
+                        <button onclick="eliminarFeriado(${f.id})" class="text-gray-600 hover:text-red-400 text-lg ml-3">🗑</button>
+                    </div>`).join('') + '</div>';
+        } catch(e) { container.innerHTML = '<p class="text-red-400 text-sm text-center py-4">Error al cargar feriados.</p>'; }
+    }
+
+    function abrirModalFeriado() {
+        document.getElementById('fer-fecha').value = isoHoy();
+        document.getElementById('fer-desc').value = '';
+        document.getElementById('fer-tipo').value = 'nacional';
+        document.getElementById('modal-feriado').classList.replace('modal-oculto','modal-visible');
+    }
+
+    async function guardarFeriado() {
+        const fecha = document.getElementById('fer-fecha').value;
+        const desc = document.getElementById('fer-desc').value.trim();
+        if (!fecha) { alert('Seleccioná una fecha.'); return; }
+        try {
+            const r = await fetch(API_URL + '/api/rrhh/feriados', {
+                method:'POST', headers:{'Content-Type':'application/json'},
+                body: JSON.stringify({ fecha, descripcion: desc, tipo: document.getElementById('fer-tipo').value })
+            });
+            if (r.ok) { cerrarModales(); cargarFeriados(); } else { alert('Error al guardar.'); }
+        } catch(e) { alert('Error de red.'); }
+    }
+
+    async function eliminarFeriado(id) {
+        if (!confirm('¿Eliminar este feriado?')) return;
+        await fetch(API_URL + '/api/rrhh/feriados/' + id, { method:'DELETE' });
+        cargarFeriados();
+    }
+
+    // ── INIT ──
+    async function init() {
+        // Verificar sesión admin
+        const usuario = JSON.parse(sessionStorage.getItem('usuario') || localStorage.getItem('usuario') || 'null');
+        if (!usuario || !['admin','administrativo'].includes(usuario.rol)) {
+            window.location.href = '/'; return;
+        }
+
+        // Fechas default: semana actual
+        const hoy = new Date();
+        const lunes = lunesDe(hoy);
+        const domingo = domingoDe(lunes);
+        const desdeStr = isoDate(lunes);
+        const hastaStr = isoDate(domingo);
+        document.getElementById('fich-desde').value = desdeStr;
+        document.getElementById('fich-hasta').value = hastaStr;
+        document.getElementById('liq-desde').value = desdeStr;
+        document.getElementById('liq-hasta').value = hastaStr;
+
+        // Selector año feriados
+        const sel = document.getElementById('fer-anio');
+        const anioHoy = hoy.getFullYear();
+        for (let a = anioHoy+1; a >= anioHoy-1; a--) {
+            sel.innerHTML += `<option value="${a}" ${a===anioHoy?'selected':''}>${a}</option>`;
+        }
+
+        await cargarEmpleadosRrhh();
+
+        // Poblar select empleados en fichajes
+        const selEmp = document.getElementById('fich-empleado');
+        empleadosRrhh.forEach(e => {
+            selEmp.innerHTML += `<option value="${e.id}">${e.apellido}, ${e.nombre}</option>`;
+        });
+    }
+
+    window.onload = init;
+</script>
+</body>
+</html>

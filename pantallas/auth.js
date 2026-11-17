@@ -13,7 +13,7 @@
 
   // Qué paneles puede ver cada rol. 'admin' ve todo (caso especial abajo).
   var PERMISOS = {
-    administrativo:      ['admin','reportes','distribuidores','historial_b2b','gastos','fichajes','b2b','mayoristas','catalogo_stock','locales','proveedores'],
+    administrativo:      ['admin','reportes','distribuidores','historial_b2b','gastos','fichajes','b2b','mayoristas','catalogo_stock','locales','proveedores','rrhh'],
     vendedor:            [],   // el vendedor usa el POS, que tiene su login propio
     produccion:          ['produccion','produccion_panel','insumos','proveedores','carga_stock'],
     deposito:            ['armado','carga_stock','produccion_panel'],

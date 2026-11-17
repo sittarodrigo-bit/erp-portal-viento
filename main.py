@@ -303,6 +303,9 @@ class ActualizarEmpleado(BaseModel):
     telefono: Optional[str] = None
     email: Optional[str] = None
     valor_hora: float = 0.0
+    modalidad_pago: Optional[str] = None   # 'por_hora' | 'fijo_semanal'
+    monto_fijo_semanal: Optional[float] = None
+    lugar_fichaje: Optional[str] = None    # 'fabrica' | 'local' | 'libre' | 'ambos'
 
 class FichajeData(BaseModel):
     id_empleado: int
@@ -4664,6 +4667,299 @@ def historial_anual_empleado(id_empleado: int, anio: Optional[int] = None):
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         liberar_conexion(conn)
+
+# ==============================================================================
+# RRHH — Feriados, liquidación unificada, configuración empleados
+# ==============================================================================
+
+def _migrar_rrhh(cur, conn):
+    """Migraciones seguras para RRHH."""
+    migraciones = [
+        "ALTER TABLE empleados ADD COLUMN IF NOT EXISTS modalidad_pago VARCHAR(20) DEFAULT 'por_hora'",
+        "ALTER TABLE empleados ADD COLUMN IF NOT EXISTS monto_fijo_semanal NUMERIC(10,2) DEFAULT 0",
+        "ALTER TABLE empleados ADD COLUMN IF NOT EXISTS lugar_fichaje VARCHAR(20) DEFAULT 'libre'",
+        """CREATE TABLE IF NOT EXISTS feriados (
+            id SERIAL PRIMARY KEY,
+            fecha DATE NOT NULL UNIQUE,
+            descripcion VARCHAR(200),
+            tipo VARCHAR(20) DEFAULT 'nacional'
+        )""",
+    ]
+    for sql in migraciones:
+        try:
+            cur.execute(sql); conn.commit()
+        except Exception:
+            conn.rollback()
+
+@app.get("/api/rrhh/feriados")
+def listar_feriados(anio: Optional[int] = None):
+    import datetime
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        _migrar_rrhh(cur, conn)
+        if not anio:
+            anio = datetime.date.today().year
+        cur.execute("SELECT id, fecha::text, descripcion, tipo FROM feriados WHERE EXTRACT(YEAR FROM fecha)=%s ORDER BY fecha", (anio,))
+        return fetchall_dict(cur)
+    finally:
+        liberar_conexion(conn)
+
+@app.post("/api/rrhh/feriados")
+def crear_feriado(data: dict = Body(...)):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        _migrar_rrhh(cur, conn)
+        cur.execute("INSERT INTO feriados (fecha, descripcion, tipo) VALUES (%s,%s,%s) ON CONFLICT (fecha) DO UPDATE SET descripcion=%s, tipo=%s RETURNING id, fecha::text, descripcion, tipo",
+                    (data['fecha'], data.get('descripcion',''), data.get('tipo','nacional'),
+                     data.get('descripcion',''), data.get('tipo','nacional')))
+        row = cur.fetchone()
+        conn.commit()
+        return dict(row)
+    except HTTPException: raise
+    except Exception as e:
+        conn.rollback(); raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
+@app.delete("/api/rrhh/feriados/{id}")
+def eliminar_feriado(id: int):
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM feriados WHERE id=%s", (id,))
+        conn.commit()
+        return {"status": "ok"}
+    finally:
+        liberar_conexion(conn)
+
+@app.get("/api/rrhh/empleados")
+def rrhh_empleados():
+    """Lista empleados activos con campos RRHH."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        _migrar_rrhh(cur, conn)
+        cur.execute("""
+            SELECT id, nombre, apellido, dni, rol, email, telefono,
+                   COALESCE(valor_hora,0) AS valor_hora,
+                   COALESCE(modalidad_pago,'por_hora') AS modalidad_pago,
+                   COALESCE(monto_fijo_semanal,0) AS monto_fijo_semanal,
+                   COALESCE(lugar_fichaje,'libre') AS lugar_fichaje,
+                   COALESCE(activo,true) AS activo
+            FROM empleados WHERE COALESCE(activo,true)=true ORDER BY apellido, nombre
+        """)
+        return fetchall_dict(cur)
+    finally:
+        liberar_conexion(conn)
+
+@app.put("/api/rrhh/empleados/{id_emp}")
+def rrhh_actualizar_empleado(id_emp: int, data: dict = Body(...)):
+    """Actualiza campos RRHH de un empleado."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor()
+        _migrar_rrhh(cur, conn)
+        cur.execute("""
+            UPDATE empleados SET
+                modalidad_pago = %s,
+                valor_hora = %s,
+                monto_fijo_semanal = %s,
+                lugar_fichaje = %s
+            WHERE id = %s
+        """, (
+            data.get('modalidad_pago', 'por_hora'),
+            float(data.get('valor_hora') or 0),
+            float(data.get('monto_fijo_semanal') or 0),
+            data.get('lugar_fichaje', 'libre'),
+            id_emp
+        ))
+        conn.commit()
+        return {"status": "ok"}
+    except Exception as e:
+        conn.rollback(); raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
+@app.get("/api/rrhh/liquidacion")
+def rrhh_liquidacion(fecha_desde: str, fecha_hasta: str):
+    """Liquidación semanal unificada. Maneja por_hora y fijo_semanal.
+    - por_hora: horas fichadas x valor_hora, domingos y feriados x2.
+    - fijo_semanal: monto_fijo_semanal dividido por días esperados en la semana
+      (según planilla o 6 días hábiles), descontando ausencias.
+    Devuelve por empleado: modalidad, días trabajados, horas, monto base, recargos, total."""
+    import datetime
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        _migrar_rrhh(cur, conn)
+
+        # Feriados del período
+        cur.execute("SELECT fecha::text FROM feriados WHERE fecha >= %s AND fecha <= %s", (fecha_desde, fecha_hasta))
+        feriados_set = {r['fecha'] for r in fetchall_dict(cur)}
+
+        # Empleados activos con datos RRHH
+        cur.execute("""
+            SELECT id, nombre, apellido,
+                   COALESCE(valor_hora,0) AS valor_hora,
+                   COALESCE(modalidad_pago,'por_hora') AS modalidad_pago,
+                   COALESCE(monto_fijo_semanal,0) AS monto_fijo_semanal
+            FROM empleados WHERE COALESCE(activo,true)=true ORDER BY apellido, nombre
+        """)
+        empleados = fetchall_dict(cur)
+
+        # Fichajes del período (pares entrada→salida por día)
+        cur.execute("""
+            WITH pares AS (
+                SELECT r.id_empleado, DATE(r.fecha_hora) AS dia,
+                       r.fecha_hora AS ts,
+                       LEAD(r.fecha_hora) OVER (PARTITION BY r.id_empleado ORDER BY r.fecha_hora) AS ts_sal,
+                       r.tipo
+                FROM registros_horarios r
+                WHERE DATE(r.fecha_hora) >= %s AND DATE(r.fecha_hora) <= %s
+            )
+            SELECT id_empleado, dia::text,
+                   MIN(ts)::text AS primera_entrada,
+                   MAX(ts_sal)::text AS ultima_salida,
+                   ROUND(CAST(SUM(EXTRACT(EPOCH FROM (ts_sal - ts))/3600.0) AS numeric),2) AS horas
+            FROM pares WHERE LOWER(tipo)='entrada' AND ts_sal IS NOT NULL
+            GROUP BY id_empleado, dia ORDER BY id_empleado, dia
+        """, (fecha_desde, fecha_hasta))
+        fichajes_raw = fetchall_dict(cur)
+
+        # Indexar fichajes por empleado
+        from collections import defaultdict
+        fich_por_emp = defaultdict(list)
+        for f in fichajes_raw:
+            fich_por_emp[f['id_empleado']].append(f)
+
+        # Días del período
+        d0 = datetime.date.fromisoformat(fecha_desde)
+        d1 = datetime.date.fromisoformat(fecha_hasta)
+        dias_periodo = [(d0 + datetime.timedelta(days=i)) for i in range((d1-d0).days+1)]
+        dias_habiles = [d for d in dias_periodo if d.weekday() != 6 and d.isoformat() not in feriados_set]
+
+        resultado = []
+        for emp in empleados:
+            eid = emp['id']
+            modalidad = emp['modalidad_pago']
+            fichajes_emp = fich_por_emp.get(eid, [])
+            dias_trabajados = {f['dia'] for f in fichajes_emp}
+
+            if modalidad == 'por_hora':
+                # Suma horas con recargo x2 en domingo/feriado
+                horas_normales = 0.0
+                horas_recargo = 0.0
+                dias_detalle = []
+                for f in fichajes_emp:
+                    horas = float(f['horas'] or 0)
+                    fecha_obj = datetime.date.fromisoformat(f['dia'])
+                    es_domingo = fecha_obj.weekday() == 6
+                    es_feriado = f['dia'] in feriados_set
+                    recargo = es_domingo or es_feriado
+                    if recargo:
+                        horas_recargo += horas
+                    else:
+                        horas_normales += horas
+                    dias_detalle.append({
+                        "dia": f['dia'],
+                        "entrada": (f['primera_entrada'] or '')[:5].split('T')[-1] if f['primera_entrada'] else '',
+                        "salida": (f['ultima_salida'] or '')[:5].split('T')[-1] if f['ultima_salida'] else '',
+                        "horas": horas,
+                        "recargo": recargo,
+                        "tipo_dia": "feriado" if es_feriado else ("domingo" if es_domingo else "normal")
+                    })
+                vh = float(emp['valor_hora'] or 0)
+                monto_normal = round(horas_normales * vh, 2)
+                monto_recargo = round(horas_recargo * vh * 2, 2)
+                total = round(monto_normal + monto_recargo, 2)
+                resultado.append({
+                    "id_empleado": eid, "nombre": emp['nombre'], "apellido": emp['apellido'],
+                    "modalidad": "por_hora",
+                    "valor_hora": vh,
+                    "horas_normales": round(horas_normales, 2),
+                    "horas_recargo": round(horas_recargo, 2),
+                    "horas_totales": round(horas_normales + horas_recargo, 2),
+                    "monto_normal": monto_normal,
+                    "monto_recargo": monto_recargo,
+                    "total": total,
+                    "dias": dias_detalle,
+                    "ya_pagado": False
+                })
+
+            else:  # fijo_semanal
+                monto_fijo = float(emp['monto_fijo_semanal'] or 0)
+                n_habiles = len(dias_habiles) or 1
+                valor_dia = round(monto_fijo / n_habiles, 2)
+                # Días hábiles en que fichó
+                dias_fichados_habiles = sum(1 for d in dias_habiles if d.isoformat() in dias_trabajados)
+                ausencias = n_habiles - dias_fichados_habiles
+                descuento = round(ausencias * valor_dia, 2)
+                total = round(monto_fijo - descuento, 2)
+                dias_detalle = []
+                for d in dias_habiles:
+                    fichado = d.isoformat() in dias_trabajados
+                    fich = next((f for f in fichajes_emp if f['dia'] == d.isoformat()), None)
+                    dias_detalle.append({
+                        "dia": d.isoformat(),
+                        "presente": fichado,
+                        "entrada": (fich['primera_entrada'] or '')[:5].split('T')[-1] if fich and fich.get('primera_entrada') else '',
+                        "salida": (fich['ultima_salida'] or '')[:5].split('T')[-1] if fich and fich.get('ultima_salida') else '',
+                        "tipo_dia": "feriado" if d.isoformat() in feriados_set else ("domingo" if d.weekday()==6 else "normal")
+                    })
+                resultado.append({
+                    "id_empleado": eid, "nombre": emp['nombre'], "apellido": emp['apellido'],
+                    "modalidad": "fijo_semanal",
+                    "monto_fijo_semanal": monto_fijo,
+                    "valor_dia": valor_dia,
+                    "dias_habiles": n_habiles,
+                    "dias_trabajados": dias_fichados_habiles,
+                    "ausencias": ausencias,
+                    "descuento_ausencias": descuento,
+                    "total": total,
+                    "dias": dias_detalle,
+                    "ya_pagado": False
+                })
+
+        # Anticipos y pagos previos
+        for emp in resultado:
+            eid = emp['id_empleado']
+            try:
+                cur.execute("""SELECT a.id, a.monto, COALESCE(a.observaciones,'') AS obs, a.fecha::text,
+                               COALESCE((SELECT SUM(d.monto) FROM descuentos_anticipos d WHERE d.id_anticipo=a.id),0) AS descontado
+                               FROM anticipos_empleados a WHERE a.id_empleado=%s AND COALESCE(a.pagado,false)=false ORDER BY a.fecha""", (eid,))
+                ants = []
+                for a in fetchall_dict(cur):
+                    saldo = round(float(a['monto']or 0)-float(a['descontado']or 0),2)
+                    if saldo > 0:
+                        ants.append({"id":a['id'],"monto":float(a['monto']),"saldo":saldo,"obs":a['obs'],"fecha":a['fecha']})
+                emp['anticipos'] = ants
+            except Exception:
+                conn.rollback(); emp['anticipos'] = []
+            try:
+                cur.execute("""SELECT id, neto_pagado, fecha_pago::text, fecha_desde::text, fecha_hasta::text
+                               FROM pagos_sueldo WHERE id_empleado=%s AND fecha_desde<=%s AND fecha_hasta>=%s
+                               ORDER BY fecha_pago DESC LIMIT 1""", (eid, fecha_hasta, fecha_desde))
+                pago = cur.fetchone()
+                if pago:
+                    emp['ya_pagado'] = True
+                    emp['pago_neto'] = float(pago['neto_pagado'] or 0)
+                    emp['pago_fecha'] = pago['fecha_pago']
+                    emp['pago_desde'] = pago['fecha_desde']
+                    emp['pago_hasta'] = pago['fecha_hasta']
+            except Exception:
+                conn.rollback()
+
+        return resultado
+    except Exception as e:
+        conn.rollback(); raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        liberar_conexion(conn)
+
+@app.get("/rrhh")
+def route_rrhh():
+    return FileResponse("pantallas/rrhh.html")
 
 # ==============================================================================
 # INSUMOS
