@@ -10173,6 +10173,10 @@ def prov2_orden_eliminar(id: int):
 def route_proveedores2():
     return serve_html("proveedores2.html")
 
+@app.get("/campanas-wsp")
+def route_campanas_wsp():
+    return serve_html("campanas_wsp.html")
+
 @app.get("/proveedores")
 def route_proveedores():
     from fastapi.responses import RedirectResponse

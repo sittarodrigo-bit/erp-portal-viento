@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <script>window.PANEL_ACTUAL = 'campanas';</script>
+    <script src="/static/auth.js"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Campañas WhatsApp | Portal del Viento</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .text-neon { color: #e4fc74; }
+        .bg-neon { background-color: #e4fc74; }
+        .border-neon { border-color: #e4fc74; }
+        .text-wsp { color: #25D366; }
+        .bg-wsp { background-color: #25D366; }
+        .modal-oculto { display: none; }
+        .modal-visible { display: flex; }
+        #preview-img { max-height: 160px; object-fit: contain; }
+    </style>
+</head>
+<body class="bg-gray-950 text-gray-200 font-sans min-h-screen flex flex-col">
+
+<header class="bg-black border-b border-gray-800 px-6 py-3 flex items-center justify-between shrink-0">
+    <div class="flex items-center gap-4">
+        <a href="/admin" class="text-gray-500 hover:text-white text-sm">← Panel</a>
+        <div class="h-5 w-px bg-gray-800"></div>
+        <h1 class="text-wsp font-bold text-lg tracking-widest uppercase">📣 Campañas WhatsApp</h1>
+    </div>
+    <div class="flex items-center gap-3">
+        <div id="estado-badge" class="flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-bold border-gray-700 text-gray-500">
+            <span id="estado-dot" class="w-2 h-2 rounded-full bg-gray-600"></span>
+            <span id="estado-texto">Verificando...</span>
+        </div>
+        <button onclick="conectar()" id="btn-conectar" class="hidden bg-green-700 hover:bg-green-600 text-white font-bold px-4 py-1.5 rounded text-sm">Conectar</button>
+        <button onclick="desconectar()" id="btn-desconectar" class="hidden bg-gray-800 border border-gray-700 hover:border-red-500 text-gray-400 hover:text-red-400 font-bold px-4 py-1.5 rounded text-sm">Desconectar</button>
+    </div>
+</header>
+
+<div class="flex-1 flex overflow-hidden">
+
+    <!-- PANEL IZQUIERDO: Redactar campaña -->
+    <div class="w-[420px] shrink-0 border-r border-gray-800 flex flex-col overflow-y-auto">
+        <div class="p-6 space-y-5">
+            <div>
+                <h2 class="text-sm font-bold text-white uppercase tracking-widest mb-4 border-l-4 border-green-500 pl-2">Redactar mensaje</h2>
+
+                <!-- Imagen opcional -->
+                <div class="mb-4">
+                    <label class="block text-xs text-gray-500 font-bold mb-1">Imagen (opcional)</label>
+                    <div class="border border-dashed border-gray-700 rounded-lg p-3 text-center cursor-pointer hover:border-gray-500 transition relative" onclick="document.getElementById('input-imagen').click()">
+                        <img id="preview-img" class="hidden mx-auto mb-2 rounded">
+                        <div id="placeholder-img" class="text-gray-600 text-sm">📷 Clic para agregar imagen</div>
+                        <input type="file" id="input-imagen" accept="image/*" class="hidden" onchange="cargarImagen(this)">
+                    </div>
+                    <button id="btn-quitar-img" onclick="quitarImagen()" class="hidden text-xs text-red-400 hover:text-red-300 mt-1">✕ Quitar imagen</button>
+                </div>
+
+                <!-- Mensaje -->
+                <div>
+                    <label class="block text-xs text-gray-500 font-bold mb-1">Mensaje <span class="text-gray-600 font-normal">(usá {nombre} para personalizar)</span></label>
+                    <textarea id="txt-mensaje" rows="6" placeholder="Ej: ¡Hola {nombre}! 🎉 Tenemos una promo especial esta semana en Portal del Viento..." class="w-full bg-black border border-gray-700 focus:border-green-500 text-white rounded-lg p-3 text-sm resize-none outline-none"></textarea>
+                    <div class="flex justify-between mt-1">
+                        <span class="text-xs text-gray-600" id="char-count">0 caracteres</span>
+                        <button onclick="insertarNombre()" class="text-xs text-green-400 hover:text-green-300">{nombre}</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Preview -->
+            <div class="bg-gray-900 rounded-xl p-4 border border-gray-800">
+                <p class="text-xs text-gray-500 font-bold uppercase mb-2">Preview</p>
+                <div class="bg-[#075E54] rounded-xl p-3">
+                    <div class="bg-[#DCF8C6] text-black rounded-lg p-3 max-w-[280px] text-sm ml-auto">
+                        <img id="preview-img-burbuja" class="hidden rounded mb-2 max-w-full">
+                        <span id="preview-texto" class="text-gray-700 italic text-xs">Tu mensaje aparecerá acá...</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- PANEL DERECHO: Destinatarios + envío -->
+    <div class="flex-1 flex flex-col overflow-hidden">
+        <div class="p-6 border-b border-gray-800 flex items-center justify-between">
+            <div class="flex items-center gap-4">
+                <h2 class="text-sm font-bold text-white uppercase tracking-widest border-l-4 border-green-500 pl-2">Destinatarios</h2>
+                <span id="count-sel" class="bg-green-900/50 text-green-400 text-xs font-bold px-2 py-0.5 rounded">0 seleccionados</span>
+            </div>
+            <div class="flex items-center gap-3">
+                <input type="text" id="buscador" oninput="filtrarContactos()" placeholder="Buscar..." class="bg-gray-900 border border-gray-700 text-white rounded px-3 py-1.5 text-sm w-48 outline-none">
+                <button onclick="toggleTodos()" id="btn-todos" class="text-xs bg-gray-800 border border-gray-700 hover:border-gray-500 text-gray-400 hover:text-white px-3 py-1.5 rounded font-bold">Seleccionar todos</button>
+                <button onclick="lanzarCampana()" id="btn-enviar" class="bg-wsp text-black font-bold px-5 py-1.5 rounded text-sm hover:bg-green-400 disabled:opacity-50 disabled:cursor-not-allowed">📤 Enviar campaña</button>
+            </div>
+        </div>
+
+        <div class="flex-1 overflow-y-auto p-6">
+            <!-- Tabs -->
+            <div class="flex gap-2 mb-4">
+                <button onclick="cambiarTab('distribuidores')" id="tab-dist" class="tab-btn text-xs font-bold px-4 py-1.5 rounded border border-green-600 text-green-400 bg-green-900/30">Distribuidores B2B</button>
+                <button onclick="cambiarTab('proveedores')" id="tab-prov" class="tab-btn text-xs font-bold px-4 py-1.5 rounded border border-gray-700 text-gray-500 hover:border-gray-500">Proveedores</button>
+                <button onclick="cambiarTab('manual')" id="tab-manual" class="tab-btn text-xs font-bold px-4 py-1.5 rounded border border-gray-700 text-gray-500 hover:border-gray-500">Manual</button>
+            </div>
+
+            <!-- Lista distribuidores -->
+            <div id="panel-distribuidores">
+                <div id="lista-dist" class="grid grid-cols-1 gap-2"></div>
+            </div>
+
+            <!-- Lista proveedores -->
+            <div id="panel-proveedores" class="hidden">
+                <div id="lista-prov" class="grid grid-cols-1 gap-2"></div>
+            </div>
+
+            <!-- Manual -->
+            <div id="panel-manual" class="hidden">
+                <p class="text-xs text-gray-500 mb-3">Ingresá números separados por coma o salto de línea. Formato: 2615001234 o +542615001234</p>
+                <textarea id="txt-manual" rows="6" placeholder="2615001234&#10;2614009876&#10;+542611234567" class="w-full bg-black border border-gray-700 focus:border-green-500 text-white rounded-lg p-3 text-sm resize-none outline-none mb-2"></textarea>
+                <button onclick="agregarManual()" class="text-xs bg-gray-800 border border-gray-700 hover:border-green-500 text-green-400 px-4 py-1.5 rounded font-bold">+ Agregar a selección</button>
+            </div>
+        </div>
+
+        <!-- Log de envío -->
+        <div id="panel-log" class="hidden border-t border-gray-800 p-4 max-h-48 overflow-y-auto bg-gray-950">
+            <p class="text-xs text-gray-500 font-bold uppercase mb-2">Log de envío</p>
+            <div id="log-contenido" class="space-y-1 text-xs font-mono"></div>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL QR -->
+<div id="modal-qr" class="modal-oculto fixed inset-0 bg-black/90 items-center justify-center z-50">
+    <div class="bg-gray-900 border border-gray-700 rounded-xl p-8 w-80 text-center shadow-2xl">
+        <h3 class="text-lg font-bold text-white mb-2">Escaneá el QR</h3>
+        <p class="text-xs text-gray-400 mb-4">Abrí WhatsApp → Dispositivos vinculados → Vincular dispositivo</p>
+        <div id="qr-container" class="flex items-center justify-center min-h-48">
+            <div class="text-gray-500 text-sm">Generando QR...</div>
+        </div>
+        <button onclick="cerrarQR()" class="mt-4 text-gray-500 hover:text-white text-sm">Cerrar</button>
+    </div>
+</div>
+
+<script>
+const WSP_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+    ? 'http://localhost:3001'
+    : (window.__WSP_URL__ || '');  // se inyecta desde config
+const WSP_KEY = window.__WSP_KEY__ || 'portal-viento-wsp-key';
+
+var todosContactos = [];
+var seleccionados = new Set();  // 'tipo:id' o 'manual:numero'
+var tabActual = 'distribuidores';
+var imagenBase64 = null;
+var intervalStatus = null;
+
+// ── Imagen ──────────────────────────────────────────────────────
+function cargarImagen(input) {
+    const file = input.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        const data = e.target.result;
+        imagenBase64 = data.split(',')[1]; // solo base64
+        document.getElementById('preview-img').src = data;
+        document.getElementById('preview-img').classList.remove('hidden');
+        document.getElementById('placeholder-img').classList.add('hidden');
+        document.getElementById('btn-quitar-img').classList.remove('hidden');
+        document.getElementById('preview-img-burbuja').src = data;
+        document.getElementById('preview-img-burbuja').classList.remove('hidden');
+    };
+    reader.readAsDataURL(file);
+}
+function quitarImagen() {
+    imagenBase64 = null;
+    document.getElementById('preview-img').classList.add('hidden');
+    document.getElementById('placeholder-img').classList.remove('hidden');
+    document.getElementById('btn-quitar-img').classList.add('hidden');
+    document.getElementById('preview-img-burbuja').classList.add('hidden');
+    document.getElementById('input-imagen').value = '';
+}
+
+// ── Mensaje / preview ───────────────────────────────────────────
+document.getElementById('txt-mensaje').addEventListener('input', function() {
+    document.getElementById('char-count').textContent = this.value.length + ' caracteres';
+    var prev = document.getElementById('preview-texto');
+    var txt = this.value.replace('{nombre}', 'Rodrigo');
+    prev.textContent = txt || 'Tu mensaje aparecerá acá...';
+    prev.className = txt ? 'text-gray-800 text-sm whitespace-pre-wrap' : 'text-gray-400 italic text-xs';
+});
+function insertarNombre() {
+    var t = document.getElementById('txt-mensaje');
+    var pos = t.selectionStart;
+    var val = t.value;
+    t.value = val.slice(0, pos) + '{nombre}' + val.slice(pos);
+    t.dispatchEvent(new Event('input'));
+    t.focus();
+    t.setSelectionRange(pos + 8, pos + 8);
+}
+
+// ── Status WhatsApp ─────────────────────────────────────────────
+async function verificarStatus() {
+    if (!WSP_URL) {
+        mostrarEstado('sin_config');
+        return;
+    }
+    try {
+        const r = await fetch(WSP_URL + '/status', { headers: { 'x-api-key': WSP_KEY } });
+        const data = await r.json();
+        mostrarEstado(data.estado, data);
+        if (data.estado === 'esperando_qr') {
+            cargarQR();
+        }
+    } catch(e) {
+        mostrarEstado('sin_config');
+    }
+}
+function mostrarEstado(est, data) {
+    const dot = document.getElementById('estado-dot');
+    const txt = document.getElementById('estado-texto');
+    const btnC = document.getElementById('btn-conectar');
+    const btnD = document.getElementById('btn-desconectar');
+    const configs = {
+        conectado:     { color: 'bg-green-500', label: '✓ Conectado', c: false, d: true },
+        esperando_qr:  { color: 'bg-yellow-400 animate-pulse', label: 'Esperando QR...', c: false, d: false },
+        desconectado:  { color: 'bg-gray-600', label: 'Desconectado', c: true, d: false },
+        error:         { color: 'bg-red-500', label: 'Error', c: true, d: false },
+        sin_config:    { color: 'bg-gray-600', label: 'Sin configurar', c: false, d: false },
+    };
+    const cfg = configs[est] || configs.desconectado;
+    dot.className = 'w-2 h-2 rounded-full ' + cfg.color;
+    txt.textContent = cfg.label;
+    btnC.classList.toggle('hidden', !cfg.c);
+    btnD.classList.toggle('hidden', !cfg.d);
+    if (data && data.cola > 0) {
+        txt.textContent += ` · ${data.cola} en cola`;
+    }
+}
+async function conectar() {
+    if (!WSP_URL) { alert('Configurá la URL del servicio WhatsApp primero.'); return; }
+    await fetch(WSP_URL + '/conectar', { method: 'POST', headers: { 'x-api-key': WSP_KEY } });
+    document.getElementById('modal-qr').classList.replace('modal-oculto', 'modal-visible');
+    setTimeout(cargarQR, 2000);
+}
+async function desconectar() {
+    await fetch(WSP_URL + '/desconectar', { method: 'POST', headers: { 'x-api-key': WSP_KEY } });
+    verificarStatus();
+}
+async function cargarQR() {
+    try {
+        const r = await fetch(WSP_URL + '/qr', { headers: { 'x-api-key': WSP_KEY } });
+        const data = await r.json();
+        const cont = document.getElementById('qr-container');
+        if (data.qr) {
+            cont.innerHTML = '<img src="' + data.qr + '" class="w-56 h-56 mx-auto">';
+        } else if (data.estado === 'conectado') {
+            cerrarQR();
+            verificarStatus();
+        } else {
+            cont.innerHTML = '<div class="text-gray-500 text-sm">Esperando QR...</div>';
+            setTimeout(cargarQR, 3000);
+        }
+    } catch(e) {}
+}
+function cerrarQR() {
+    document.getElementById('modal-qr').classList.replace('modal-visible', 'modal-oculto');
+}
+
+// ── Contactos ───────────────────────────────────────────────────
+async function cargarContactos() {
+    // Distribuidores
+    try {
+        const r = await fetch('/api/distribuidores');
+        const dist = await r.json();
+        todosContactos = todosContactos.filter(c => c.tipo !== 'dist');
+        dist.forEach(d => {
+            if (d.telefono) todosContactos.push({ tipo:'dist', id: d.id, nombre: d.razon_social, numero: d.telefono });
+        });
+    } catch(e) {}
+    // Proveedores prov2
+    try {
+        const r = await fetch('/api/prov2/proveedores');
+        const provs = await r.json();
+        todosContactos = todosContactos.filter(c => c.tipo !== 'prov');
+        provs.forEach(p => {
+            if (p.telefono) todosContactos.push({ tipo:'prov', id: p.id, nombre: p.razon_social, numero: p.telefono });
+        });
+    } catch(e) {}
+    renderLista();
+}
+
+function renderLista() {
+    var busq = document.getElementById('buscador').value.toLowerCase();
+    var filtrados = todosContactos.filter(c => {
+        if (tabActual === 'distribuidores' && c.tipo !== 'dist') return false;
+        if (tabActual === 'proveedores' && c.tipo !== 'prov') return false;
+        if (busq && !c.nombre.toLowerCase().includes(busq) && !c.numero.includes(busq)) return false;
+        return true;
+    });
+    var listaId = tabActual === 'distribuidores' ? 'lista-dist' : 'lista-prov';
+    var lista = document.getElementById(listaId);
+    if (!filtrados.length) {
+        lista.innerHTML = '<p class="text-gray-600 text-sm col-span-full text-center py-6">Sin contactos con teléfono registrado.</p>';
+        actualizarCount();
+        return;
+    }
+    lista.innerHTML = filtrados.map(c => {
+        var key = c.tipo + ':' + c.id;
+        var sel = seleccionados.has(key);
+        return `<label class="flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition ${sel ? 'border-green-600 bg-green-900/20' : 'border-gray-800 hover:border-gray-600'}">
+            <input type="checkbox" class="w-4 h-4 accent-green-500" ${sel ? 'checked' : ''} onchange="toggleContacto('${key}', this.checked)">
+            <div class="flex-1 min-w-0">
+                <div class="font-bold text-sm text-white truncate">${c.nombre}</div>
+                <div class="text-xs text-gray-500">${c.numero}</div>
+            </div>
+        </label>`;
+    }).join('');
+    actualizarCount();
+}
+
+function toggleContacto(key, checked) {
+    if (checked) seleccionados.add(key);
+    else seleccionados.delete(key);
+    actualizarCount();
+}
+
+function toggleTodos() {
+    var visibles = todosContactos.filter(c => tabActual === 'distribuidores' ? c.tipo==='dist' : c.tipo==='prov');
+    var keys = visibles.map(c => c.tipo+':'+c.id);
+    var todosSel = keys.every(k => seleccionados.has(k));
+    if (todosSel) keys.forEach(k => seleccionados.delete(k));
+    else keys.forEach(k => seleccionados.add(k));
+    renderLista();
+}
+
+function actualizarCount() {
+    document.getElementById('count-sel').textContent = seleccionados.size + ' seleccionados';
+}
+
+function filtrarContactos() { renderLista(); }
+
+function cambiarTab(tab) {
+    tabActual = tab;
+    ['dist','prov','manual'].forEach(t => {
+        document.getElementById('panel-' + (t==='dist'?'distribuidores':t==='prov'?'proveedores':'manual')).classList.toggle('hidden', tab !== (t==='dist'?'distribuidores':t==='prov'?'proveedores':'manual'));
+        document.getElementById('tab-' + t).className = 'tab-btn text-xs font-bold px-4 py-1.5 rounded border ' +
+            (tab === (t==='dist'?'distribuidores':t==='prov'?'proveedores':'manual')
+                ? 'border-green-600 text-green-400 bg-green-900/30'
+                : 'border-gray-700 text-gray-500 hover:border-gray-500');
+    });
+    renderLista();
+}
+
+function agregarManual() {
+    var txt = document.getElementById('txt-manual').value;
+    var nums = txt.split(/[\n,;]+/).map(n => n.trim()).filter(n => n.length > 5);
+    nums.forEach(n => {
+        var key = 'manual:' + n;
+        if (!todosContactos.find(c => c.tipo==='manual' && c.numero===n)) {
+            todosContactos.push({ tipo:'manual', id: n, nombre: n, numero: n });
+        }
+        seleccionados.add(key);
+    });
+    document.getElementById('txt-manual').value = '';
+    actualizarCount();
+}
+
+// ── Envío ───────────────────────────────────────────────────────
+async function lanzarCampana() {
+    if (!WSP_URL) { alert('El servicio WhatsApp no está configurado. Contactá al admin.'); return; }
+    var msg = document.getElementById('txt-mensaje').value.trim();
+    if (!msg) { alert('Escribí el mensaje antes de enviar.'); return; }
+    if (!seleccionados.size) { alert('Seleccioná al menos un destinatario.'); return; }
+
+    var destinatarios = [];
+    seleccionados.forEach(key => {
+        var c = todosContactos.find(x => x.tipo+':'+x.id === key) || (key.startsWith('manual:') ? { nombre: key.slice(7), numero: key.slice(7) } : null);
+        if (c) destinatarios.push({ nombre: c.nombre, numero: c.numero });
+    });
+
+    if (!confirm(`¿Enviar a ${destinatarios.length} contactos?\n\nEl envío puede tardar varios minutos (delay de seguridad entre mensajes).`)) return;
+
+    var campaniaId = 'c_' + Date.now();
+    var btn = document.getElementById('btn-enviar');
+    btn.disabled = true; btn.textContent = 'Enviando...';
+
+    try {
+        const r = await fetch(WSP_URL + '/campania', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-api-key': WSP_KEY },
+            body: JSON.stringify({ campania_id: campaniaId, mensaje: msg, imagen_base64: imagenBase64, destinatarios })
+        });
+        const data = await r.json();
+        if (!r.ok) { alert('Error: ' + data.error); return; }
+
+        document.getElementById('panel-log').classList.remove('hidden');
+        document.getElementById('log-contenido').innerHTML = `<div class="text-green-400">✓ Campaña lanzada — ${data.encolados} mensajes en cola</div>`;
+
+        // Polling del log
+        var poller = setInterval(async function() {
+            try {
+                const lr = await fetch(WSP_URL + '/campania/' + campaniaId + '/log', { headers: { 'x-api-key': WSP_KEY } });
+                const ld = await lr.json();
+                var html = ld.logs.map(function(l) {
+                    return `<div class="${l.estado==='enviado'?'text-green-400':'text-red-400'}">${l.estado==='enviado'?'✓':'✗'} ${l.numero} ${l.error?'— '+l.error:''}</div>`;
+                }).join('');
+                html += ld.pendientes > 0 ? `<div class="text-yellow-400">⏳ ${ld.pendientes} pendientes...</div>` : '';
+                document.getElementById('log-contenido').innerHTML = html || '<div class="text-gray-600">Esperando resultados...</div>';
+                if (ld.pendientes === 0 && ld.logs.length > 0) {
+                    clearInterval(poller);
+                    btn.disabled = false; btn.textContent = '📤 Enviar campaña';
+                    document.getElementById('log-contenido').innerHTML += `<div class="text-neon font-bold mt-2">✅ Campaña finalizada — ${ld.enviados} enviados, ${ld.errores} errores</div>`;
+                }
+            } catch(e) {}
+        }, 5000);
+
+    } catch(e) {
+        alert('Error de conexión con el servicio WhatsApp.');
+    } finally {
+        btn.disabled = false; btn.textContent = '📤 Enviar campaña';
+    }
+}
+
+// ── Init ────────────────────────────────────────────────────────
+window.onload = function() {
+    cargarContactos();
+    verificarStatus();
+    intervalStatus = setInterval(verificarStatus, 10000);
+};
+</script>
+</body>
+</html>
