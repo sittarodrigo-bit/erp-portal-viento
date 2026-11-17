@@ -370,9 +370,9 @@
                 ? parseFloat(p.total_sin_descuento)
                 : parseFloat(p.total||0);
             var ivaEnBD = parseFloat(p.iva_aplicado||0);
-            function actualizarImporte() {
-                var chkEl = document.getElementById('chk-iva-' + p.id);
-                var conIva = chkEl ? chkEl.checked : false;
+            // actualizarImporte recibe el checkbox por referencia para no depender del DOM
+            function actualizarImporte(chkRef) {
+                var conIva = chkRef ? chkRef.checked : false;
                 var importe = conIva ? Math.round(netoLista * 1.21) : Math.round(netoLista);
                 tdImp.textContent = '$ ' + importe.toLocaleString('es-AR');
                 tdImp.className = 'px-3 py-2 font-bold text-sm ' + (conIva ? 'text-orange-300' : 'text-white');
@@ -408,12 +408,16 @@
                     .then(function(r){ return r.json(); })
                     .then(function(data){
                         if(data.status==='ok'){
-                            actualizarImporte();
+                            actualizarImporte(chkIva);
                         } else {
                             chkIva.checked = !chkIva.checked;
+                            actualizarImporte(chkIva);
                         }
                     })
-                    .catch(function(){ chkIva.checked = !chkIva.checked; });
+                    .catch(function(){
+                        chkIva.checked = !chkIva.checked;
+                        actualizarImporte(chkIva);
+                    });
             });
             var lblIva = document.createElement('label');
             lblIva.htmlFor = 'chk-iva-' + p.id;
@@ -428,7 +432,8 @@
             divComp.appendChild(chkIva); divComp.appendChild(lblIva); divComp.appendChild(btnComp);
             tdEst.appendChild(divComp);
             tr.appendChild(tdEst);
-            actualizarImporte();
+            // chkIva.checked ya está seteado (línea 398); pasarlo por ref evita getElementById
+            actualizarImporte(chkIva);
 
             // Acciones
             var tdAcc = document.createElement('td'); tdAcc.className = 'px-3 py-2';
