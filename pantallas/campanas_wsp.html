@@ -94,6 +94,7 @@
                 <input type="text" id="buscador" oninput="filtrarContactos()" placeholder="Buscar..." class="bg-gray-900 border border-gray-700 text-white rounded px-3 py-1.5 text-sm w-48 outline-none">
                 <button onclick="toggleTodos()" id="btn-todos" class="text-xs bg-gray-800 border border-gray-700 hover:border-gray-500 text-gray-400 hover:text-white px-3 py-1.5 rounded font-bold">Seleccionar todos</button>
                 <button onclick="lanzarCampana()" id="btn-enviar" class="bg-wsp text-black font-bold px-5 py-1.5 rounded text-sm hover:bg-green-400 disabled:opacity-50 disabled:cursor-not-allowed">📤 Enviar campaña</button>
+                <button onclick="detenerEnvios()" id="btn-detener" class="hidden bg-red-700 hover:bg-red-600 text-white font-bold px-4 py-1.5 rounded text-sm">⏹ Detener</button>
             </div>
         </div>
 
@@ -480,6 +481,7 @@ async function lanzarCampana() {
 
         document.getElementById('panel-log').classList.remove('hidden');
         document.getElementById('log-contenido').innerHTML = `<div class="text-green-400">✓ Campaña lanzada — ${data.encolados} mensajes en cola</div>`;
+        document.getElementById('btn-detener').classList.remove('hidden');
 
         // Polling del log
         var poller = setInterval(async function() {
@@ -494,6 +496,7 @@ async function lanzarCampana() {
                 if (ld.pendientes === 0 && ld.logs.length > 0) {
                     clearInterval(poller);
                     btn.disabled = false; btn.textContent = '📤 Enviar campaña';
+                    document.getElementById('btn-detener').classList.add('hidden');
                     document.getElementById('log-contenido').innerHTML += `<div class="text-neon font-bold mt-2">✅ Campaña finalizada — ${ld.enviados} enviados, ${ld.errores} errores</div>`;
                 }
             } catch(e) {}
@@ -503,6 +506,21 @@ async function lanzarCampana() {
         alert('Error de conexión con el servicio WhatsApp.');
     } finally {
         btn.disabled = false; btn.textContent = '📤 Enviar campaña';
+    }
+}
+
+// ── Detener envíos ──────────────────────────────────────────────
+async function detenerEnvios() {
+    if (!confirm('¿Detener los envíos pendientes? Los mensajes ya enviados no se pueden revertir.')) return;
+    try {
+        const r = await fetch(WSP_URL + '/detener', { method: 'POST', headers: { 'x-api-key': WSP_KEY } });
+        const data = await r.json();
+        document.getElementById('btn-detener').classList.add('hidden');
+        document.getElementById('btn-enviar').disabled = false;
+        document.getElementById('btn-enviar').textContent = '📤 Enviar campaña';
+        document.getElementById('log-contenido').innerHTML += `<div class="text-red-400 font-bold mt-2">⏹ Envíos detenidos — ${data.descartados} mensajes descartados</div>`;
+    } catch(e) {
+        alert('Error al detener los envíos.');
     }
 }
 
