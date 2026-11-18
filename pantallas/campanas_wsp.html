@@ -415,6 +415,8 @@ function toggleTodos() {
     }
     var keys = visibles.map(c => c.tipo+':'+c.id);
     var todosSel = keys.every(k => seleccionados.has(k));
+    // Limpiar selección de otros tipos antes de seleccionar todos
+    if (!todosSel) seleccionados.clear();
     if (todosSel) keys.forEach(k => seleccionados.delete(k));
     else keys.forEach(k => seleccionados.add(k));
     renderLista();
@@ -464,7 +466,14 @@ async function lanzarCampana() {
         if (c) destinatarios.push({ nombre: c.nombre, numero: c.numero });
     });
 
-    if (!confirm(`¿Enviar a ${destinatarios.length} contactos?\n\nEl envío puede tardar varios minutos (delay de seguridad entre mensajes).`)) return;
+    var porTipo = {};
+    destinatarios.forEach(function(d) {
+        var c = todosContactos.find(x => x.numero === d.numero);
+        var tipo = c ? (c.tipo === 'dist' ? 'Distribuidores' : c.tipo === 'prov' ? 'Proveedores' : c.tipo === 'ruleta' ? 'Ruleta' : 'Manual') : 'Manual';
+        porTipo[tipo] = (porTipo[tipo] || 0) + 1;
+    });
+    var resumen = Object.entries(porTipo).map(([t,n]) => `  • ${t}: ${n}`).join('\n');
+    if (!confirm(`¿Enviar a ${destinatarios.length} contactos?\n\n${resumen}\n\nEl envío puede tardar varios minutos (delay de seguridad entre mensajes).`)) return;
 
     var campaniaId = 'c_' + Date.now();
     var btn = document.getElementById('btn-enviar');
