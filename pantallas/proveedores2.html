@@ -275,7 +275,7 @@
         <!-- ÍTEMS REMITO -->
         <div id="campo-items-remito" class="hidden mt-4">
             <div class="flex items-center justify-between mb-2">
-                <label class="text-xs text-neon font-bold uppercase">Ítems del remito</label>
+                <label id="label-items-mov" class="text-xs text-neon font-bold uppercase">Ítems</label>
                 <button type="button" onclick="agregarItemRemito()" class="text-xs bg-gray-800 hover:bg-gray-700 border border-gray-600 text-neon px-3 py-1 rounded font-bold">+ Agregar ítem</button>
             </div>
             <div class="rounded-lg border border-gray-700 overflow-hidden">
@@ -497,15 +497,17 @@ function abrirModalMovimiento(tipo) {
     document.getElementById('mov-numero').value = '';
     document.getElementById('mov-monto').value = '';
     document.getElementById('mov-concepto').value = '';
-    document.getElementById('campo-monto-wrap').classList.toggle('hidden', tipo==='remito');
+    document.getElementById('campo-monto-wrap').classList.toggle('hidden', tipo==='remito' || tipo==='factura');
     document.getElementById('campo-metodo-wrap').classList.toggle('hidden', tipo!=='pago');
-    document.getElementById('campo-items-remito').classList.toggle('hidden', tipo!=='remito');
+    document.getElementById('campo-items-remito').classList.toggle('hidden', tipo==='pago');
+    var labelItems = document.getElementById('label-items-mov');
+    if (labelItems) labelItems.textContent = tipo==='factura' ? 'Ítems de la factura' : 'Ítems del remito';
     // Para remito: "Concepto" es opcional (encabezado general), lo mostramos más pequeño
     var concLabel = document.querySelector('#campo-concepto-wrap label');
-    if (concLabel) concLabel.textContent = tipo==='remito' ? 'Concepto general (opcional)' : 'Concepto / Detalle';
-    // Reset ítems remito
+    if (concLabel) concLabel.textContent = (tipo==='remito'||tipo==='factura') ? 'Concepto general (opcional)' : 'Concepto / Detalle';
+    // Reset ítems remito/factura
     itemsRemito = [];
-    if (tipo==='remito') {
+    if (tipo==='remito' || tipo==='factura') {
         renderItemsRemito();
         agregarItemRemito(); // arranca con 1 fila vacía
     }
@@ -583,11 +585,12 @@ function calcTotalRemito() {
 async function guardarMovimiento() {
     const tipo = document.getElementById('mov-tipo').value;
     var monto, detalleRemito;
-    if (tipo === 'remito') {
+    if (tipo === 'remito' || tipo === 'factura') {
         // Validar que haya al menos 1 ítem con descripción
         var itemsValidos = itemsRemito.filter(function(it){ return String(it.desc||'').trim() !== ''; });
         if (!itemsValidos.length) { alert('Agregá al menos un ítem con descripción.'); return; }
         monto = calcTotalRemito();
+        if (tipo === 'factura' && (!monto || monto <= 0)) { alert('Los ítems de la factura deben tener precio.'); return; }
         // Guardar ítems como JSON en detalle_remito
         detalleRemito = JSON.stringify(itemsValidos.map(function(it){
             return { desc: String(it.desc||'').trim(), cant: parseFloat(it.cant)||0, precio: parseFloat(it.precio)||0 };
