@@ -459,6 +459,14 @@ async function lanzarCampana() {
     var msg = document.getElementById('txt-mensaje').value.trim();
     if (!msg) { alert('Escribí el mensaje antes de enviar.'); return; }
     if (!seleccionados.size) { alert('Seleccioná al menos un destinatario.'); return; }
+    // Advertir si usa {nombre} pero hay contactos sin nombre
+    if (msg.includes('{nombre}')) {
+        var sinNombre = [...seleccionados].filter(key => {
+            var c = todosContactos.find(x => x.tipo+':'+x.id === key);
+            return c && !c.nombre;
+        }).length;
+        if (sinNombre > 0 && !confirm(`⚠️ ${sinNombre} contacto(s) no tienen nombre — en esos mensajes se omitirá {nombre}. ¿Continuar?`)) return;
+    }
 
     var destinatarios = [];
     seleccionados.forEach(key => {
