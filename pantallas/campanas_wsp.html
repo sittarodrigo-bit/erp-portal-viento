@@ -99,9 +99,10 @@
 
         <div class="flex-1 overflow-y-auto p-6">
             <!-- Tabs -->
-            <div class="flex gap-2 mb-4">
+            <div class="flex gap-2 mb-4 flex-wrap">
                 <button onclick="cambiarTab('distribuidores')" id="tab-dist" class="tab-btn text-xs font-bold px-4 py-1.5 rounded border border-green-600 text-green-400 bg-green-900/30">Distribuidores B2B</button>
                 <button onclick="cambiarTab('proveedores')" id="tab-prov" class="tab-btn text-xs font-bold px-4 py-1.5 rounded border border-gray-700 text-gray-500 hover:border-gray-500">Proveedores</button>
+                <button onclick="cambiarTab('ruleta')" id="tab-ruleta" class="tab-btn text-xs font-bold px-4 py-1.5 rounded border border-gray-700 text-gray-500 hover:border-gray-500">🎡 Ruleta</button>
                 <button onclick="cambiarTab('manual')" id="tab-manual" class="tab-btn text-xs font-bold px-4 py-1.5 rounded border border-gray-700 text-gray-500 hover:border-gray-500">Manual</button>
             </div>
 
@@ -113,6 +114,18 @@
             <!-- Lista proveedores -->
             <div id="panel-proveedores" class="hidden">
                 <div id="lista-prov" class="grid grid-cols-1 gap-2"></div>
+            </div>
+
+            <!-- Ruleta -->
+            <div id="panel-ruleta" class="hidden">
+                <div class="flex gap-2 mb-3">
+                    <select id="filtro-ruleta" onchange="renderLista()" class="text-xs bg-black border border-gray-700 text-gray-400 rounded px-2 py-1">
+                        <option value="todos">Todos los participantes</option>
+                        <option value="no_usado">Cupón no usado</option>
+                        <option value="usado">Cupón ya usado</option>
+                    </select>
+                </div>
+                <div id="lista-ruleta" class="grid grid-cols-1 gap-2"></div>
             </div>
 
             <!-- Manual -->
@@ -299,11 +312,64 @@ async function cargarContactos() {
             if (p.telefono) todosContactos.push({ tipo:'prov', id: p.id, nombre: p.razon_social, numero: p.telefono });
         });
     } catch(e) {}
+    // Participantes de la ruleta
+    try {
+        const r = await fetch('/api/pos/ruleta/giros');
+        const giros = await r.json();
+        todosContactos = todosContactos.filter(c => c.tipo !== 'ruleta');
+        giros.forEach((g, i) => {
+            if (g.telefono) todosContactos.push({
+                tipo: 'ruleta',
+                id: 'r' + i,
+                nombre: g.nombre || g.telefono,
+                numero: g.telefono,
+                codigo: g.codigo,
+                descuento: g.descuento_pct,
+                usado: g.usado,
+                fecha: g.fecha
+            });
+        });
+    } catch(e) {}
     renderLista();
 }
 
 function renderLista() {
     var busq = document.getElementById('buscador').value.toLowerCase();
+
+    if (tabActual === 'ruleta') {
+        var filtroR = document.getElementById('filtro-ruleta') ? document.getElementById('filtro-ruleta').value : 'todos';
+        var filtrados = todosContactos.filter(c => {
+            if (c.tipo !== 'ruleta') return false;
+            if (filtroR === 'usado' && !c.usado) return false;
+            if (filtroR === 'no_usado' && c.usado) return false;
+            if (busq && !c.nombre.toLowerCase().includes(busq) && !c.numero.includes(busq)) return false;
+            return true;
+        });
+        var lista = document.getElementById('lista-ruleta');
+        if (!filtrados.length) {
+            lista.innerHTML = '<p class="text-gray-600 text-sm text-center py-6">Sin participantes.</p>';
+            actualizarCount(); return;
+        }
+        lista.innerHTML = filtrados.map(c => {
+            var key = c.tipo + ':' + c.id;
+            var sel = seleccionados.has(key);
+            var fechaStr = c.fecha ? new Date(c.fecha).toLocaleDateString('es-AR') : '';
+            var estadoCupon = c.usado
+                ? '<span class="text-xs text-gray-500">✓ Cupón usado</span>'
+                : '<span class="text-xs text-yellow-400">🎟 ' + (c.codigo || '') + ' — ' + (c.descuento || '') + '% desc.</span>';
+            return `<label class="flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition ${sel ? 'border-green-600 bg-green-900/20' : 'border-gray-800 hover:border-gray-600'}">
+                <input type="checkbox" class="w-4 h-4 accent-green-500" ${sel ? 'checked' : ''} onchange="toggleContacto('${key}', this.checked)">
+                <div class="flex-1 min-w-0">
+                    <div class="font-bold text-sm text-white truncate">${c.nombre}</div>
+                    <div class="text-xs text-gray-500">${c.numero} · ${fechaStr}</div>
+                    <div class="mt-0.5">${estadoCupon}</div>
+                </div>
+            </label>`;
+        }).join('');
+        actualizarCount();
+        return;
+    }
+
     var filtrados = todosContactos.filter(c => {
         if (tabActual === 'distribuidores' && c.tipo !== 'dist') return false;
         if (tabActual === 'proveedores' && c.tipo !== 'prov') return false;
@@ -338,7 +404,13 @@ function toggleContacto(key, checked) {
 }
 
 function toggleTodos() {
-    var visibles = todosContactos.filter(c => tabActual === 'distribuidores' ? c.tipo==='dist' : c.tipo==='prov');
+    var tipo = tabActual === 'distribuidores' ? 'dist' : tabActual === 'proveedores' ? 'prov' : 'ruleta';
+    var visibles = todosContactos.filter(c => c.tipo === tipo);
+    if (tabActual === 'ruleta') {
+        var filtroR = document.getElementById('filtro-ruleta') ? document.getElementById('filtro-ruleta').value : 'todos';
+        if (filtroR === 'usado') visibles = visibles.filter(c => c.usado);
+        if (filtroR === 'no_usado') visibles = visibles.filter(c => !c.usado);
+    }
     var keys = visibles.map(c => c.tipo+':'+c.id);
     var todosSel = keys.every(k => seleccionados.has(k));
     if (todosSel) keys.forEach(k => seleccionados.delete(k));
@@ -354,12 +426,11 @@ function filtrarContactos() { renderLista(); }
 
 function cambiarTab(tab) {
     tabActual = tab;
-    ['dist','prov','manual'].forEach(t => {
-        document.getElementById('panel-' + (t==='dist'?'distribuidores':t==='prov'?'proveedores':'manual')).classList.toggle('hidden', tab !== (t==='dist'?'distribuidores':t==='prov'?'proveedores':'manual'));
-        document.getElementById('tab-' + t).className = 'tab-btn text-xs font-bold px-4 py-1.5 rounded border ' +
-            (tab === (t==='dist'?'distribuidores':t==='prov'?'proveedores':'manual')
-                ? 'border-green-600 text-green-400 bg-green-900/30'
-                : 'border-gray-700 text-gray-500 hover:border-gray-500');
+    var paneles = { distribuidores:'dist', proveedores:'prov', ruleta:'ruleta', manual:'manual' };
+    Object.keys(paneles).forEach(nombre => {
+        document.getElementById('panel-' + nombre).classList.toggle('hidden', tab !== nombre);
+        document.getElementById('tab-' + paneles[nombre]).className = 'tab-btn text-xs font-bold px-4 py-1.5 rounded border ' +
+            (tab === nombre ? 'border-green-600 text-green-400 bg-green-900/30' : 'border-gray-700 text-gray-500 hover:border-gray-500');
     });
     renderLista();
 }
