@@ -475,7 +475,9 @@ async function lanzarCampana() {
     var resumen = Object.entries(porTipo).map(([t,n]) => `  • ${t}: ${n}`).join('\n');
     if (!confirm(`¿Enviar a ${destinatarios.length} contactos?\n\n${resumen}\n\nEl envío puede tardar varios minutos (delay de seguridad entre mensajes).`)) return;
 
-    var campaniaId = 'c_' + Date.now();
+    // ID estable: no regenerar si ya hay una campaña activa o si es la primera del día
+    if (!window._campaniaId) window._campaniaId = 'c_' + Date.now();
+    var campaniaId = window._campaniaId;
     var btn = document.getElementById('btn-enviar');
     btn.disabled = true; btn.textContent = 'Enviando...';
 
@@ -503,12 +505,13 @@ async function lanzarCampana() {
                     return `<div class="${l.estado==='enviado'?'text-green-400':'text-red-400'}">${l.estado==='enviado'?'✓':'✗'} ${l.numero} ${l.error?'— '+l.error:''}</div>`;
                 }).join('');
                 html += ld.pendientes > 0 ? `<div class="text-yellow-400">⏳ ${ld.pendientes} pendientes...</div>` : '';
-                document.getElementById('log-contenido').innerHTML = html || '<div class="text-gray-600">Esperando resultados...</div>';
+                if (html) document.getElementById('log-contenido').innerHTML = html;
                 if (ld.pendientes === 0 && ld.logs.length > 0) {
                     clearInterval(poller);
                     btn.disabled = false; btn.textContent = '📤 Enviar campaña';
                     document.getElementById('btn-detener').classList.add('hidden');
                     document.getElementById('log-contenido').innerHTML += `<div class="text-neon font-bold mt-2">✅ Campaña finalizada — ${ld.enviados} enviados, ${ld.errores} errores</div>`;
+                    window._campaniaId = null; // resetear para próxima campaña
                 }
             } catch(e) {}
         }, 5000);
@@ -530,6 +533,7 @@ async function detenerEnvios() {
         document.getElementById('btn-enviar').disabled = false;
         document.getElementById('btn-enviar').textContent = '📤 Enviar campaña';
         document.getElementById('log-contenido').innerHTML += `<div class="text-red-400 font-bold mt-2">⏹ Envíos detenidos — ${data.descartados} mensajes descartados</div>`;
+        window._campaniaId = null; // resetear para próxima campaña
     } catch(e) {
         alert('Error al detener los envíos.');
     }
