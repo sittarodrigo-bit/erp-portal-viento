@@ -489,7 +489,9 @@ async function lanzarCampana() {
         if (!r.ok) { alert('Error: ' + data.error); return; }
 
         document.getElementById('panel-log').classList.remove('hidden');
-        document.getElementById('log-contenido').innerHTML = `<div class="text-green-400">✓ Campaña lanzada — ${data.encolados} mensajes en cola</div>`;
+        var msgInicio = `✓ Campaña lanzada — ${data.encolados} mensajes en cola`;
+        if (data.saltados > 0) msgInicio += ` <span class="text-yellow-400">(${data.saltados} omitidos: ya enviados)</span>`;
+        document.getElementById('log-contenido').innerHTML = `<div class="text-green-400">${msgInicio}</div>`;
         document.getElementById('btn-detener').classList.remove('hidden');
 
         // Polling del log
