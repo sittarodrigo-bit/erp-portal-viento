@@ -315,7 +315,8 @@ async function cargarContactos() {
     // Participantes de la ruleta
     try {
         const r = await fetch('/api/pos/ruleta/giros');
-        const giros = await r.json();
+        const resp = await r.json();
+        const giros = resp.data || resp;
         todosContactos = todosContactos.filter(c => c.tipo !== 'ruleta');
         giros.forEach((g, i) => {
             if (g.telefono) todosContactos.push({
