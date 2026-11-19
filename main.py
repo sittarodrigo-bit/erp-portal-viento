@@ -144,6 +144,30 @@ def _migrar_bd():
 
 _migrar_bd()
 
+_WSP_URL = os.environ.get("WSP_URL", "")
+_WSP_KEY = os.environ.get("WSP_API_KEY", "")
+_WSP_ALERTA_NUMERO = os.environ.get("WSP_ALERTA_NUMERO", "2612074435")
+
+def _notificar_wsp(titulo, detalle=None):
+    """Envía WhatsApp de alerta al número configurado. Silencioso ante cualquier error."""
+    if not _WSP_URL or not _WSP_KEY or not _WSP_ALERTA_NUMERO:
+        return
+    try:
+        import urllib.request, json as _json_wsp
+        msg = "🔔 *Portal del Viento ERP*\n\n" + titulo
+        if detalle:
+            msg += "\n" + detalle
+        payload = _json_wsp.dumps({"numero": _WSP_ALERTA_NUMERO, "mensaje": msg}).encode()
+        req = urllib.request.Request(
+            _WSP_URL.rstrip("/") + "/enviar",
+            data=payload,
+            headers={"Content-Type": "application/json", "x-api-key": _WSP_KEY},
+            method="POST"
+        )
+        urllib.request.urlopen(req, timeout=5)
+    except Exception:
+        pass
+
 def crear_notificacion(tipo, titulo, detalle=None):
     """Crea una notificación. No rompe si la tabla no existe (queda silencioso).
     Usa su propia conexión para no interferir con la transacción en curso."""
@@ -160,6 +184,9 @@ def crear_notificacion(tipo, titulo, detalle=None):
             liberar_conexion(c)
     except Exception:
         pass
+    # Notificar por WhatsApp en hilo separado para no bloquear la respuesta
+    import threading
+    threading.Thread(target=_notificar_wsp, args=(titulo, detalle), daemon=True).start()
 
 def registrar_movimiento_stock(cur, id_producto, cantidad, tipo, origen, motivo=None, id_local=None):
     """Registra un movimiento de stock. cantidad positiva=entrada, negativa=salida.
