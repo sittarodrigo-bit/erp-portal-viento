@@ -234,7 +234,8 @@ async function cargarNumerosContactados() {
         const r = await fetch(WSP_URL + '/mensajes-enviados', { headers: { 'x-api-key': WSP_KEY } });
         if (!r.ok) return;
         const data = await r.json();
-        numerosContactados = new Set((data.numeros || []).map(n => String(n).replace(/\D/g,'')));
+        // Guardar solo los últimos 8 dígitos para normalizar 549XXXXXXXXXX vs 0261XXXXXXXX
+        numerosContactados = new Set((data.numeros || []).map(n => String(n).replace(/\D/g,'').slice(-8)));
     } catch(e) {}
 }
 var imagenBase64 = null;
@@ -537,7 +538,7 @@ function renderLista() {
         if (tabActual === 'distribuidores' && c.tipo !== 'dist') return false;
         if (tabActual === 'proveedores' && c.tipo !== 'prov') return false;
         if (busq && !c.nombre.toLowerCase().includes(busq) && !c.numero.includes(busq)) return false;
-        var numLimpio = String(c.numero).replace(/\D/g, '');
+        var numLimpio = String(c.numero).replace(/\D/g, '').slice(-8);
         if (filtroC === 'contactados' && !numerosContactados.has(numLimpio)) return false;
         if (filtroC === 'sin_contactar' && numerosContactados.has(numLimpio)) return false;
         return true;
@@ -552,7 +553,7 @@ function renderLista() {
     lista.innerHTML = filtrados.map(c => {
         var key = c.tipo + ':' + c.id;
         var sel = seleccionados.has(key);
-        var numLimpio = String(c.numero).replace(/\D/g, '');
+        var numLimpio = String(c.numero).replace(/\D/g, '').slice(-8);
         var yaContactado = numerosContactados.has(numLimpio);
         return `<label class="flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition ${sel ? 'border-green-600 bg-green-900/20' : 'border-gray-800 hover:border-gray-600'}">
             <input type="checkbox" class="w-4 h-4 accent-green-500" ${sel ? 'checked' : ''} onchange="toggleContacto('${key}', this.checked)">
