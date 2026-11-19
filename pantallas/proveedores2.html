@@ -439,9 +439,9 @@ async function cargarDetalle(id) {
                 diasCell = `<td class="p-4 text-center text-sm ${color}">${dias}d</td>`;
             }
 
-            // Concepto: para remitos con ítems JSON, mostrar resumen
+            // Concepto: para remitos y facturas con ítems JSON, mostrar resumen
             var items = null;
-            if (m.tipo === 'remito' && m.detalle_remito) {
+            if ((m.tipo === 'remito' || m.tipo === 'factura') && m.detalle_remito) {
                 try { items = JSON.parse(m.detalle_remito); if (!Array.isArray(items)) items = null; } catch(e) { items = null; }
             }
             var conceptoTexto;
@@ -450,7 +450,7 @@ async function cargarDetalle(id) {
             } else {
                 conceptoTexto = m.concepto || (!items && m.detalle_remito ? m.detalle_remito : '—');
             }
-            // Botón expandir ítems (solo remitos con items)
+            // Botón expandir ítems (remitos y facturas con items)
             var btnExpandir = '';
             var rowId = 'row-items-'+m.id;
             if (items && items.length) {
@@ -645,12 +645,12 @@ function editarMovimiento(id) {
     document.getElementById('edit-monto-wrap').classList.toggle('hidden', tipo === 'remito');
     document.getElementById('edit-metodo-wrap').classList.toggle('hidden', tipo !== 'pago');
     if (tipo === 'pago') document.getElementById('edit-metodo').value = m.metodo || 'transferencia';
-    // ítems remito
-    var esRemito = tipo === 'remito';
-    document.getElementById('edit-items-wrap').classList.toggle('hidden', !esRemito);
+    // ítems remito/factura
+    var esConItems = tipo === 'remito' || tipo === 'factura';
+    document.getElementById('edit-items-wrap').classList.toggle('hidden', !esConItems);
     var concLabel = document.querySelector('#edit-concepto-wrap label');
-    if (concLabel) concLabel.textContent = esRemito ? 'Concepto general (opcional)' : 'Concepto / Detalle';
-    if (esRemito) {
+    if (concLabel) concLabel.textContent = esConItems ? 'Concepto general (opcional)' : 'Concepto / Detalle';
+    if (esConItems) {
         itemsEdicion = [];
         if (m.detalle_remito) {
             try {
@@ -780,7 +780,7 @@ function imprimirCuenta() {
 
         // concepto/detalle
         var concepto = m.concepto || '';
-        if (m.tipo==='remito' && m.detalle_remito) {
+        if ((m.tipo==='remito' || m.tipo==='factura') && m.detalle_remito) {
             try {
                 var its = JSON.parse(m.detalle_remito);
                 if (Array.isArray(its) && its.length) concepto = its.map(function(i){ return i.cant+'x '+i.desc; }).join(', ');
