@@ -191,6 +191,25 @@
         </div>
     </div>
 
+    <!-- Modal Preview WhatsApp -->
+    <div id="modal-wsp-preview" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50 p-4">
+        <div class="bg-gray-900 border border-gray-700 rounded-xl p-6 w-full max-w-md shadow-2xl">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-lg font-bold text-white border-l-4 border-green-500 pl-2">📱 Enviar por WhatsApp</h3>
+                <button onclick="cerrarPreviewWsp()" class="text-gray-500 hover:text-white text-xl">✕</button>
+            </div>
+            <label class="block text-gray-400 text-xs mb-1">Teléfono</label>
+            <input id="wsp-preview-tel" class="w-full bg-gray-800 border border-gray-700 text-white rounded p-2 mb-3 text-sm" placeholder="Ej: 2615001234">
+            <label class="block text-gray-400 text-xs mb-1">Mensaje</label>
+            <textarea id="wsp-preview-msg" rows="6" class="w-full bg-gray-800 border border-gray-700 text-white rounded p-2 mb-3 text-sm resize-none"></textarea>
+            <div id="wsp-preview-estado" class="text-sm mt-1 mb-3"></div>
+            <div class="flex gap-3">
+                <button onclick="cerrarPreviewWsp()" class="flex-1 bg-gray-800 hover:bg-gray-700 text-white py-2 rounded text-sm">Cancelar</button>
+                <button onclick="confirmarEnvioWsp()" class="flex-1 bg-green-700 hover:bg-green-600 text-white font-bold py-2 rounded text-sm">✅ Enviar</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Modal Nuevo Pedido -->
     <div id="modal-nuevo" class="modal-oculto fixed inset-0 bg-black/80 items-center justify-center z-50">
         <div class="bg-gray-900 border border-gray-700 rounded-xl p-6 w-[580px] shadow-2xl max-h-[90vh] overflow-y-auto">
@@ -226,6 +245,8 @@
 
     <script>
         var API_URL = window.location.origin + "/api";
+        var WSP_URL = localStorage.getItem('wsp_url') || '';
+        var WSP_KEY = localStorage.getItem('wsp_key') || '';
         var usr = JSON.parse(sessionStorage.getItem('usuario') || '{}');
         if (usr.nombre) document.getElementById('usuario-info').textContent = usr.nombre + ' ' + usr.apellido + ' · ' + usr.rol;
 
@@ -929,7 +950,7 @@
                 ? '✅ *Portal del Viento*\n\nHola ' + (dist.razon_social || '') + ', su pedido *#' + num + '* está listo para despachar.\n\nTotal: ' + total + '\n\n¡Gracias! 🙏'
                 : '🚚 *Portal del Viento*\n\nHola ' + (dist.razon_social || '') + ', su pedido *#' + num + '* fue despachado y está en camino.\n\nTotal: ' + total + '\n\n¡Que lo disfruten! 🍫';
             var tel = dist.telefono ? dist.telefono.replace(/\D/g,'') : '';
-            window.open(tel ? 'https://wa.me/54' + tel + '?text=' + encodeURIComponent(msg) : 'https://wa.me/?text=' + encodeURIComponent(msg), '_blank');
+            abrirPreviewWsp(tel, msg);
         }
 
         function membrete(doc) {
@@ -1718,8 +1739,57 @@
                 msg = 'Hola ' + p.distribuidor + '! Tu pedido #' + String(p.id).padStart(4,'0') + ' fue despachado.' + guia + '\\nImporte: $ ' + total + '.';
             }
             cerrarModalDist();
-            var url = 'https://wa.me/' + tel + '?text=' + encodeURIComponent(msg);
-            window.open(url, '_blank');
+            abrirPreviewWsp(tel, msg);
+        }
+
+        // ===== Preview y envío WhatsApp por ERP =====
+        function abrirPreviewWsp(tel, msg) {
+            var modal = document.getElementById('modal-wsp-preview');
+            document.getElementById('wsp-preview-tel').value = tel;
+            document.getElementById('wsp-preview-msg').value = msg;
+            document.getElementById('wsp-preview-estado').textContent = '';
+            modal.classList.remove('modal-oculto');
+            modal.classList.add('modal-visible');
+        }
+        function cerrarPreviewWsp() {
+            var modal = document.getElementById('modal-wsp-preview');
+            modal.classList.add('modal-oculto');
+            modal.classList.remove('modal-visible');
+        }
+        async function confirmarEnvioWsp() {
+            var tel = document.getElementById('wsp-preview-tel').value.trim();
+            var msg = document.getElementById('wsp-preview-msg').value.trim();
+            var estado = document.getElementById('wsp-preview-estado');
+            if (!tel) { estado.textContent = '⚠️ Sin número de teléfono'; estado.className = 'text-orange-400 text-sm mt-2'; return; }
+            if (!msg) { estado.textContent = '⚠️ El mensaje está vacío'; estado.className = 'text-orange-400 text-sm mt-2'; return; }
+            if (!WSP_URL) {
+                // Fallback: abrir WhatsApp Web
+                var numFull = tel.startsWith('54') ? tel : '54' + tel;
+                window.open('https://wa.me/' + numFull + '?text=' + encodeURIComponent(msg), '_blank');
+                cerrarPreviewWsp();
+                return;
+            }
+            estado.textContent = 'Enviando...';
+            estado.className = 'text-gray-400 text-sm mt-2';
+            try {
+                var r = await fetch(WSP_URL + '/enviar', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'x-api-key': WSP_KEY },
+                    body: JSON.stringify({ numero: tel, mensaje: msg })
+                });
+                var data = await r.json();
+                if (r.ok && data.ok) {
+                    estado.textContent = '✅ Mensaje enviado';
+                    estado.className = 'text-green-400 text-sm mt-2';
+                    setTimeout(cerrarPreviewWsp, 1500);
+                } else {
+                    estado.textContent = '❌ ' + (data.error || 'Error al enviar');
+                    estado.className = 'text-red-400 text-sm mt-2';
+                }
+            } catch(e) {
+                estado.textContent = '❌ No se pudo conectar con el servicio WhatsApp';
+                estado.className = 'text-red-400 text-sm mt-2';
+            }
         }
 
         // ===== Cargar guía de transporte =====
