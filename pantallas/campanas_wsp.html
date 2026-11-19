@@ -61,8 +61,11 @@
 
                 <!-- Mensaje -->
                 <div>
-                    <label class="block text-xs text-gray-500 font-bold mb-1">Mensaje <span class="text-gray-600 font-normal">(usá {nombre} para personalizar)</span></label>
-                    <textarea id="txt-mensaje" rows="6" placeholder="Ej: ¡Hola {nombre}! 🎉 Tenemos una promo especial esta semana en Portal del Viento..." class="w-full bg-black border border-gray-700 focus:border-green-500 text-white rounded-lg p-3 text-sm resize-none outline-none"></textarea>
+                    <div class="flex justify-between items-center mb-1">
+                        <label class="text-xs text-gray-500 font-bold">Mensaje <span class="text-gray-600 font-normal">(usá {nombre} para personalizar)</span></label>
+                        <button onclick="abrirAsistente()" class="text-xs bg-gray-800 hover:bg-gray-700 border border-gray-700 hover:border-neon text-neon font-bold px-3 py-1 rounded-lg flex items-center gap-1">✨ Asistente</button>
+                    </div>
+                    <textarea id="txt-mensaje" rows="6" placeholder="Escribí el mensaje o usá el Asistente ✨" class="w-full bg-black border border-gray-700 focus:border-green-500 text-white rounded-lg p-3 text-sm resize-none outline-none"></textarea>
                     <div class="flex justify-between mt-1">
                         <span class="text-xs text-gray-600" id="char-count">0 caracteres</span>
                         <button onclick="insertarNombre()" class="text-xs text-green-400 hover:text-green-300">{nombre}</button>
@@ -156,6 +159,48 @@
     </div>
 </div>
 
+<!-- MODAL ASISTENTE -->
+<div id="modal-asistente" class="modal-oculto fixed inset-0 bg-black/90 items-center justify-center z-50 p-4">
+  <div class="bg-gray-900 border border-gray-700 rounded-2xl w-full max-w-lg shadow-2xl">
+    <div class="flex justify-between items-center p-5 border-b border-gray-800">
+      <h3 class="text-white font-bold text-lg">✨ Asistente de campaña</h3>
+      <button onclick="cerrarAsistente()" class="text-gray-500 hover:text-white text-2xl leading-none">×</button>
+    </div>
+    <div class="p-5 space-y-4">
+      <!-- Tipo de campaña -->
+      <div>
+        <label class="text-xs text-gray-500 font-bold uppercase mb-2 block">Tipo de campaña</label>
+        <div class="grid grid-cols-2 gap-2">
+          <button onclick="selTipoCamp('promo')" id="camp-promo" class="camp-tipo-btn bg-gray-800 border border-gray-700 hover:border-neon text-white rounded-xl p-3 text-left">
+            <div class="text-xl mb-1">🎉</div>
+            <div class="text-sm font-bold">Promoción</div>
+            <div class="text-xs text-gray-500">Descuentos y ofertas</div>
+          </button>
+          <button onclick="selTipoCamp('novedad')" id="camp-novedad" class="camp-tipo-btn bg-gray-800 border border-gray-700 hover:border-neon text-white rounded-xl p-3 text-left">
+            <div class="text-xl mb-1">🆕</div>
+            <div class="text-sm font-bold">Novedad</div>
+            <div class="text-xs text-gray-500">Nuevos productos</div>
+          </button>
+          <button onclick="selTipoCamp('entrega')" id="camp-entrega" class="camp-tipo-btn bg-gray-800 border border-gray-700 hover:border-neon text-white rounded-xl p-3 text-left">
+            <div class="text-xl mb-1">🚚</div>
+            <div class="text-sm font-bold">Aviso de entrega</div>
+            <div class="text-xs text-gray-500">Remitos y envíos</div>
+          </button>
+          <button onclick="selTipoCamp('evento')" id="camp-evento" class="camp-tipo-btn bg-gray-800 border border-gray-700 hover:border-neon text-white rounded-xl p-3 text-left">
+            <div class="text-xl mb-1">📅</div>
+            <div class="text-sm font-bold">Evento</div>
+            <div class="text-xs text-gray-500">Invitaciones</div>
+          </button>
+        </div>
+      </div>
+      <!-- Campos dinámicos -->
+      <div id="camp-campos" class="space-y-3"></div>
+      <!-- Botón generar -->
+      <button onclick="generarMensaje()" id="btn-generar" class="hidden w-full bg-neon text-black font-bold py-2.5 rounded-xl">Generar mensaje →</button>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL QR -->
 <div id="modal-qr" class="modal-oculto fixed inset-0 bg-black/90 items-center justify-center z-50">
     <div class="bg-gray-900 border border-gray-700 rounded-xl p-8 w-80 text-center shadow-2xl">
@@ -214,6 +259,103 @@ document.getElementById('txt-mensaje').addEventListener('input', function() {
     prev.textContent = txt || 'Tu mensaje aparecerá acá...';
     prev.className = txt ? 'text-gray-800 text-sm whitespace-pre-wrap' : 'text-gray-400 italic text-xs';
 });
+// ── Asistente de campaña ─────────────────────────────────────────
+var tipoCampActual = null;
+
+var CAMP_CONFIGS = {
+    promo: {
+        campos: [
+            { id: 'as-producto', label: 'Producto o línea en oferta', placeholder: 'Ej: Alfajores triples, toda la línea premium...' },
+            { id: 'as-descuento', label: 'Descuento o beneficio', placeholder: 'Ej: 20% off, 2x1, envío gratis...' },
+            { id: 'as-vencimiento', label: 'Validez (opcional)', placeholder: 'Ej: solo esta semana, hasta el viernes...' },
+        ]
+    },
+    novedad: {
+        campos: [
+            { id: 'as-producto', label: 'Nuevo producto', placeholder: 'Ej: Alfajor de maracuyá, caja regalo navideña...' },
+            { id: 'as-detalle', label: 'Descripción breve', placeholder: 'Ej: Relleno de dulce de leche artesanal, packaging renovado...' },
+        ]
+    },
+    entrega: {
+        campos: [
+            { id: 'as-producto', label: 'Qué se entrega', placeholder: 'Ej: Pedido de alfajores, remito #1234...' },
+            { id: 'as-fecha', label: 'Fecha o día estimado', placeholder: 'Ej: mañana martes, esta semana...' },
+        ]
+    },
+    evento: {
+        campos: [
+            { id: 'as-evento', label: 'Nombre del evento', placeholder: 'Ej: Degustación de nuevos sabores, feria gastronómica...' },
+            { id: 'as-fecha', label: 'Fecha y lugar', placeholder: 'Ej: sábado 25 en nuestra fábrica de Godoy Cruz...' },
+            { id: 'as-detalle', label: 'Detalle adicional (opcional)', placeholder: 'Ej: entrada libre, presentar este mensaje...' },
+        ]
+    }
+};
+
+var CAMP_TEMPLATES = {
+    promo: function(v) {
+        var msg = '¡Hola! 👋 Desde *Portal del Viento* te contamos que tenemos una promo especial en ' + v['as-producto'] + '.\n\n';
+        msg += '🎉 *' + v['as-descuento'] + '*';
+        if (v['as-vencimiento']) msg += '\n⏰ Válido ' + v['as-vencimiento'];
+        msg += '\n\nConsultanos por tu pedido 😊';
+        return msg;
+    },
+    novedad: function(v) {
+        var msg = '¡Hola! 🆕 Queremos contarte una novedad de *Portal del Viento*:\n\n';
+        msg += '✨ *' + v['as-producto'] + '*\n';
+        if (v['as-detalle']) msg += v['as-detalle'] + '\n';
+        msg += '\n¡Preguntanos por disponibilidad y precios! 🤩';
+        return msg;
+    },
+    entrega: function(v) {
+        var msg = '¡Hola! 🚚 Te avisamos desde *Portal del Viento* que tu pedido está en camino.\n\n';
+        msg += '📦 *' + v['as-producto'] + '*\n';
+        msg += '📅 Entrega estimada: ' + v['as-fecha'];
+        msg += '\n\nAnte cualquier consulta, escribinos. ¡Gracias por tu confianza! 🙌';
+        return msg;
+    },
+    evento: function(v) {
+        var msg = '¡Hola! 📅 Te invitamos a *' + v['as-evento'] + '* de parte de *Portal del Viento*.\n\n';
+        msg += '🗓 ' + v['as-fecha'];
+        if (v['as-detalle']) msg += '\n\n' + v['as-detalle'];
+        msg += '\n\n¡Esperamos verte! 🎊';
+        return msg;
+    }
+};
+
+function abrirAsistente() {
+    tipoCampActual = null;
+    document.querySelectorAll('.camp-tipo-btn').forEach(b => b.classList.remove('border-neon','bg-gray-700'));
+    document.getElementById('camp-campos').innerHTML = '';
+    document.getElementById('btn-generar').classList.add('hidden');
+    document.getElementById('modal-asistente').classList.replace('modal-oculto','modal-visible');
+}
+function cerrarAsistente() {
+    document.getElementById('modal-asistente').classList.replace('modal-visible','modal-oculto');
+}
+function selTipoCamp(tipo) {
+    tipoCampActual = tipo;
+    document.querySelectorAll('.camp-tipo-btn').forEach(b => b.classList.remove('border-neon','bg-gray-700'));
+    document.getElementById('camp-' + tipo).classList.add('border-neon','bg-gray-700');
+    var cfg = CAMP_CONFIGS[tipo];
+    document.getElementById('camp-campos').innerHTML = cfg.campos.map(function(c) {
+        return '<div><label class="text-xs text-gray-500 font-bold mb-1 block">' + c.label + '</label>'
+            + '<input id="' + c.id + '" placeholder="' + c.placeholder + '" class="w-full bg-black border border-gray-700 focus:border-neon text-white rounded-lg p-2.5 text-sm outline-none"></div>';
+    }).join('');
+    document.getElementById('btn-generar').classList.remove('hidden');
+}
+function generarMensaje() {
+    if (!tipoCampActual) return;
+    var vals = {};
+    CAMP_CONFIGS[tipoCampActual].campos.forEach(function(c) {
+        var el = document.getElementById(c.id);
+        vals[c.id] = el ? el.value.trim() : '';
+    });
+    var msg = CAMP_TEMPLATES[tipoCampActual](vals);
+    document.getElementById('txt-mensaje').value = msg;
+    document.getElementById('txt-mensaje').dispatchEvent(new Event('input'));
+    cerrarAsistente();
+}
+
 function insertarNombre() {
     var t = document.getElementById('txt-mensaje');
     var pos = t.selectionStart;
