@@ -93,8 +93,13 @@
                 <h2 class="text-sm font-bold text-white uppercase tracking-widest border-l-4 border-green-500 pl-2">Destinatarios</h2>
                 <span id="count-sel" class="bg-green-900/50 text-green-400 text-xs font-bold px-2 py-0.5 rounded">0 seleccionados</span>
             </div>
-            <div class="flex items-center gap-3">
-                <input type="text" id="buscador" oninput="filtrarContactos()" placeholder="Buscar..." class="bg-gray-900 border border-gray-700 text-white rounded px-3 py-1.5 text-sm w-48 outline-none">
+            <div class="flex items-center gap-3 flex-wrap">
+                <input type="text" id="buscador" oninput="filtrarContactos()" placeholder="Buscar..." class="bg-gray-900 border border-gray-700 text-white rounded px-3 py-1.5 text-sm w-40 outline-none">
+                <select id="filtro-contactados" onchange="renderLista()" class="text-xs bg-black border border-gray-700 text-gray-400 rounded px-2 py-1.5">
+                    <option value="todos">Todos</option>
+                    <option value="sin_contactar">Sin contactar</option>
+                    <option value="contactados">Ya contactados</option>
+                </select>
                 <button onclick="toggleTodos()" id="btn-todos" class="text-xs bg-gray-800 border border-gray-700 hover:border-gray-500 text-gray-400 hover:text-white px-3 py-1.5 rounded font-bold">Seleccionar todos</button>
                 <button onclick="lanzarCampana()" id="btn-enviar" class="bg-wsp text-black font-bold px-5 py-1.5 rounded text-sm hover:bg-green-400 disabled:opacity-50 disabled:cursor-not-allowed">📤 Enviar campaña</button>
                 <button onclick="detenerEnvios()" id="btn-detener" class="hidden bg-red-700 hover:bg-red-600 text-white font-bold px-4 py-1.5 rounded text-sm">⏹ Detener</button>
@@ -222,6 +227,16 @@ const WSP_KEY = window.__WSP_KEY__ || 'portal-viento-wsp-key';
 var todosContactos = [];
 var seleccionados = new Set();  // 'tipo:id' o 'manual:numero'
 var tabActual = 'distribuidores';
+var numerosContactados = new Set(); // números que ya recibieron al menos 1 mensaje
+
+async function cargarNumerosContactados() {
+    try {
+        const r = await fetch(WSP_URL + '/mensajes-enviados', { headers: { 'x-api-key': WSP_KEY } });
+        if (!r.ok) return;
+        const data = await r.json();
+        numerosContactados = new Set((data.numeros || []).map(n => String(n).replace(/\D/g,'')));
+    } catch(e) {}
+}
 var imagenBase64 = null;
 var intervalStatus = null;
 
@@ -376,6 +391,9 @@ async function verificarStatus() {
         const r = await fetch(WSP_URL + '/status', { headers: { 'x-api-key': WSP_KEY } });
         const data = await r.json();
         mostrarEstado(data.estado, data);
+        if (data.estado === 'conectado') {
+            cargarNumerosContactados();
+        }
         if (data.estado === 'esperando_qr') {
             document.getElementById('modal-qr').classList.replace('modal-oculto', 'modal-visible');
             cargarQR();
@@ -514,10 +532,14 @@ function renderLista() {
         return;
     }
 
+    var filtroC = document.getElementById('filtro-contactados') ? document.getElementById('filtro-contactados').value : 'todos';
     var filtrados = todosContactos.filter(c => {
         if (tabActual === 'distribuidores' && c.tipo !== 'dist') return false;
         if (tabActual === 'proveedores' && c.tipo !== 'prov') return false;
         if (busq && !c.nombre.toLowerCase().includes(busq) && !c.numero.includes(busq)) return false;
+        var numLimpio = String(c.numero).replace(/\D/g, '');
+        if (filtroC === 'contactados' && !numerosContactados.has(numLimpio)) return false;
+        if (filtroC === 'sin_contactar' && numerosContactados.has(numLimpio)) return false;
         return true;
     });
     var listaId = tabActual === 'distribuidores' ? 'lista-dist' : 'lista-prov';
@@ -530,11 +552,13 @@ function renderLista() {
     lista.innerHTML = filtrados.map(c => {
         var key = c.tipo + ':' + c.id;
         var sel = seleccionados.has(key);
+        var numLimpio = String(c.numero).replace(/\D/g, '');
+        var yaContactado = numerosContactados.has(numLimpio);
         return `<label class="flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition ${sel ? 'border-green-600 bg-green-900/20' : 'border-gray-800 hover:border-gray-600'}">
             <input type="checkbox" class="w-4 h-4 accent-green-500" ${sel ? 'checked' : ''} onchange="toggleContacto('${key}', this.checked)">
             <div class="flex-1 min-w-0">
                 <div class="font-bold text-sm text-white truncate">${c.nombre}</div>
-                <div class="text-xs text-gray-500">${c.numero}</div>
+                <div class="text-xs text-gray-500">${c.numero}${yaContactado ? ' · <span class="text-green-500">✓ ya contactado</span>' : ''}</div>
             </div>
         </label>`;
     }).join('');
