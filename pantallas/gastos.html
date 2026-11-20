@@ -33,6 +33,7 @@
     <button onclick="cambiarTab('gastos')"      id="tab-gastos" class="py-3 text-sm font-bold text-gray-400 hover:text-white">💸 Gastos</button>
     <button onclick="cambiarTab('recurrentes')" id="tab-rec" class="py-3 text-sm font-bold text-gray-400 hover:text-white">🔁 Recurrentes</button>
     <button onclick="cambiarTab('reporte')"     id="tab-rep" class="py-3 text-sm font-bold text-gray-400 hover:text-white">📊 Reporte</button>
+    <button onclick="cambiarTab('logistica')"   id="tab-log" class="py-3 text-sm font-bold text-gray-400 hover:text-white">🚚 Logística</button>
 </div>
 
 <!-- Contenido -->
@@ -138,6 +139,16 @@
         <button onclick="cargarReporte()" class="bg-neon text-black font-bold px-4 py-2 rounded text-sm">📊 Ver</button>
     </div>
     <div id="reporte-cont"><p class="text-gray-500">Elegí un período y tocá Ver.</p></div>
+</div>
+
+<!-- PANEL LOGÍSTICA -->
+<div id="panel-logistica" class="hidden p-6 max-w-4xl mx-auto">
+    <div class="flex gap-3 mb-4 flex-wrap">
+        <input type="date" id="log-desde" class="bg-gray-900 border border-gray-700 text-white rounded p-2 text-sm flex-1 min-w-32">
+        <input type="date" id="log-hasta" class="bg-gray-900 border border-gray-700 text-white rounded p-2 text-sm flex-1 min-w-32">
+        <button onclick="cargarLogistica()" class="bg-neon text-black font-bold px-4 py-2 rounded text-sm">🔍 Buscar</button>
+    </div>
+    <div id="log-cont"><p class="text-gray-500 text-sm">Elegí un período y tocá Buscar.</p></div>
 </div>
 
 </div><!-- fin contenido -->
@@ -247,17 +258,19 @@ function primerDiaMes(){ const h=new Date(); return new Date(h.getFullYear(),h.g
 function fechaLocal(f,conHora){ if(!f)return'—'; var s=String(f).replace('T',' '); var p=s.split(' '); var fe=p[0].split('-'); if(fe.length<3)return s; var t=fe[2]+'/'+fe[1]+'/'+fe[0]; if(conHora&&p[1])t+=' '+p[1].substring(0,5); return t; }
 
 function cambiarTab(tab){
-    ['caja','gastos','recurrentes','reporte'].forEach(t=>{
+    ['caja','gastos','recurrentes','reporte','logistica'].forEach(t=>{
         document.getElementById('panel-'+t).classList.toggle('hidden',t!==tab);
     });
     document.getElementById('tab-caja').className      = tab==='caja'        ? 'py-3 text-sm font-bold tab-activa' : 'py-3 text-sm font-bold text-gray-400 hover:text-white';
     document.getElementById('tab-gastos').className    = tab==='gastos'      ? 'py-3 text-sm font-bold tab-activa' : 'py-3 text-sm font-bold text-gray-400 hover:text-white';
     document.getElementById('tab-rec').className       = tab==='recurrentes' ? 'py-3 text-sm font-bold tab-activa' : 'py-3 text-sm font-bold text-gray-400 hover:text-white';
     document.getElementById('tab-rep').className       = tab==='reporte'     ? 'py-3 text-sm font-bold tab-activa' : 'py-3 text-sm font-bold text-gray-400 hover:text-white';
+    document.getElementById('tab-log').className       = tab==='logistica'   ? 'py-3 text-sm font-bold tab-activa' : 'py-3 text-sm font-bold text-gray-400 hover:text-white';
     if(tab==='recurrentes') cargarRecurrentes();
     if(tab==='reporte') cargarReporte();
     if(tab==='caja') cargarCaja();
     if(tab==='gastos') cargarGastos();
+    if(tab==='logistica') cargarLogistica();
 }
 
 // ===== CAJA DEL DÍA =====
@@ -521,6 +534,38 @@ async function cargarReporte(){
         }).join('')+'</div>';
 }
 
+// ===== LOGÍSTICA =====
+async function cargarLogistica(){
+    var desde = document.getElementById('log-desde').value;
+    var hasta = document.getElementById('log-hasta').value;
+    var url = API_URL + '/logistica/historial';
+    if(desde) url += '?fecha_desde=' + desde;
+    if(hasta) url += (desde ? '&' : '?') + 'fecha_hasta=' + hasta;
+    var data = await fetch(url).then(r=>r.json()).catch(()=>[]);
+    var cont = document.getElementById('log-cont');
+    if(!data.length){ cont.innerHTML='<p class="text-gray-500 text-sm">Sin registros para ese período.</p>'; return; }
+    var totalGastos = data.reduce((s,t)=>s+parseFloat(t.total_gastos||0),0);
+    cont.innerHTML = '<div class="bg-black border border-neon rounded-xl p-4 mb-4 text-center"><p class="text-gray-500 text-xs">Total gastos logística</p><p class="text-neon font-bold text-2xl">'+fmt(totalGastos)+'</p></div>'
+        + data.map(function(turno){
+            var gastos = Array.isArray(turno.gastos) ? turno.gastos : [];
+            var inicio = turno.inicio ? new Date(turno.inicio).toLocaleString('es-AR',{dateStyle:'short',timeStyle:'short'}) : '—';
+            var fin    = turno.fin    ? new Date(turno.fin).toLocaleString('es-AR',{dateStyle:'short',timeStyle:'short'}) : 'En curso';
+            var gastosHtml = gastos.length
+                ? '<table class="w-full text-xs mt-2"><thead class="text-gray-500"><tr><th class="text-left py-1">Descripción</th><th class="text-right py-1">Monto</th></tr></thead><tbody>'
+                    + gastos.map(function(g){
+                        return '<tr class="border-t border-gray-800"><td class="py-1 text-gray-300">'+(g.descripcion||'—')+'</td><td class="py-1 text-right text-neon font-bold">'+fmt(g.monto)+'</td></tr>';
+                    }).join('') + '</tbody></table>'
+                : '<p class="text-gray-600 text-xs mt-2">Sin gastos en este turno.</p>';
+            return '<div class="bg-gray-900 border border-gray-800 rounded-xl p-4 mb-3">'
+                + '<div class="flex justify-between items-start mb-1">'
+                + '<div><p class="text-white font-bold text-sm">🚚 '+(turno.repartidor||'Sin nombre')+'</p><p class="text-gray-500 text-xs">'+inicio+' → '+fin+'</p></div>'
+                + '<span class="text-neon font-bold text-lg">'+fmt(turno.total_gastos)+'</span>'
+                + '</div>'
+                + gastosHtml
+                + '</div>';
+        }).join('');
+}
+
 // ===== INIT =====
 async function init(){
     categorias=await fetch(API_URL+'/gastos/categorias').then(r=>r.json()).catch(()=>[]);
@@ -531,6 +576,8 @@ async function init(){
     document.getElementById('f-hasta').value=hoyStr();
     document.getElementById('r-desde').value=primerDiaMes();
     document.getElementById('r-hasta').value=hoyStr();
+    document.getElementById('log-desde').value=primerDiaMes();
+    document.getElementById('log-hasta').value=hoyStr();
     document.getElementById('caja-fecha').value=hoyStr();
     cambiarTab('caja');
 }
