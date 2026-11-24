@@ -948,9 +948,12 @@
             var dist = distribuidores.find(function(d) { return String(d.id) === String(pedidoActual.id_distribuidor); }) || {};
             var num  = String(pedidoActual.id).padStart(4,'0');
             var total = '$ ' + parseFloat(pedidoActual.total).toLocaleString('es-AR');
+            var guia = pedidoActual.guia_transporte
+                ? ('\n🚚 Transporte: ' + pedidoActual.guia_transporte + (pedidoActual.guia_numero ? '\nGuía N°: ' + pedidoActual.guia_numero : ''))
+                : '';
             var msg = tipo === 'preparado'
                 ? '✅ *Portal del Viento*\n\nHola ' + (dist.razon_social || '') + ', su pedido *#' + num + '* está listo para despachar.\n\nTotal: ' + total + '\n\n¡Gracias! 🙏'
-                : '🚚 *Portal del Viento*\n\nHola ' + (dist.razon_social || '') + ', su pedido *#' + num + '* fue despachado y está en camino.\n\nTotal: ' + total + '\n\n¡Que lo disfruten! 🍫';
+                : '🚚 *Portal del Viento*\n\nHola ' + (dist.razon_social || '') + ', su pedido *#' + num + '* fue despachado y está en camino.' + guia + '\n\nTotal: ' + total + '\n\n¡Que lo disfruten! 🍫';
             var tel = dist.telefono ? dist.telefono.replace(/\D/g,'') : '';
             abrirPreviewWsp(tel, msg);
         }
@@ -1737,8 +1740,8 @@
             }
             if (tipo === 'terminado')  msg = 'Hola ' + p.distribuidor + '! Tu pedido #' + String(p.id).padStart(4,'0') + ' está terminado y listo para retirar/despachar.';
             if (tipo === 'despachado') {
-                var guia = p.guia_transporte ? ('\\n🚚 Transporte: ' + p.guia_transporte + (p.guia_numero ? '\\nGuía N°: ' + p.guia_numero : '')) : '';
-                msg = 'Hola ' + p.distribuidor + '! Tu pedido #' + String(p.id).padStart(4,'0') + ' fue despachado.' + guia + '\\nImporte: $ ' + total + '.';
+                var guia = p.guia_transporte ? ('\n🚚 Transporte: ' + p.guia_transporte + (p.guia_numero ? '\nGuía N°: ' + p.guia_numero : '')) : '';
+                msg = 'Hola ' + p.distribuidor + '! Tu pedido #' + String(p.id).padStart(4,'0') + ' fue despachado.' + guia + '\nImporte: $ ' + total + '.';
             }
             cerrarModalDist();
             abrirPreviewWsp(tel, msg);
