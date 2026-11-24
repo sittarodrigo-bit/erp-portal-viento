@@ -165,10 +165,28 @@
                     <tbody id="edit-items-tbody"></tbody>
                 </table>
             </div>
-            <div class="flex justify-end mt-2">
+            <!-- IVA solo en edición de facturas -->
+            <div id="edit-iva-wrap" class="hidden mt-3 bg-gray-800 border border-gray-700 rounded-lg p-3">
+                <div class="flex items-center gap-3 mb-2">
+                    <label class="text-xs text-gray-400 font-bold uppercase">IVA</label>
+                    <select id="edit-iva-tasa" onchange="recalcularTotalEdicion()" class="bg-black border border-gray-600 text-white rounded p-1 text-sm flex-1">
+                        <option value="0">Sin IVA</option>
+                        <option value="10.5">10,5%</option>
+                        <option value="21" selected>21%</option>
+                        <option value="27">27%</option>
+                    </select>
+                </div>
+                <div class="text-xs text-gray-500 flex justify-between"><span>Neto:</span><span id="edit-iva-neto">$ 0,00</span></div>
+                <div class="text-xs text-gray-500 flex justify-between mt-0.5"><span id="edit-iva-label">IVA 21%:</span><span id="edit-iva-monto">$ 0,00</span></div>
+                <div class="flex justify-between mt-1 pt-1 border-t border-gray-600">
+                    <span class="text-xs text-neon font-bold uppercase">Total c/IVA</span>
+                    <span id="edit-total-display" class="text-neon font-black text-lg">$0,00</span>
+                </div>
+            </div>
+            <div id="edit-total-remito-wrap" class="flex justify-end mt-2">
                 <div class="bg-gray-800 border border-gray-700 rounded px-4 py-2 text-right">
                     <span class="text-xs text-gray-500 uppercase font-bold mr-3">Total remito</span>
-                    <span id="edit-total-display" class="text-neon font-black text-lg">$0,00</span>
+                    <span id="edit-total-display-remito" class="text-neon font-black text-lg">$0,00</span>
                 </div>
             </div>
         </div>
@@ -293,10 +311,28 @@
                     </tbody>
                 </table>
             </div>
-            <div class="flex justify-end mt-2">
+            <!-- IVA (solo facturas) -->
+            <div id="campo-iva-wrap" class="hidden mt-3 bg-gray-800 border border-gray-700 rounded-lg p-3">
+                <div class="flex items-center gap-3 mb-2">
+                    <label class="text-xs text-gray-400 font-bold uppercase">IVA</label>
+                    <select id="mov-iva-tasa" onchange="recalcularTotalFactura()" class="bg-black border border-gray-600 text-white rounded p-1 text-sm flex-1">
+                        <option value="0">Sin IVA</option>
+                        <option value="10.5">10,5%</option>
+                        <option value="21" selected>21%</option>
+                        <option value="27">27%</option>
+                    </select>
+                </div>
+                <div class="text-xs text-gray-500 flex justify-between"><span>Neto:</span><span id="iva-neto-display">$ 0,00</span></div>
+                <div class="text-xs text-gray-500 flex justify-between mt-0.5"><span id="iva-label-monto">IVA 21%:</span><span id="iva-monto-display">$ 0,00</span></div>
+                <div class="flex justify-between mt-1 pt-1 border-t border-gray-600">
+                    <span class="text-xs text-neon font-bold uppercase">Total c/IVA</span>
+                    <span id="remito-total-display" class="text-neon font-black text-lg">$0,00</span>
+                </div>
+            </div>
+            <div id="campo-total-remito-wrap" class="flex justify-end mt-2">
                 <div class="bg-gray-800 border border-gray-700 rounded px-4 py-2 text-right">
                     <span class="text-xs text-gray-500 uppercase font-bold mr-3">Total remito</span>
-                    <span id="remito-total-display" class="text-neon font-black text-lg">$0,00</span>
+                    <span id="remito-total-display-remito" class="text-neon font-black text-lg">$0,00</span>
                 </div>
             </div>
         </div>
@@ -441,12 +477,24 @@ async function cargarDetalle(id) {
 
             // Concepto: para remitos y facturas con ítems JSON, mostrar resumen
             var items = null;
+            var ivaInfo = null; // para facturas con IVA
             if ((m.tipo === 'remito' || m.tipo === 'factura') && m.detalle_remito) {
-                try { items = JSON.parse(m.detalle_remito); if (!Array.isArray(items)) items = null; } catch(e) { items = null; }
+                try {
+                    var parsed = JSON.parse(m.detalle_remito);
+                    if (Array.isArray(parsed)) {
+                        items = parsed; // formato legado (remito o factura antigua)
+                    } else if (parsed && Array.isArray(parsed.items)) {
+                        items = parsed.items; // formato nuevo factura con IVA
+                        ivaInfo = parsed;
+                    }
+                } catch(e) { items = null; }
             }
             var conceptoTexto;
             if (items && items.length) {
                 conceptoTexto = items.length + ' ítem' + (items.length>1?'s':'');
+                if (ivaInfo && ivaInfo.iva_tasa > 0) {
+                    conceptoTexto += ' <span class="text-yellow-400 text-xs">IVA ' + ivaInfo.iva_tasa + '%</span>';
+                }
             } else {
                 conceptoTexto = m.concepto || (!items && m.detalle_remito ? m.detalle_remito : '—');
             }
@@ -475,8 +523,16 @@ async function cargarDetalle(id) {
                     + items.map(function(it){
                         var sub = (parseFloat(it.cant)||0)*(parseFloat(it.precio)||0);
                         return `<tr class="border-t border-gray-800"><td class="px-3 py-1 text-gray-200">${escHtmlCta(it.desc)}</td><td class="px-3 py-1 text-center text-gray-400">${it.cant}</td><td class="px-3 py-1 text-right text-gray-400">${formatPeso(it.precio)}</td><td class="px-3 py-1 text-right text-neon font-bold">${sub>0?formatPeso(sub):'—'}</td></tr>`;
-                    }).join('')
-                    + `</tbody></table>`;
+                    }).join('');
+                // Si hay IVA, agregar fila resumen
+                if (ivaInfo && ivaInfo.iva_tasa >= 0) {
+                    itemsHtml += `<tr class="border-t border-gray-700 bg-gray-800/60"><td colspan="3" class="px-3 py-1 text-gray-500 text-right">Neto:</td><td class="px-3 py-1 text-right text-gray-400 font-bold">${formatPeso(ivaInfo.neto)}</td></tr>`;
+                    if (ivaInfo.iva_tasa > 0) {
+                        itemsHtml += `<tr class="bg-gray-800/60"><td colspan="3" class="px-3 py-1 text-yellow-400 text-right">IVA ${ivaInfo.iva_tasa}%:</td><td class="px-3 py-1 text-right text-yellow-400 font-bold">${formatPeso(ivaInfo.iva_monto)}</td></tr>`;
+                    }
+                    itemsHtml += `<tr class="bg-gray-800/80"><td colspan="3" class="px-3 py-1 text-neon font-bold text-right">Total c/IVA:</td><td class="px-3 py-1 text-right text-neon font-black">${formatPeso(ivaInfo.neto + ivaInfo.iva_monto)}</td></tr>`;
+                }
+                itemsHtml += `</tbody></table>`;
                 filas.push(`<tr id="${rowId}" class="hidden border-b border-gray-800 bg-gray-900/50"><td colspan="9" class="px-6 py-3">${itemsHtml}</td></tr>`);
             }
         });
@@ -500,6 +556,15 @@ function abrirModalMovimiento(tipo) {
     document.getElementById('campo-monto-wrap').classList.toggle('hidden', tipo==='remito' || tipo==='factura');
     document.getElementById('campo-metodo-wrap').classList.toggle('hidden', tipo!=='pago');
     document.getElementById('campo-items-remito').classList.toggle('hidden', tipo==='pago');
+    // IVA solo para facturas
+    var ivaWrap = document.getElementById('campo-iva-wrap');
+    var totalRemitoWrap = document.getElementById('campo-total-remito-wrap');
+    if (ivaWrap) ivaWrap.classList.toggle('hidden', tipo !== 'factura');
+    if (totalRemitoWrap) totalRemitoWrap.classList.toggle('hidden', tipo === 'factura');
+    if (tipo === 'factura') {
+        var selIva = document.getElementById('mov-iva-tasa');
+        if (selIva) selIva.value = '21';
+    }
     var labelItems = document.getElementById('label-items-mov');
     if (labelItems) labelItems.textContent = tipo==='factura' ? 'Ítems de la factura' : 'Ítems del remito';
     // Para remito: "Concepto" es opcional (encabezado general), lo mostramos más pequeño
@@ -512,7 +577,7 @@ function abrirModalMovimiento(tipo) {
         agregarItemRemito(); // arranca con 1 fila vacía
     }
     document.getElementById('modal-movimiento').classList.replace('modal-oculto','modal-visible');
-    setTimeout(()=>document.getElementById(tipo==='remito'?'mov-numero':'mov-monto').focus(),100);
+    setTimeout(()=>document.getElementById((tipo==='remito'||tipo==='factura')?'mov-numero':'mov-monto').focus(),100);
 }
 
 function agregarItemRemito() {
@@ -529,7 +594,13 @@ function renderItemsRemito() {
     if (!tbody) return;
     if (!itemsRemito.length) {
         tbody.innerHTML = '<tr><td colspan="5" class="px-3 py-3 text-center text-gray-600 text-xs">Sin ítems. Agregá uno con el botón +</td></tr>';
-        document.getElementById('remito-total-display').textContent = '$0,00';
+        var tipoNow = document.getElementById('mov-tipo') ? document.getElementById('mov-tipo').value : '';
+        var elTotalReset = document.getElementById(tipoNow === 'factura' ? 'remito-total-display' : 'remito-total-display-remito');
+        if (elTotalReset) elTotalReset.textContent = '$0,00';
+        if (tipoNow === 'factura') {
+            var elNR = document.getElementById('iva-neto-display'); if (elNR) elNR.textContent = '$ 0,00';
+            var elMR = document.getElementById('iva-monto-display'); if (elMR) elMR.textContent = '$ 0,00';
+        }
         return;
     }
     tbody.innerHTML = itemsRemito.map(function(it, idx) {
@@ -569,11 +640,31 @@ function quitarItemRemito(idx) {
 }
 
 function actualizarTotalRemito() {
-    var total = itemsRemito.reduce(function(acc, it) {
+    var neto = itemsRemito.reduce(function(acc, it) {
         return acc + (parseFloat(it.cant)||0) * (parseFloat(it.precio)||0);
     }, 0);
-    var el = document.getElementById('remito-total-display');
-    if (el) el.textContent = formatPeso(total);
+    var tipo = document.getElementById('mov-tipo') ? document.getElementById('mov-tipo').value : '';
+    if (tipo === 'factura') {
+        recalcularTotalFactura(neto);
+    } else {
+        var el = document.getElementById('remito-total-display-remito');
+        if (el) el.textContent = formatPeso(neto);
+    }
+}
+
+function recalcularTotalFactura(netoOverride) {
+    var neto = netoOverride !== undefined ? netoOverride : calcTotalRemito();
+    var tasa = parseFloat((document.getElementById('mov-iva-tasa')||{}).value || '21');
+    var ivaAmt = neto * (tasa / 100);
+    var total = neto + ivaAmt;
+    var elNeto = document.getElementById('iva-neto-display');
+    var elIvaMonto = document.getElementById('iva-monto-display');
+    var elLabel = document.getElementById('iva-label-monto');
+    var elTotal = document.getElementById('remito-total-display');
+    if (elNeto) elNeto.textContent = formatPeso(neto);
+    if (elIvaMonto) elIvaMonto.textContent = formatPeso(ivaAmt);
+    if (elLabel) elLabel.textContent = tasa === 0 ? 'Sin IVA:' : 'IVA ' + tasa + '%:';
+    if (elTotal) elTotal.textContent = formatPeso(total);
 }
 
 function calcTotalRemito() {
@@ -589,12 +680,26 @@ async function guardarMovimiento() {
         // Validar que haya al menos 1 ítem con descripción
         var itemsValidos = itemsRemito.filter(function(it){ return String(it.desc||'').trim() !== ''; });
         if (!itemsValidos.length) { alert('Agregá al menos un ítem con descripción.'); return; }
-        monto = calcTotalRemito();
-        if (tipo === 'factura' && (!monto || monto <= 0)) { alert('Los ítems de la factura deben tener precio.'); return; }
-        // Guardar ítems como JSON en detalle_remito
-        detalleRemito = JSON.stringify(itemsValidos.map(function(it){
-            return { desc: String(it.desc||'').trim(), cant: parseFloat(it.cant)||0, precio: parseFloat(it.precio)||0 };
-        }));
+        var neto = calcTotalRemito();
+        if (tipo === 'factura') {
+            if (!neto || neto <= 0) { alert('Los ítems de la factura deben tener precio.'); return; }
+            var tasaIva = parseFloat((document.getElementById('mov-iva-tasa')||{}).value || '21');
+            var ivaAmt = neto * (tasaIva / 100);
+            monto = neto + ivaAmt;
+            // Guardar ítems + info IVA en detalle_remito
+            detalleRemito = JSON.stringify({
+                items: itemsValidos.map(function(it){ return { desc: String(it.desc||'').trim(), cant: parseFloat(it.cant)||0, precio: parseFloat(it.precio)||0 }; }),
+                iva_tasa: tasaIva,
+                iva_monto: ivaAmt,
+                neto: neto
+            });
+        } else {
+            monto = neto;
+            // Guardar ítems como JSON en detalle_remito (formato legado)
+            detalleRemito = JSON.stringify(itemsValidos.map(function(it){
+                return { desc: String(it.desc||'').trim(), cant: parseFloat(it.cant)||0, precio: parseFloat(it.precio)||0 };
+            }));
+        }
     } else {
         monto = parseFloat(document.getElementById('mov-monto').value);
         if (!monto||monto<=0) { alert('Ingresá un monto válido.'); return; }
@@ -642,23 +747,38 @@ function editarMovimiento(id) {
     document.getElementById('edit-monto').value = tipo === 'remito' ? '' : (m.monto || '');
     document.getElementById('edit-concepto').value = m.concepto || '';
     // monto y método
-    document.getElementById('edit-monto-wrap').classList.toggle('hidden', tipo === 'remito');
+    document.getElementById('edit-monto-wrap').classList.toggle('hidden', tipo === 'remito' || tipo === 'factura');
     document.getElementById('edit-metodo-wrap').classList.toggle('hidden', tipo !== 'pago');
     if (tipo === 'pago') document.getElementById('edit-metodo').value = m.metodo || 'transferencia';
     // ítems remito/factura
     var esConItems = tipo === 'remito' || tipo === 'factura';
     document.getElementById('edit-items-wrap').classList.toggle('hidden', !esConItems);
+    // IVA — solo facturas
+    var editIvaWrap = document.getElementById('edit-iva-wrap');
+    var editTotalRemitoWrap = document.getElementById('edit-total-remito-wrap');
+    if (editIvaWrap) editIvaWrap.classList.toggle('hidden', tipo !== 'factura');
+    if (editTotalRemitoWrap) editTotalRemitoWrap.classList.toggle('hidden', tipo === 'factura');
     var concLabel = document.querySelector('#edit-concepto-wrap label');
     if (concLabel) concLabel.textContent = esConItems ? 'Concepto general (opcional)' : 'Concepto / Detalle';
     if (esConItems) {
         itemsEdicion = [];
+        var ivaEditTasa = 21;
         if (m.detalle_remito) {
             try {
-                var its = JSON.parse(m.detalle_remito);
-                if (Array.isArray(its)) itemsEdicion = its.map(function(i){ return { desc: i.desc||'', cant: i.cant||1, precio: i.precio||0 }; });
+                var parsedEdit = JSON.parse(m.detalle_remito);
+                if (Array.isArray(parsedEdit)) {
+                    itemsEdicion = parsedEdit.map(function(i){ return { desc: i.desc||'', cant: i.cant||1, precio: i.precio||0 }; });
+                } else if (parsedEdit && Array.isArray(parsedEdit.items)) {
+                    itemsEdicion = parsedEdit.items.map(function(i){ return { desc: i.desc||'', cant: i.cant||1, precio: i.precio||0 }; });
+                    ivaEditTasa = parsedEdit.iva_tasa !== undefined ? parsedEdit.iva_tasa : 21;
+                }
             } catch(e) {}
         }
         if (!itemsEdicion.length) itemsEdicion.push({ desc:'', cant:1, precio:0 });
+        if (tipo === 'factura') {
+            var selEditIva = document.getElementById('edit-iva-tasa');
+            if (selEditIva) selEditIva.value = String(ivaEditTasa);
+        }
         renderItemsEdicion();
     }
     document.getElementById('modal-editar-mov').classList.replace('modal-oculto','modal-visible');
@@ -713,24 +833,59 @@ function quitarItemEdicion(idx) {
 }
 
 function actualizarTotalEdicion() {
-    var total = itemsEdicion.reduce(function(acc, it) {
+    var neto = itemsEdicion.reduce(function(acc, it) {
         return acc + (parseFloat(it.cant)||0) * (parseFloat(it.precio)||0);
     }, 0);
-    var el = document.getElementById('edit-total-display');
-    if (el) el.textContent = formatPeso(total);
+    var tipo = document.getElementById('edit-tipo') ? document.getElementById('edit-tipo').value : '';
+    if (tipo === 'factura') {
+        recalcularTotalEdicion(neto);
+    } else {
+        var el = document.getElementById('edit-total-display-remito');
+        if (el) el.textContent = formatPeso(neto);
+    }
+}
+
+function recalcularTotalEdicion(netoOverride) {
+    var neto = netoOverride !== undefined ? netoOverride : itemsEdicion.reduce(function(acc, it) {
+        return acc + (parseFloat(it.cant)||0) * (parseFloat(it.precio)||0);
+    }, 0);
+    var tasa = parseFloat((document.getElementById('edit-iva-tasa')||{}).value || '21');
+    var ivaAmt = neto * (tasa / 100);
+    var total = neto + ivaAmt;
+    var elNeto = document.getElementById('edit-iva-neto');
+    var elMonto = document.getElementById('edit-iva-monto');
+    var elLabel = document.getElementById('edit-iva-label');
+    var elTotal = document.getElementById('edit-total-display');
+    if (elNeto) elNeto.textContent = formatPeso(neto);
+    if (elMonto) elMonto.textContent = formatPeso(ivaAmt);
+    if (elLabel) elLabel.textContent = tasa === 0 ? 'Sin IVA:' : 'IVA ' + tasa + '%:';
+    if (elTotal) elTotal.textContent = formatPeso(total);
 }
 
 async function guardarEdicionMovimiento() {
     var id = parseInt(document.getElementById('edit-id').value);
     var tipo = document.getElementById('edit-tipo').value;
     var monto, detalleRemito;
-    if (tipo === 'remito') {
+    if (tipo === 'remito' || tipo === 'factura') {
         var validos = itemsEdicion.filter(function(it){ return String(it.desc||'').trim() !== ''; });
         if (!validos.length) { alert('Agregá al menos un ítem con descripción.'); return; }
-        monto = validos.reduce(function(acc,it){ return acc+(parseFloat(it.cant)||0)*(parseFloat(it.precio)||0); }, 0);
-        detalleRemito = JSON.stringify(validos.map(function(it){
-            return { desc: String(it.desc||'').trim(), cant: parseFloat(it.cant)||0, precio: parseFloat(it.precio)||0 };
-        }));
+        var netoEdit = validos.reduce(function(acc,it){ return acc+(parseFloat(it.cant)||0)*(parseFloat(it.precio)||0); }, 0);
+        if (tipo === 'factura') {
+            var tasaEdit = parseFloat((document.getElementById('edit-iva-tasa')||{}).value || '21');
+            var ivaAmtEdit = netoEdit * (tasaEdit / 100);
+            monto = netoEdit + ivaAmtEdit;
+            detalleRemito = JSON.stringify({
+                items: validos.map(function(it){ return { desc: String(it.desc||'').trim(), cant: parseFloat(it.cant)||0, precio: parseFloat(it.precio)||0 }; }),
+                iva_tasa: tasaEdit,
+                iva_monto: ivaAmtEdit,
+                neto: netoEdit
+            });
+        } else {
+            monto = netoEdit;
+            detalleRemito = JSON.stringify(validos.map(function(it){
+                return { desc: String(it.desc||'').trim(), cant: parseFloat(it.cant)||0, precio: parseFloat(it.precio)||0 };
+            }));
+        }
     } else {
         monto = parseFloat(document.getElementById('edit-monto').value);
         if (!monto || monto <= 0) { alert('Ingresá un monto válido.'); return; }
@@ -782,8 +937,12 @@ function imprimirCuenta() {
         var concepto = m.concepto || '';
         if ((m.tipo==='remito' || m.tipo==='factura') && m.detalle_remito) {
             try {
-                var its = JSON.parse(m.detalle_remito);
-                if (Array.isArray(its) && its.length) concepto = its.map(function(i){ return i.cant+'x '+i.desc; }).join(', ');
+                var itsPrint = JSON.parse(m.detalle_remito);
+                var itsArr = Array.isArray(itsPrint) ? itsPrint : (itsPrint && Array.isArray(itsPrint.items) ? itsPrint.items : null);
+                if (itsArr && itsArr.length) {
+                    concepto = itsArr.map(function(i){ return i.cant+'x '+i.desc; }).join(', ');
+                    if (!Array.isArray(itsPrint) && itsPrint.iva_tasa > 0) concepto += ' (IVA ' + itsPrint.iva_tasa + '%)';
+                }
             } catch(e) { concepto = m.detalle_remito; }
         }
 
