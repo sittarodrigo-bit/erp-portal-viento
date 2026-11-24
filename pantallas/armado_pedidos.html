@@ -64,13 +64,29 @@
 
     <!-- Barra inferior fija -->
     <div class="fixed bottom-0 left-0 right-0 bg-black border-t border-gray-800 p-3" id="arm-botonera">
-      <div class="max-w-5xl mx-auto flex gap-2">
-        <div id="aviso-faltan" class="hidden"></div>
+      <div class="max-w-5xl mx-auto flex gap-2 flex-wrap">
+        <div id="aviso-faltan" class="hidden w-full"></div>
         <button id="btn-parcial" onclick="marcarParcialListo()" class="flex-1 bg-orange-600 hover:bg-orange-500 text-white font-bold py-3 rounded-xl text-sm">📦 Listo lo armado (parcial)</button>
         <button id="btn-listo" onclick="marcarTodo()" class="flex-1 bg-neon text-black font-bold py-3 rounded-xl text-base disabled:bg-gray-700 disabled:text-gray-500">✓ Todo listo</button>
+        <button id="btn-guia" onclick="abrirModalGuia()" class="hidden w-full bg-blue-700 hover:bg-blue-600 text-white font-bold py-3 rounded-xl text-sm">🚚 Cargar guía de transporte</button>
       </div>
     </div>
   </main>
+
+  <!-- Modal Guía -->
+  <div id="modal-guia" class="hidden fixed inset-0 bg-black/80 flex items-end justify-center z-50 p-4">
+    <div class="bg-gray-900 border border-gray-700 rounded-xl p-5 w-full max-w-md shadow-2xl">
+      <div class="flex justify-between items-center mb-4">
+        <h3 class="text-white font-bold">🚚 Guía de transporte</h3>
+        <button onclick="cerrarModalGuia()" class="text-gray-500 hover:text-white text-xl">✕</button>
+      </div>
+      <label class="block text-gray-400 text-xs mb-1">Transporte</label>
+      <input id="guia-transporte" class="w-full bg-gray-800 border border-gray-700 text-white rounded p-2 mb-3 text-sm" placeholder="Ej: Andreani, Vía Cargo...">
+      <label class="block text-gray-400 text-xs mb-1">Número de guía</label>
+      <input id="guia-numero" class="w-full bg-gray-800 border border-gray-700 text-white rounded p-2 mb-4 text-sm" placeholder="Ej: 123456789">
+      <button onclick="guardarGuia()" class="w-full bg-neon text-black font-bold py-2.5 rounded-xl">💾 Guardar</button>
+    </div>
+  </div>
 
 <script>
 const API_URL = window.location.origin + "/api";
@@ -149,6 +165,14 @@ function renderArmado(){
 
   var prog = document.getElementById('arm-progreso-wrap'); if(prog) prog.style.display='';
   var botonera = document.getElementById('arm-botonera'); if(botonera) botonera.style.display='';
+  // Botón guía: solo para pedidos de distribuidor listos/despachados
+  var btnGuia = $('btn-guia');
+  if(btnGuia){
+    var estadoGuia = d.estado || '';
+    var mostrarGuia = !esRepo && (estadoGuia === 'Preparado' || estadoGuia === 'Despachado' || estadoGuia === 'Despachado parcial' || estadoGuia === 'En preparación' || estadoGuia === 'Terminado');
+    btnGuia.classList.toggle('hidden', !mostrarGuia);
+    btnGuia.textContent = (d.guia_transporte ? '✏️ Editar guía (' + d.guia_transporte + ')' : '🚚 Cargar guía de transporte');
+  }
 
   const faltan = d.items.filter(i=>!i.completo);
   const hechos = d.items.filter(i=>i.completo);
@@ -329,6 +353,33 @@ function volverLista(){
   pedidoActual = null;
   $('vista-armado').classList.add('hidden');
   $('vista-lista').classList.remove('hidden');
+}
+
+function abrirModalGuia(){
+  if(!pedidoActual || pedidoActual.tipo === 'reposicion') return;
+  $('guia-transporte').value = pedidoActual.guia_transporte || '';
+  $('guia-numero').value = pedidoActual.guia_numero || '';
+  $('modal-guia').classList.remove('hidden');
+}
+function cerrarModalGuia(){
+  $('modal-guia').classList.add('hidden');
+}
+async function guardarGuia(){
+  var transporte = $('guia-transporte').value.trim();
+  var numero = $('guia-numero').value.trim();
+  if(!transporte) { alert('Ingresá el nombre del transporte.'); return; }
+  try{
+    var res = await fetch(`${API_URL}/pedidos_b2b/${pedidoActual.id}/guia`, {
+      method: 'PUT',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({transporte, numero})
+    });
+    if(!res.ok) throw new Error(res.status);
+    pedidoActual.guia_transporte = transporte;
+    pedidoActual.guia_numero = numero;
+    cerrarModalGuia();
+    alert('✅ Guía guardada.');
+  } catch(e){ alert('No se pudo guardar la guía.'); }
 }
 
 
