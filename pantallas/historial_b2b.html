@@ -388,14 +388,12 @@
             relNom.appendChild(btnNom); relNom.appendChild(menuNom);
             tdNom.appendChild(relNom); tr.appendChild(tdNom);
 
-            // total_sin_descuento = neto real (subtotal items con desc por producto)
-            // total = bruto (precio lista sin descuentos de orden)
+            // total = neto final con todos los descuentos aplicados (lo que debe el distribuidor)
+            // total_sin_descuento = subtotal antes del descuento de orden (para referencia)
             // iva_aplicado = IVA guardado en BD (0 si no aplica)
             var tdImp = document.createElement('td');
             tdImp.className = 'px-3 py-2 text-white font-bold text-sm';
-            var netoLista = parseFloat(p.total_sin_descuento||0) > 0
-                ? parseFloat(p.total_sin_descuento)
-                : parseFloat(p.total||0);
+            var netoLista = parseFloat(p.total||0);
             var ivaEnBD = parseFloat(p.iva_aplicado||0);
             // actualizarImporte recibe el checkbox por referencia para no depender del DOM
             function actualizarImporte(chkRef) {
