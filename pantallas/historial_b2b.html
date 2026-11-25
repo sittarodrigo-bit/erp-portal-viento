@@ -395,11 +395,13 @@
             tdImp.className = 'px-3 py-2 text-white font-bold text-sm';
             var netoLista = parseFloat(p.total||0);
             var ivaEnBD = parseFloat(p.iva_aplicado||0);
-            // actualizarImporte recibe el checkbox por referencia para no depender del DOM
+            // actualizarImporte usa iva_aplicado de BD para coincidir con comprobante y factura
             function actualizarImporte(chkRef) {
                 var conIva = chkRef ? chkRef.checked : false;
-                var importe = conIva ? Math.round(netoLista * 1.21) : Math.round(netoLista);
-                tdImp.textContent = '$ ' + importe.toLocaleString('es-AR');
+                // Si hay IVA en BD lo usamos; si se acaba de marcar el checkbox recalculamos
+                var ivaActual = conIva ? (ivaEnBD > 0 ? ivaEnBD : Math.round(netoLista * 0.21 * 100) / 100) : 0;
+                var importe = netoLista + ivaActual;
+                tdImp.textContent = '$ ' + Math.round(importe).toLocaleString('es-AR');
                 tdImp.className = 'px-3 py-2 font-bold text-sm ' + (conIva ? 'text-orange-300' : 'text-white');
             }
             tr.appendChild(tdImp);
@@ -433,6 +435,8 @@
                     .then(function(r){ return r.json(); })
                     .then(function(data){
                         if(data.status==='ok'){
+                            // Actualizar ivaEnBD con el valor real devuelto por el backend
+                            ivaEnBD = chkIva.checked ? (parseFloat(data.iva) || 0) : 0;
                             actualizarImporte(chkIva);
                         } else {
                             chkIva.checked = !chkIva.checked;
@@ -994,8 +998,23 @@
             var doc = new jsPDF();
             var num = String(pedidoActual.id).padStart(8, '0');
             var dist = distribuidores.find(function(d) { return String(d.id) === String(pedidoActual.id_distribuidor); }) || {};
-            var subtotal = parseFloat(pedidoActual.total || 0);
-            var iva = parseFloat(pedidoActual.iva_aplicado || 0);
+
+            // Calcular subtotalBruto desde los items (siempre correcto)
+            var subtotalBruto = itemsActuales.reduce(function(acc, i) { return acc + parseFloat(i.subtotal || 0); }, 0);
+            var descuentoPct = parseFloat(pedidoActual.descuento_porcentaje || 0);
+            // subtotal = neto después de descuento de orden.
+            // Para pedidos corruptos (total no tiene el descuento aplicado), lo recalculamos desde items + pct.
+            var subtotal, descuentoMonto;
+            if (descuentoPct > 0) {
+                descuentoMonto = Math.round(subtotalBruto * descuentoPct / 100 * 100) / 100;
+                subtotal = Math.round((subtotalBruto - descuentoMonto) * 100) / 100;
+            } else {
+                descuentoMonto = 0;
+                subtotal = subtotalBruto;
+            }
+            // IVA: si el pedido tiene iva_aplicado en BD lo usamos; si está corrupto lo recalculamos
+            var ivaEnBD = parseFloat(pedidoActual.iva_aplicado || 0);
+            var iva = ivaEnBD > 0 ? Math.round(subtotal * 0.21 * 100) / 100 : 0;
             var totalConIva = subtotal + iva;
 
             // ── Recuadro general encabezado (0 a 40mm) ──
@@ -1054,6 +1073,21 @@
             // ── Totales ──
             var y = doc.lastAutoTable.finalY + 7;
             doc.setFontSize(8); doc.setFont('helvetica', 'normal'); doc.setTextColor(0,0,0);
+
+            if (descuentoMonto > 0.005) {
+                doc.text('Subtotal:', 150, y, {align: 'right'});
+                doc.text('$ ' + subtotalBruto.toLocaleString('es-AR', {minimumFractionDigits:2}), 196, y, {align: 'right'});
+                y += 5.5;
+                var descLabel = descuentoPct > 0
+                    ? 'Descuento (' + descuentoPct + '%):'
+                    : 'Descuento general:';
+                doc.setTextColor(180, 0, 0);
+                doc.text(descLabel, 150, y, {align: 'right'});
+                doc.text('- $ ' + descuentoMonto.toLocaleString('es-AR', {minimumFractionDigits:2}), 196, y, {align: 'right'});
+                doc.setTextColor(0, 0, 0);
+                y += 5.5;
+            }
+
             doc.text('Importe Neto Gravado:', 150, y, {align: 'right'});
             doc.text('$ ' + subtotal.toLocaleString('es-AR', {minimumFractionDigits:2}), 196, y, {align: 'right'});
             y += 5.5;
@@ -1239,8 +1273,11 @@
             var descOrdenPct = parseFloat(pedidoActual.descuento_porcentaje || 0);
             var descOrdenMonto = descOrdenPct > 0 ? subtotalNeto * descOrdenPct / 100 : 0;
             var netoFinal = subtotalNeto - descOrdenMonto;
-            // forzarIva viene del modal de IVA; si true, aplica 21% sobre el neto final
-            var iva = forzarIva ? Math.round(netoFinal * 0.21 * 100) / 100 : 0;
+            // IVA: si el pedido tiene iva_aplicado en BD, se recalcula 21% sobre el neto
+            // para que sea consistente con lo efectivamente despachado.
+            // forzarIva (checkbox) solo aplica cuando no hay IVA en BD.
+            var ivaEnBD = parseFloat(pedidoActual.iva_aplicado || 0);
+            var iva = (ivaEnBD > 0 || forzarIva) ? Math.round(netoFinal * 0.21 * 100) / 100 : 0;
             var totalFinal = netoFinal + iva;
             var ahorroTotal = descProductoTotal + descOrdenMonto;
 

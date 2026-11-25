@@ -3386,18 +3386,18 @@ def quitar_iva_pedido(id: int):
 
 @app.put("/api/pedidos_b2b/{id}/aplicar-iva")
 def aplicar_iva_pedido(id: int, data: dict = Body(default={})):
-    """Aplica IVA 21% a un pedido B2B. Guarda en columna iva_aplicado."""
+    """Aplica IVA 21% a un pedido B2B. Guarda en columna iva_aplicado.
+    Base del IVA = total (neto ya con todos los descuentos aplicados)."""
     conn = obtener_conexion()
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
-        cur.execute("SELECT total, total_sin_descuento FROM pedidos_b2b WHERE id=%s", (id,))
+        cur.execute("SELECT total FROM pedidos_b2b WHERE id=%s", (id,))
         row = cur.fetchone()
         if not row:
             raise HTTPException(status_code=404, detail="Pedido no encontrado.")
 
-        # neto real = total_sin_descuento si existe (es el subtotal con desc por producto),
-        # sino total (bruto sin descuentos)
-        neto = float(row['total_sin_descuento'] or 0) if row['total_sin_descuento'] else float(row['total'])
+        # IVA siempre sobre el neto final (total ya tiene descuentos aplicados)
+        neto = float(row['total'] or 0)
         iva = round(neto * 0.21, 2)
 
         cur.execute("UPDATE pedidos_b2b SET iva_aplicado = %s WHERE id = %s", (iva, id))
