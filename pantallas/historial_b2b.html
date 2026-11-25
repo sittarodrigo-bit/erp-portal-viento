@@ -999,20 +999,21 @@
             var num = String(pedidoActual.id).padStart(8, '0');
             var dist = distribuidores.find(function(d) { return String(d.id) === String(pedidoActual.id_distribuidor); }) || {};
 
-            // Calcular subtotalBruto desde los items (siempre correcto)
-            var subtotalBruto = itemsActuales.reduce(function(acc, i) { return acc + parseFloat(i.subtotal || 0); }, 0);
+            // Calcular desde items (fuente de verdad)
+            // brutoPorItem = precio_unitario * cantidad (sin ningún descuento)
+            // subtotalNeto = subtotal del item (ya con descuento por producto aplicado)
+            var brutoPorItems = itemsActuales.reduce(function(acc, i) {
+                return acc + parseFloat(i.precio_unitario || 0) * parseFloat(i.cantidad || 0);
+            }, 0);
+            var netoPorItems = itemsActuales.reduce(function(acc, i) { return acc + parseFloat(i.subtotal || 0); }, 0);
+            var descProdMonto = Math.round((brutoPorItems - netoPorItems) * 100) / 100;
+
+            // Descuento de orden sobre el neto por producto
             var descuentoPct = parseFloat(pedidoActual.descuento_porcentaje || 0);
-            // subtotal = neto después de descuento de orden.
-            // Para pedidos corruptos (total no tiene el descuento aplicado), lo recalculamos desde items + pct.
-            var subtotal, descuentoMonto;
-            if (descuentoPct > 0) {
-                descuentoMonto = Math.round(subtotalBruto * descuentoPct / 100 * 100) / 100;
-                subtotal = Math.round((subtotalBruto - descuentoMonto) * 100) / 100;
-            } else {
-                descuentoMonto = 0;
-                subtotal = subtotalBruto;
-            }
-            // IVA: si el pedido tiene iva_aplicado en BD lo usamos; si está corrupto lo recalculamos
+            var descOrdenMonto = descuentoPct > 0 ? Math.round(netoPorItems * descuentoPct / 100 * 100) / 100 : 0;
+            var subtotal = Math.round((netoPorItems - descOrdenMonto) * 100) / 100;
+
+            // IVA sobre el neto final
             var ivaEnBD = parseFloat(pedidoActual.iva_aplicado || 0);
             var iva = ivaEnBD > 0 ? Math.round(subtotal * 0.21 * 100) / 100 : 0;
             var totalConIva = subtotal + iva;
@@ -1059,33 +1060,65 @@
             doc.setLineWidth(0.4); doc.line(12, 65, 198, 65);
 
             // ── Tabla de productos con columna IVA ──
+            var hayDescProd = itemsActuales.some(function(i){ return parseFloat(i.descuento_porcentaje||0) > 0; });
+            var tablaHead, tablaBody, tablaColStyles;
+            if (hayDescProd) {
+                tablaHead = [['Descripción', 'Cant.', 'P. Lista', 'Desc.', 'P. Neto', 'IVA', 'Subtotal']];
+                tablaBody = itemsActuales.map(function(i) {
+                    var pLista = parseFloat(i.precio_unitario);
+                    var dPct   = parseFloat(i.descuento_porcentaje || 0);
+                    var pNeto  = dPct > 0 ? pLista * (1 - dPct/100) : pLista;
+                    var sub    = parseFloat(i.subtotal || 0);
+                    return [
+                        i.producto,
+                        i.cantidad,
+                        '$ ' + pLista.toLocaleString('es-AR'),
+                        dPct > 0 ? dPct + '%' : '-',
+                        '$ ' + pNeto.toLocaleString('es-AR', {maximumFractionDigits:2}),
+                        '21%',
+                        '$ ' + sub.toLocaleString('es-AR', {minimumFractionDigits:2})
+                    ];
+                });
+                tablaColStyles = {1:{halign:'center',cellWidth:12}, 2:{halign:'right',cellWidth:24}, 3:{halign:'center',cellWidth:14}, 4:{halign:'right',cellWidth:24}, 5:{halign:'center',cellWidth:12}, 6:{halign:'right',cellWidth:26}};
+            } else {
+                tablaHead = [['Descripción', 'Cantidad', 'Precio Unit.', 'IVA', 'Subtotal']];
+                tablaBody = itemsActuales.map(function(i) {
+                    return [i.producto, i.cantidad, '$ ' + parseFloat(i.precio_unitario).toLocaleString('es-AR'), '21%', '$ ' + parseFloat(i.subtotal).toLocaleString('es-AR', {minimumFractionDigits:2})];
+                });
+                tablaColStyles = {1:{halign:'center'}, 2:{halign:'right'}, 3:{halign:'center'}, 4:{halign:'right'}};
+            }
             doc.autoTable({
                 startY: 68,
-                head: [['Descripción', 'Cantidad', 'Precio Unit.', 'IVA', 'Subtotal']],
-                body: itemsActuales.map(function(i) {
-                    return [i.producto, i.cantidad, '$ ' + parseFloat(i.precio_unitario).toLocaleString('es-AR'), '21%', '$ ' + parseFloat(i.subtotal).toLocaleString('es-AR')];
-                }),
+                head: tablaHead,
+                body: tablaBody,
                 headStyles: {fillColor:[255,255,255], textColor:[0,0,0], fontStyle:'bold', lineWidth:0.3, lineColor:[0,0,0], fontSize:7.5},
                 styles: {fontSize:7.5, cellPadding:1.5, lineWidth:0.1, lineColor:[150,150,150]},
-                columnStyles: {1:{halign:'center'}, 2:{halign:'right'}, 3:{halign:'center'}, 4:{halign:'right'}}
+                columnStyles: tablaColStyles
             });
 
             // ── Totales ──
             var y = doc.lastAutoTable.finalY + 7;
             doc.setFontSize(8); doc.setFont('helvetica', 'normal'); doc.setTextColor(0,0,0);
 
-            if (descuentoMonto > 0.005) {
-                doc.text('Subtotal:', 150, y, {align: 'right'});
-                doc.text('$ ' + subtotalBruto.toLocaleString('es-AR', {minimumFractionDigits:2}), 196, y, {align: 'right'});
+            // Mostrar desglose solo si hay descuentos
+            if (descProdMonto > 0.005 || descOrdenMonto > 0.005) {
+                doc.text('Subtotal bruto:', 150, y, {align: 'right'});
+                doc.text('$ ' + brutoPorItems.toLocaleString('es-AR', {minimumFractionDigits:2}), 196, y, {align: 'right'});
                 y += 5.5;
-                var descLabel = descuentoPct > 0
-                    ? 'Descuento (' + descuentoPct + '%):'
-                    : 'Descuento general:';
-                doc.setTextColor(180, 0, 0);
-                doc.text(descLabel, 150, y, {align: 'right'});
-                doc.text('- $ ' + descuentoMonto.toLocaleString('es-AR', {minimumFractionDigits:2}), 196, y, {align: 'right'});
-                doc.setTextColor(0, 0, 0);
-                y += 5.5;
+                if (descProdMonto > 0.005) {
+                    doc.setTextColor(180, 0, 0);
+                    doc.text('Descuentos por producto:', 150, y, {align: 'right'});
+                    doc.text('- $ ' + descProdMonto.toLocaleString('es-AR', {minimumFractionDigits:2}), 196, y, {align: 'right'});
+                    doc.setTextColor(0, 0, 0);
+                    y += 5.5;
+                }
+                if (descOrdenMonto > 0.005) {
+                    doc.setTextColor(180, 0, 0);
+                    doc.text('Descuento general (' + descuentoPct + '%):', 150, y, {align: 'right'});
+                    doc.text('- $ ' + descOrdenMonto.toLocaleString('es-AR', {minimumFractionDigits:2}), 196, y, {align: 'right'});
+                    doc.setTextColor(0, 0, 0);
+                    y += 5.5;
+                }
             }
 
             doc.text('Importe Neto Gravado:', 150, y, {align: 'right'});
