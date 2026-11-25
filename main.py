@@ -1669,7 +1669,15 @@ def registrar_cobro_admin(cobro: NuevoCobroDistribuidor):
         """, (cobro.id_distribuidor, cobro.id_pedido, id_emp, cobro.monto, cobro.metodo, cobro.referencia, cobro.notas))
         conn.commit()
         try:
-            crear_notificacion("pago", "Pago de distribuidor registrado",
+            nombre_dist = ""
+            try:
+                cur.execute("SELECT razon_social FROM distribuidores WHERE id=%s", (cobro.id_distribuidor,))
+                row_dist = cur.fetchone()
+                if row_dist:
+                    nombre_dist = " — " + (row_dist[0] if isinstance(row_dist, tuple) else row_dist.get("razon_social",""))
+            except Exception:
+                pass
+            crear_notificacion("pago", "Pago de distribuidor registrado" + nombre_dist,
                                "$" + str(cobro.monto) + " - " + (cobro.metodo or ""))
         except Exception:
             pass
@@ -1976,7 +1984,15 @@ def crear_pedido_b2b(pedido: PedidoB2B):
         # NOTA: el stock NO se descuenta al crear el pedido. Se descuenta al despachar.
         conn.commit()
         try:
-            crear_notificacion("pedido", "Nuevo pedido de distribuidor",
+            nombre_dist = ""
+            try:
+                cur.execute("SELECT razon_social FROM distribuidores WHERE id=%s", (pedido.id_distribuidor,))
+                row_dist = cur.fetchone()
+                if row_dist:
+                    nombre_dist = " — " + (row_dist[0] if isinstance(row_dist, tuple) else row_dist.get("razon_social",""))
+            except Exception:
+                pass
+            crear_notificacion("pedido", "Nuevo pedido de distribuidor" + nombre_dist,
                                "Pedido #" + str(id_pedido) + " por $" + str(pedido.total))
         except Exception:
             pass
@@ -2736,7 +2752,15 @@ def armado_preparado(id: str):
         cur.execute("UPDATE pedidos_b2b SET estado='Preparado' WHERE id=%s", (id,))
         conn.commit()
         try:
-            crear_notificacion("pedido", "Pedido preparado por depósito", "Pedido #" + str(id))
+            nombre_dist = ""
+            try:
+                cur.execute("SELECT d.razon_social FROM pedidos_b2b p LEFT JOIN distribuidores d ON d.id=p.id_distribuidor WHERE p.id=%s", (id,))
+                row_dist = cur.fetchone()
+                if row_dist:
+                    nombre_dist = " — " + (row_dist[0] if isinstance(row_dist, tuple) else row_dist.get("razon_social",""))
+            except Exception:
+                pass
+            crear_notificacion("pedido", "Pedido preparado por depósito" + nombre_dist, "Pedido #" + str(id))
         except Exception:
             pass
         return {"status": "ok", "estado": "Preparado"}
@@ -2787,7 +2811,15 @@ def armado_listo(id: str):
         cur.execute("UPDATE pedidos_b2b SET estado='Preparado' WHERE id=%s", (id,))
         conn.commit()
         try:
-            crear_notificacion("pedido", "Pedido terminado por depósito", "Pedido #" + str(id))
+            nombre_dist = ""
+            try:
+                cur.execute("SELECT d.razon_social FROM pedidos_b2b p LEFT JOIN distribuidores d ON d.id=p.id_distribuidor WHERE p.id=%s", (id,))
+                row_dist = cur.fetchone()
+                if row_dist:
+                    nombre_dist = " — " + (row_dist[0] if isinstance(row_dist, tuple) else row_dist.get("razon_social",""))
+            except Exception:
+                pass
+            crear_notificacion("pedido", "Pedido terminado por depósito" + nombre_dist, "Pedido #" + str(id))
         except Exception:
             pass
         return {"status": "ok", "estado": "Preparado"}
@@ -2890,10 +2922,18 @@ def armado_despacho_parcial(id: str):
 
         conn.commit()
         try:
+            nombre_dist = ""
+            try:
+                cur.execute("SELECT d.razon_social FROM pedidos_b2b p LEFT JOIN distribuidores d ON d.id=p.id_distribuidor WHERE p.id=%s", (id,))
+                row_dist = cur.fetchone()
+                if row_dist:
+                    nombre_dist = " — " + (row_dist[0] if isinstance(row_dist, tuple) else row_dist.get("razon_social",""))
+            except Exception:
+                pass
             aviso = "Pedido #" + str(id) + ". " + nota
             if id_backorder:
                 aviso += " Se generó el pedido #" + str(id_backorder).zfill(4) + " con lo pendiente."
-            crear_notificacion("pedido", "Pedido despachado PARCIAL", aviso)
+            crear_notificacion("pedido", "Pedido despachado PARCIAL" + nombre_dist, aviso)
         except Exception:
             pass
         return {"status": "ok", "faltantes": faltantes, "nota": nota, "id_backorder": id_backorder}
@@ -3168,7 +3208,15 @@ def cambiar_estado_pedido(id: int, estado: str):
         conn.commit()
         if id_backorder:
             try:
-                crear_notificacion("pedido", "Entrega parcial — backorder generado",
+                nombre_dist = ""
+                try:
+                    cur.execute("SELECT d.razon_social FROM pedidos_b2b p LEFT JOIN distribuidores d ON d.id=p.id_distribuidor WHERE p.id=%s", (id,))
+                    row_dist = cur.fetchone()
+                    if row_dist:
+                        nombre_dist = " — " + (row_dist[0] if isinstance(row_dist, tuple) else row_dist.get("razon_social",""))
+                except Exception:
+                    pass
+                crear_notificacion("pedido", "Entrega parcial — backorder generado" + nombre_dist,
                                    "Pedido #" + str(id) + ". " + nota_faltantes)
             except Exception:
                 pass
@@ -3560,7 +3608,8 @@ def despachar_desde_armado(id: str, data: DespacharDesdeArmado):
 
         # Notificación ERP
         try:
-            crear_notificacion("pedido", f"Pedido #{id} despachado",
+            nombre_dist = (" — " + pedido['distribuidor']) if pedido.get('distribuidor') else ""
+            crear_notificacion("pedido", f"Pedido #{id} despachado" + nombre_dist,
                                f"Despachado por operario. Transporte: {transporte} {numero}")
         except Exception:
             pass
