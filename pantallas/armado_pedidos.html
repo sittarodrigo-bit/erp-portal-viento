@@ -69,11 +69,13 @@
         <button id="btn-parcial" onclick="marcarParcialListo()" class="flex-1 bg-orange-600 hover:bg-orange-500 text-white font-bold py-3 rounded-xl text-sm">📦 Listo lo armado (parcial)</button>
         <button id="btn-listo" onclick="marcarTodo()" class="flex-1 bg-neon text-black font-bold py-3 rounded-xl text-base disabled:bg-gray-700 disabled:text-gray-500">✓ Todo listo</button>
         <button id="btn-guia" onclick="abrirModalGuia()" class="hidden w-full bg-blue-700 hover:bg-blue-600 text-white font-bold py-3 rounded-xl text-sm">🚚 Cargar guía de transporte</button>
+        <!-- Botón despachar: visible solo cuando el pedido está en estado Preparado -->
+        <button id="btn-despachar" onclick="abrirModalDespachar()" class="hidden w-full bg-green-700 hover:bg-green-600 text-white font-black py-4 rounded-xl text-base">🚚 DESPACHAR PEDIDO</button>
       </div>
     </div>
   </main>
 
-  <!-- Modal Guía -->
+  <!-- Modal Guía (edición simple, no despacho) -->
   <div id="modal-guia" class="hidden fixed inset-0 bg-black/80 flex items-end justify-center z-50 p-4">
     <div class="bg-gray-900 border border-gray-700 rounded-xl p-5 w-full max-w-md shadow-2xl">
       <div class="flex justify-between items-center mb-4">
@@ -85,6 +87,48 @@
       <label class="block text-gray-400 text-xs mb-1">Número de guía</label>
       <input id="guia-numero" class="w-full bg-gray-800 border border-gray-700 text-white rounded p-2 mb-4 text-sm" placeholder="Ej: 123456789">
       <button onclick="guardarGuia()" class="w-full bg-neon text-black font-bold py-2.5 rounded-xl">💾 Guardar</button>
+    </div>
+  </div>
+
+  <!-- Modal Despachar (con foto de guía + WSP) -->
+  <div id="modal-despachar" class="hidden fixed inset-0 bg-black/80 flex items-end justify-center z-50 p-4">
+    <div class="bg-gray-900 border border-green-700 rounded-xl p-5 w-full max-w-md shadow-2xl max-h-[90vh] overflow-y-auto">
+      <div class="flex justify-between items-center mb-4">
+        <h3 class="text-white font-bold text-lg">🚚 Despachar pedido</h3>
+        <button onclick="cerrarModalDespachar()" class="text-gray-500 hover:text-white text-xl">✕</button>
+      </div>
+      <!-- Info pedido -->
+      <div id="desp-info" class="bg-gray-800 rounded-lg p-3 mb-4 text-sm text-gray-300"></div>
+      <!-- Guía -->
+      <label class="block text-gray-400 text-xs mb-1 font-bold uppercase">Transporte <span class="text-red-400">*</span></label>
+      <input id="desp-transporte" class="w-full bg-gray-800 border border-gray-700 text-white rounded p-2 mb-3 text-sm" placeholder="Ej: Andreani, Vía Cargo...">
+      <label class="block text-gray-400 text-xs mb-1 font-bold uppercase">Número de guía</label>
+      <input id="desp-numero" class="w-full bg-gray-800 border border-gray-700 text-white rounded p-2 mb-4 text-sm" placeholder="Ej: 123456789">
+      <!-- Foto de guía -->
+      <label class="block text-gray-400 text-xs mb-2 font-bold uppercase">📷 Foto de la guía <span class="text-gray-500 font-normal">(opcional)</span></label>
+      <div class="flex gap-2 mb-3">
+        <button type="button" onclick="document.getElementById('desp-foto-input').click()" class="flex-1 bg-gray-800 border border-gray-700 text-gray-300 hover:text-white hover:border-gray-500 py-2 rounded-lg text-sm font-bold">📁 Galería</button>
+        <button type="button" onclick="abrirCamara()" class="flex-1 bg-gray-800 border border-gray-700 text-gray-300 hover:text-white hover:border-gray-500 py-2 rounded-lg text-sm font-bold">📸 Cámara</button>
+      </div>
+      <input type="file" id="desp-foto-input" accept="image/*" class="hidden" onchange="procesarFotoGuia(this)">
+      <!-- Preview foto -->
+      <div id="desp-foto-preview" class="hidden mb-4 relative">
+        <img id="desp-foto-img" class="w-full rounded-lg max-h-48 object-contain bg-gray-800" alt="Foto guía">
+        <button onclick="quitarFotoGuia()" class="absolute top-1 right-1 bg-black/70 text-white rounded-full w-6 h-6 text-xs font-bold">✕</button>
+      </div>
+      <!-- WSP -->
+      <div class="bg-green-900/30 border border-green-800 rounded-lg p-3 mb-4">
+        <label class="flex items-center gap-2 cursor-pointer">
+          <input type="checkbox" id="desp-enviar-wsp" checked class="w-4 h-4 accent-green-500">
+          <span class="text-green-300 text-sm font-bold">📱 Enviar WhatsApp al cliente</span>
+        </label>
+        <div id="desp-wsp-tel-wrap" class="mt-2">
+          <input id="desp-tel" class="w-full bg-gray-800 border border-gray-700 text-white rounded p-2 text-sm" placeholder="Teléfono del cliente (ej: 2612074435)">
+        </div>
+      </div>
+      <!-- Botón principal -->
+      <button id="btn-confirmar-despacho" onclick="confirmarDespacho()" class="w-full bg-green-600 hover:bg-green-500 text-white font-black py-4 rounded-xl text-lg">✅ CONFIRMAR DESPACHO</button>
+      <div id="desp-estado" class="text-center text-sm mt-2 min-h-5"></div>
     </div>
   </div>
 
@@ -113,14 +157,17 @@ async function cargarPedidos(){
     cont.innerHTML = pedidos.map(p => {
       const enPrep = p.estado === 'En preparación';
       const parcial = p.estado === 'Despachado parcial';
+      const preparado = p.estado === 'Preparado';
       const esRepo = p.tipo === 'reposicion';
-      const borde = esRepo ? 'border-blue-700' : (parcial ? 'border-orange-600' : (enPrep ? 'border-neon' : 'border-gray-800'));
+      const borde = esRepo ? 'border-blue-700' : (preparado ? 'border-green-500' : (parcial ? 'border-orange-600' : (enPrep ? 'border-neon' : 'border-gray-800')));
       const badge = esRepo
         ? '<span class="text-xs font-bold px-2 py-1 rounded-full bg-blue-600/20 text-blue-300">🏪 Reposición local</span>'
+        : (preparado
+        ? '<span class="text-xs font-bold px-2 py-1 rounded-full bg-green-600/30 text-green-300 animate-pulse">🚚 LISTO — despachar</span>'
         : (parcial
         ? '<span class="text-xs font-bold px-2 py-1 rounded-full bg-orange-600/20 text-orange-400">📦 Parcial — completar</span>'
         : (enPrep ? '<span class="text-xs font-bold px-2 py-1 rounded-full bg-neon/20 text-neon">🛠️ En preparación</span>'
-                  : '<span class="text-xs font-bold px-2 py-1 rounded-full bg-gray-800 text-gray-400">⏳ Pendiente</span>'));
+                  : '<span class="text-xs font-bold px-2 py-1 rounded-full bg-gray-800 text-gray-400">⏳ Pendiente</span>')));
       const titulo = esRepo ? ('Reposición #' + String(p.id).replace('r','')) : ('Pedido #' + p.id);
       const nombre = p.nombre || p.distribuidor || 'Sin nombre';
       const montoTxt = (p.total !== null && p.total !== undefined) ? ('<p class="text-neon font-bold">' + fmt(p.total) + '</p>') : '';
@@ -165,11 +212,26 @@ function renderArmado(){
 
   var prog = document.getElementById('arm-progreso-wrap'); if(prog) prog.style.display='';
   var botonera = document.getElementById('arm-botonera'); if(botonera) botonera.style.display='';
-  // Botón guía: solo para pedidos de distribuidor listos/despachados
+  var estadoActual = d.estado || '';
+  var estaPreparado = estadoActual === 'Preparado';
+
+  // Botón despachar: solo cuando está Preparado (ya armado, listo para salir)
+  var btnDespachar = $('btn-despachar');
+  if(btnDespachar){
+    btnDespachar.classList.toggle('hidden', esRepo || !estaPreparado);
+  }
+  // Botones listo/parcial: ocultos si ya está Preparado
+  var btnListo = $('btn-listo');
+  var btnParcial = $('btn-parcial');
+  if(estaPreparado){
+    if(btnListo) btnListo.classList.add('hidden');
+    if(btnParcial) btnParcial.classList.add('hidden');
+  }
+
+  // Botón guía (edición rápida, sin despachar): solo si NO está preparado para despachar
   var btnGuia = $('btn-guia');
   if(btnGuia){
-    var estadoGuia = d.estado || '';
-    var mostrarGuia = !esRepo && (estadoGuia === 'Preparado' || estadoGuia === 'Despachado' || estadoGuia === 'Despachado parcial' || estadoGuia === 'En preparación' || estadoGuia === 'Terminado');
+    var mostrarGuia = !esRepo && !estaPreparado && (estadoActual === 'Despachado' || estadoActual === 'Despachado parcial' || estadoActual === 'En preparación' || estadoActual === 'Terminado');
     btnGuia.classList.toggle('hidden', !mostrarGuia);
     btnGuia.textContent = (d.guia_transporte ? '✏️ Editar guía (' + d.guia_transporte + ')' : '🚚 Cargar guía de transporte');
   }
@@ -382,6 +444,121 @@ async function guardarGuia(){
   } catch(e){ alert('No se pudo guardar la guía.'); }
 }
 
+
+// ══════════════════════════════════
+// DESPACHO DESDE ARMADO
+// ══════════════════════════════════
+var fotoGuiaBase64 = null;
+
+function abrirModalDespachar(){
+  if(!pedidoActual || pedidoActual.tipo === 'reposicion') return;
+  var d = pedidoActual;
+  // Info del pedido
+  var num = String(d.id).padStart(4,'0');
+  var dist = d.distribuidor || 'Distribuidor';
+  var total = d.total ? ('$' + parseFloat(d.total).toLocaleString('es-AR')) : '';
+  $('desp-info').innerHTML = '<b class="text-white">' + dist + '</b> · Pedido #' + num + (total ? ' · <span class="text-neon font-bold">' + total + '</span>' : '');
+  // Pre-cargar guía existente
+  $('desp-transporte').value = d.guia_transporte || '';
+  $('desp-numero').value = d.guia_numero || '';
+  // Teléfono del distribuidor si está disponible
+  $('desp-tel').value = d.telefono || '';
+  // Reset foto
+  fotoGuiaBase64 = null;
+  $('desp-foto-preview').classList.add('hidden');
+  $('desp-foto-img').src = '';
+  $('desp-estado').textContent = '';
+  $('btn-confirmar-despacho').disabled = false;
+  $('modal-despachar').classList.remove('hidden');
+}
+
+function cerrarModalDespachar(){
+  $('modal-despachar').classList.add('hidden');
+}
+
+function procesarFotoGuia(input){
+  var file = input.files[0];
+  if(!file) return;
+  // Comprimir/redimensionar antes de base64 (máx 1200px, calidad 0.75)
+  var reader = new FileReader();
+  reader.onload = function(e){
+    var img = new Image();
+    img.onload = function(){
+      var MAX = 1200;
+      var w = img.width, h = img.height;
+      if(w > MAX || h > MAX){
+        if(w > h){ h = Math.round(h * MAX/w); w = MAX; }
+        else { w = Math.round(w * MAX/h); h = MAX; }
+      }
+      var canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      fotoGuiaBase64 = canvas.toDataURL('image/jpeg', 0.75);
+      $('desp-foto-img').src = fotoGuiaBase64;
+      $('desp-foto-preview').classList.remove('hidden');
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+  input.value = '';
+}
+
+function abrirCamara(){
+  var input = $('desp-foto-input');
+  input.setAttribute('capture', 'environment');
+  input.click();
+  setTimeout(function(){ input.removeAttribute('capture'); }, 1000);
+}
+
+function quitarFotoGuia(){
+  fotoGuiaBase64 = null;
+  $('desp-foto-preview').classList.add('hidden');
+  $('desp-foto-img').src = '';
+}
+
+async function confirmarDespacho(){
+  var transporte = $('desp-transporte').value.trim();
+  if(!transporte){ alert('Ingresá el nombre del transporte.'); return; }
+  var numero = $('desp-numero').value.trim();
+  var enviarWsp = $('desp-enviar-wsp').checked;
+  var tel = $('desp-tel').value.trim();
+  if(enviarWsp && !tel){ alert('Ingresá el teléfono del cliente para enviar el WhatsApp.'); return; }
+
+  var btn = $('btn-confirmar-despacho');
+  btn.disabled = true;
+  btn.textContent = 'Despachando...';
+  $('desp-estado').textContent = '';
+
+  try{
+    var body = {
+      transporte,
+      numero,
+      enviar_wsp: enviarWsp,
+      telefono_cliente: tel || null
+    };
+    if(fotoGuiaBase64) body.foto_base64 = fotoGuiaBase64;
+
+    var res = await fetch(`${API_URL}/armado/pedidos/${pedidoActual.id}/despachar`, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(body)
+    });
+    var data = await res.json();
+    if(!res.ok){ throw new Error(data.detail || res.status); }
+
+    var msg = '✅ Pedido despachado!';
+    if(data.id_backorder) msg += '\n📦 Backorder generado: #' + data.id_backorder;
+    if(enviarWsp) msg += '\n📱 WhatsApp enviado.';
+    cerrarModalDespachar();
+    alert(msg);
+    volverLista();
+    cargarPedidos();
+  } catch(e){
+    $('desp-estado').textContent = '❌ ' + (e.message || 'Error al despachar');
+    btn.disabled = false;
+    btn.textContent = '✅ CONFIRMAR DESPACHO';
+  }
+}
 
 function cambiarTab(tab){
   const esPend = tab === 'pendientes';

@@ -68,6 +68,28 @@ def _crear_pool():
 
 _crear_pool()
 
+def _migrar_columnas():
+    """Aplica migraciones de columnas faltantes al iniciar la app."""
+    try:
+        conn = psycopg2.connect(DB_URL)
+        cur = conn.cursor()
+        migraciones = [
+            "ALTER TABLE pedidos_b2b ADD COLUMN IF NOT EXISTS guia_foto_url TEXT",
+        ]
+        for sql in migraciones:
+            try:
+                cur.execute(sql)
+                conn.commit()
+            except Exception as ex:
+                conn.rollback()
+                print(f"[migración] {sql[:60]}... → {ex}")
+        cur.close()
+        conn.close()
+    except Exception as ex:
+        print(f"[migración] Error general: {ex}")
+
+_migrar_columnas()
+
 def obtener_conexion():
     """Toma una conexión del pool (o crea una directa si el pool falla)."""
     global _POOL
@@ -2320,8 +2342,8 @@ def armado_listar_pedidos():
                    d.razon_social AS distribuidor
             FROM pedidos_b2b p
             LEFT JOIN distribuidores d ON p.id_distribuidor = d.id
-            WHERE p.estado IN ('Pendiente','En preparación')
-            ORDER BY CASE WHEN p.estado='En preparación' THEN 0 WHEN p.estado='Despachado parcial' THEN 1 WHEN p.estado='Pendiente' THEN 2 ELSE 3 END, p.id ASC
+            WHERE p.estado IN ('Pendiente','En preparación','Preparado')
+            ORDER BY CASE WHEN p.estado='En preparación' THEN 0 WHEN p.estado='Preparado' THEN 1 WHEN p.estado='Pendiente' THEN 2 ELSE 3 END, p.id ASC
         """)
         pedidos = fetchall_dict(cur)
         for p in pedidos:
@@ -2433,7 +2455,12 @@ def armado_detalle_pedido(id: str):
     conn = obtener_conexion()
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
-        cur.execute("SELECT p.id, p.estado, p.total, d.razon_social AS distribuidor FROM pedidos_b2b p LEFT JOIN distribuidores d ON p.id_distribuidor=d.id WHERE p.id=%s", (id,))
+        cur.execute("""SELECT p.id, p.estado, p.total, d.razon_social AS distribuidor,
+                              COALESCE(d.telefono,'') AS telefono,
+                              COALESCE(p.guia_transporte,'') AS guia_transporte,
+                              COALESCE(p.guia_numero,'') AS guia_numero
+                       FROM pedidos_b2b p LEFT JOIN distribuidores d ON p.id_distribuidor=d.id
+                       WHERE p.id=%s""", (id,))
         cab = cur.fetchone()
         if not cab:
             raise HTTPException(status_code=404, detail="Pedido no encontrado")
@@ -2459,7 +2486,10 @@ def armado_detalle_pedido(id: str):
                 "preparado": prep,
                 "completo": prep >= float(r['cantidad'] or 0)
             })
-        return {"id": cab['id'], "estado": cab['estado'], "distribuidor": cab['distribuidor'], "items": items}
+        return {"id": cab['id'], "estado": cab['estado'], "distribuidor": cab['distribuidor'],
+                "telefono": cab.get('telefono',''), "total": cab.get('total'),
+                "guia_transporte": cab.get('guia_transporte',''), "guia_numero": cab.get('guia_numero',''),
+                "items": items}
     finally:
         liberar_conexion(conn)
 
@@ -3241,6 +3271,7 @@ def _generar_backorder_si_falta(cur, id_pedido):
 class GuiaTransporte(BaseModel):
     transporte: Optional[str] = None
     numero: Optional[str] = None
+    foto_base64: Optional[str] = None  # data URL base64 de la foto de la guía
 
 @app.put("/api/pedidos_b2b/{id}/desbloquear")
 def desbloquear_pedido_sin_stock(id: int, data: dict = Body(default={})):
@@ -3447,13 +3478,134 @@ def guardar_guia_transporte(id: int, data: GuiaTransporte):
     try:
         cur = conn.cursor()
         try:
-            cur.execute("UPDATE pedidos_b2b SET guia_transporte=%s, guia_numero=%s WHERE id=%s",
-                        (data.transporte, data.numero, id))
+            cur.execute("""UPDATE pedidos_b2b
+                           SET guia_transporte=%s, guia_numero=%s
+                               {foto_col}
+                           WHERE id=%s""".format(
+                foto_col=", guia_foto_url=%s" if data.foto_base64 else ""),
+                (data.transporte, data.numero) + ((data.foto_base64,) if data.foto_base64 else ()) + (id,))
             conn.commit()
             return {"status": "ok"}
         except Exception:
             conn.rollback()
-            raise HTTPException(status_code=400, detail="Falta correr CREAR_GUIA_TRANSPORTE.sql en la base.")
+            # Intentar sin foto (si falta la columna)
+            try:
+                cur.execute("UPDATE pedidos_b2b SET guia_transporte=%s, guia_numero=%s WHERE id=%s",
+                            (data.transporte, data.numero, id))
+                conn.commit()
+                return {"status": "ok"}
+            except Exception:
+                conn.rollback()
+                raise HTTPException(status_code=400, detail="Error guardando guía.")
+    finally:
+        liberar_conexion(conn)
+
+class DespacharDesdeArmado(BaseModel):
+    transporte: Optional[str] = None
+    numero: Optional[str] = None
+    foto_base64: Optional[str] = None  # data URL base64 de la foto de la guía
+    telefono_cliente: Optional[str] = None  # para enviar WSP
+    enviar_wsp: bool = True
+
+@app.post("/api/armado/pedidos/{id}/despachar")
+def despachar_desde_armado(id: str, data: DespacharDesdeArmado):
+    """El empleado de armado marca el pedido como Despachado, guarda la guía y envía WSP."""
+    conn = obtener_conexion()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        # Obtener datos del pedido y el distribuidor
+        cur.execute("""
+            SELECT p.id, p.estado, p.total, p.guia_transporte, p.guia_numero,
+                   d.razon_social AS distribuidor, d.telefono
+            FROM pedidos_b2b p
+            LEFT JOIN distribuidores d ON d.id = p.id_distribuidor
+            WHERE p.id = %s
+        """, (int(id),))
+        pedido = cur.fetchone()
+        if not pedido:
+            raise HTTPException(status_code=404, detail="Pedido no encontrado.")
+        if pedido['estado'] not in ('Preparado', 'Despachado parcial', 'Terminado', 'En preparación'):
+            raise HTTPException(status_code=409, detail=f"El pedido está en estado '{pedido['estado']}', no se puede despachar.")
+
+        # Guardar guía y foto
+        transporte = data.transporte or pedido.get('guia_transporte') or ''
+        numero = data.numero or pedido.get('guia_numero') or ''
+        try:
+            if data.foto_base64:
+                cur2 = conn.cursor()
+                cur2.execute("UPDATE pedidos_b2b SET guia_transporte=%s, guia_numero=%s, guia_foto_url=%s WHERE id=%s",
+                             (transporte, numero, data.foto_base64, int(id)))
+            else:
+                cur2 = conn.cursor()
+                cur2.execute("UPDATE pedidos_b2b SET guia_transporte=%s, guia_numero=%s WHERE id=%s",
+                             (transporte, numero, int(id)))
+        except Exception:
+            conn.rollback()
+            cur2 = conn.cursor()
+            cur2.execute("UPDATE pedidos_b2b SET guia_transporte=%s, guia_numero=%s WHERE id=%s",
+                         (transporte, numero, int(id)))
+
+        # Cambiar estado a Despachado
+        id_backorder = None
+        nota_faltantes = ""
+        try:
+            cur3 = conn.cursor(cursor_factory=RealDictCursor)
+            id_backorder, nota_faltantes = _generar_backorder_si_falta(cur3, int(id))
+        except Exception:
+            pass
+        nuevo_estado = 'Despachado parcial' if id_backorder else 'Despachado'
+        cur4 = conn.cursor()
+        cur4.execute("UPDATE pedidos_b2b SET estado=%s, fecha_entrega=NOW() WHERE id=%s", (nuevo_estado, int(id)))
+        conn.commit()
+
+        # Notificación ERP
+        try:
+            crear_notificacion("pedido", f"Pedido #{id} despachado",
+                               f"Despachado por operario. Transporte: {transporte} {numero}")
+        except Exception:
+            pass
+
+        # Enviar WSP al cliente si se pidió
+        wsp_resultado = None
+        if data.enviar_wsp:
+            tel = data.telefono_cliente or str(pedido.get('telefono') or '')
+            if tel:
+                guia_txt = ""
+                if transporte:
+                    guia_txt = f"\n🚚 Transporte: {transporte}"
+                    if numero:
+                        guia_txt += f"\nGuía N°: {numero}"
+                total_txt = f"$ {pedido['total']:,.0f}".replace(",", ".") if pedido.get('total') else ""
+                dist_nombre = str(pedido.get('distribuidor') or '').split()[0] if pedido.get('distribuidor') else ''
+                num_pedido = str(id).zfill(4)
+                msg = f"Hola {dist_nombre}! Tu pedido #{num_pedido} fue despachado y está en camino.{guia_txt}"
+                if total_txt:
+                    msg += f"\nImporte: {total_txt}"
+                # Llamar al WSP service en background
+                import threading
+                def _enviar():
+                    try:
+                        import urllib.request, json as _json
+                        wsp_url = _WSP_URL.rstrip("/") + "/enviar"
+                        payload_dict = {"numero": tel, "mensaje": msg}
+                        if data.foto_base64:
+                            payload_dict["imagen_base64"] = data.foto_base64
+                        payload = _json.dumps(payload_dict).encode()
+                        req = urllib.request.Request(wsp_url, data=payload,
+                            headers={"Content-Type": "application/json", "x-api-key": _WSP_KEY}, method="POST")
+                        urllib.request.urlopen(req, timeout=10)
+                    except Exception as ex:
+                        print(f"[WSP despacho] Error: {ex}")
+                threading.Thread(target=_enviar, daemon=True).start()
+                wsp_resultado = "enviando"
+
+        return {"status": "ok", "estado": nuevo_estado, "id_backorder": id_backorder,
+                "nota_faltantes": nota_faltantes, "wsp": wsp_resultado}
+    except HTTPException:
+        raise
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
     finally:
         liberar_conexion(conn)
 
