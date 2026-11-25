@@ -202,6 +202,10 @@
             <input id="wsp-preview-tel" class="w-full bg-gray-800 border border-gray-700 text-white rounded p-2 mb-3 text-sm" placeholder="Ej: 2615001234">
             <label class="block text-gray-400 text-xs mb-1">Mensaje</label>
             <textarea id="wsp-preview-msg" rows="6" class="w-full bg-gray-800 border border-gray-700 text-white rounded p-2 mb-3 text-sm resize-none"></textarea>
+            <label id="wsp-comprobante-wrap" class="hidden flex items-center gap-2 bg-gray-800 border border-gray-700 rounded px-3 py-2 mb-3 cursor-pointer select-none">
+                <input type="checkbox" id="wsp-adjuntar-comprobante" class="accent-green-500 w-4 h-4">
+                <span class="text-gray-300 text-sm">📋 Adjuntar comprobante interno (PDF)</span>
+            </label>
             <div id="wsp-preview-estado" class="text-sm mt-1 mb-3"></div>
             <div class="flex gap-3">
                 <button onclick="cerrarPreviewWsp()" class="flex-1 bg-gray-800 hover:bg-gray-700 text-white py-2 rounded text-sm">Cancelar</button>
@@ -1753,6 +1757,16 @@
             document.getElementById('wsp-preview-tel').value = tel;
             document.getElementById('wsp-preview-msg').value = msg;
             document.getElementById('wsp-preview-estado').textContent = '';
+            // Mostrar opción de comprobante solo si hay un pedido cargado con items
+            var wrap = document.getElementById('wsp-comprobante-wrap');
+            var chk = document.getElementById('wsp-adjuntar-comprobante');
+            if (pedidoActual && itemsActuales && itemsActuales.length && WSP_URL) {
+                wrap.classList.remove('hidden');
+                chk.checked = false;
+            } else {
+                wrap.classList.add('hidden');
+                chk.checked = false;
+            }
             modal.classList.remove('modal-oculto');
             modal.classList.add('modal-visible');
         }
@@ -1761,30 +1775,125 @@
             modal.classList.add('modal-oculto');
             modal.classList.remove('modal-visible');
         }
+        function _generarComprobanteBase64(forzarIva) {
+            // Genera el comprobante interno como base64 (sin abrir preview)
+            try {
+                var jsPDF = window.jspdf.jsPDF;
+                var doc = new jsPDF();
+                var num = String(pedidoActual.id).padStart(4,'0');
+                var dist = distribuidores.find(function(d) { return String(d.id) === String(pedidoActual.id_distribuidor); }) || {};
+                membrete(doc);
+                doc.setTextColor(40,40,40); doc.setFontSize(14); doc.setFont('helvetica','bold');
+                doc.text('COMPROBANTE INTERNO  N° ' + num, 105, 45, {align:'center'});
+                doc.setFontSize(8); doc.setFont('helvetica','bold'); doc.setTextColor(150,60,60);
+                doc.text('DOCUMENTO SIN VALOR FISCAL - NO VALIDO COMO FACTURA', 105, 51, {align:'center'});
+                doc.setTextColor(0,0,0); doc.setFont('helvetica','normal'); doc.setFontSize(8);
+                doc.text('CLIENTE: ' + (dist.razon_social || pedidoActual.distribuidor || ''), 14, 61);
+                if (dist.cuit) doc.text('CUIT: ' + dist.cuit, 14, 66);
+                if (dist.direccion) doc.text(dist.direccion + (dist.localidad ? ' - ' + dist.localidad : ''), 14, 71);
+                doc.text('Fecha: ' + new Date(pedidoActual.fecha).toLocaleDateString('es-AR'), 140, 61);
+                doc.setFont('helvetica','bold');
+                doc.text('Corresponde a REMITO N° ' + num, 140, 66);
+                doc.setFont('helvetica','normal');
+                doc.text('Pedido interno: #' + num + ' (' + pedidoActual.estado + ')', 140, 71);
+                var hayArmado = itemsActuales.some(function(i){ return i.armado !== null && i.armado !== undefined; });
+                var itemsDespachados = hayArmado
+                    ? itemsActuales.filter(function(i){ return (parseInt(i.armado) || 0) > 0; })
+                    : itemsActuales.slice();
+                if (!itemsDespachados.length) return null;
+                var brutoTotal = 0, descProductoTotal = 0;
+                var filas = itemsDespachados.map(function(i) {
+                    var cant = hayArmado ? (parseInt(i.armado) || 0) : (parseInt(i.cantidad) || 0);
+                    var precio = parseFloat(i.precio_unitario) || 0;
+                    var descPct = parseFloat(i.descuento_porcentaje || 0);
+                    var bruto = cant * precio;
+                    var montoDesc = bruto * descPct / 100;
+                    var neto = bruto - montoDesc;
+                    brutoTotal += bruto; descProductoTotal += montoDesc;
+                    var pedidoOrig = parseInt(i.cantidad) || 0;
+                    var nombreProd = i.producto;
+                    if (hayArmado && cant < pedidoOrig) nombreProd += '  (pedido: ' + pedidoOrig + ')';
+                    return [nombreProd, String(cant), '$ ' + precio.toLocaleString('es-AR'),
+                            '$ ' + bruto.toLocaleString('es-AR'),
+                            descPct > 0 ? descPct + '%' : '-',
+                            descPct > 0 ? '-$ ' + montoDesc.toLocaleString('es-AR', {maximumFractionDigits:2}) : '-',
+                            '$ ' + neto.toLocaleString('es-AR', {maximumFractionDigits:2})];
+                });
+                doc.setFont('helvetica','bold'); doc.setFontSize(7.5); doc.setTextColor(70,70,70);
+                doc.text(hayArmado ? 'Detalle de MERCADERIA DESPACHADA' : 'Detalle segun pedido', 14, 77);
+                doc.setTextColor(0,0,0);
+                doc.autoTable({
+                    startY: 80, margin: {left: 14, right: 14},
+                    head: [['Producto','Cant.','P. Lista','Bruto','Desc.','Ahorro','Subtotal']],
+                    body: filas,
+                    headStyles: {fillColor:[235,235,235], textColor:[0,0,0], fontStyle:'bold', fontSize:7.5, lineWidth:0.3, lineColor:[0,0,0]},
+                    styles: {fontSize:7.5, cellPadding:1.5, lineWidth:0.2, lineColor:[120,120,120]},
+                    columnStyles: {0:{cellWidth:'auto'},1:{halign:'center',cellWidth:14},2:{halign:'right',cellWidth:22},3:{halign:'right',cellWidth:24},4:{halign:'center',cellWidth:14},5:{halign:'right',cellWidth:24},6:{halign:'right',cellWidth:26}}
+                });
+                var y = doc.lastAutoTable.finalY + 8;
+                var subtotalNeto = brutoTotal - descProductoTotal;
+                var descOrdenPct = parseFloat(pedidoActual.descuento_porcentaje || 0);
+                var descOrdenMonto = descOrdenPct > 0 ? subtotalNeto * descOrdenPct / 100 : 0;
+                var netoFinal = subtotalNeto - descOrdenMonto;
+                var iva = forzarIva ? Math.round(netoFinal * 0.21 * 100) / 100 : 0;
+                var totalFinal = netoFinal + iva;
+                function linea(etiqueta, valor, negrita, color) {
+                    doc.setFont('helvetica', negrita ? 'bold' : 'normal');
+                    doc.setTextColor(color ? color[0] : 0, color ? color[1] : 0, color ? color[2] : 0);
+                    doc.text(etiqueta, 130, y, {align:'right'});
+                    doc.text(valor, 196, y, {align:'right'});
+                    y += 5.5;
+                }
+                doc.setFontSize(9);
+                linea('Importe bruto:', '$ ' + brutoTotal.toLocaleString('es-AR', {minimumFractionDigits:2}));
+                if (descProductoTotal > 0) linea('Descuentos por producto:', '-$ ' + descProductoTotal.toLocaleString('es-AR', {minimumFractionDigits:2}), false, [180,60,60]);
+                if (descOrdenPct > 0) linea('Descuento general (' + descOrdenPct + '%):', '-$ ' + descOrdenMonto.toLocaleString('es-AR', {minimumFractionDigits:2}), false, [180,60,60]);
+                if (iva > 0) linea('IVA (21%):', '$ ' + iva.toLocaleString('es-AR', {minimumFractionDigits:2}));
+                doc.setFontSize(12);
+                linea('TOTAL A ABONAR:', '$ ' + totalFinal.toLocaleString('es-AR', {minimumFractionDigits:2}), true, [200,90,0]);
+                doc.setTextColor(130,130,130); doc.setFont('helvetica','normal'); doc.setFontSize(6.5);
+                doc.text('Comprobante interno. No reemplaza factura ni remito fiscal. Emitido el ' +
+                         new Date().toLocaleString('es-AR', {dateStyle:'short', timeStyle:'short'}), 14, 285);
+                return doc.output('datauristring').split(',')[1]; // base64 puro
+            } catch(e) {
+                console.error('Error generando comprobante base64:', e);
+                return null;
+            }
+        }
         async function confirmarEnvioWsp() {
             var tel = document.getElementById('wsp-preview-tel').value.trim();
             var msg = document.getElementById('wsp-preview-msg').value.trim();
             var estado = document.getElementById('wsp-preview-estado');
+            var adjuntarComp = document.getElementById('wsp-adjuntar-comprobante').checked;
             if (!tel) { estado.textContent = '⚠️ Sin número de teléfono'; estado.className = 'text-orange-400 text-sm mt-2'; return; }
             if (!msg) { estado.textContent = '⚠️ El mensaje está vacío'; estado.className = 'text-orange-400 text-sm mt-2'; return; }
             if (!WSP_URL) {
-                // Fallback: abrir WhatsApp Web
+                // Fallback: abrir WhatsApp Web (sin imagen)
                 var numFull = tel.startsWith('54') ? tel : '54' + tel;
                 window.open('https://wa.me/' + numFull + '?text=' + encodeURIComponent(msg), '_blank');
                 cerrarPreviewWsp();
                 return;
             }
-            estado.textContent = 'Enviando...';
+            estado.textContent = adjuntarComp ? 'Generando comprobante...' : 'Enviando...';
             estado.className = 'text-gray-400 text-sm mt-2';
+            var payload = { numero: tel, mensaje: msg };
+            if (adjuntarComp) {
+                var pdfB64 = _generarComprobanteBase64(false);
+                if (pdfB64) {
+                    payload.documento_base64 = pdfB64;
+                    payload.documento_nombre = 'Comprobante_' + String(pedidoActual.id).padStart(4,'0') + '.pdf';
+                }
+                estado.textContent = 'Enviando...';
+            }
             try {
                 var r = await fetch(WSP_URL + '/enviar', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'x-api-key': WSP_KEY },
-                    body: JSON.stringify({ numero: tel, mensaje: msg })
+                    body: JSON.stringify(payload)
                 });
                 var data = await r.json();
                 if (r.ok && data.ok) {
-                    estado.textContent = '✅ Mensaje enviado';
+                    estado.textContent = '✅ Mensaje enviado' + (adjuntarComp && payload.documento_base64 ? ' con comprobante' : '');
                     estado.className = 'text-green-400 text-sm mt-2';
                     setTimeout(cerrarPreviewWsp, 1500);
                 } else {

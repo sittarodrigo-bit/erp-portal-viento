@@ -1321,6 +1321,7 @@ def actualizar_stock_directo(id: int, stock: StockUpdate):
 # Sumar stock de producto terminado (carga desde producción) — suma del lado del servidor
 class IngresoStock(BaseModel):
     cantidad: float
+    motivo: Optional[str] = None
 
 @app.post("/api/productos/{id}/ingresar_stock")
 def ingresar_stock_producto(id: int, data: IngresoStock):
@@ -2489,7 +2490,10 @@ def armado_detalle_pedido(id: str):
         except Exception:
             conn.rollback()
         cur.execute("""
-            SELECT d.id_producto, p.nombre, p.sku, d.cantidad, COALESCE(p.stock_actual,0) AS stock
+            SELECT d.id_producto, p.nombre, p.sku, d.cantidad,
+                   COALESCE(p.stock_actual,0) AS stock,
+                   COALESCE(d.precio_unitario,0) AS precio_unitario,
+                   COALESCE(d.descuento_porcentaje,0) AS descuento_porcentaje
             FROM detalle_pedidos_b2b d LEFT JOIN productos p ON d.id_producto=p.id
             WHERE d.id_pedido=%s ORDER BY p.nombre
         """, (id,))
@@ -2500,7 +2504,9 @@ def armado_detalle_pedido(id: str):
                 "id_producto": r['id_producto'], "nombre": r['nombre'], "sku": r['sku'],
                 "cantidad": float(r['cantidad'] or 0), "stock": float(r['stock'] or 0),
                 "preparado": prep,
-                "completo": prep >= float(r['cantidad'] or 0)
+                "completo": prep >= float(r['cantidad'] or 0),
+                "precio_unitario": float(r['precio_unitario'] or 0),
+                "descuento_porcentaje": float(r['descuento_porcentaje'] or 0)
             })
         return {"id": cab['id'], "estado": cab['estado'], "distribuidor": cab['distribuidor'],
                 "telefono": cab.get('telefono',''), "total": cab.get('total'),
@@ -3554,6 +3560,8 @@ class DespacharDesdeArmado(BaseModel):
     foto_base64: Optional[str] = None  # data URL base64 de la foto de la guía
     telefono_cliente: Optional[str] = None  # para enviar WSP
     enviar_wsp: bool = True
+    comprobante_base64: Optional[str] = None  # PDF del comprobante interno para enviar al cliente
+    comprobante_nombre: Optional[str] = None
 
 @app.post("/api/armado/pedidos/{id}/despachar")
 def despachar_desde_armado(id: str, data: DespacharDesdeArmado):
@@ -3639,6 +3647,9 @@ def despachar_desde_armado(id: str, data: DespacharDesdeArmado):
                         payload_dict = {"numero": tel, "mensaje": msg}
                         if data.foto_base64:
                             payload_dict["imagen_base64"] = data.foto_base64
+                        elif data.comprobante_base64:
+                            payload_dict["documento_base64"] = data.comprobante_base64
+                            payload_dict["documento_nombre"] = data.comprobante_nombre or "comprobante.pdf"
                         payload = _json.dumps(payload_dict).encode()
                         req = urllib.request.Request(wsp_url, data=payload,
                             headers={"Content-Type": "application/json", "x-api-key": _WSP_KEY}, method="POST")
