@@ -3952,7 +3952,14 @@ def crear_tabla_planilla(cur):
         )
     """)
     # Migrar columnas si ya existía la tabla sin ellas
-    for col, defn in [('ediciones','INTEGER DEFAULT 0'), ('bloqueada','BOOLEAN DEFAULT false')]:
+    for col, defn in [
+        ('ediciones',      'INTEGER DEFAULT 0'),
+        ('bloqueada',      'BOOLEAN DEFAULT false'),
+        ('id_local',       'INTEGER'),
+        ('hora_entrada_2', 'TIME'),
+        ('hora_salida_2',  'TIME'),
+        ('id_local_2',     'INTEGER'),
+    ]:
         try:
             cur.execute(f"ALTER TABLE planilla_horaria ADD COLUMN IF NOT EXISTS {col} {defn}")
         except Exception:
@@ -3985,7 +3992,10 @@ def get_planilla_horaria(id_empleado: int, semana_lunes: str):
         try: crear_tabla_planilla(cur); conn.commit()
         except Exception: conn.rollback()
         cur.execute("""
-            SELECT dia_semana, trabaja, hora_entrada::text, hora_salida::text, observacion,
+            SELECT dia_semana, trabaja,
+                   hora_entrada::text, hora_salida::text, id_local,
+                   hora_entrada_2::text, hora_salida_2::text, id_local_2,
+                   observacion,
                    COALESCE(ediciones,0) AS ediciones, COALESCE(bloqueada,false) AS bloqueada
             FROM planilla_horaria
             WHERE id_empleado=%s AND semana_lunes=%s ORDER BY dia_semana
@@ -3996,7 +4006,12 @@ def get_planilla_horaria(id_empleado: int, semana_lunes: str):
         bloqueada = any(f.get('bloqueada', False) for f in filas)
         result = []
         for d in range(7):
-            row = por_dia.get(d, {'dia_semana': d, 'trabaja': False, 'hora_entrada': None, 'hora_salida': None, 'observacion': '', 'ediciones': 0, 'bloqueada': False})
+            row = por_dia.get(d, {
+                'dia_semana': d, 'trabaja': False,
+                'hora_entrada': None, 'hora_salida': None, 'id_local': None,
+                'hora_entrada_2': None, 'hora_salida_2': None, 'id_local_2': None,
+                'observacion': '', 'ediciones': 0, 'bloqueada': False
+            })
             result.append(row)
         return {"dias": result, "ediciones": ediciones, "bloqueada": bloqueada}
     finally:
@@ -4028,19 +4043,30 @@ def guardar_planilla_horaria(data: dict = Body(...)):
         cur2 = conn.cursor()
         nuevas_ediciones = ediciones_actual + 1
         for d in dias:
-            dia    = d.get('dia_semana')
-            trab   = bool(d.get('trabaja', False))
-            entrada = d.get('hora_entrada') or None
-            salida  = d.get('hora_salida') or None
-            obs     = d.get('observacion') or ''
+            dia      = d.get('dia_semana')
+            trab     = bool(d.get('trabaja', False))
+            entrada  = d.get('hora_entrada')  or None
+            salida   = d.get('hora_salida')   or None
+            id_loc   = d.get('id_local')      or None
+            entrada2 = d.get('hora_entrada_2') or None
+            salida2  = d.get('hora_salida_2')  or None
+            id_loc2  = d.get('id_local_2')     or None
+            obs      = d.get('observacion')   or ''
             cur2.execute("""
-                INSERT INTO planilla_horaria (id_empleado, semana_lunes, dia_semana, trabaja, hora_entrada, hora_salida, observacion, ediciones)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
+                INSERT INTO planilla_horaria
+                    (id_empleado, semana_lunes, dia_semana, trabaja,
+                     hora_entrada, hora_salida, id_local,
+                     hora_entrada_2, hora_salida_2, id_local_2,
+                     observacion, ediciones)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                 ON CONFLICT (id_empleado, semana_lunes, dia_semana)
-                DO UPDATE SET trabaja=EXCLUDED.trabaja, hora_entrada=EXCLUDED.hora_entrada,
-                              hora_salida=EXCLUDED.hora_salida, observacion=EXCLUDED.observacion,
-                              ediciones=%s
-            """, (id_emp, semana, dia, trab, entrada, salida, obs, nuevas_ediciones, nuevas_ediciones))
+                DO UPDATE SET
+                    trabaja=EXCLUDED.trabaja,
+                    hora_entrada=EXCLUDED.hora_entrada, hora_salida=EXCLUDED.hora_salida, id_local=EXCLUDED.id_local,
+                    hora_entrada_2=EXCLUDED.hora_entrada_2, hora_salida_2=EXCLUDED.hora_salida_2, id_local_2=EXCLUDED.id_local_2,
+                    observacion=EXCLUDED.observacion, ediciones=%s
+            """, (id_emp, semana, dia, trab, entrada, salida, id_loc,
+                  entrada2, salida2, id_loc2, obs, nuevas_ediciones, nuevas_ediciones))
         # Auditoría
         resumen = f"Guardada semana {semana} · {sum(1 for d in dias if d.get('trabaja'))} días trabajando"
         cur2.execute("""
