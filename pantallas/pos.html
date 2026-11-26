@@ -2191,7 +2191,20 @@
                     var horarios = new Array(7).fill('');
                     dias.forEach(function(d) {
                         var idx = d.dia_semana;
-                        if (idx >= 0 && idx < 7) horarios[idx] = d.horario || '';
+                        if (idx < 0 || idx >= 7) return;
+                        // Backend devuelve trabaja/hora_entrada/hora_salida/observacion
+                        if (d.observacion === 'libre') {
+                            horarios[idx] = 'libre';
+                        } else if (d.hora_entrada || d.hora_salida) {
+                            // Recortar a HH:MM si viene como "HH:MM:SS"
+                            var ent = (d.hora_entrada || '').substring(0, 5);
+                            var sal = (d.hora_salida  || '').substring(0, 5);
+                            horarios[idx] = ent + '-' + sal;
+                        } else if (d.horario) {
+                            horarios[idx] = d.horario;
+                        } else {
+                            horarios[idx] = '';
+                        }
                     });
                     var key = emp.id_empleado + '_' + lunStr;
                     planEdicionesMap[key] = { ediciones: ediciones, bloqueada: bloqueada };
