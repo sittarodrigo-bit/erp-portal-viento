@@ -2292,13 +2292,17 @@
                 var cbLibre = document.getElementById('libre_' + idEmp + '_' + d);
                 var selEnt  = document.getElementById('ent_'   + idEmp + '_' + d);
                 var selSal  = document.getElementById('sal_'   + idEmp + '_' + d);
-                var horario = '';
-                if (cbLibre && cbLibre.checked) {
-                    horario = 'libre';
-                } else if (selEnt && selSal && (selEnt.value || selSal.value)) {
-                    horario = (selEnt.value || '') + '-' + (selSal.value || '');
-                }
-                dias.push({ dia_semana: d, horario: horario });
+                var esLibre = cbLibre && cbLibre.checked;
+                var entrada = (!esLibre && selEnt) ? (selEnt.value || null) : null;
+                var salida  = (!esLibre && selSal) ? (selSal.value || null) : null;
+                var trabaja = !esLibre && !!(entrada || salida);
+                dias.push({
+                    dia_semana: d,
+                    trabaja: trabaja,
+                    hora_entrada: entrada,
+                    hora_salida: salida,
+                    observacion: esLibre ? 'libre' : ''
+                });
             }
             try {
                 var res = await fetch(API_URL + '/planilla_horaria', {
