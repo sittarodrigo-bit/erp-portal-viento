@@ -4108,7 +4108,7 @@ def listar_empleados_pos():
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
         cur.execute("""
-            SELECT DISTINCT e.id, e.nombre, e.apellido, e.rol
+            SELECT DISTINCT e.id AS id_empleado, e.nombre, e.apellido, e.rol
             FROM empleados e
             LEFT JOIN usuarios u ON u.id_empleado = e.id
             WHERE COALESCE(u.acceso_pos, false) = true
