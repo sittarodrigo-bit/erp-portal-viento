@@ -9,6 +9,10 @@
 <title>Armado de Pedidos | Portal del Viento</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script>tailwind.config={theme:{extend:{colors:{neon:'#d4ff3f'}}}}</script>
+<style>
+  .prod-stock-card { transition: transform 0.1s; }
+  .prod-stock-card:active { transform: scale(0.96); }
+</style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 </head>
@@ -42,32 +46,67 @@
     </div>
 
     <!-- Tab carga de stock -->
-    <div id="cont-stock" class="hidden max-w-lg mx-auto">
-      <div class="bg-gray-900 border border-gray-800 rounded-xl p-4 mb-4">
-        <h2 class="text-white font-bold text-base mb-3">📦 Ingresar stock</h2>
-        <input id="stock-buscar" type="text" placeholder="🔍 Buscar producto..." oninput="filtrarProductosStock()"
-               class="w-full bg-gray-800 border border-gray-700 text-white rounded-lg p-2.5 text-sm mb-3 outline-none">
-        <div id="stock-lista" class="space-y-2 max-h-96 overflow-y-auto"></div>
+    <div id="cont-stock" class="hidden">
+      <!-- Barra superior -->
+      <div class="flex gap-2 mb-4">
+        <input type="text" id="stock-buscar" placeholder="🔍 Buscar producto..." oninput="filtrarProductosStock()"
+               class="flex-1 bg-black border border-gray-700 focus:border-neon text-white rounded-xl p-3 text-base outline-none">
+        <button onclick="abrirQueProducir()" class="bg-neon text-black font-bold px-4 py-2 rounded-xl text-sm whitespace-nowrap">📋 Qué producir</button>
+        <button onclick="cargarProductosStock()" class="border border-gray-700 text-gray-300 hover:text-white px-3 py-2 rounded-xl text-sm">🔄</button>
       </div>
-      <!-- Panel ingreso -->
-      <div id="stock-ingreso-panel" class="hidden bg-gray-900 border border-neon rounded-xl p-4">
-        <div class="flex justify-between items-start mb-3">
+      <!-- Grilla de productos -->
+      <div id="stock-grilla" class="grid grid-cols-2 sm:grid-cols-3 gap-3 pb-6">
+        <p class="col-span-full text-center text-gray-500 py-10">Cargando productos...</p>
+      </div>
+    </div>
+
+    <!-- Panel inferior de cantidad (fixed, aparece al seleccionar producto) -->
+    <div id="stock-panel-cantidad" class="hidden fixed bottom-0 left-0 right-0 bg-black border-t-2 border-neon p-4 z-40 shadow-2xl">
+      <div class="max-w-lg mx-auto">
+        <div class="flex justify-between items-center mb-1">
           <div>
-            <p id="stock-prod-nombre" class="text-white font-bold text-base"></p>
-            <p id="stock-prod-stock" class="text-gray-400 text-sm"></p>
+            <p id="stock-prod-nombre" class="text-white font-bold text-lg leading-tight"></p>
+            <p class="text-gray-500 text-sm">Stock actual: <span id="stock-prod-stock" class="text-neon font-bold"></span></p>
           </div>
-          <button onclick="cerrarIngreso()" class="text-gray-500 hover:text-white text-xl">✕</button>
+          <button onclick="cerrarIngreso()" class="text-gray-500 hover:text-white text-3xl leading-none">×</button>
         </div>
-        <label class="block text-gray-400 text-xs mb-1 font-bold uppercase">Cantidad a ingresar</label>
-        <input id="stock-cantidad" type="number" min="1" step="1" value="1"
-               class="w-full bg-gray-800 border border-neon text-white rounded-lg p-3 text-xl font-bold mb-1 text-center outline-none">
-        <label class="block text-gray-400 text-xs mb-3">Unidades (cajas, unidades, etc.)</label>
-        <label class="block text-gray-400 text-xs mb-1 font-bold uppercase">Motivo <span class="text-gray-600 font-normal">(opcional)</span></label>
-        <input id="stock-motivo" type="text" placeholder="Ej: producción 25/11, compra..."
-               class="w-full bg-gray-800 border border-gray-700 text-white rounded-lg p-2.5 text-sm mb-4 outline-none">
-        <button id="btn-ingresar-stock" onclick="ingresarStock()"
-                class="w-full bg-neon text-black font-black py-4 rounded-xl text-lg">✅ CONFIRMAR INGRESO</button>
-        <div id="stock-estado" class="text-center text-sm mt-2 min-h-5"></div>
+        <div class="flex items-center justify-center gap-3 my-3">
+          <button onclick="stockCambiarCant(-1)" class="bg-gray-800 active:bg-gray-700 text-white w-12 h-12 rounded-xl text-2xl font-bold flex items-center justify-center">−</button>
+          <input type="number" id="stock-cantidad" value="0" min="0" inputmode="numeric" onfocus="this.select()"
+                 class="w-36 h-20 bg-gray-900 border-2 border-neon text-white text-center text-5xl font-bold rounded-2xl outline-none">
+          <button onclick="stockCambiarCant(1)" class="bg-gray-800 active:bg-gray-700 text-white w-12 h-12 rounded-xl text-2xl font-bold flex items-center justify-center">+</button>
+        </div>
+        <!-- Atajos rápidos -->
+        <div class="flex justify-center gap-2 mb-3">
+          <button onclick="stockSumarRapido(6)" class="bg-gray-800 active:bg-gray-700 text-gray-300 px-4 py-2 rounded-lg font-bold text-sm">+6</button>
+          <button onclick="stockSumarRapido(12)" class="bg-gray-800 active:bg-gray-700 text-gray-300 px-4 py-2 rounded-lg font-bold text-sm">+12</button>
+          <button onclick="stockSumarRapido(24)" class="bg-gray-800 active:bg-gray-700 text-gray-300 px-4 py-2 rounded-lg font-bold text-sm">+24</button>
+          <button onclick="stockSumarRapido(50)" class="bg-gray-800 active:bg-gray-700 text-gray-300 px-4 py-2 rounded-lg font-bold text-sm">+50</button>
+          <button onclick="document.getElementById('stock-cantidad').value=0" class="bg-gray-800 active:bg-gray-700 text-gray-400 px-3 py-2 rounded-lg font-bold text-sm">Borrar</button>
+        </div>
+        <button onclick="ingresarStock()" id="btn-ingresar-stock"
+                class="w-full bg-neon active:bg-yellow-300 text-black font-bold py-4 rounded-2xl text-xl">
+          ✓ Confirmar Ingreso
+        </button>
+      </div>
+    </div>
+
+    <!-- Cartel éxito stock -->
+    <div id="stock-cartel-ok" class="hidden fixed top-20 left-1/2 -translate-x-1/2 bg-green-600 text-white font-bold px-6 py-3 rounded-2xl text-base z-50 shadow-2xl">
+      ✅ <span id="stock-cartel-texto">Stock guardado</span>
+    </div>
+
+    <!-- Modal Qué Producir -->
+    <div id="modal-producir" class="hidden fixed inset-0 bg-black/90 z-50 flex flex-col">
+      <div class="bg-black border-b border-gray-800 px-5 py-4 flex items-center justify-between shrink-0">
+        <h2 class="text-neon font-bold text-lg">📋 Qué hay que producir</h2>
+        <div class="flex gap-2">
+          <button onclick="imprimirProduccion()" class="bg-neon text-black font-bold px-4 py-2 rounded-lg text-sm">🖨️ Imprimir</button>
+          <button onclick="document.getElementById('modal-producir').classList.add('hidden')" class="border border-gray-700 text-gray-300 px-4 py-2 rounded-lg text-sm">Cerrar</button>
+        </div>
+      </div>
+      <div id="cont-producir" class="flex-1 overflow-y-auto p-5">
+        <p class="text-gray-500 text-center py-10">Calculando...</p>
       </div>
     </div>
   </main>
@@ -697,102 +736,176 @@ function cambiarTab(tab){
 }
 
 // ══════════════════════════════════
-// CARGA DE STOCK
+// CARGA DE STOCK (versión mejorada — grilla de tarjetas, quick-buttons, modal producción)
 // ══════════════════════════════════
 var todosProductosStock = [];
 var productoStockActual = null;
+var necesidadesCache = [];
+var stockCartelTimer = null;
 
 async function cargarProductosStock(){
-  var lista = document.getElementById('stock-lista');
-  lista.innerHTML = '<p class="text-gray-500 text-sm text-center py-6">Cargando productos...</p>';
+  var grilla = document.getElementById('stock-grilla');
+  grilla.innerHTML = '<p class="col-span-full text-center text-gray-500 py-10">Cargando productos...</p>';
   try {
-    var prods = await fetch(`${API_URL}/productos`).then(r=>r.json());
-    todosProductosStock = prods;
-    renderProductosStock(prods);
+    var todos = await fetch(`${API_URL}/productos`).then(r=>r.json());
+    // Solo productos propios (producto terminado de fábrica)
+    todosProductosStock = todos.filter(function(p){ return p.tipo === 'propio'; });
+    renderProductosStock();
   } catch(e) {
-    lista.innerHTML = '<p class="text-red-400 text-sm text-center py-6">No se pudieron cargar los productos.</p>';
+    grilla.innerHTML = '<p class="col-span-full text-center text-red-400 py-10">No se pudieron cargar los productos. Tocá 🔄</p>';
   }
 }
 
 function filtrarProductosStock(){
-  var q = document.getElementById('stock-buscar').value.toLowerCase();
-  var filtrados = todosProductosStock.filter(function(p){
-    return !q || (p.nombre||'').toLowerCase().includes(q) || (p.sku||'').toLowerCase().includes(q);
+  renderProductosStock();
+}
+
+function renderProductosStock(){
+  var q = (document.getElementById('stock-buscar').value || '').toLowerCase().trim();
+  var grilla = document.getElementById('stock-grilla');
+  var lista = todosProductosStock.filter(function(p){
+    return !q || (p.nombre||'').toLowerCase().indexOf(q) !== -1 || (p.sku||'').toLowerCase().indexOf(q) !== -1;
   });
-  renderProductosStock(filtrados);
-}
-
-function renderProductosStock(prods){
-  var lista = document.getElementById('stock-lista');
-  if(!prods.length){ lista.innerHTML = '<p class="text-gray-500 text-sm text-center py-6">Sin resultados.</p>'; return; }
-  lista.innerHTML = prods.map(function(p){
-    var stock = parseFloat(p.stock_actual||p.stock||0);
+  grilla.innerHTML = '';
+  if(!lista.length){
+    grilla.innerHTML = '<p class="col-span-full text-center text-gray-500 py-10">' + (todosProductosStock.length ? 'Sin resultados.' : 'No hay productos propios cargados.') + '</p>';
+    return;
+  }
+  lista.forEach(function(p){
+    var stock = parseFloat(p.stock_actual != null ? p.stock_actual : p.stock) || 0;
     var alerta = p.stock_alerta && stock < p.stock_alerta;
-    var stockTxt = '<span class="' + (alerta?'text-red-400 font-bold':'text-gray-400') + '">Stock: ' + stock + (alerta?' ⚠️':'') + '</span>';
-    return '<button onclick="abrirIngreso('+JSON.stringify(JSON.stringify(p))+')" class="w-full text-left bg-gray-800 border border-gray-700 hover:border-neon rounded-lg px-3 py-2.5 transition">' +
-      '<div class="flex justify-between items-center">' +
-      '<span class="text-white text-sm font-bold">' + (p.nombre||'') + '</span>' +
-      stockTxt +
-      '</div>' +
-      (p.sku ? '<span class="text-gray-600 text-xs">' + p.sku + '</span>' : '') +
-      '</button>';
-  }).join('');
+    var card = document.createElement('button');
+    var esSel = productoStockActual && productoStockActual.id === p.id;
+    card.className = 'bg-black border rounded-2xl p-4 text-left flex flex-col justify-between min-h-28 transition-all prod-stock-card ' + (esSel ? 'border-neon outline outline-2 outline-neon' : 'border-gray-800 hover:border-gray-600');
+    card.onclick = function(){ abrirIngreso(p); };
+    card.innerHTML =
+      '<p class="text-white font-bold text-sm leading-tight mb-2">' + (p.nombre||'') + '</p>' +
+      '<div><p class="text-gray-500 text-xs">Stock</p>' +
+      '<p class="' + (alerta ? 'text-red-400' : 'text-neon') + ' font-bold text-2xl">' + stock + (alerta ? ' ⚠️' : '') + '</p></div>';
+    grilla.appendChild(card);
+  });
 }
 
-function abrirIngreso(prodJson){
-  var p = JSON.parse(prodJson);
+function abrirIngreso(p){
   productoStockActual = p;
+  var stock = parseFloat(p.stock_actual != null ? p.stock_actual : p.stock) || 0;
   document.getElementById('stock-prod-nombre').textContent = p.nombre||'';
-  document.getElementById('stock-prod-stock').textContent = 'Stock actual: ' + parseFloat(p.stock_actual||p.stock||0) + ' unidades';
-  document.getElementById('stock-cantidad').value = '1';
-  document.getElementById('stock-motivo').value = '';
-  document.getElementById('stock-estado').textContent = '';
-  document.getElementById('btn-ingresar-stock').disabled = false;
-  document.getElementById('btn-ingresar-stock').textContent = '✅ CONFIRMAR INGRESO';
-  document.getElementById('stock-ingreso-panel').classList.remove('hidden');
-  document.getElementById('stock-ingreso-panel').scrollIntoView({behavior:'smooth', block:'start'});
+  document.getElementById('stock-prod-stock').textContent = stock;
+  document.getElementById('stock-cantidad').value = 0;
+  document.getElementById('stock-panel-cantidad').classList.remove('hidden');
+  renderProductosStock();
 }
 
 function cerrarIngreso(){
   productoStockActual = null;
-  document.getElementById('stock-ingreso-panel').classList.add('hidden');
+  document.getElementById('stock-panel-cantidad').classList.add('hidden');
+  renderProductosStock();
+}
+
+function stockCambiarCant(v){
+  var inp = document.getElementById('stock-cantidad');
+  inp.value = Math.max(0, (parseInt(inp.value) || 0) + v);
+}
+
+function stockSumarRapido(v){
+  var inp = document.getElementById('stock-cantidad');
+  inp.value = Math.max(0, (parseInt(inp.value) || 0) + v);
+}
+
+function mostrarStockOk(texto){
+  document.getElementById('stock-cartel-texto').textContent = texto;
+  var c = document.getElementById('stock-cartel-ok');
+  c.classList.remove('hidden');
+  if(stockCartelTimer) clearTimeout(stockCartelTimer);
+  stockCartelTimer = setTimeout(function(){ c.classList.add('hidden'); }, 3000);
 }
 
 async function ingresarStock(){
   if(!productoStockActual) return;
-  var cant = parseFloat(document.getElementById('stock-cantidad').value);
-  if(!cant || cant <= 0){ alert('Ingresá una cantidad válida.'); return; }
-  var motivo = document.getElementById('stock-motivo').value.trim();
+  var cant = parseInt(document.getElementById('stock-cantidad').value) || 0;
+  if(cant <= 0){ alert('Ingresá una cantidad mayor a 0.'); return; }
   var btn = document.getElementById('btn-ingresar-stock');
-  var estado = document.getElementById('stock-estado');
-  btn.disabled = true;
-  btn.textContent = 'Ingresando...';
-  estado.textContent = '';
+  btn.disabled = true; btn.textContent = 'Guardando...';
   try {
     var res = await fetch(`${API_URL}/productos/${productoStockActual.id}/ingresar_stock`, {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({cantidad: cant, motivo: motivo || null})
+      body: JSON.stringify({cantidad: cant})
     });
+    if(!res.ok){ var e = await res.json(); alert('Error: ' + (e.detail || 'no se pudo guardar')); return; }
     var data = await res.json();
-    if(!res.ok) throw new Error(data.detail || res.status);
-    estado.textContent = '✅ Ingresado! Nuevo stock: ' + data.stock_actual;
-    estado.className = 'text-green-400 text-sm mt-2';
-    // Actualizar en el array local
-    var idx = todosProductosStock.findIndex(function(p){ return p.id === productoStockActual.id; });
-    if(idx >= 0) todosProductosStock[idx].stock_actual = data.stock_actual;
-    productoStockActual.stock_actual = data.stock_actual;
-    document.getElementById('stock-prod-stock').textContent = 'Stock actual: ' + data.stock_actual + ' unidades';
-    btn.textContent = '✅ CONFIRMAR INGRESO';
-    btn.disabled = false;
-    // Refrescar lista (con filtro actual)
-    filtrarProductosStock();
+    // Actualizar en memoria
+    var idx = todosProductosStock.findIndex(function(x){ return x.id === productoStockActual.id; });
+    if(idx >= 0){ todosProductosStock[idx].stock_actual = data.stock_actual; todosProductosStock[idx].stock = data.stock_actual; }
+    mostrarStockOk('+' + cant + ' a ' + productoStockActual.nombre + ' (queda ' + data.stock_actual + ')');
+    cerrarIngreso();
   } catch(e) {
-    estado.textContent = '❌ ' + (e.message || 'Error');
-    estado.className = 'text-red-400 text-sm mt-2';
-    btn.disabled = false;
-    btn.textContent = '✅ CONFIRMAR INGRESO';
+    alert('Error de conexión.');
+  } finally {
+    btn.disabled = false; btn.textContent = '✓ Confirmar Ingreso';
   }
+}
+
+// Modal "Qué producir"
+async function abrirQueProducir(){
+  document.getElementById('modal-producir').classList.remove('hidden');
+  var cont = document.getElementById('cont-producir');
+  cont.innerHTML = '<p class="text-gray-500 text-center py-10">Calculando...</p>';
+  try {
+    var datos = await fetch(`${API_URL}/produccion/necesidades`).then(function(r){ return r.json(); });
+    necesidadesCache = datos;
+    var conFalta = datos.filter(function(d){ return d.falta_producir > 0; });
+    if(conFalta.length === 0){
+      cont.innerHTML = '<div class="bg-green-900/30 border border-green-800 rounded-xl p-6 text-center text-green-300 text-lg">✅ No hay nada pendiente de producir.<br>Hay stock para todos los pedidos.</div>';
+      return;
+    }
+    var totalU = 0;
+    var filas = conFalta.map(function(d){
+      totalU += (d.falta_unidades||0);
+      return '<div class="bg-gray-900 border border-gray-800 rounded-xl p-4 mb-3">' +
+        '<p class="text-white font-bold text-lg">' + (d.nombre||'—') + '</p>' +
+        '<div class="flex justify-between mt-2 text-sm">' +
+        '<span class="text-gray-400">Pedido: <b class="text-white">' + d.pedido + '</b> cajas</span>' +
+        '<span class="text-gray-400">Stock: <b class="text-white">' + d.stock + '</b> cajas</span>' +
+        '<span class="text-gray-400">Faltan: <b class="text-yellow-400">' + d.falta_producir + '</b> cajas</span>' +
+        '</div>' +
+        '<div class="mt-2 bg-orange-900/20 border border-orange-700 rounded-lg p-2 text-center">' +
+        '<span class="text-orange-300 text-sm">A fabricar: </span><span class="text-orange-400 font-bold text-2xl">' + (d.falta_unidades||0).toLocaleString('es-AR') + '</span><span class="text-orange-300 text-sm"> unidades</span>' +
+        '</div></div>';
+    }).join('');
+    cont.innerHTML = '<div class="bg-orange-900/20 border border-orange-700 rounded-xl p-4 mb-4 text-center"><p class="text-white font-bold text-2xl">Total: ' + totalU.toLocaleString('es-AR') + ' unidades</p></div>' + filas;
+  } catch(e) {
+    cont.innerHTML = '<p class="text-red-400 text-center py-10">No se pudo calcular.</p>';
+  }
+}
+
+function imprimirProduccion(){
+  var conFalta = (necesidadesCache||[]).filter(function(d){ return d.falta_producir > 0; });
+  if(conFalta.length === 0){ alert('No hay nada para imprimir.'); return; }
+  var fecha = new Date().toLocaleString('es-AR');
+  var totalU = 0;
+  var filas = conFalta.map(function(d){
+    totalU += (d.falta_unidades||0);
+    return '<tr><td>' + (d.nombre||'') + '</td><td style="text-align:center">' + d.pedido + '</td><td style="text-align:center">' + d.stock + '</td><td style="text-align:center">' + d.falta_producir + '</td><td style="text-align:center;font-weight:bold">' + (d.falta_unidades||0) + '</td></tr>';
+  }).join('');
+  var html = '<html><head><title>Orden de Producción</title><style>' +
+    'body{font-family:Arial,sans-serif;padding:20px;color:#000}' +
+    'h1{font-size:20px;margin:0}p{color:#555;font-size:12px;margin:4px 0 16px}' +
+    'table{width:100%;border-collapse:collapse;font-size:13px}' +
+    'th,td{border:1px solid #999;padding:8px}th{background:#eee;text-align:left}' +
+    '.total{margin-top:16px;font-size:18px;font-weight:bold}' +
+    '</style></head><body>' +
+    '<h1>Orden de Producción — Portal del Viento</h1>' +
+    '<p>Generado: ' + fecha + '</p>' +
+    '<table><thead><tr><th>Producto</th><th>Pedido (cajas)</th><th>Stock (cajas)</th><th>Faltan (cajas)</th><th>A FABRICAR (unidades)</th></tr></thead>' +
+    '<tbody>' + filas + '</tbody></table>' +
+    '<p class="total">TOTAL A FABRICAR: ' + totalU.toLocaleString('es-AR') + ' unidades</p>' +
+    '</body></html>';
+  var w = window.open('', '_blank');
+  w.document.write(html);
+  w.document.close();
+  w.focus();
+  setTimeout(function(){ w.print(); }, 300);
 }
 
 async function cargarHistorial(){
