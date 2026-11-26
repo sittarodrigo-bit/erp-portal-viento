@@ -38,6 +38,7 @@
     <button class="tab-btn" onclick="cambiarTab('anticipos')">💸 Anticipos</button>
     <button class="tab-btn" onclick="cambiarTab('liquidacion')">💰 Liquidación</button>
     <button class="tab-btn" onclick="cambiarTab('feriados')">📅 Feriados</button>
+    <button class="tab-btn" onclick="cambiarTab('planilla')">📋 Planilla</button>
 </div>
 
 <main class="flex-1 overflow-y-auto p-6">
@@ -186,6 +187,22 @@
         </div>
         <div id="tabla-feriados-container">
             <p class="text-gray-600 text-sm text-center py-6">Cargando...</p>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════ PLANILLA ═══════════════════════════════ -->
+    <div id="tab-planilla" class="hidden">
+        <div class="flex flex-wrap items-center gap-3 mb-5">
+            <select id="plan-emp-sel" class="bg-black border border-gray-700 text-white rounded px-3 py-2 text-sm" onchange="cargarPlanillaAdmin()">
+                <option value="">— Empleado —</option>
+            </select>
+            <button onclick="planAdminSemAnt()" class="border border-gray-700 text-gray-300 hover:text-white px-3 py-2 rounded text-sm">◀</button>
+            <span id="plan-admin-label" class="text-gray-400 text-sm font-bold"></span>
+            <button onclick="planAdminSemSig()" class="border border-gray-700 text-gray-300 hover:text-white px-3 py-2 rounded text-sm">▶</button>
+            <button onclick="imprimirPlanillaAdmin()" class="ml-auto bg-neon text-black font-bold px-4 py-2 rounded text-sm hover:bg-yellow-300">🖨️ Imprimir</button>
+        </div>
+        <div id="plan-admin-body">
+            <p class="text-gray-600 text-sm text-center py-10">Seleccioná un empleado.</p>
         </div>
     </div>
 
@@ -445,12 +462,13 @@
     var tabActual = 'nomina';
     function cambiarTab(tab) {
         tabActual = tab;
-        const tabs = ['nomina','fichajes','anticipos','liquidacion','feriados'];
+        const tabs = ['nomina','fichajes','anticipos','liquidacion','feriados','planilla'];
         document.querySelectorAll('.tab-btn').forEach((b,i)=>b.classList.toggle('activo',tabs[i]===tab));
         tabs.forEach(t=>document.getElementById('tab-'+t).classList.toggle('hidden',t!==tab));
         if (tab==='fichajes') { cargarFichajes(); verificarLogistica(); }
         if (tab==='anticipos') cargarAnticipos();
         if (tab==='feriados' && !document.getElementById('tabla-feriados-container').dataset.cargado) cargarFeriados();
+        if (tab==='planilla') iniciarPlanillaAdmin();
     }
 
     // ══════════════════════════════════════════════════
@@ -889,6 +907,197 @@
         await cargarNomina();
     }
     window.onload=init;
+
+    // ══════════════════════════════════════════════════
+    // TAB PLANILLA — vista admin
+    // ══════════════════════════════════════════════════
+    var planAdminLunes = null;
+    var planAdminLocales = [];
+    var planAdminCargado = false;
+
+    function lunesDeAdmin(d) {
+        var c = new Date(d); var dia = c.getDay();
+        c.setDate(c.getDate() + (dia===0 ? -6 : 1-dia));
+        c.setHours(0,0,0,0); return c;
+    }
+    function isoAdmin(d) {
+        return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+    }
+    function labelAdmin(lunes) {
+        var nom=['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'], r=[];
+        for(var i=0;i<7;i++){var d=new Date(lunes);d.setDate(d.getDate()+i);r.push(nom[i]+' '+d.getDate()+'/'+(d.getMonth()+1));}
+        return r;
+    }
+    function hmAdmin(v){ return v?String(v).substring(0,5):''; }
+    function nomLocal(id){ var l=planAdminLocales.find(function(x){return x.id==id;}); return l?l.nombre:''; }
+
+    async function iniciarPlanillaAdmin() {
+        if(planAdminCargado) return;
+        planAdminCargado = true;
+        planAdminLunes = lunesDeAdmin(new Date());
+        // Cargar empleados en el select
+        try {
+            var emps = await fetch(API+'/api/empleados_pos').then(function(r){return r.json();});
+            var sel = document.getElementById('plan-emp-sel');
+            sel.innerHTML = '<option value="">— Empleado —</option>';
+            (emps||[]).forEach(function(e){
+                sel.innerHTML += '<option value="'+e.id_empleado+'">'+e.nombre+' '+e.apellido+'</option>';
+            });
+        } catch(e) {}
+        try {
+            planAdminLocales = await fetch(API+'/api/pos/locales').then(function(r){return r.json();});
+        } catch(e) { planAdminLocales=[]; }
+        actualizarLabelAdmin();
+    }
+
+    function actualizarLabelAdmin() {
+        var labels = labelAdmin(planAdminLunes);
+        document.getElementById('plan-admin-label').textContent = labels[0] + ' → ' + labels[6];
+    }
+
+    function planAdminSemAnt() {
+        planAdminLunes = new Date(planAdminLunes);
+        planAdminLunes.setDate(planAdminLunes.getDate()-7);
+        actualizarLabelAdmin();
+        cargarPlanillaAdmin();
+    }
+    function planAdminSemSig() {
+        planAdminLunes = new Date(planAdminLunes);
+        planAdminLunes.setDate(planAdminLunes.getDate()+7);
+        actualizarLabelAdmin();
+        cargarPlanillaAdmin();
+    }
+
+    async function cargarPlanillaAdmin() {
+        var empId = document.getElementById('plan-emp-sel').value;
+        var body = document.getElementById('plan-admin-body');
+        if(!empId){ body.innerHTML='<p class="text-gray-600 text-sm text-center py-10">Seleccioná un empleado.</p>'; return; }
+        body.innerHTML='<p class="text-gray-500 text-sm text-center py-6">Cargando...</p>';
+        var lunStr = isoAdmin(planAdminLunes);
+        try {
+            var data = await fetch(API+'/api/planilla_horaria?id_empleado='+empId+'&semana_lunes='+lunStr).then(function(r){return r.json();});
+            var dias = Array.isArray(data)?data:(data.dias||[]);
+            var ediciones = Array.isArray(data)?0:(data.ediciones||0);
+            var bloqueada = Array.isArray(data)?false:(data.bloqueada||false);
+            // Indexar
+            var porDia={};
+            dias.forEach(function(d){porDia[d.dia_semana]=d;});
+
+            var labels=labelAdmin(planAdminLunes);
+            var diasNom=['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
+            var html='<div class="overflow-x-auto">';
+            html+='<table class="w-full text-sm border-collapse">';
+            html+='<thead><tr class="border-b border-gray-800">';
+            html+='<th class="text-left text-gray-500 font-bold py-2 pr-4 w-20">Día</th>';
+            html+='<th class="text-left text-gray-500 font-bold py-2 px-2">Turno 1</th>';
+            html+='<th class="text-left text-gray-500 font-bold py-2 px-2">Turno 2</th>';
+            html+='</tr></thead><tbody>';
+            for(var d=0;d<7;d++){
+                var dia=porDia[d]||{};
+                var esLibre=dia.observacion==='libre';
+                var ent1=hmAdmin(dia.hora_entrada), sal1=hmAdmin(dia.hora_salida), loc1=nomLocal(dia.id_local);
+                var ent2=hmAdmin(dia.hora_entrada_2), sal2=hmAdmin(dia.hora_salida_2), loc2=nomLocal(dia.id_local_2);
+                var esFinde=d>=5;
+                html+='<tr class="border-b border-gray-900 '+(esFinde?'bg-gray-900/40':'')+'">';
+                html+='<td class="py-2 pr-4 font-bold '+(esFinde?'text-gray-500':'text-white')+'">'+labels[d]+'</td>';
+                if(esLibre){
+                    html+='<td colspan="2" class="py-2 px-2 text-yellow-600 font-bold">📴 Libre</td>';
+                } else {
+                    // T1
+                    var t1='';
+                    if(ent1||sal1){
+                        t1=(loc1?'<span class="text-neon font-bold">'+loc1+'</span> · ':'')+'<span class="text-white">'+ent1+(sal1?' – '+sal1:'')+'</span>';
+                    } else { t1='<span class="text-gray-700">—</span>'; }
+                    html+='<td class="py-2 px-2">'+t1+'</td>';
+                    // T2
+                    var t2='';
+                    if(ent2||sal2){
+                        t2=(loc2?'<span class="text-blue-400 font-bold">'+loc2+'</span> · ':'')+'<span class="text-white">'+ent2+(sal2?' – '+sal2:'')+'</span>';
+                    } else { t2='<span class="text-gray-700">—</span>'; }
+                    html+='<td class="py-2 px-2">'+t2+'</td>';
+                }
+                html+='</tr>';
+            }
+            html+='</tbody></table></div>';
+            // Info ediciones
+            var infoBadge = bloqueada
+                ? '<span class="text-red-400 text-xs ml-2">🔒 Bloqueada</span>'
+                : ediciones===0
+                    ? '<span class="text-gray-600 text-xs ml-2">Sin guardar</span>'
+                    : '<span class="text-yellow-400 text-xs ml-2">'+ediciones+' edición'+(ediciones>1?'es':'')+'</span>';
+            html='<div class="mb-3 flex items-center gap-2"><span class="text-gray-400 text-xs">Estado planilla:</span>'+infoBadge;
+            if(bloqueada){
+                html+=' <button onclick="desbloquearPlanAdmin('+empId+',\''+lunStr+'\')" class="text-xs text-red-400 hover:text-red-300 underline ml-2">Desbloquear</button>';
+            }
+            html+='</div>'+'<div class="overflow-x-auto"><table class="w-full text-sm border-collapse"><thead><tr class="border-b border-gray-800"><th class="text-left text-gray-500 font-bold py-2 pr-4 w-28">Día</th><th class="text-left text-gray-500 font-bold py-2 px-2">Turno 1</th><th class="text-left text-gray-500 font-bold py-2 px-2">Turno 2</th></tr></thead><tbody>';
+            for(var d2=0;d2<7;d2++){
+                var dia2=porDia[d2]||{};
+                var esL2=dia2.observacion==='libre';
+                var e1=hmAdmin(dia2.hora_entrada),s1=hmAdmin(dia2.hora_salida),l1=nomLocal(dia2.id_local);
+                var e2=hmAdmin(dia2.hora_entrada_2),s2=hmAdmin(dia2.hora_salida_2),l2=nomLocal(dia2.id_local_2);
+                var fin=d2>=5;
+                html+='<tr class="border-b border-gray-900 '+(fin?'bg-gray-900/40':'')+'">';
+                html+='<td class="py-2.5 pr-4 font-bold '+(fin?'text-gray-500':'text-white')+'">'+labels[d2]+'</td>';
+                if(esL2){
+                    html+='<td colspan="2" class="py-2.5 px-2 text-yellow-600 font-bold">📴 Libre</td>';
+                } else {
+                    var r1=(e1||s1)?((l1?'<span class="text-neon font-bold mr-1">'+l1+'</span>':'')+e1+(s1?' – '+s1:'')):'<span class="text-gray-700">—</span>';
+                    var r2=(e2||s2)?((l2?'<span class="text-blue-400 font-bold mr-1">'+l2+'</span>':'')+e2+(s2?' – '+s2:'')):'<span class="text-gray-700">—</span>';
+                    html+='<td class="py-2.5 px-2 text-white">'+r1+'</td>';
+                    html+='<td class="py-2.5 px-2 text-white">'+r2+'</td>';
+                }
+                html+='</tr>';
+            }
+            html+='</tbody></table></div>';
+            body.innerHTML=html;
+        } catch(e) {
+            body.innerHTML='<p class="text-red-400 text-sm text-center py-6">Error al cargar.</p>';
+        }
+    }
+
+    async function desbloquearPlanAdmin(empId, lunStr) {
+        if(!confirm('¿Desbloquear planilla? El empleado podrá editarla de nuevo.')) return;
+        try {
+            await fetch(API+'/api/planilla_horaria/desbloquear',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id_empleado:empId,semana_lunes:lunStr})});
+            cargarPlanillaAdmin();
+        } catch(e){ alert('Error al desbloquear.'); }
+    }
+
+    function imprimirPlanillaAdmin() {
+        var empId = document.getElementById('plan-emp-sel').value;
+        var empNom = document.getElementById('plan-emp-sel').options[document.getElementById('plan-emp-sel').selectedIndex].text;
+        var lunStr = isoAdmin(planAdminLunes);
+        var labels = labelAdmin(planAdminLunes);
+        var body = document.getElementById('plan-admin-body');
+        // Extraer tabla del DOM
+        var tabla = body.querySelector('table');
+        if(!tabla){ alert('No hay planilla cargada.'); return; }
+        var fecha = new Date().toLocaleString('es-AR');
+        var html='<html><head><title>Planilla '+empNom+'</title><style>'
+            +'body{font-family:Arial,sans-serif;padding:24px;color:#000}'
+            +'h1{font-size:18px;margin:0}p{color:#555;font-size:12px;margin:4px 0 16px}'
+            +'table{width:100%;border-collapse:collapse;font-size:13px}'
+            +'th,td{border:1px solid #ccc;padding:8px 12px;text-align:left}'
+            +'th{background:#f0f0f0;font-weight:bold}'
+            +'tr:nth-child(6),tr:nth-child(7){background:#fafafa}'
+            +'</style></head><body>'
+            +'<h1>Planilla Horaria — '+empNom+'</h1>'
+            +'<p>Semana: '+labels[0]+' al '+labels[6]+' &nbsp;·&nbsp; Impreso: '+fecha+'</p>'
+            +'<table><thead><tr><th>Día</th><th>Turno 1</th><th>Turno 2</th></tr></thead><tbody>';
+        // Reconstruir filas sin HTML de colores
+        var rows = tabla.querySelectorAll('tbody tr');
+        rows.forEach(function(tr){
+            var cells = tr.querySelectorAll('td');
+            if(!cells.length) return;
+            html+='<tr>';
+            cells.forEach(function(td){ html+='<td>'+td.innerText+'</td>'; });
+            html+='</tr>';
+        });
+        html+='</tbody></table></body></html>';
+        var w=window.open('','_blank');
+        w.document.write(html); w.document.close(); w.focus();
+        setTimeout(function(){w.print();},300);
+    }
 </script>
 </body>
 </html>
