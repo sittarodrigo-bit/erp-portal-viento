@@ -968,89 +968,148 @@
         cargarPlanillaAdmin();
     }
 
+    // ── Cotejo helpers ──────────────────────────────────────
+    function minsDesdeMedianoche(hhmm) {
+        if(!hhmm) return null;
+        var p=String(hhmm).substring(0,5).split(':');
+        return parseInt(p[0])*60 + parseInt(p[1]||0);
+    }
+    function minsToHHMM(m) {
+        if(m===null||m===undefined) return '—';
+        var h=Math.floor(Math.abs(m)/60), mm=Math.abs(m)%60;
+        return (m<0?'-':'')+(h>0?h+'h ':'')+(mm>0?mm+'min':'0min');
+    }
+    // Devuelve objeto con primer entrada y última salida de un array de fichajes del día
+    function resumirFichajes(arr) {
+        var entradas=arr.filter(function(f){return f.tipo==='entrada';}).sort(function(a,b){return a.fecha_hora>b.fecha_hora?1:-1;});
+        var salidas=arr.filter(function(f){return f.tipo==='salida';}).sort(function(a,b){return a.fecha_hora>b.fecha_hora?1:-1;});
+        return {
+            primeraEntrada: entradas.length?entradas[0].fecha_hora:null,
+            ultimaSalida: salidas.length?salidas[salidas.length-1].fecha_hora:null,
+            segundaEntrada: entradas.length>1?entradas[1].fecha_hora:null
+        };
+    }
+    // Renderiza celda de cotejo: "09:05  +5min tarde" con color
+    function celdaCotejo(fichajeHHMM, planHHMM, label) {
+        if(!fichajeHHMM && !planHHMM) return '<span class="text-gray-700">—</span>';
+        if(!planHHMM) return '<span class="text-gray-500 text-xs">'+fichajeHHMM+'<br><span class="text-gray-600">sin asignar</span></span>';
+        if(!fichajeHHMM) return '<span class="text-orange-500 text-xs">⚠ sin fichaje<br><span class="text-gray-500">esperado '+planHHMM+'</span></span>';
+        var fMins = minsDesdeMedianoche(fichajeHHMM);
+        var pMins = minsDesdeMedianoche(planHHMM);
+        var diff = fMins - pMins; // positivo = llegó tarde / salió antes si es salida
+        var diffAbs = Math.abs(diff);
+        var esTarde = label==='entrada' ? diff>0 : diff<0; // para salida, negativo = se fue antes
+        var esAntes = label==='entrada' ? diff<0 : diff>0;
+        var color='text-green-400', icono='✓';
+        if(diffAbs===0){ color='text-green-400'; icono='✓'; }
+        else if(diffAbs<=10){ color='text-green-400'; icono='≈'; }
+        else if(diffAbs<=30){ color='text-yellow-400'; icono='⚑'; }
+        else { color='text-red-400'; icono='✗'; }
+        var signo = diff>0?'+':'';
+        var textoVar = diff===0?'exacto':signo+minsToHHMM(diff)+(label==='entrada'?'':' salida');
+        return '<span class="font-mono text-white text-xs">'+fichajeHHMM+'</span>'
+            +'<br><span class="'+color+' text-xs">'+icono+' '+textoVar+'</span>';
+    }
+
     async function cargarPlanillaAdmin() {
         var empId = document.getElementById('plan-emp-sel').value;
         var body = document.getElementById('plan-admin-body');
         if(!empId){ body.innerHTML='<p class="text-gray-600 text-sm text-center py-10">Seleccioná un empleado.</p>'; return; }
         body.innerHTML='<p class="text-gray-500 text-sm text-center py-6">Cargando...</p>';
         var lunStr = isoAdmin(planAdminLunes);
+        var domStr = isoAdmin((function(){ var d=new Date(planAdminLunes); d.setDate(d.getDate()+6); return d; })());
         try {
-            var data = await fetch(API+'/api/planilla_horaria?id_empleado='+empId+'&semana_lunes='+lunStr).then(function(r){return r.json();});
+            // Cargar planilla y fichajes en paralelo
+            var [data, fichajes] = await Promise.all([
+                fetch(API+'/api/planilla_horaria?id_empleado='+empId+'&semana_lunes='+lunStr).then(function(r){return r.json();}),
+                fetch(API+'/api/fichajes_semana?desde='+lunStr+'&hasta='+domStr+'&id_empleado='+empId).then(function(r){return r.json();}).catch(function(){return [];})
+            ]);
             var dias = Array.isArray(data)?data:(data.dias||[]);
             var ediciones = Array.isArray(data)?0:(data.ediciones||0);
             var bloqueada = Array.isArray(data)?false:(data.bloqueada||false);
-            // Indexar
+
+            // Indexar planilla por día_semana
             var porDia={};
             dias.forEach(function(d){porDia[d.dia_semana]=d;});
 
+            // Indexar fichajes por fecha (YYYY-MM-DD)
+            var fichajesPorFecha={};
+            (Array.isArray(fichajes)?fichajes:[]).forEach(function(f){
+                var fecha=String(f.fecha_hora).substring(0,10);
+                if(!fichajesPorFecha[fecha]) fichajesPorFecha[fecha]=[];
+                // Guardar solo HH:MM
+                fichajesPorFecha[fecha].push({tipo:f.tipo, fecha_hora:String(f.fecha_hora).substring(11,16)});
+            });
+
             var labels=labelAdmin(planAdminLunes);
-            var diasNom=['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
-            var html='<div class="overflow-x-auto">';
-            html+='<table class="w-full text-sm border-collapse">';
-            html+='<thead><tr class="border-b border-gray-800">';
-            html+='<th class="text-left text-gray-500 font-bold py-2 pr-4 w-20">Día</th>';
-            html+='<th class="text-left text-gray-500 font-bold py-2 px-2">Turno 1</th>';
-            html+='<th class="text-left text-gray-500 font-bold py-2 px-2">Turno 2</th>';
-            html+='</tr></thead><tbody>';
-            for(var d=0;d<7;d++){
-                var dia=porDia[d]||{};
-                var esLibre=dia.observacion==='libre';
-                var ent1=hmAdmin(dia.hora_entrada), sal1=hmAdmin(dia.hora_salida), loc1=nomLocal(dia.id_local);
-                var ent2=hmAdmin(dia.hora_entrada_2), sal2=hmAdmin(dia.hora_salida_2), loc2=nomLocal(dia.id_local_2);
-                var esFinde=d>=5;
-                html+='<tr class="border-b border-gray-900 '+(esFinde?'bg-gray-900/40':'')+'">';
-                html+='<td class="py-2 pr-4 font-bold '+(esFinde?'text-gray-500':'text-white')+'">'+labels[d]+'</td>';
-                if(esLibre){
-                    html+='<td colspan="2" class="py-2 px-2 text-yellow-600 font-bold">📴 Libre</td>';
-                } else {
-                    // T1
-                    var t1='';
-                    if(ent1||sal1){
-                        t1=(loc1?'<span class="text-neon font-bold">'+loc1+'</span> · ':'')+'<span class="text-white">'+ent1+(sal1?' – '+sal1:'')+'</span>';
-                    } else { t1='<span class="text-gray-700">—</span>'; }
-                    html+='<td class="py-2 px-2">'+t1+'</td>';
-                    // T2
-                    var t2='';
-                    if(ent2||sal2){
-                        t2=(loc2?'<span class="text-blue-400 font-bold">'+loc2+'</span> · ':'')+'<span class="text-white">'+ent2+(sal2?' – '+sal2:'')+'</span>';
-                    } else { t2='<span class="text-gray-700">—</span>'; }
-                    html+='<td class="py-2 px-2">'+t2+'</td>';
-                }
-                html+='</tr>';
-            }
-            html+='</tbody></table></div>';
-            // Info ediciones
             var infoBadge = bloqueada
                 ? '<span class="text-red-400 text-xs ml-2">🔒 Bloqueada</span>'
                 : ediciones===0
                     ? '<span class="text-gray-600 text-xs ml-2">Sin guardar</span>'
                     : '<span class="text-yellow-400 text-xs ml-2">'+ediciones+' edición'+(ediciones>1?'es':'')+'</span>';
-            html='<div class="mb-3 flex items-center gap-2"><span class="text-gray-400 text-xs">Estado planilla:</span>'+infoBadge;
+            var html='<div class="mb-3 flex items-center gap-2"><span class="text-gray-400 text-xs">Estado planilla:</span>'+infoBadge;
             if(bloqueada){
                 html+=' <button onclick="desbloquearPlanAdmin('+empId+',\''+lunStr+'\')" class="text-xs text-red-400 hover:text-red-300 underline ml-2">Desbloquear</button>';
             }
-            html+='</div>'+'<div class="overflow-x-auto"><table class="w-full text-sm border-collapse"><thead><tr class="border-b border-gray-800"><th class="text-left text-gray-500 font-bold py-2 pr-4 w-28">Día</th><th class="text-left text-gray-500 font-bold py-2 px-2">Turno 1</th><th class="text-left text-gray-500 font-bold py-2 px-2">Turno 2</th></tr></thead><tbody>';
-            for(var d2=0;d2<7;d2++){
-                var dia2=porDia[d2]||{};
-                var esL2=dia2.observacion==='libre';
-                var e1=hmAdmin(dia2.hora_entrada),s1=hmAdmin(dia2.hora_salida),l1=nomLocal(dia2.id_local);
-                var e2=hmAdmin(dia2.hora_entrada_2),s2=hmAdmin(dia2.hora_salida_2),l2=nomLocal(dia2.id_local_2);
-                var fin=d2>=5;
-                html+='<tr class="border-b border-gray-900 '+(fin?'bg-gray-900/40':'')+'">';
-                html+='<td class="py-2.5 pr-4 font-bold '+(fin?'text-gray-500':'text-white')+'">'+labels[d2]+'</td>';
-                if(esL2){
-                    html+='<td colspan="2" class="py-2.5 px-2 text-yellow-600 font-bold">📴 Libre</td>';
+            html+='</div>';
+            html+='<div class="overflow-x-auto"><table class="w-full text-xs border-collapse">';
+            html+='<thead><tr class="border-b border-gray-700">';
+            html+='<th class="text-left text-gray-500 font-bold py-2 pr-3 w-20">Día</th>';
+            html+='<th class="text-left text-gray-500 font-bold py-2 px-2">Planilla T1</th>';
+            html+='<th class="text-left text-gray-500 font-bold py-2 px-2 border-l border-gray-800">Fichaje Entrada</th>';
+            html+='<th class="text-left text-gray-500 font-bold py-2 px-2">Fichaje Salida</th>';
+            html+='<th class="text-left text-gray-500 font-bold py-2 px-2 border-l border-gray-800">Planilla T2</th>';
+            html+='<th class="text-left text-gray-500 font-bold py-2 px-2 border-l border-gray-800">2° Entrada</th>';
+            html+='</tr></thead><tbody>';
+
+            for(var d=0;d<7;d++){
+                var dia=porDia[d]||{};
+                var esLibre=dia.observacion==='libre';
+                var e1=hmAdmin(dia.hora_entrada), s1=hmAdmin(dia.hora_salida), l1=nomLocal(dia.id_local);
+                var e2=hmAdmin(dia.hora_entrada_2), s2=hmAdmin(dia.hora_salida_2), l2=nomLocal(dia.id_local_2);
+                var esFinde=d>=5;
+
+                // Fecha del día para buscar fichajes
+                var fechaDia=(function(offset){
+                    var fd=new Date(planAdminLunes); fd.setDate(fd.getDate()+offset);
+                    return fd.getFullYear()+'-'+String(fd.getMonth()+1).padStart(2,'0')+'-'+String(fd.getDate()).padStart(2,'0');
+                })(d);
+                var fichajesDia=fichajesPorFecha[fechaDia]||[];
+                var resumen=resumirFichajes(fichajesDia);
+
+                html+='<tr class="border-b border-gray-900 '+(esFinde?'bg-gray-900/40':'')+'">';
+                html+='<td class="py-2 pr-3 font-bold '+(esFinde?'text-gray-500':'text-white')+'">'+labels[d]+'</td>';
+
+                if(esLibre){
+                    html+='<td colspan="5" class="py-2 px-2 text-yellow-600 font-bold">📴 Libre</td>';
                 } else {
-                    var r1=(e1||s1)?((l1?'<span class="text-neon font-bold mr-1">'+l1+'</span>':'')+e1+(s1?' – '+s1:'')):'<span class="text-gray-700">—</span>';
-                    var r2=(e2||s2)?((l2?'<span class="text-blue-400 font-bold mr-1">'+l2+'</span>':'')+e2+(s2?' – '+s2:'')):'<span class="text-gray-700">—</span>';
-                    html+='<td class="py-2.5 px-2 text-white">'+r1+'</td>';
-                    html+='<td class="py-2.5 px-2 text-white">'+r2+'</td>';
+                    // Planilla T1
+                    var planT1=(e1||s1)?((l1?'<span class="text-neon font-bold">'+l1+'</span><br>':'')+'<span class="text-white font-mono">'+e1+(s1?' – '+s1:'')+'</span>'):'<span class="text-gray-700">—</span>';
+                    html+='<td class="py-2 px-2">'+planT1+'</td>';
+                    // Cotejo entrada T1
+                    html+='<td class="py-2 px-2 border-l border-gray-800">'+celdaCotejo(resumen.primeraEntrada, e1, 'entrada')+'</td>';
+                    // Cotejo salida
+                    html+='<td class="py-2 px-2">'+celdaCotejo(resumen.ultimaSalida, s1||s2, 'salida')+'</td>';
+                    // Planilla T2
+                    var planT2=(e2||s2)?((l2?'<span class="text-blue-400 font-bold">'+l2+'</span><br>':'')+'<span class="text-white font-mono">'+e2+(s2?' – '+s2:'')+'</span>'):'<span class="text-gray-700">—</span>';
+                    html+='<td class="py-2 px-2 border-l border-gray-800">'+planT2+'</td>';
+                    // 2a entrada (si hay T2 en planilla)
+                    var segunda=(e2||s2)?celdaCotejo(resumen.segundaEntrada, e2, 'entrada'):'<span class="text-gray-800">—</span>';
+                    html+='<td class="py-2 px-2 border-l border-gray-800">'+segunda+'</td>';
                 }
                 html+='</tr>';
             }
             html+='</tbody></table></div>';
+            // Leyenda colores
+            html+='<div class="mt-3 flex gap-4 text-xs text-gray-500">'
+                +'<span><span class="text-green-400">✓</span> Puntual (≤10 min)</span>'
+                +'<span><span class="text-yellow-400">⚑</span> Leve (11-30 min)</span>'
+                +'<span><span class="text-red-400">✗</span> Tardanza/Ausencia</span>'
+                +'<span><span class="text-orange-500">⚠</span> Sin fichaje</span>'
+                +'</div>';
             body.innerHTML=html;
         } catch(e) {
+            console.error(e);
             body.innerHTML='<p class="text-red-400 text-sm text-center py-6">Error al cargar.</p>';
         }
     }
@@ -1083,17 +1142,19 @@
             +'</style></head><body>'
             +'<h1>Planilla Horaria — '+empNom+'</h1>'
             +'<p>Semana: '+labels[0]+' al '+labels[6]+' &nbsp;·&nbsp; Impreso: '+fecha+'</p>'
-            +'<table><thead><tr><th>Día</th><th>Turno 1</th><th>Turno 2</th></tr></thead><tbody>';
+            +'<table><thead><tr><th>Día</th><th>Planilla T1</th><th>Fichaje Entrada</th><th>Fichaje Salida</th><th>Planilla T2</th><th>2° Entrada</th></tr></thead><tbody>';
         // Reconstruir filas sin HTML de colores
         var rows = tabla.querySelectorAll('tbody tr');
         rows.forEach(function(tr){
             var cells = tr.querySelectorAll('td');
             if(!cells.length) return;
             html+='<tr>';
-            cells.forEach(function(td){ html+='<td>'+td.innerText+'</td>'; });
+            cells.forEach(function(td){ html+='<td>'+td.innerText.replace(/\n/g,' ')+'</td>'; });
             html+='</tr>';
         });
-        html+='</tbody></table></body></html>';
+        html+='</tbody></table>'
+            +'<p style="margin-top:16px;font-size:11px;color:#666">✓ Puntual (≤10 min) &nbsp;⚑ Leve (11-30 min) &nbsp;✗ Tardanza/Ausencia &nbsp;⚠ Sin fichaje</p>'
+            +'</body></html>';
         var w=window.open('','_blank');
         w.document.write(html); w.document.close(); w.focus();
         setTimeout(function(){w.print();},300);
